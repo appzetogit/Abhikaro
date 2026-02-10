@@ -23,7 +23,9 @@ export default function ViewHotel() {
       try {
         setLoading(true)
         setError(null)
+        console.log("🔍 Fetching hotel with ID:", hotelId)
         const response = await hotelPublicAPI.getHotelByHotelId(hotelId)
+        console.log("📦 Hotel API response:", response)
         
         if (response.data?.success && response.data.data?.hotel) {
           const hotelData = response.data.data.hotel
@@ -31,20 +33,31 @@ export default function ViewHotel() {
           
           // Store hotel reference for order tracking
           // Get hotelRef from URL params or use hotelId
-          const hotelRef = searchParams.get("hotelRef") || hotelId
+          const hotelRef = searchParams.get("hotelRef") || hotelId || hotelData.hotelId
           if (hotelRef) {
             // Store in localStorage so it persists across sessions
             localStorage.setItem("hotelReference", hotelRef)
             localStorage.setItem("hotelReferenceName", hotelData.hotelName || "")
             localStorage.setItem("hotelReferenceTimestamp", Date.now().toString())
-            console.log("✅ Hotel reference stored:", hotelRef)
+            console.log("✅ Hotel reference stored:", {
+              hotelRef,
+              hotelName: hotelData.hotelName,
+              timestamp: new Date().toISOString()
+            })
           }
         } else {
+          console.error("❌ Hotel not found in response:", response.data)
           setError("Hotel not found")
         }
       } catch (err) {
-        console.error("Error fetching hotel:", err)
-        setError(err.response?.data?.message || "Failed to load hotel details")
+        console.error("❌ Error fetching hotel:", {
+          error: err,
+          message: err.message,
+          response: err.response?.data,
+          status: err.response?.status,
+          hotelId: hotelId
+        })
+        setError(err.response?.data?.message || err.message || "Failed to load hotel details")
       } finally {
         setLoading(false)
       }

@@ -775,7 +775,9 @@ export const restaurantAPI = {
 // Public hotel API (no authentication required)
 export const hotelPublicAPI = {
   getHotelByHotelId: (hotelId) => {
-    return apiClient.get(API_ENDPOINTS.HOTEL.PUBLIC.replace(":hotelId", hotelId));
+    const endpoint = API_ENDPOINTS.HOTEL.PUBLIC.replace(":hotelId", hotelId);
+    console.log("🔍 Fetching hotel via public API:", { hotelId, endpoint, fullUrl: `${apiClient.defaults.baseURL}${endpoint}` });
+    return apiClient.get(endpoint);
   },
 };
 

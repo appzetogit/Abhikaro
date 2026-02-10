@@ -100,6 +100,16 @@ export const getHotelQRCode = asyncHandler(async (req, res) => {
   // Create URL that will open hotel details page with hotel reference for order tracking
   const qrPayload = `${frontendUrl}/hotel/view/${hotelId}?hotelRef=${hotelId}`;
 
+  console.log("🔗 Generating QR code:", {
+    frontendUrl,
+    hotelId,
+    qrPayload,
+    env: {
+      FRONTEND_URL: process.env.FRONTEND_URL,
+      VITE_FRONTEND_URL: process.env.VITE_FRONTEND_URL
+    }
+  });
+
   // Save QR code to database
   hotel.qrCode = qrPayload;
   await hotel.save();
