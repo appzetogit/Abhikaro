@@ -36,9 +36,9 @@ export default function SignupStep2() {
       return
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image size should be less than 5MB")
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image size should be less than 2MB")
       return
     }
 
@@ -168,7 +168,7 @@ export default function SignupStep2() {
                 <>
                   <Upload className="w-8 h-8 text-gray-400 mb-2" />
                   <p className="text-sm text-gray-500 mb-1">Click to upload</p>
-                  <p className="text-xs text-gray-400">PNG, JPG up to 5MB</p>
+                  <p className="text-xs text-gray-400">PNG, JPG up to 2MB</p>
                 </>
               )}
             </div>

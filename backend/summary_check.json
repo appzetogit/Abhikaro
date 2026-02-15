@@ -1,0 +1,10 @@
+{
+  "total": 15,
+  "withCommission": 15,
+  "sample": {
+    "hotelId": "698b26decfed4296d7a67485",
+    "hotelIdType": "object",
+    "isObjectId": true,
+    "commission": 15
+  }
+}

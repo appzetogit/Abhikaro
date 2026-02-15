@@ -174,16 +174,8 @@ export default function AdminLogin() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-sm">
-                <div className="text-gray-600">Use your admin credentials to continue.</div>
-                <button
-                  type="button"
-                  onClick={() => navigate("/admin/forgot-password")}
-                  className="font-medium text-gray-900 underline-offset-4 transition-colors hover:text-black hover:underline"
-                  disabled={isLoading}
-                >
-                  Forgot password?
-                </button>
+              <div className="text-sm text-gray-600">
+                Use your admin credentials to continue.
               </div>
 
               <Button
@@ -197,14 +189,6 @@ export default function AdminLogin() {
           </CardContent>
 
           <CardFooter className="flex-col items-start gap-2 text-sm text-gray-500">
-            <span>Don't have an account?{" "}
-              <button
-                onClick={() => navigate("/admin/signup")}
-                className="text-black hover:underline font-medium"
-              >
-                Sign up
-              </button>
-            </span>
             <span>Secure sign-in helps protect admin tools.</span>
           </CardFooter>
         </Card>

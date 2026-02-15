@@ -98,23 +98,31 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     let totalPlatformFee = 0;
     let totalDeliveryFee = 0;
     let totalGST = 0;
+    let pendingCashCommission = 0;
+    let totalQRCommission = 0; // New: Hotel QR Commission
 
     allSettlements.forEach((s, index) => {
       const commission = s.adminEarning?.commission || 0;
       const platformFee = s.adminEarning?.platformFee || 0;
       const deliveryFee = s.adminEarning?.deliveryFee || 0;
       const gst = s.adminEarning?.gst || 0;
+      const hotelCommission = s.adminEarning?.hotelCommission || 0; // QR Commission
 
       totalCommission += commission;
       totalPlatformFee += platformFee;
       totalDeliveryFee += deliveryFee;
       totalGST += gst;
+      totalQRCommission += hotelCommission;
+
+      if (s.adminEarning?.adminCommissionStatus === "pending_settlement") {
+        pendingCashCommission += commission;
+      }
 
       // Log each settlement for debugging
       if (index < 5) {
         // Log first 5 settlements
         console.log(
-          `📦 Settlement ${index + 1} (${s.orderNumber}): Commission: ₹${commission}, Platform: ₹${platformFee}, Delivery: ₹${deliveryFee}, GST: ₹${gst}`,
+          `📦 Settlement ${index + 1} (${s.orderNumber}): Commission: ₹${commission}, Platform: ₹${platformFee}, Delivery: ₹${deliveryFee}, GST: ₹${gst}, QR Comm: ₹${hotelCommission}`,
         );
       }
     });
@@ -123,9 +131,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     totalPlatformFee = Math.round(totalPlatformFee * 100) / 100;
     totalDeliveryFee = Math.round(totalDeliveryFee * 100) / 100;
     totalGST = Math.round(totalGST * 100) / 100;
+    totalQRCommission = Math.round(totalQRCommission * 100) / 100;
 
     console.log(
-      `💰 Final calculated totals - Commission: ₹${totalCommission}, Platform Fee: ₹${totalPlatformFee}, Delivery Fee: ₹${totalDeliveryFee}, GST: ₹${totalGST}`,
+      `💰 Final calculated totals - Commission: ₹${totalCommission}, Platform Fee: ₹${totalPlatformFee}, Delivery Fee: ₹${totalDeliveryFee}, GST: ₹${totalGST}, QR Comm: ₹${totalQRCommission}`,
     );
 
     // Get last 30 days data from OrderSettlement
@@ -432,6 +441,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         last30Days: last30DaysGST,
         currency: "INR",
       },
+      pendingCashCommission: {
+        total: Math.round(pendingCashCommission * 100) / 100,
+        currency: "INR",
+      },
       totalAdminEarnings: {
         total: totalCommission + totalPlatformFee + totalDeliveryFee + totalGST,
         last30Days:
@@ -480,6 +493,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       },
       addons: {
         total: totalAddons,
+      },
+      qrCommission: {
+        total: totalQRCommission,
+        currency: "INR",
       },
       customers: {
         total: totalCustomers,
@@ -1713,131 +1730,219 @@ export const updateRestaurantMenu = asyncHandler(async (req, res) => {
     const existingMenu = await Menu.findOne({ restaurant: id });
 
     // Normalize and validate sections (similar to restaurant menu update)
-    const normalizedSections = Array.isArray(sections) ? sections.map((section, index) => {
-      const existingSection = existingMenu?.sections?.find(s => s.id === section.id);
-      
-      return {
-        id: section.id || `section-${index}`,
-        name: section.name || "Unnamed Section",
-        items: Array.isArray(section.items) ? section.items.map(item => {
-          const existingItem = existingSection?.items?.find(i => String(i.id) === String(item.id));
-          
+    const normalizedSections = Array.isArray(sections)
+      ? sections.map((section, index) => {
+          const existingSection = existingMenu?.sections?.find(
+            (s) => s.id === section.id,
+          );
+
           return {
-            id: String(item.id || Date.now() + Math.random()),
-            name: item.name || "Unnamed Item",
-            nameArabic: item.nameArabic || "",
-            image: item.image || "",
-            category: item.category || section.name,
-            rating: item.rating ?? 0.0,
-            reviews: item.reviews ?? 0,
-            price: item.price || 0,
-            stock: item.stock || "Unlimited",
-            discount: item.discount || null,
-            originalPrice: item.originalPrice || null,
-            foodType: item.foodType || "Non-Veg",
-            availabilityTimeStart: item.availabilityTimeStart || "12:01 AM",
-            availabilityTimeEnd: item.availabilityTimeEnd || "11:57 PM",
-            description: item.description || "",
-            discountType: item.discountType || "Percent",
-            discountAmount: item.discountAmount ?? 0.0,
-            isAvailable: item.isAvailable !== undefined ? item.isAvailable : true,
-            isRecommended: item.isRecommended || false,
-            variations: Array.isArray(item.variations) ? item.variations.map(v => ({
-              id: String(v.id || Date.now() + Math.random()),
-              name: v.name || "",
-              price: v.price || 0,
-              stock: v.stock || "Unlimited",
-            })) : [],
-            tags: Array.isArray(item.tags) ? item.tags : [],
-            nutrition: Array.isArray(item.nutrition) ? item.nutrition : [],
-            allergies: Array.isArray(item.allergies) ? item.allergies : [],
-            photoCount: item.photoCount ?? 1,
-            subCategory: item.subCategory || "",
-            servesInfo: item.servesInfo || "",
-            itemSize: item.itemSize || "",
-            itemSizeQuantity: item.itemSizeQuantity || "",
-            itemSizeUnit: item.itemSizeUnit || "piece",
-            gst: item.gst ?? 0,
-            preparationTime: existingItem?.preparationTime || item.preparationTime || "",
-            images: Array.isArray(item.images) 
-              ? item.images.filter(img => img && typeof img === 'string' && img.trim() !== '')
-              : (item.image && typeof item.image === 'string' && item.image.trim() !== '' ? [item.image] : []),
-            // Preserve approval status - admin can update but preserve existing status
-            approvalStatus: existingItem?.approvalStatus || item.approvalStatus || 'approved',
-            rejectionReason: existingItem?.rejectionReason || item.rejectionReason || '',
-            requestedAt: existingItem?.requestedAt || item.requestedAt,
-            approvedAt: existingItem?.approvedAt || item.approvedAt || (item.approvalStatus === 'approved' ? new Date() : undefined),
-            approvedBy: existingItem?.approvedBy || item.approvedBy || adminId,
-            rejectedAt: existingItem?.rejectedAt || item.rejectedAt,
+            id: section.id || `section-${index}`,
+            name: section.name || "Unnamed Section",
+            items: Array.isArray(section.items)
+              ? section.items.map((item) => {
+                  const existingItem = existingSection?.items?.find(
+                    (i) => String(i.id) === String(item.id),
+                  );
+
+                  return {
+                    id: String(item.id || Date.now() + Math.random()),
+                    name: item.name || "Unnamed Item",
+                    nameArabic: item.nameArabic || "",
+                    image: item.image || "",
+                    category: item.category || section.name,
+                    rating: item.rating ?? 0.0,
+                    reviews: item.reviews ?? 0,
+                    price: item.price || 0,
+                    stock: item.stock || "Unlimited",
+                    discount: item.discount || null,
+                    originalPrice: item.originalPrice || null,
+                    foodType: item.foodType || "Non-Veg",
+                    availabilityTimeStart:
+                      item.availabilityTimeStart || "12:01 AM",
+                    availabilityTimeEnd: item.availabilityTimeEnd || "11:57 PM",
+                    description: item.description || "",
+                    discountType: item.discountType || "Percent",
+                    discountAmount: item.discountAmount ?? 0.0,
+                    isAvailable:
+                      item.isAvailable !== undefined ? item.isAvailable : true,
+                    isRecommended: item.isRecommended || false,
+                    variations: Array.isArray(item.variations)
+                      ? item.variations.map((v) => ({
+                          id: String(v.id || Date.now() + Math.random()),
+                          name: v.name || "",
+                          price: v.price || 0,
+                          stock: v.stock || "Unlimited",
+                        }))
+                      : [],
+                    tags: Array.isArray(item.tags) ? item.tags : [],
+                    nutrition: Array.isArray(item.nutrition)
+                      ? item.nutrition
+                      : [],
+                    allergies: Array.isArray(item.allergies)
+                      ? item.allergies
+                      : [],
+                    photoCount: item.photoCount ?? 1,
+                    subCategory: item.subCategory || "",
+                    servesInfo: item.servesInfo || "",
+                    itemSize: item.itemSize || "",
+                    itemSizeQuantity: item.itemSizeQuantity || "",
+                    itemSizeUnit: item.itemSizeUnit || "piece",
+                    gst: item.gst ?? 0,
+                    preparationTime:
+                      existingItem?.preparationTime ||
+                      item.preparationTime ||
+                      "",
+                    images: Array.isArray(item.images)
+                      ? item.images.filter(
+                          (img) =>
+                            img && typeof img === "string" && img.trim() !== "",
+                        )
+                      : item.image &&
+                          typeof item.image === "string" &&
+                          item.image.trim() !== ""
+                        ? [item.image]
+                        : [],
+                    // Preserve approval status - admin can update but preserve existing status
+                    approvalStatus:
+                      existingItem?.approvalStatus ||
+                      item.approvalStatus ||
+                      "approved",
+                    rejectionReason:
+                      existingItem?.rejectionReason ||
+                      item.rejectionReason ||
+                      "",
+                    requestedAt: existingItem?.requestedAt || item.requestedAt,
+                    approvedAt:
+                      existingItem?.approvedAt ||
+                      item.approvedAt ||
+                      (item.approvalStatus === "approved"
+                        ? new Date()
+                        : undefined),
+                    approvedBy:
+                      existingItem?.approvedBy || item.approvedBy || adminId,
+                    rejectedAt: existingItem?.rejectedAt || item.rejectedAt,
+                  };
+                })
+              : [],
+            subsections: Array.isArray(section.subsections)
+              ? section.subsections.map((subsection) => {
+                  const existingSubsection = existingSection?.subsections?.find(
+                    (s) => s.id === subsection.id,
+                  );
+
+                  return {
+                    id: subsection.id || `subsection-${Date.now()}`,
+                    name: subsection.name || "Unnamed Subsection",
+                    items: Array.isArray(subsection.items)
+                      ? subsection.items.map((item) => {
+                          const existingItem = existingSubsection?.items?.find(
+                            (i) => String(i.id) === String(item.id),
+                          );
+
+                          return {
+                            id: String(item.id || Date.now() + Math.random()),
+                            name: item.name || "Unnamed Item",
+                            nameArabic: item.nameArabic || "",
+                            image: item.image || "",
+                            category: item.category || section.name,
+                            rating: item.rating ?? 0.0,
+                            reviews: item.reviews ?? 0,
+                            price: item.price || 0,
+                            stock: item.stock || "Unlimited",
+                            discount: item.discount || null,
+                            originalPrice: item.originalPrice || null,
+                            foodType: item.foodType || "Non-Veg",
+                            availabilityTimeStart:
+                              item.availabilityTimeStart || "12:01 AM",
+                            availabilityTimeEnd:
+                              item.availabilityTimeEnd || "11:57 PM",
+                            description: item.description || "",
+                            discountType: item.discountType || "Percent",
+                            discountAmount: item.discountAmount ?? 0.0,
+                            isAvailable:
+                              item.isAvailable !== undefined
+                                ? item.isAvailable
+                                : true,
+                            isRecommended: item.isRecommended || false,
+                            variations: Array.isArray(item.variations)
+                              ? item.variations.map((v) => ({
+                                  id: String(
+                                    v.id || Date.now() + Math.random(),
+                                  ),
+                                  name: v.name || "",
+                                  price: v.price || 0,
+                                  stock: v.stock || "Unlimited",
+                                }))
+                              : [],
+                            tags: Array.isArray(item.tags) ? item.tags : [],
+                            nutrition: Array.isArray(item.nutrition)
+                              ? item.nutrition
+                              : [],
+                            allergies: Array.isArray(item.allergies)
+                              ? item.allergies
+                              : [],
+                            photoCount: item.photoCount ?? 1,
+                            subCategory: item.subCategory || "",
+                            servesInfo: item.servesInfo || "",
+                            itemSize: item.itemSize || "",
+                            itemSizeQuantity: item.itemSizeQuantity || "",
+                            itemSizeUnit: item.itemSizeUnit || "piece",
+                            gst: item.gst ?? 0,
+                            preparationTime:
+                              existingItem?.preparationTime ||
+                              item.preparationTime ||
+                              "",
+                            images: Array.isArray(item.images)
+                              ? item.images.filter(
+                                  (img) =>
+                                    img &&
+                                    typeof img === "string" &&
+                                    img.trim() !== "",
+                                )
+                              : item.image &&
+                                  typeof item.image === "string" &&
+                                  item.image.trim() !== ""
+                                ? [item.image]
+                                : [],
+                            approvalStatus:
+                              existingItem?.approvalStatus ||
+                              item.approvalStatus ||
+                              "approved",
+                            rejectionReason:
+                              existingItem?.rejectionReason ||
+                              item.rejectionReason ||
+                              "",
+                            requestedAt:
+                              existingItem?.requestedAt || item.requestedAt,
+                            approvedAt:
+                              existingItem?.approvedAt ||
+                              item.approvedAt ||
+                              (item.approvalStatus === "approved"
+                                ? new Date()
+                                : undefined),
+                            approvedBy:
+                              existingItem?.approvedBy ||
+                              item.approvedBy ||
+                              adminId,
+                            rejectedAt:
+                              existingItem?.rejectedAt || item.rejectedAt,
+                          };
+                        })
+                      : [],
+                  };
+                })
+              : [],
+            isEnabled:
+              section.isEnabled !== undefined ? section.isEnabled : true,
+            order: section.order !== undefined ? section.order : index,
           };
-        }) : [],
-        subsections: Array.isArray(section.subsections) ? section.subsections.map(subsection => {
-          const existingSubsection = existingSection?.subsections?.find(s => s.id === subsection.id);
-          
-          return {
-            id: subsection.id || `subsection-${Date.now()}`,
-            name: subsection.name || "Unnamed Subsection",
-            items: Array.isArray(subsection.items) ? subsection.items.map(item => {
-              const existingItem = existingSubsection?.items?.find(i => String(i.id) === String(item.id));
-              
-              return {
-                id: String(item.id || Date.now() + Math.random()),
-                name: item.name || "Unnamed Item",
-                nameArabic: item.nameArabic || "",
-                image: item.image || "",
-                category: item.category || section.name,
-                rating: item.rating ?? 0.0,
-                reviews: item.reviews ?? 0,
-                price: item.price || 0,
-                stock: item.stock || "Unlimited",
-                discount: item.discount || null,
-                originalPrice: item.originalPrice || null,
-                foodType: item.foodType || "Non-Veg",
-                availabilityTimeStart: item.availabilityTimeStart || "12:01 AM",
-                availabilityTimeEnd: item.availabilityTimeEnd || "11:57 PM",
-                description: item.description || "",
-                discountType: item.discountType || "Percent",
-                discountAmount: item.discountAmount ?? 0.0,
-                isAvailable: item.isAvailable !== undefined ? item.isAvailable : true,
-                isRecommended: item.isRecommended || false,
-                variations: Array.isArray(item.variations) ? item.variations.map(v => ({
-                  id: String(v.id || Date.now() + Math.random()),
-                  name: v.name || "",
-                  price: v.price || 0,
-                  stock: v.stock || "Unlimited",
-                })) : [],
-                tags: Array.isArray(item.tags) ? item.tags : [],
-                nutrition: Array.isArray(item.nutrition) ? item.nutrition : [],
-                allergies: Array.isArray(item.allergies) ? item.allergies : [],
-                photoCount: item.photoCount ?? 1,
-                subCategory: item.subCategory || "",
-                servesInfo: item.servesInfo || "",
-                itemSize: item.itemSize || "",
-                itemSizeQuantity: item.itemSizeQuantity || "",
-                itemSizeUnit: item.itemSizeUnit || "piece",
-                gst: item.gst ?? 0,
-                preparationTime: existingItem?.preparationTime || item.preparationTime || "",
-                images: Array.isArray(item.images) 
-                  ? item.images.filter(img => img && typeof img === 'string' && img.trim() !== '')
-                  : (item.image && typeof item.image === 'string' && item.image.trim() !== '' ? [item.image] : []),
-                approvalStatus: existingItem?.approvalStatus || item.approvalStatus || 'approved',
-                rejectionReason: existingItem?.rejectionReason || item.rejectionReason || '',
-                requestedAt: existingItem?.requestedAt || item.requestedAt,
-                approvedAt: existingItem?.approvedAt || item.approvedAt || (item.approvalStatus === 'approved' ? new Date() : undefined),
-                approvedBy: existingItem?.approvedBy || item.approvedBy || adminId,
-                rejectedAt: existingItem?.rejectedAt || item.rejectedAt,
-              };
-            }) : [],
-          };
-        }) : [],
-        isEnabled: section.isEnabled !== undefined ? section.isEnabled : true,
-        order: section.order !== undefined ? section.order : index,
-      };
-    }) : [];
+        })
+      : [];
 
     // Find or create menu
     let menu = await Menu.findOne({ restaurant: id });
-    
+
     if (!menu) {
       menu = new Menu({
         restaurant: id,
@@ -1845,8 +1950,8 @@ export const updateRestaurantMenu = asyncHandler(async (req, res) => {
         isActive: true,
       });
     } else {
-      menu.set('sections', normalizedSections);
-      menu.markModified('sections');
+      menu.set("sections", normalizedSections);
+      menu.markModified("sections");
       menu.isNew = false;
     }
 

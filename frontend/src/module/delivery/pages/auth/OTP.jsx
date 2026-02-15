@@ -5,7 +5,7 @@ import AnimatedPage from "../../../user/components/AnimatedPage"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { deliveryAPI } from "@/lib/api"
-import { setAuthData as storeAuthData } from "@/lib/utils/auth"
+import { setAuthData as storeAuthData, isModuleAuthenticated } from "@/lib/utils/auth"
 
 export default function DeliveryOTP() {
   const navigate = useNavigate()

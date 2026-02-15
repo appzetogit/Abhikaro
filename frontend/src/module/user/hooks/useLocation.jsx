@@ -125,6 +125,32 @@ export function useLocation() {
   /* ===================== GOOGLE MAPS REVERSE GEOCODE ===================== */
   const reverseGeocodeWithGoogleMaps = async (latitude, longitude) => {
     try {
+      // Check cache first
+      try {
+        const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(err => {
+          console.warn('Failed to load cache utility:', err);
+          return null;
+        });
+        
+        if (cacheModule) {
+          const { getCached, setCached, shouldMakeApiCall } = cacheModule;
+          
+          const cachedResult = getCached('geocoding', latitude, longitude);
+          if (cachedResult) {
+            console.log("✅ Using cached geocoding result");
+            return cachedResult;
+          }
+          
+          // Check rate limit
+          if (!shouldMakeApiCall('geocoding')) {
+            console.warn("⚠️ Geocoding API rate limit reached, using fallback");
+            return reverseGeocodeDirect(latitude, longitude);
+          }
+        }
+      } catch (error) {
+        console.warn('Cache utility not available:', error);
+      }
+      
       // Get Google Maps API key from backend database
       const { getGoogleMapsApiKey } = await import('@/lib/utils/googleMapsApiKey.js');
       const GOOGLE_MAPS_API_KEY = await getGoogleMapsApiKey();
@@ -450,125 +476,179 @@ export function useLocation() {
       let placePhotos = [];
 
       try {
-        // Get API key dynamically from backend
-        const { getGoogleMapsApiKey } = await import('@/lib/utils/googleMapsApiKey.js');
-        const apiKey = await getGoogleMapsApiKey();
-
-        if (!apiKey) {
-          console.warn("⚠️ Google Maps API key not found, skipping Places API");
-          return null;
-        }
-
-        // Step 1: Use Nearby Search to find the closest place
-        console.log("🔍 Using Google Places Nearby Search for detailed information...");
-        const nearbySearchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=50&key=${apiKey}&language=en`;
-
-        // Add timeout for Nearby Search
-        const nearbyController = new AbortController();
-        const nearbyTimeoutId = setTimeout(() => nearbyController.abort(), 15000); // 15 seconds
-
-        let nearbyResponse;
+        // Check cache first for Places API
         try {
-          const nearbyRes = await fetch(nearbySearchUrl, { signal: nearbyController.signal });
-          clearTimeout(nearbyTimeoutId);
-          if (!nearbyRes.ok) {
-            throw new Error(`HTTP error! status: ${nearbyRes.status}`);
-          }
-          nearbyResponse = await nearbyRes.json();
-        } catch (error) {
-          clearTimeout(nearbyTimeoutId);
-          if (error.name === 'AbortError') {
-            console.warn("⚠️ Google Places Nearby Search timeout, skipping Places API");
-            throw new Error("Google Places Nearby Search timeout");
-          }
-          throw error;
-        }
-
-        if (nearbyResponse.status === "OK" && nearbyResponse.results && nearbyResponse.results.length > 0) {
-          // Find the closest place (first result is usually the closest)
-          const closestPlace = nearbyResponse.results[0];
-          placeId = closestPlace.place_id;
-          placeName = closestPlace.name || "";
-
-          console.log("✅ Found nearby place:", {
-            name: placeName,
-            placeId: placeId,
-            types: closestPlace.types,
-            vicinity: closestPlace.vicinity
+          const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(err => {
+            console.warn('Failed to load cache utility:', err);
+            return null;
           });
+          
+          if (cacheModule) {
+            const { getCached, setCached, shouldMakeApiCall } = cacheModule;
+            
+            const cachedPlacesResult = getCached('places', latitude, longitude, 50);
+            if (cachedPlacesResult) {
+              console.log("✅ Using cached Places API result");
+              placeDetails = cachedPlacesResult.placeDetails;
+              placeId = cachedPlacesResult.placeId;
+              placeName = cachedPlacesResult.placeName;
+              placePhone = cachedPlacesResult.placePhone;
+              placeWebsite = cachedPlacesResult.placeWebsite;
+              placeRating = cachedPlacesResult.placeRating;
+              placeOpeningHours = cachedPlacesResult.placeOpeningHours;
+              placePhotos = cachedPlacesResult.placePhotos || [];
+              // Continue with cached data
+            } else {
+              // Check rate limit
+              if (!shouldMakeApiCall('places')) {
+                console.warn("⚠️ Places API rate limit reached, skipping Places API");
+                // Continue without Places API data
+              } else {
+              // Get API key dynamically from backend
+              const { getGoogleMapsApiKey } = await import('@/lib/utils/googleMapsApiKey.js');
+              const apiKey = await getGoogleMapsApiKey();
 
-          // Step 2: Get detailed place information using Place Details API
-          if (placeId) {
-            console.log("🔍 Fetching detailed place information...");
-            const placeDetailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_address,formatted_phone_number,website,rating,opening_hours,photos,address_components,geometry,types&key=${apiKey}&language=en`;
+              if (!apiKey) {
+                console.warn("⚠️ Google Maps API key not found, skipping Places API");
+                // Continue without Places API data
+              } else {
+                // Step 1: Use Nearby Search to find the closest place
+                console.log("🔍 Using Google Places Nearby Search for detailed information...");
+                const nearbySearchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=50&key=${apiKey}&language=en`;
 
-            // Add timeout for Place Details
-            const detailsController = new AbortController();
-            const detailsTimeoutId = setTimeout(() => detailsController.abort(), 15000); // 15 seconds
+                // Add timeout for Nearby Search
+                const nearbyController = new AbortController();
+                const nearbyTimeoutId = setTimeout(() => nearbyController.abort(), 15000); // 15 seconds
 
-            let detailsResponse;
-            try {
-              const detailsRes = await fetch(placeDetailsUrl, { signal: detailsController.signal });
-              clearTimeout(detailsTimeoutId);
-              if (!detailsRes.ok) {
-                throw new Error(`HTTP error! status: ${detailsRes.status}`);
-              }
-              detailsResponse = await detailsRes.json();
-            } catch (error) {
-              clearTimeout(detailsTimeoutId);
-              if (error.name === 'AbortError') {
-                console.warn("⚠️ Google Places Details timeout, using geocoding results only");
-                throw new Error("Google Places Details timeout");
-              }
-              throw error;
-            }
-
-            if (detailsResponse.status === "OK" && detailsResponse.result) {
-              placeDetails = detailsResponse.result;
-              placeName = placeDetails.name || placeName;
-              placePhone = placeDetails.formatted_phone_number || "";
-              placeWebsite = placeDetails.website || "";
-              placeRating = placeDetails.rating || null;
-              placeOpeningHours = placeDetails.opening_hours || null;
-
-              // Get photo references (first 3 photos)
-              if (placeDetails.photos && placeDetails.photos.length > 0) {
-                placePhotos = placeDetails.photos.slice(0, 3).map(photo => ({
-                  reference: photo.photo_reference,
-                  width: photo.width,
-                  height: photo.height,
-                  url: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photo.photo_reference}&key=${apiKey}`
-                }));
-              }
-
-              console.log("✅✅✅ Google Places API - Complete Details:", {
-                name: placeName,
-                phone: placePhone,
-                website: placeWebsite,
-                rating: placeRating,
-                hasOpeningHours: !!placeOpeningHours,
-                photosCount: placePhotos.length,
-                address: placeDetails.formatted_address
-              });
-
-              // If Places API has better address components, use them
-              if (placeDetails.address_components && placeDetails.address_components.length > addressComponents.length) {
-                console.log("✅ Using address components from Places API (more detailed)");
-                // Merge Places API address components with geocoding results
-                const placesComponents = placeDetails.address_components;
-                // Update missing components from Places API
-                for (const comp of placesComponents) {
-                  const types = comp.types || [];
-                  if (types.includes("point_of_interest") && !pointOfInterest) {
-                    pointOfInterest = comp.long_name;
+                let nearbyResponse;
+                try {
+                  const nearbyRes = await fetch(nearbySearchUrl, { signal: nearbyController.signal });
+                  clearTimeout(nearbyTimeoutId);
+                  if (!nearbyRes.ok) {
+                    throw new Error(`HTTP error! status: ${nearbyRes.status}`);
                   }
-                  if (types.includes("premise") && !premise) {
-                    premise = comp.long_name;
+                  nearbyResponse = await nearbyRes.json();
+                } catch (error) {
+                  clearTimeout(nearbyTimeoutId);
+                  if (error.name === 'AbortError') {
+                    console.warn("⚠️ Google Places Nearby Search timeout, skipping Places API");
+                    throw new Error("Google Places Nearby Search timeout");
+                  }
+                  throw error;
+                }
+
+                if (nearbyResponse.status === "OK" && nearbyResponse.results && nearbyResponse.results.length > 0) {
+                  // Find the closest place (first result is usually the closest)
+                  const closestPlace = nearbyResponse.results[0];
+                  placeId = closestPlace.place_id;
+                  placeName = closestPlace.name || "";
+
+                  console.log("✅ Found nearby place:", {
+                    name: placeName,
+                    placeId: placeId,
+                    types: closestPlace.types,
+                    vicinity: closestPlace.vicinity
+                  });
+
+                  // Step 2: Get detailed place information using Place Details API
+                  if (placeId) {
+                    console.log("🔍 Fetching detailed place information...");
+                    const placeDetailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_address,formatted_phone_number,website,rating,opening_hours,photos,address_components,geometry,types&key=${apiKey}&language=en`;
+
+                    // Add timeout for Place Details
+                    const detailsController = new AbortController();
+                    const detailsTimeoutId = setTimeout(() => detailsController.abort(), 15000); // 15 seconds
+
+                    let detailsResponse;
+                    try {
+                      const detailsRes = await fetch(placeDetailsUrl, { signal: detailsController.signal });
+                      clearTimeout(detailsTimeoutId);
+                      if (!detailsRes.ok) {
+                        throw new Error(`HTTP error! status: ${detailsRes.status}`);
+                      }
+                      detailsResponse = await detailsRes.json();
+                    } catch (error) {
+                      clearTimeout(detailsTimeoutId);
+                      if (error.name === 'AbortError') {
+                        console.warn("⚠️ Google Places Details timeout, using geocoding results only");
+                        throw new Error("Google Places Details timeout");
+                      }
+                      throw error;
+                    }
+
+                    if (detailsResponse.status === "OK" && detailsResponse.result) {
+                      placeDetails = detailsResponse.result;
+                      placeName = placeDetails.name || placeName;
+                      placePhone = placeDetails.formatted_phone_number || "";
+                      placeWebsite = placeDetails.website || "";
+                      placeRating = placeDetails.rating || null;
+                      placeOpeningHours = placeDetails.opening_hours || null;
+
+                      // Get photo references (first 3 photos)
+                      if (placeDetails.photos && placeDetails.photos.length > 0) {
+                        placePhotos = placeDetails.photos.slice(0, 3).map(photo => ({
+                          reference: photo.photo_reference,
+                          width: photo.width,
+                          height: photo.height,
+                          url: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photo.photo_reference}&key=${apiKey}`
+                        }));
+                      }
+
+                      console.log("✅✅✅ Google Places API - Complete Details:", {
+                        name: placeName,
+                        phone: placePhone,
+                        website: placeWebsite,
+                        rating: placeRating,
+                        hasOpeningHours: !!placeOpeningHours,
+                        photosCount: placePhotos.length,
+                        address: placeDetails.formatted_address
+                      });
+
+                      // If Places API has better address components, use them
+                      if (placeDetails.address_components && placeDetails.address_components.length > addressComponents.length) {
+                        console.log("✅ Using address components from Places API (more detailed)");
+                        // Merge Places API address components with geocoding results
+                        const placesComponents = placeDetails.address_components;
+                        // Update missing components from Places API
+                        for (const comp of placesComponents) {
+                          const types = comp.types || [];
+                          if (types.includes("point_of_interest") && !pointOfInterest) {
+                            pointOfInterest = comp.long_name;
+                          }
+                          if (types.includes("premise") && !premise) {
+                            premise = comp.long_name;
+                          }
+                        }
+                      }
+                      
+                      // Cache Places API result
+                      try {
+                        const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
+                        if (cacheModule) {
+                          const { setCached } = cacheModule;
+                          setCached('places', {
+                            placeDetails,
+                            placeId,
+                            placeName,
+                            placePhone,
+                            placeWebsite,
+                            placeRating,
+                          placeOpeningHours,
+                            placePhotos
+                          }, latitude, longitude, 50);
+                        }
+                      } catch (cacheError) {
+                        console.warn('Failed to cache Places API result:', cacheError);
+                      }
+                    }
                   }
                 }
-              }
-            }
-          }
+              } // Close the else block for API call
+            } // Close the else block for API key check
+          } // Close the else block for rate limit check
+          } // Close the if (cacheModule) block
+        } catch (cacheError) {
+          console.warn('Cache check failed, proceeding without cache:', cacheError);
         }
       } catch (placesError) {
         console.warn("⚠️ Google Places API error (non-critical):", placesError.message);
@@ -889,6 +969,17 @@ export function useLocation() {
         hasCompleteAddress: locationResult.formattedAddress &&
           locationResult.formattedAddress.split(',').length >= 4
       });
+
+      // Cache the result
+      try {
+        const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
+        if (cacheModule) {
+          const { setCached } = cacheModule;
+          setCached('geocoding', locationResult, latitude, longitude);
+        }
+      } catch (error) {
+        console.warn('Failed to cache geocoding result:', error);
+      }
 
       return locationResult;
     } catch (error) {

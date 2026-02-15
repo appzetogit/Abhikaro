@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react"
-import { 
-  Search, Edit, Loader2, Building2, Percent
+import {
+  Search, Edit, Loader2, Building2, Percent, Wallet, TrendingUp, IndianRupee
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -15,20 +15,26 @@ export default function HotelCommission() {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [editDialog, setEditDialog] = useState(null)
+  const [stats, setStats] = useState({
+    totalHotelCommission: 0,
+    totalAdminHotelCommission: 0,
+    totalCombinedCommission: 0
+  })
 
   // Fetch hotels on component mount
   useEffect(() => {
     fetchHotels()
+    fetchStats()
   }, [])
 
   const fetchHotels = async () => {
     try {
       setLoading(true)
-      const response = await adminAPI.getHotels({ 
+      const response = await adminAPI.getHotels({
         limit: 1000,
         status: "active" // Only show active hotels
       })
-      
+
       if (response.data && response.data.success && response.data.data) {
         const hotelsData = response.data.data.hotels || []
         setHotels(hotelsData)
@@ -44,11 +50,22 @@ export default function HotelCommission() {
     }
   }
 
+  const fetchStats = async () => {
+    try {
+      const response = await adminAPI.getHotelCommissionStats()
+      if (response.data && response.data.success) {
+        setStats(response.data.data)
+      }
+    } catch (err) {
+      console.error("Error fetching hotel stats:", err)
+    }
+  }
+
   const filteredHotels = useMemo(() => {
     if (!searchQuery.trim()) {
       return hotels
     }
-    
+
     const query = searchQuery.toLowerCase().trim()
     return hotels.filter(hotel =>
       hotel.hotelName?.toLowerCase().includes(query) ||
@@ -73,17 +90,17 @@ export default function HotelCommission() {
 
     const commission = parseFloat(editDialog.commission)
     const adminCommission = parseFloat(editDialog.adminCommission)
-    
+
     if (isNaN(commission) || commission < 0 || commission > 100) {
       toast.error("Please enter a valid hotel commission percentage (0-100)")
       return
     }
-    
+
     if (isNaN(adminCommission) || adminCommission < 0 || adminCommission > 100) {
       toast.error("Please enter a valid admin commission percentage (0-100)")
       return
     }
-    
+
     // Check if total commission exceeds 100%
     if (commission + adminCommission > 100) {
       toast.error("Total commission (Hotel + Admin) cannot exceed 100%")
@@ -92,14 +109,14 @@ export default function HotelCommission() {
 
     try {
       setUpdating(true)
-      await adminAPI.updateHotel(editDialog._id, { 
+      await adminAPI.updateHotel(editDialog._id, {
         commission: commission,
         adminCommission: adminCommission
       })
-      
+
       // Refresh the list
       await fetchHotels()
-      
+
       toast.success(`Commissions updated successfully for ${editDialog.hotelName}`)
       setEditDialog(null)
     } catch (err) {
@@ -119,6 +136,48 @@ export default function HotelCommission() {
           <p className="text-sm text-gray-500 mt-1">
             Manage commission percentage for hotels (applied to orders from QR code scans)
           </p>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <Building2 className="h-6 w-6 text-blue-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Total Hotel Commission</p>
+            <div className="flex items-center gap-1">
+              <IndianRupee className="h-4 w-4 text-gray-900" />
+              <p className="text-2xl font-bold text-gray-900">{stats.totalHotelCommission.toLocaleString('en-IN')}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="p-3 bg-green-50 rounded-lg">
+            <Percent className="h-6 w-6 text-green-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Total Admin Commission</p>
+            <div className="flex items-center gap-1">
+              <IndianRupee className="h-4 w-4 text-gray-900" />
+              <p className="text-2xl font-bold text-gray-900">{stats.totalAdminHotelCommission.toLocaleString('en-IN')}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="p-3 bg-[#ff8100]/10 rounded-lg">
+            <TrendingUp className="h-6 w-6 text-[#ff8100]" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Total Combined Earnings</p>
+            <div className="flex items-center gap-1">
+              <IndianRupee className="h-4 w-4 text-gray-900" />
+              <p className="text-2xl font-bold text-gray-900">{stats.totalCombinedCommission.toLocaleString('en-IN')}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -251,7 +310,7 @@ export default function HotelCommission() {
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Hotel Commission</DialogTitle>
           </DialogHeader>
-          
+
           {editDialog && (
             <div className="space-y-6 py-4">
               {/* Hotel Info */}
@@ -308,13 +367,12 @@ export default function HotelCommission() {
                 <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-gray-700">Total Commission:</span>
-                    <span className={`text-lg font-bold ${
-                      (parseFloat(editDialog.commission || 0) + parseFloat(editDialog.adminCommission || 0)) > 100
-                        ? "text-red-600"
-                        : (parseFloat(editDialog.commission || 0) + parseFloat(editDialog.adminCommission || 0)) === 100
+                    <span className={`text-lg font-bold ${(parseFloat(editDialog.commission || 0) + parseFloat(editDialog.adminCommission || 0)) > 100
+                      ? "text-red-600"
+                      : (parseFloat(editDialog.commission || 0) + parseFloat(editDialog.adminCommission || 0)) === 100
                         ? "text-green-600"
                         : "text-gray-900"
-                    }`}>
+                      }`}>
                       {(parseFloat(editDialog.commission || 0) + parseFloat(editDialog.adminCommission || 0)).toFixed(1)}%
                     </span>
                   </div>
@@ -332,7 +390,7 @@ export default function HotelCommission() {
               </div>
             </div>
           )}
-          
+
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -344,13 +402,13 @@ export default function HotelCommission() {
             <Button
               onClick={handleUpdate}
               disabled={
-                updating || 
-                !editDialog || 
-                !editDialog.commission || 
+                updating ||
+                !editDialog ||
+                !editDialog.commission ||
                 !editDialog.adminCommission ||
-                parseFloat(editDialog.commission) < 0 || 
+                parseFloat(editDialog.commission) < 0 ||
                 parseFloat(editDialog.commission) > 100 ||
-                parseFloat(editDialog.adminCommission) < 0 || 
+                parseFloat(editDialog.adminCommission) < 0 ||
                 parseFloat(editDialog.adminCommission) > 100 ||
                 (parseFloat(editDialog.commission || 0) + parseFloat(editDialog.adminCommission || 0)) > 100
               }

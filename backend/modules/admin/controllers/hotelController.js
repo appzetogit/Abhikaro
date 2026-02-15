@@ -1,4 +1,7 @@
-import { successResponse, errorResponse } from "../../../shared/utils/response.js";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import Hotel from "../../hotel/models/Hotel.js";
 
@@ -94,18 +97,18 @@ export const updateHotel = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
 
-    // Allowed fields to update
-    const allowedFields = [
-      "hotelName",
-      "email",
-      "address",
-      "phone",
-      "isActive",
-      "profileImage",
-      "rejectionReason",
-      "commission",
-      "adminCommission",
-    ];
+  // Allowed fields to update
+  const allowedFields = [
+    "hotelName",
+    "email",
+    "address",
+    "phone",
+    "isActive",
+    "profileImage",
+    "rejectionReason",
+    "commission",
+    "adminCommission",
+  ];
 
   const updateData = {};
   for (const field of allowedFields) {
@@ -154,14 +157,13 @@ export const createHotel = asyncHandler(async (req, res) => {
     return errorResponse(
       res,
       400,
-      "Hotel name, email, address, and phone are required"
+      "Hotel name, email, address, and phone are required",
     );
   }
 
   // Normalize phone
-  const { normalizePhoneNumber } = await import(
-    "../../../shared/utils/phoneUtils.js"
-  );
+  const { normalizePhoneNumber } =
+    await import("../../../shared/utils/phoneUtils.js");
   const normalizedPhone = normalizePhoneNumber(phone);
   if (!normalizedPhone) {
     return errorResponse(res, 400, "Invalid phone number format");
@@ -173,7 +175,7 @@ export const createHotel = asyncHandler(async (req, res) => {
     return errorResponse(
       res,
       400,
-      "Hotel already exists with this phone number"
+      "Hotel already exists with this phone number",
     );
   }
 
@@ -248,7 +250,7 @@ export const createHotel = asyncHandler(async (req, res) => {
   // Create hotel
   try {
     const hotel = await Hotel.create(hotelData);
-    
+
     console.log("✅ Hotel created successfully:", {
       hotelId: hotel._id,
       hotelName: hotel.hotelName,
@@ -272,7 +274,7 @@ export const createHotel = asyncHandler(async (req, res) => {
       return errorResponse(
         res,
         400,
-        `Hotel with this ${duplicateField} already exists`
+        `Hotel with this ${duplicateField} already exists`,
       );
     }
 
@@ -288,7 +290,7 @@ export const createHotel = asyncHandler(async (req, res) => {
     return errorResponse(
       res,
       500,
-      `Failed to create hotel: ${createError.message}`
+      `Failed to create hotel: ${createError.message}`,
     );
   }
 });
@@ -375,5 +377,56 @@ export const getHotelRequests = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error("Error fetching hotel requests:", error);
     return errorResponse(res, 500, "Failed to fetch hotel requests");
+  }
+});
+
+/**
+ * Get accumulated hotel commission stats
+ * GET /api/admin/hotels/commission-stats
+ */
+export const getHotelCommissionStats = asyncHandler(async (req, res) => {
+  try {
+    const OrderSettlement = (
+      await import("../../order/models/OrderSettlement.js")
+    ).default;
+
+    // Aggregate total commission from settlements for QR orders
+    const stats = await OrderSettlement.aggregate([
+      {
+        $match: {
+          "adminEarning.orderType": "QR",
+          settlementStatus: "completed",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalHotelCommission: { $sum: "$hotelEarning.commission" },
+          totalAdminHotelCommission: { $sum: "$adminEarning.hotelCommission" },
+        },
+      },
+    ]);
+
+    const totalHotelCommission =
+      stats.length > 0 ? stats[0].totalHotelCommission : 0;
+    const totalAdminHotelCommission =
+      stats.length > 0 ? stats[0].totalAdminHotelCommission : 0;
+
+    return successResponse(
+      res,
+      200,
+      "Hotel commission stats retrieved successfully",
+      {
+        totalHotelCommission: Math.round(totalHotelCommission * 100) / 100,
+        totalAdminHotelCommission:
+          Math.round(totalAdminHotelCommission * 100) / 100,
+        totalCombinedCommission:
+          Math.round((totalHotelCommission + totalAdminHotelCommission) * 100) /
+          100,
+      },
+    );
+  } catch (error) {
+    console.error("Error fetching hotel commission stats:", error);
+    return errorResponse(res, 500, "Failed to fetch hotel commission stats");
   }
 });

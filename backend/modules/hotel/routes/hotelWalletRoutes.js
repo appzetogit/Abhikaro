@@ -8,4 +8,3 @@ const router = express.Router();
 router.get("/", authenticate, getHotelWallet);
 
 export default router;
-

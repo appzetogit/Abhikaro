@@ -260,7 +260,7 @@ export default function GoogleMapsTracking({
   }, [limitZoomIfNeeded])
 
   // Calculate and display route using Google Directions Service
-  const calculateAndDisplayRoute = useCallback((origin, destination, waypoints = []) => {
+  const calculateAndDisplayRoute = useCallback(async (origin, destination, waypoints = []) => {
     if (!isLoaded || !mapRef.current || !window.google?.maps) {
       console.log('⚠️ Cannot calculate route: map not loaded or not ready')
       return
@@ -272,17 +272,48 @@ export default function GoogleMapsTracking({
       return
     }
 
-    // Optimization: Throttle route calculation (min 5 seconds between calls)
-    // unless origin has moved significantly (> 50m)
+    // Check cache first
+    try {
+      const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(err => {
+        console.warn('Failed to load cache utility:', err);
+        return null;
+      });
+      
+      if (cacheModule) {
+        const { getCached, setCached, shouldMakeApiCall } = cacheModule;
+        
+        // Check cache
+        const cachedResult = getCached('directions', origin, destination);
+        if (cachedResult) {
+          console.log('✅ Using cached directions result');
+          if (directionsRendererRef.current) {
+            directionsRendererRef.current.setDirections(cachedResult);
+          }
+          return;
+        }
+        
+        // Check rate limit
+        if (!shouldMakeApiCall('directions')) {
+          console.warn('⚠️ Directions API rate limit reached, skipping call');
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn('Cache utility not available:', error);
+    }
+
+    // Optimization: Throttle route calculation (min 10 seconds between calls)
+    // unless origin has moved significantly (> 100m)
     const now = Date.now()
     const lastCalc = lastRouteCalcRef.current
     const timeDiff = now - lastCalc.time
-    if (timeDiff < 5000) {
-      // Check if origin moved significantly
+    if (timeDiff < 10000) {
+      // Check if origin moved significantly (> 100m)
       const latDiff = Math.abs(origin.lat - lastCalc.origin.lat)
       const lngDiff = Math.abs(origin.lng - lastCalc.origin.lng)
-      // Rough approximation: 0.0005 degrees is ~50m
-      if (latDiff < 0.0005 && lngDiff < 0.0005) {
+      // Rough approximation: 0.001 degrees is ~100m
+      if (latDiff < 0.001 && lngDiff < 0.001) {
+        console.log('⏭️ Skipping route calculation - origin not moved significantly');
         return // Skip calculation
       }
     }
@@ -330,9 +361,21 @@ export default function GoogleMapsTracking({
         },
         optimizeWaypoints: true,
       },
-      (result, status) => {
+      async (result, status) => {
         if (status === 'OK' && result.routes && result.routes[0]) {
           setRouteError(null)
+          
+          // Cache the result
+          try {
+            const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
+            if (cacheModule) {
+              const { setCached } = cacheModule;
+              setCached('directions', result, origin, destination);
+            }
+          } catch (error) {
+            console.warn('Failed to cache directions result:', error);
+          }
+          
           // Extract route information
           const route = result.routes[0]
           if (route.legs && route.legs.length > 0) {

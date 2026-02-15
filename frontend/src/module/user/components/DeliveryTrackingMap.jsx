@@ -64,7 +64,7 @@ const DeliveryTrackingMap = ({
 
   // Draw route using Google Maps Directions API with live updates
   // OPTIMIZED: Added caching to reduce API calls
-  const drawRoute = useCallback((start, end) => {
+  const drawRoute = useCallback(async (start, end) => {
     if (!mapInstance.current || !directionsServiceRef.current || !directionsRendererRef.current) return;
 
     // Validate coordinates before making API call
@@ -97,15 +97,101 @@ const DeliveryTrackingMap = ({
       return;
     }
 
+    // Check global cache first
+    try {
+      const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(err => {
+        console.warn('Failed to load cache utility:', err);
+        return null;
+      });
+      
+      if (cacheModule) {
+        const { getCached, setCached, shouldMakeApiCall } = cacheModule;
+        
+        const cachedResult = getCached('directions', start, end);
+        if (cachedResult) {
+        console.log('✅ Using cached directions result from global cache');
+        directionsRendererRef.current.setOptions({ preserveViewport: true });
+        directionsRendererRef.current.setDirections(cachedResult);
+        
+        // Also update local cache
+        const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
+        const cacheKey = `${roundCoord(startLat)},${roundCoord(startLng)}|${roundCoord(endLat)},${roundCoord(endLng)}`;
+        directionsCacheRef.current.set(cacheKey, {
+          result: cachedResult,
+          timestamp: Date.now()
+        });
+        
+        // Extract polyline and update animation
+        const polylinePoints = extractPolylineFromDirections(cachedResult);
+        if (polylinePoints && polylinePoints.length > 0) {
+          routePolylinePointsRef.current = polylinePoints;
+          if (bikeMarkerRef.current && !animationControllerRef.current) {
+            animationControllerRef.current = new RouteBasedAnimationController(
+              bikeMarkerRef.current,
+              polylinePoints
+            );
+          }
+        }
+        
+        if (cachedResult.routes && cachedResult.routes[0] && cachedResult.routes[0].overview_path) {
+          if (routePolylineRef.current) {
+            routePolylineRef.current.setMap(null);
+          }
+          routePolylineRef.current = new window.google.maps.Polyline({
+            path: cachedResult.routes[0].overview_path,
+            geodesic: true,
+            strokeColor: '#10b981',
+            strokeOpacity: 0.8,
+            strokeWeight: 4,
+            icons: [{
+              icon: {
+                path: 'M 0,-1 0,1',
+                strokeOpacity: 1,
+                strokeWeight: 2,
+                strokeColor: '#10b981',
+                scale: 4
+              },
+              offset: '0%',
+              repeat: '15px'
+            }],
+            map: mapInstance.current,
+            zIndex: 1
+          });
+        }
+        return;
+      }
+      
+      // Check rate limit
+      if (!shouldMakeApiCall('directions')) {
+        console.warn('⚠️ Directions API rate limit reached, using local cache if available');
+        // Try local cache as fallback
+        const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
+        const cacheKey = `${roundCoord(startLat)},${roundCoord(startLng)}|${roundCoord(endLat)},${roundCoord(endLng)}`;
+        const cached = directionsCacheRef.current.get(cacheKey);
+        const now = Date.now();
+        if (cached && (now - cached.timestamp) < 300000) {
+          console.log('✅ Using local cached route as fallback');
+          if (cached.result && cached.result.routes && cached.result.routes[0]) {
+            directionsRendererRef.current.setOptions({ preserveViewport: true });
+            directionsRendererRef.current.setDirections(cached.result);
+          }
+        }
+        return;
+      }
+      } // Close if (cacheModule) block
+    } catch (error) {
+      console.warn('Cache utility not available, using local cache:', error);
+    }
+
     // Round coordinates to 4 decimal places (~11 meters) for cache key
     const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
     const cacheKey = `${roundCoord(startLat)},${roundCoord(startLng)}|${roundCoord(endLat)},${roundCoord(endLng)}`;
 
-    // Check cache first (cache valid for 5 minutes)
+    // Check local cache (cache valid for 5 minutes)
     const cached = directionsCacheRef.current.get(cacheKey);
     const now = Date.now();
     if (cached && (now - cached.timestamp) < 300000) { // 5 minutes cache
-      console.log('✅ Using cached route');
+      console.log('✅ Using local cached route');
       // Use cached result
       if (cached.result && cached.result.routes && cached.result.routes[0]) {
         directionsRendererRef.current.setOptions({ preserveViewport: true });
@@ -176,16 +262,27 @@ const DeliveryTrackingMap = ({
         origin: { lat: startLat, lng: startLng },
         destination: { lat: endLat, lng: endLng },
         travelMode: window.google.maps.TravelMode.DRIVING
-      }, (result, status) => {
+      }, async (result, status) => {
         if (status === 'OK' && result) {
-          // Cache the result
+          // Cache the result in local cache
           directionsCacheRef.current.set(cacheKey, {
             result: result,
-            timestamp: now
+            timestamp: Date.now()
           });
+          
+          // Also cache in global cache
+          try {
+            const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
+            if (cacheModule) {
+              const { setCached } = cacheModule;
+              setCached('directions', result, start, end);
+            }
+          } catch (error) {
+            console.warn('Failed to cache in global cache:', error);
+          }
 
           // Clean old cache entries (older than 10 minutes)
-          const tenMinutesAgo = now - 600000;
+          const tenMinutesAgo = Date.now() - 600000;
           for (const [key, value] of directionsCacheRef.current.entries()) {
             if (value.timestamp < tenMinutesAgo) {
               directionsCacheRef.current.delete(key);

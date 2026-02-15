@@ -290,55 +290,6 @@ export default function DiningRestaurants() {
             </div>
           </div>
 
-          {/* Filters */}
-          <section className="py-1 mb-4">
-            <div 
-              className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1"
-              style={{
-                scrollbarWidth: "none",
-                msOverflowStyle: "none",
-              }}
-            >
-              {/* Filter Button - Opens Modal */}
-              <Button
-                variant="outline"
-                onClick={() => setIsFilterOpen(true)}
-                className="h-7 sm:h-8 px-2 sm:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all bg-white border border-gray-200 hover:bg-gray-50 text-gray-700"
-              >
-                <SlidersHorizontal className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="text-xs sm:text-sm font-bold text-black">Filters</span>
-              </Button>
-
-              {/* Filter Buttons */}
-              {[
-                { id: 'delivery-under-30', label: 'Under 30 mins' },
-                { id: 'delivery-under-45', label: 'Under 45 mins' },
-                { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
-                { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
-                { id: 'rating-35-plus', label: '3.5+ Rating' },
-                { id: 'rating-4-plus', label: '4.0+ Rating' },
-                { id: 'rating-45-plus', label: '4.5+ Rating' },
-              ].map((filter) => {
-                const Icon = filter.icon
-                const isActive = activeFilters.has(filter.id)
-                return (
-                  <Button
-                    key={filter.id}
-                    variant="outline"
-                    onClick={() => toggleFilter(filter.id)}
-                    className={`h-7 sm:h-8 px-2 sm:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 transition-all font-medium ${
-                      isActive
-                        ? 'bg-green-600 text-white border border-green-600 hover:bg-green-600/90'
-                        : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-600'
-                    }`}
-                  >
-                    {Icon && <Icon className={`h-3 w-3 sm:h-4 sm:w-4 ${isActive ? 'fill-white' : ''}`} />}
-                    <span className="text-xs sm:text-sm font-bold text-black">{filter.label}</span>
-                  </Button>
-                )
-              })}
-            </div>
-          </section>
 
           {/* Restaurant Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">

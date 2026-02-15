@@ -1,0 +1,67 @@
+{
+  "qrOrdersCount": 51,
+  "deliveredQrOrdersCount": 14,
+  "sampleQrOrders": [
+    {
+      "orderId": "ORD-1770985004696-457",
+      "_id": "698f162c939cf92085b31296",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1770985498283-200",
+      "_id": "698f181a939cf92085b31a36",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1770985796221-192",
+      "_id": "698f1944c1bf467da9c0c988",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1771003418248-536",
+      "_id": "698f5e1ae5a6a9e6ef015cce",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1771003643683-324",
+      "_id": "698f5efbe5a6a9e6ef017180",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1771003863236-149",
+      "_id": "698f5fd7e5a6a9e6ef0175eb",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1771003900164-416",
+      "_id": "698f5ffce5a6a9e6ef017a7c",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1771004492516-842",
+      "_id": "698f624ce5a6a9e6ef01935c",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1771004538801-719",
+      "_id": "698f627ae5a6a9e6ef0197b0",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    },
+    {
+      "orderId": "ORD-1771005276028-650",
+      "_id": "698f655ce5a6a9e6ef01a265",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    }
+  ],
+  "settlementsFound": []
+}

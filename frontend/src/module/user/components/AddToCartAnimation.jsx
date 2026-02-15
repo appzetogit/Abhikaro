@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
+import { createPortal } from 'react-dom';
 
 
 /**
@@ -35,10 +36,10 @@ export default function AddToCartAnimation({
   const prevItemsRef = useRef(items);
 
   // Hide pill on cart pages, order pages, and account page (if enabled)
-  const iscartPage = location.pathname === '/cart' || 
-                     location.pathname === '/user/cart' ||
-                     location.pathname.startsWith('/cart/') ||
-                     location.pathname.startsWith('/user/cart/');
+  const iscartPage = location.pathname === '/cart' ||
+    location.pathname === '/user/cart' ||
+    location.pathname.startsWith('/cart/') ||
+    location.pathname.startsWith('/user/cart/');
   const isOrderPage = location.pathname.startsWith('/orders/');
   const isAccountPage = location.pathname === '/account';
   const shouldHidePill = hideOnPages && (iscartPage || isOrderPage || isAccountPage);
@@ -47,11 +48,11 @@ export default function AddToCartAnimation({
   useEffect(() => {
     if (lastRemoveEvent && lastRemoveEvent.sourcePosition && linkRef.current) {
       const { product, sourcePosition } = lastRemoveEvent;
-      
+
       // Store the sourcePosition immediately to prevent it from being lost
       const savedSourcePosition = { ...sourcePosition };
       const savedProduct = { ...product };
-      
+
       setRemovedProduct({ product: savedProduct, targetPos: savedSourcePosition });
 
       // Wait a bit to ensure pill is rendered
@@ -77,7 +78,7 @@ export default function AddToCartAnimation({
             }
             return 0
           }
-          
+
           const getScrollY = () => {
             if (window.scrollY !== undefined) return window.scrollY
             if (window.pageYOffset !== undefined) return window.pageYOffset
@@ -89,13 +90,13 @@ export default function AddToCartAnimation({
             }
             return 0
           }
-          
+
           const currentScrollX = getScrollX()
           const currentScrollY = getScrollY()
-          
+
           // Determine target position (support both new format with viewportX/Y and old format with x/y)
           let targetX, targetY
-          
+
           if (savedSourcePosition.viewportX !== undefined && savedSourcePosition.viewportY !== undefined) {
             // New format: stored viewport position + scroll at capture time
             // Adjust for scroll changes since capture
@@ -112,7 +113,7 @@ export default function AddToCartAnimation({
 
           // Calculate thumbnail center offset (16px = half of 32px thumbnail)
           const thumbnailCenterOffset = 16;
-          
+
           // Position at pill location initially (viewport-relative)
           gsap.set(thumbnail, {
             position: 'fixed',
@@ -147,36 +148,36 @@ export default function AddToCartAnimation({
             duration: 0.15,
             ease: 'power2.out',
           })
-          // Step 2: Fly towards source with rotation
-          .to(thumbnail, {
-            x: deltaX * 0.98, // Slight overshoot for bounce
-            y: deltaY,
-            rotation: -360,
-            scale: 1.1,
-            duration: 0.4,
-            ease: 'power2.inOut',
-          })
-          // Step 3: Bounce back slightly
-          .to(thumbnail, {
-            x: deltaX,
-            y: deltaY,
-            scale: 0.9,
-            duration: 0.15,
-            ease: 'power2.out',
-          })
-          // Step 4: Final bounce into position
-          .to(thumbnail, {
-            scale: 0.85,
-            duration: 0.1,
-            ease: 'power2.in',
-          })
-          // Step 5: Fade out smoothly
-          .to(thumbnail, {
-            scale: 0.7,
-            opacity: 0,
-            duration: 0.15,
-            ease: 'power2.in',
-          });
+            // Step 2: Fly towards source with rotation
+            .to(thumbnail, {
+              x: deltaX * 0.98, // Slight overshoot for bounce
+              y: deltaY,
+              rotation: -360,
+              scale: 1.1,
+              duration: 0.4,
+              ease: 'power2.inOut',
+            })
+            // Step 3: Bounce back slightly
+            .to(thumbnail, {
+              x: deltaX,
+              y: deltaY,
+              scale: 0.9,
+              duration: 0.15,
+              ease: 'power2.out',
+            })
+            // Step 4: Final bounce into position
+            .to(thumbnail, {
+              scale: 0.85,
+              duration: 0.1,
+              ease: 'power2.in',
+            })
+            // Step 5: Fade out smoothly
+            .to(thumbnail, {
+              scale: 0.7,
+              opacity: 0,
+              duration: 0.15,
+              ease: 'power2.in',
+            });
         }
       }, 10);
     }
@@ -186,11 +187,11 @@ export default function AddToCartAnimation({
   useEffect(() => {
     if (lastAddEvent && lastAddEvent.sourcePosition && linkRef.current) {
       const { product, sourcePosition } = lastAddEvent;
-      
+
       // Store the sourcePosition immediately to prevent it from being lost
       const savedSourcePosition = { ...sourcePosition };
       const savedProduct = { ...product };
-      
+
       setFlyingProduct({ product: savedProduct, startPos: savedSourcePosition });
 
       // Wait a bit longer to ensure pill is fully rendered and in position
@@ -216,7 +217,7 @@ export default function AddToCartAnimation({
             }
             return 0
           }
-          
+
           const getScrollY = () => {
             if (window.scrollY !== undefined) return window.scrollY
             if (window.pageYOffset !== undefined) return window.pageYOffset
@@ -228,13 +229,13 @@ export default function AddToCartAnimation({
             }
             return 0
           }
-          
+
           const currentScrollX = getScrollX()
           const currentScrollY = getScrollY()
-          
+
           // Determine source position (support both new format with viewportX/Y and old format with x/y)
           let sourceX, sourceY
-          
+
           if (savedSourcePosition.viewportX !== undefined && savedSourcePosition.viewportY !== undefined) {
             // New format: stored viewport position + scroll at capture time
             // Adjust for scroll changes since capture
@@ -251,7 +252,7 @@ export default function AddToCartAnimation({
 
           // Calculate thumbnail center offset (16px = half of 32px thumbnail)
           const thumbnailCenterOffset = 16;
-          
+
           // Position at source (center of button) - use viewport-relative position
           // Set initial position so the center of thumbnail is at sourcePosition
           gsap.set(thumbnail, {
@@ -287,36 +288,36 @@ export default function AddToCartAnimation({
             duration: 0.15,
             ease: 'power2.out',
           })
-          // Step 2: Fly towards cart with rotation (no Y overshoot to prevent going below)
-          .to(thumbnail, {
-            x: deltaX * 0.98, // Slight X overshoot for bounce
-            y: deltaY, // No overshoot on Y to prevent going below pill
-            rotation: 360,
-            scale: 1.1,
-            duration: 0.4,
-            ease: 'power2.inOut',
-          })
-          // Step 3: Bounce back slightly on X only (overshoot correction)
-          .to(thumbnail, {
-            x: deltaX,
-            y: deltaY, // Keep Y at exact target
-            scale: 0.9,
-            duration: 0.15,
-            ease: 'power2.out',
-          })
-          // Step 4: Final bounce into position
-          .to(thumbnail, {
-            scale: 0.85,
-            duration: 0.1,
-            ease: 'power2.in',
-          })
-          // Step 5: Fade out smoothly
-          .to(thumbnail, {
-            scale: 0.7,
-            opacity: 0,
-            duration: 0.15,
-            ease: 'power2.in',
-          });
+            // Step 2: Fly towards cart with rotation (no Y overshoot to prevent going below)
+            .to(thumbnail, {
+              x: deltaX * 0.98, // Slight X overshoot for bounce
+              y: deltaY, // No overshoot on Y to prevent going below pill
+              rotation: 360,
+              scale: 1.1,
+              duration: 0.4,
+              ease: 'power2.inOut',
+            })
+            // Step 3: Bounce back slightly on X only (overshoot correction)
+            .to(thumbnail, {
+              x: deltaX,
+              y: deltaY, // Keep Y at exact target
+              scale: 0.9,
+              duration: 0.15,
+              ease: 'power2.out',
+            })
+            // Step 4: Final bounce into position
+            .to(thumbnail, {
+              scale: 0.85,
+              duration: 0.1,
+              ease: 'power2.in',
+            })
+            // Step 5: Fade out smoothly
+            .to(thumbnail, {
+              scale: 0.7,
+              opacity: 0,
+              duration: 0.15,
+              ease: 'power2.in',
+            });
         }
       }, 150); // Increased delay to ensure pill animation completes
     }
@@ -327,10 +328,10 @@ export default function AddToCartAnimation({
     if (itemCount > 0 && linkRef.current && !removedProduct && !flyingProduct && !lastRemoveEvent) {
       // Kill any existing animations first
       gsap.killTweensOf(linkRef.current);
-      
+
       // Enhanced pulse animation with glow effect
       const tl = gsap.timeline();
-      
+
       // Step 1: Scale up with glow
       tl.to(linkRef.current, {
         scale: 1.08,
@@ -340,24 +341,24 @@ export default function AddToCartAnimation({
         transformOrigin: 'center center',
         force3D: true,
       })
-      // Step 2: Bounce back
-      .to(linkRef.current, {
-        scale: 1.0,
-        boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)',
-        duration: 0.2,
-        ease: 'power2.inOut',
-      })
-      // Step 3: Subtle second pulse
-      .to(linkRef.current, {
-        scale: 1.04,
-        duration: 0.1,
-        ease: 'power1.out',
-      })
-      .to(linkRef.current, {
-        scale: 1.0,
-        duration: 0.15,
-        ease: 'power1.in',
-      });
+        // Step 2: Bounce back
+        .to(linkRef.current, {
+          scale: 1.0,
+          boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)',
+          duration: 0.2,
+          ease: 'power2.inOut',
+        })
+        // Step 3: Subtle second pulse
+        .to(linkRef.current, {
+          scale: 1.04,
+          duration: 0.1,
+          ease: 'power1.out',
+        })
+        .to(linkRef.current, {
+          scale: 1.0,
+          duration: 0.15,
+          ease: 'power1.in',
+        });
     }
   }, [itemCount, total, removedProduct, flyingProduct, lastRemoveEvent]);
 
@@ -365,7 +366,10 @@ export default function AddToCartAnimation({
   // Since items are added to the end of the array, we take the last 3
   const thumbnailItems = items.slice(-3).reverse();
 
-  return (
+  // Render nothing on server
+  if (typeof window === 'undefined') return null;
+
+  return createPortal(
     <>
       {/* Removed product thumbnail - flying back to source */}
       {removedProduct && (
@@ -434,7 +438,7 @@ export default function AddToCartAnimation({
             style={{
               bottom: dynamicBottom ? undefined : `${bottomOffset || 20}px`,
             }}
-            className={`fixed ${dynamicBottom || ''} left-0 right-0 z-[60] flex justify-center px-4 pb-4 md:pb-6 transition-all duration-300 ease-in-out bg-transparent`}
+            className={`fixed ${dynamicBottom || ''} left-0 right-0 z-[9999] flex justify-center px-4 pb-4 md:pb-6 transition-all duration-300 ease-in-out bg-transparent pointer-events-none`}
           >
             <button
               ref={linkRef}
@@ -477,7 +481,7 @@ export default function AddToCartAnimation({
               </div>
 
               {/* Middle: Text */}
-              <motion.div 
+              <motion.div
                 className="flex flex-col"
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -490,7 +494,7 @@ export default function AddToCartAnimation({
               </motion.div>
 
               {/* Right: Arrow icon */}
-              <motion.div 
+              <motion.div
                 className="ml-auto bg-white/25 rounded-full p-1 backdrop-blur-sm"
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -518,6 +522,7 @@ export default function AddToCartAnimation({
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </>,
+    document.body
   );
 }

@@ -1,4 +1,7 @@
-import { successResponse, errorResponse } from "../../../shared/utils/response.js";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import HotelWallet from "../models/HotelWallet.js";
 
@@ -20,7 +23,7 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
   const recentTransactions = wallet.transactions
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 50)
-    .map(t => ({
+    .map((t) => ({
       _id: t._id,
       amount: t.amount,
       type: t.type,
@@ -28,7 +31,7 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
       description: t.description,
       orderId: t.orderId,
       createdAt: t.createdAt,
-      processedAt: t.processedAt
+      processedAt: t.processedAt,
     }));
 
   const walletData = {
@@ -45,4 +48,3 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
     wallet: walletData,
   });
 });
-

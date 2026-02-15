@@ -104,7 +104,7 @@ export default function HotelWallet() {
         <div className="bg-gradient-to-br from-[#ff8100] to-[#ff9b3a] rounded-2xl p-5 text-white shadow-sm">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm/5 opacity-90">Available Balance</p>
+              <p className="text-sm/5 opacity-90">Withdrawable Amount</p>
               <p className="text-3xl font-extrabold mt-1">{formatCurrency(balance)}</p>
               <p className="text-xs opacity-90 mt-2">
                 Last updated: {wallet?.updatedAt ? new Date(wallet.updatedAt).toLocaleString() : "—"}
@@ -123,7 +123,7 @@ export default function HotelWallet() {
               <div className="p-2 rounded-lg bg-green-50">
                 <ArrowUpCircle className="h-5 w-5 text-green-600" />
               </div>
-              <span className="text-xs text-gray-500">Earned</span>
+              <span className="text-xs text-gray-500">Total Revenue</span>
             </div>
             <p className="mt-3 text-lg font-bold text-gray-900">{formatCurrency(totalEarned)}</p>
           </div>
@@ -160,10 +160,10 @@ export default function HotelWallet() {
               <p className="text-xs text-gray-500 mt-1">Latest 10 entries</p>
             </div>
             <button
-              onClick={() => navigate("/hotel/requests")}
+              onClick={() => navigate("/hotel/orders")}
               className="text-sm font-medium text-[#ff8100] hover:underline"
             >
-              View requests
+              View orders
             </button>
           </div>
 

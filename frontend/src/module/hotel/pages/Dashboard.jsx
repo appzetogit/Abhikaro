@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { FileText, Clock, CheckCircle, XCircle, TrendingUp } from "lucide-react"
+import { FileText, Clock, CheckCircle, XCircle, TrendingUp, CreditCard } from "lucide-react"
 import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
@@ -13,6 +13,13 @@ export default function HotelDashboard() {
     totalRequests: 0,
     pendingRequests: 0,
     completedRequests: 0,
+    totalRevenue: 0,
+  })
+  const [settlementSummary, setSettlementSummary] = useState({
+    totalCashCollected: 0,
+    adminCommissionDue: 0,
+    settlementPaid: 0,
+    remainingSettlement: 0
   })
   const [loading, setLoading] = useState(true)
   const [updatingStatus, setUpdatingStatus] = useState(false)
@@ -49,9 +56,12 @@ export default function HotelDashboard() {
               totalRequests: statsData.totalRequests || 0,
               pendingRequests: statsData.pendingRequests || 0,
               completedRequests: statsData.completedRequests || 0,
+              totalRevenue: statsData.totalRevenue || 0,
+              totalHotelRevenue: statsData.totalHotelRevenue || 0,
             })
           }
         } catch (statsError) {
+          console.error("Error fetching request stats:", statsError)
           // If stats endpoint fails (401, 404, etc.), try to calculate from requests
           if (statsError.response?.status === 401 || statsError.response?.status === 403) {
             // If unauthorized, just set default stats to 0
@@ -66,13 +76,16 @@ export default function HotelDashboard() {
               const requestsResponse = await hotelAPI.getRequests()
               const requests = requestsResponse.data?.data?.requests || requestsResponse.data?.data || []
               const pending = requests.filter((r) => r.status?.toLowerCase() === "pending").length
-              const completed = requests.filter((r) => 
+              const completed = requests.filter((r) =>
                 r.status?.toLowerCase() === "completed" || r.status?.toLowerCase() === "accepted"
               ).length
               setStats({
                 totalRequests: requests.length,
                 pendingRequests: pending,
                 completedRequests: completed,
+                totalRevenue: requests
+                  .filter((r) => r.status?.toLowerCase() === "delivered")
+                  .reduce((sum, r) => sum + (r.pricing?.total || 0), 0),
               })
             } catch (err) {
               // If both fail, just set defaults
@@ -84,6 +97,16 @@ export default function HotelDashboard() {
               })
             }
           }
+        }
+
+        // Fetch settlement summary
+        try {
+          const settlementResponse = await hotelAPI.getSettlementSummary()
+          if (settlementResponse.data?.success) {
+            setSettlementSummary(settlementResponse.data.data);
+          }
+        } catch (settlementError) {
+          console.error("Error fetching settlement summary:", settlementError);
         }
       } catch (error) {
         console.error("Error fetching hotel data:", error)
@@ -152,24 +175,21 @@ export default function HotelDashboard() {
             </div>
             {/* Status Toggle */}
             <div className="flex items-center gap-3">
-              <span className={`text-sm font-medium ${
-                hotel.isActive ? "text-green-600" : "text-red-600"
-              }`}>
+              <span className={`text-sm font-medium ${hotel.isActive ? "text-green-600" : "text-red-600"
+                }`}>
                 {hotel.isActive ? "Active" : "Inactive"}
               </span>
               <button
                 onClick={handleToggleStatus}
                 disabled={updatingStatus}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#ff8100] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  hotel.isActive ? "bg-green-500" : "bg-red-500"
-                }`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#ff8100] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${hotel.isActive ? "bg-green-500" : "bg-red-500"
+                  }`}
                 role="switch"
                 aria-checked={hotel.isActive}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    hotel.isActive ? "translate-x-6" : "translate-x-1"
-                  }`}
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hotel.isActive ? "translate-x-6" : "translate-x-1"
+                    }`}
                 />
               </button>
             </div>
@@ -182,55 +202,90 @@ export default function HotelDashboard() {
         {/* Overview Section */}
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Overview</h2>
-          
+
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {/* Total Requests */}
-            <div 
-              onClick={() => navigate("/hotel/requests")}
-              className="bg-white rounded-lg shadow-sm p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-[#ff8100]"
+            <div
+              onClick={() => navigate("/hotel/orders")}
+              className="bg-white rounded-lg shadow-sm p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-gray-400"
             >
               <div className="flex items-center justify-between mb-2">
-                <div className="p-2 bg-[#ff8100]/10 rounded-lg">
-                  <FileText className="w-6 h-6 text-[#ff8100]" />
+                <div className="p-2 bg-gray-100 rounded-lg">
+                  <FileText className="w-6 h-6 text-gray-600" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-gray-400" />
               </div>
-              <p className="text-sm text-gray-500 mb-1">Total Order Requests</p>
+              <p className="text-sm text-gray-500 mb-1">Total Requests</p>
               <p className="text-3xl font-bold text-gray-900">{stats.totalRequests}</p>
             </div>
 
-            {/* Pending Requests */}
-            <div 
-              onClick={() => navigate("/hotel/requests?filter=pending")}
-              className="bg-white rounded-lg shadow-sm p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-yellow-500"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <Clock className="w-6 h-6 text-yellow-600" />
-                </div>
-                <TrendingUp className="w-5 h-5 text-gray-400" />
+            {/* Total Amount (Revenue) */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+              <div className="absolute right-0 top-0 p-3 opacity-10">
+                <TrendingUp size={48} className="text-green-500" />
               </div>
-              <p className="text-sm text-gray-500 mb-1">Pending Requests</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.pendingRequests}</p>
+              <div className="flex flex-col">
+                <div className="p-2 bg-green-50 rounded-lg w-fit mb-3">
+                  <TrendingUp size={20} className="text-green-500" />
+                </div>
+                <p className="text-gray-500 text-sm font-medium">Total Amount</p>
+                <h3 className="text-2xl font-bold text-gray-800 mt-1">
+                  ₹{stats?.totalRevenue || 0}
+                </h3>
+              </div>
             </div>
 
-            {/* Completed Requests */}
-            <div 
-              onClick={() => navigate("/hotel/requests?filter=completed")}
-              className="bg-white rounded-lg shadow-sm p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-green-500"
+            {/* New Card: Hotel Revenue (Commission) */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+              <div className="absolute right-0 top-0 p-3 opacity-10">
+                <CreditCard size={48} className="text-purple-500" />
+              </div>
+              <div className="flex flex-col">
+                <div className="p-2 bg-purple-50 rounded-lg w-fit mb-3">
+                  <CreditCard size={20} className="text-purple-500" />
+                </div>
+                <p className="text-gray-500 text-sm font-medium">Your Earnings (Commission)</p>
+                <h3 className="text-2xl font-bold text-gray-800 mt-1">
+                  ₹{stats?.totalHotelRevenue || 0}
+                </h3>
+              </div>
+            </div>
+
+            {/* Total Cash Collected */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+              <div className="absolute right-0 top-0 p-3 opacity-10">
+                <CheckCircle size={48} className="text-orange-500" />
+              </div>
+              <div className="flex flex-col">
+                <div className="p-2 bg-orange-50 rounded-lg w-fit mb-3">
+                  <CheckCircle size={20} className="text-orange-500" />
+                </div>
+                <p className="text-gray-500 text-sm font-medium">
+                  Total Cash Collected
+                </p>
+                <h3 className="text-2xl font-bold text-gray-800 mt-1">
+                  ₹{settlementSummary?.totalCashCollected || 0}
+                </h3>
+              </div>
+            </div>
+
+            {/* Settlement Amount (10%) */}
+            <div
+              onClick={() => navigate("/hotel/settlement")}
+              className="bg-white rounded-lg shadow-sm p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-red-500"
             >
               <div className="flex items-center justify-between mb-2">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <CheckCircle className="w-6 h-6 text-green-600" />
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <CreditCard className="w-6 h-6 text-red-600" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-gray-400" />
               </div>
-              <p className="text-sm text-gray-500 mb-1">Completed Requests</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.completedRequests}</p>
+              <p className="text-sm text-gray-500 mb-1">Settlement Amount</p>
+              <p className="text-3xl font-bold text-red-600">₹{settlementSummary.adminCommissionDue || 0}</p>
             </div>
           </div>
         </div>
+
+        {/* Settlement Summary Section Removed */}
 
         {/* Welcome Message */}
         {!hotel.isActive && (

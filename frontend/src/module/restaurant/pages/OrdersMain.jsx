@@ -2174,7 +2174,7 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
           // 'confirmed' orders should only appear in popup notification, not in preparing list
           // After accepting, order status changes to 'preparing' and then appears here
           const preparingOrders = response.data.data.orders.filter(
-            order => order.status === 'preparing'
+            order => order.status === 'preparing' || order.status === 'confirmed'
           )
 
           const transformedOrders = preparingOrders.map(order => {

@@ -1,0 +1,71 @@
+
+/**
+ * Collect payment for an order (Cash/Pay at Hotel)
+ * @route POST /api/hotel/orders/:orderId/collect-payment
+ * @access Private (Hotel Admin)
+ */
+export const collectPayment = async (req, res) => {
+  try {
+    const { hotelId } = req.hotel; // From auth middleware
+    const { orderId } = req.params;
+
+    // Find order and verify it belongs to this hotel
+    const order = await Order.findOne({ orderId, hotelReference: hotelId });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or does not belong to this hotel",
+      });
+    }
+
+    // Check if order is already completed or cancelled
+    if (order.status === "delivered" || order.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: `Order is already ${order.status}`,
+      });
+    }
+
+    // Capture previous status for settlement update
+    const previousStatus = order.status;
+
+    // Update order status and payment status
+    order.status = "delivered"; // Mark as delivered/completed
+    order.payment.status = "completed"; // Mark payment as collected
+    order.deliveredAt = new Date();
+    
+    // Add tracking info
+    if (!order.tracking.delivered) {
+      order.tracking.delivered = {
+        status: true,
+        timestamp: new Date(),
+      };
+    }
+
+    await order.save();
+
+    // Trigger settlement update (Earnings Logic)
+    try {
+      await updateSettlementOnStatusChange(order._id, "delivered", previousStatus);
+    } catch (settlementError) {
+      console.error("Error updating settlement after cash collection:", settlementError);
+      // Don't fail the request, but log the error
+    }
+
+    // TODO: Send notification to user about order completion
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment collected and order marked as completed.",
+      data: { order },
+    });
+  } catch (error) {
+    console.error("Error collecting payment:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to collect payment",
+      error: error.message,
+    });
+  }
+};
