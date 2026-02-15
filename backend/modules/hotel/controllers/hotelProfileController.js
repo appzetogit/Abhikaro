@@ -138,13 +138,16 @@ export const getHotelQRCode = asyncHandler(async (req, res) => {
     qrPayload,
     env: {
       FRONTEND_URL: process.env.FRONTEND_URL,
-      VITE_FRONTEND_URL: process.env.VITE_FRONTEND_URL
+      VITE_FRONTEND_URL: process.env.VITE_FRONTEND_URL,
+      NODE_ENV: process.env.NODE_ENV
     }
   });
 
   // Save QR code to database
   hotel.qrCode = qrPayload;
   await hotel.save();
+  
+  console.log("✅ QR code saved to database:", qrPayload);
 
   return successResponse(res, 200, "QR code generated and saved successfully", {
     qrData: qrPayload,
