@@ -717,69 +717,8 @@ export const createOrder = async (req, res) => {
           });
         }
 
-        // Calculate Commission
-        let commissionBreakdown = {};
-        let commissionPercentages = {};
-
-        if (activeCommissionSettings) {
-          if (orderType === "qr") {
-            // QR Order Logic - New 3-way split
-            // Hotel: Fixed %
-            // Admin: Fixed %
-            // Restaurant: Remainder
-            const { hotel: hotelPct, admin: adminPct } =
-              activeCommissionSettings.qrCommission;
-
-            // Calculate amounts based on subtotal
-            const commissionableAmount = pricing.subtotal;
-
-            const hotelShare = (commissionableAmount * hotelPct) / 100;
-            const adminShare = (commissionableAmount * adminPct) / 100;
-            const restaurantShare =
-              commissionableAmount - hotelShare - adminShare;
-
-            commissionBreakdown = {
-              restaurant: restaurantShare,
-              hotel: hotelShare,
-              admin: adminShare,
-              user: 0,
-            };
-
-            commissionPercentages = {
-              restaurant: 100 - hotelPct - adminPct,
-              hotel: hotelPct,
-              admin: adminPct,
-              user: 0,
-            };
-
-            // User Cashback Removed
-          } else {
-            // Direct Order
-            // Admin keeps fixed % of subtotal, Restaurant gets remainder
-            const baseCommissionRate =
-              activeCommissionSettings.directCommission.admin || 30;
-            const adminShare = (pricing.subtotal * baseCommissionRate) / 100;
-            const restaurantShare = pricing.subtotal - adminShare;
-
-            commissionBreakdown = {
-              restaurant: restaurantShare,
-              admin: adminShare,
-              hotel: 0,
-              user: 0,
-            };
-
-            commissionPercentages = {
-              restaurant: 100 - baseCommissionRate,
-              admin: baseCommissionRate,
-              hotel: 0,
-              user: 0,
-            };
-          }
-
-          // Assign commission details to order
-          order.commissionBreakdown = commissionBreakdown;
-          order.commissionPercentages = commissionPercentages;
-        }
+        // Note: Commission calculation is already handled earlier in the function
+        // for all order types using the optimized dynamic logic.
 
         // Mark order as confirmed and payment as completed
         order.payment.method = "wallet";

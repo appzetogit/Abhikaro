@@ -245,6 +245,14 @@ export const getOrderStats = async (req, res) => {
     const hotelIdStr = req.hotel.hotelId;
     const hotelObjectId = req.hotel._id;
 
+    // Fetch the hotel to get current commission settings for fallback
+    const hotel = await Hotel.findById(hotelObjectId).lean();
+    if (!hotel) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Hotel not found" });
+    }
+
     const query = {
       $or: [
         { hotelId: hotelObjectId },
@@ -253,82 +261,11 @@ export const getOrderStats = async (req, res) => {
       ],
     };
 
-    // Use aggregation for accurate results
-    const stats = await Order.aggregate([
-      {
-        $match: query,
-      },
-      {
-        $group: {
-          _id: null,
-          totalRequests: { $sum: 1 },
-          totalRevenue: {
-            $sum: {
-              $cond: [{ $ne: ["$status", "cancelled"] }, "$pricing.total", 0],
-            },
-          },
-          yourEarnings: {
-            $sum: {
-              $cond: [
-                { $eq: ["$commissionDistributed", true] },
-                "$hotelCommission",
-                0,
-              ],
-            },
-          },
-          totalCashCollected: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ["$payment.method", "pay_at_hotel"] },
-                    { $eq: ["$cashCollected", true] },
-                  ],
-                },
-                "$pricing.total",
-                0,
-              ],
-            },
-          },
-          pending: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "pending"] }, 1, 0],
-            },
-          },
-          confirmed: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "confirmed"] }, 1, 0],
-            },
-          },
-          completed: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "delivered"] }, 1, 0],
-            },
-          },
-          cancelled: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0],
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          totalRequests: 1,
-          totalRevenue: { $round: ["$totalRevenue", 2] },
-          yourEarnings: { $round: ["$yourEarnings", 2] },
-          totalCashCollected: { $round: ["$totalCashCollected", 2] },
-          pending: 1,
-          confirmed: 1,
-          completed: 1,
-          cancelled: 1,
-        },
-      },
-    ]);
+    // Fetch all non-cancelled orders for the hotel
+    const allOrders = await Order.find(query).lean();
 
-    const result = stats[0] || {
-      totalRequests: 0,
+    const stats = {
+      totalRequests: allOrders.length,
       totalRevenue: 0,
       yourEarnings: 0,
       totalCashCollected: 0,
@@ -338,27 +275,59 @@ export const getOrderStats = async (req, res) => {
       cancelled: 0,
     };
 
+    allOrders.forEach((order) => {
+      // Basic counts
+      if (order.status === "pending") stats.pending++;
+      else if (order.status === "confirmed") stats.confirmed++;
+      else if (order.status === "delivered") stats.completed++;
+      else if (order.status === "cancelled") stats.cancelled++;
+
+      // Financials (exclude cancelled)
+      if (order.status !== "cancelled") {
+        const totalAmount = order.pricing?.total || 0;
+        stats.totalRevenue += totalAmount;
+
+        // Earnings Calculation (Dynamic)
+        const breakdown = order.commissionBreakdown;
+        if (breakdown && breakdown.hotel > 0) {
+          stats.yourEarnings += breakdown.hotel;
+        } else {
+          const hotelCommPercent = hotel.commission || 0;
+          stats.yourEarnings += (totalAmount * hotelCommPercent) / 100;
+        }
+
+        // Cash Collected logic
+        if (
+          order.payment?.method === "pay_at_hotel" &&
+          order.cashCollected === true
+        ) {
+          stats.totalCashCollected += totalAmount;
+        }
+      }
+    });
+
+    const finalResult = {
+      totalRequests: stats.totalRequests,
+      pending: stats.pending,
+      confirmed: stats.confirmed,
+      completed: stats.completed,
+      cancelled: stats.cancelled,
+      totalRevenue: Math.round(stats.totalRevenue * 100) / 100,
+      yourEarnings: Math.round(stats.yourEarnings * 100) / 100,
+      totalHotelRevenue: Math.round(stats.yourEarnings * 100) / 100,
+      totalCashCollected: Math.round(stats.totalCashCollected * 100) / 100,
+      stats: {
+        pending: stats.pending,
+        confirmed: stats.confirmed,
+        completed: stats.completed,
+        cancelled: stats.cancelled,
+        totalRevenue: Math.round(stats.totalRevenue * 100) / 100,
+      },
+    };
+
     return res.status(200).json({
       success: true,
-      data: {
-        totalRequests: result.totalRequests,
-        pending: result.pending,
-        confirmed: result.confirmed,
-        completed: result.completed,
-        cancelled: result.cancelled,
-        totalRevenue: result.totalRevenue,
-        yourEarnings: result.yourEarnings,
-        totalHotelRevenue: result.yourEarnings, // Match Dashboard.jsx
-        totalCashCollected: result.totalCashCollected,
-        stats: {
-          // Match HotelOrders.jsx expectations
-          pending: result.pending,
-          confirmed: result.confirmed,
-          completed: result.completed,
-          cancelled: result.cancelled,
-          totalRevenue: result.totalRevenue,
-        },
-      },
+      data: finalResult,
     });
   } catch (error) {
     console.error("Error fetching order stats:", error);
@@ -482,6 +451,14 @@ export const getSettlementSummary = async (req, res) => {
     const hotelIdStr = req.hotel.hotelId;
     const hotelObjectId = req.hotel._id;
 
+    // Fetch the hotel for fallback settings
+    const hotel = await Hotel.findById(hotelObjectId).lean();
+    if (!hotel) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Hotel not found" });
+    }
+
     const query = {
       $or: [
         { hotelId: hotelObjectId },
@@ -491,52 +468,37 @@ export const getSettlementSummary = async (req, res) => {
       "payment.method": "pay_at_hotel",
     };
 
-    // Use aggregation on Order model for accuracy
-    const stats = await Order.aggregate([
-      {
-        $match: query,
-      },
-      {
-        $group: {
-          _id: null,
-          totalCashCollected: {
-            $sum: {
-              $cond: [{ $eq: ["$cashCollected", true] }, "$pricing.total", 0],
-            },
-          },
-          adminCommissionDue: {
-            $sum: "$adminCommission",
-          },
-          settlementPaid: {
-            // If we want to track paid vs pending, we need another flag or check OrderSettlement
-            // But for now, let's derive from commissionDistributed if it's considered "settled"
-            // Actually, settlementPaid should ideally come from OrderSettlement or a payment record.
-            // Given the current logic, let's keep it 0 or link it if possible.
-            $sum: { $cond: [{ $eq: ["$status", "delivered"] }, 0, 0] }, // Placeholder
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          totalCashCollected: { $round: ["$totalCashCollected", 2] },
-          adminCommissionDue: { $round: ["$adminCommissionDue", 2] },
-          settlementPaid: { $round: ["$settlementPaid", 2] },
-        },
-      },
-    ]);
+    // Fetch all cash orders for accurate calculation
+    const cashOrders = await Order.find(query).lean();
 
-    const result = stats[0] || {
-      totalCashCollected: 0,
-      adminCommissionDue: 0,
-      settlementPaid: 0,
-    };
+    let totalCashCollected = 0;
+    let adminCommissionDue = 0;
+
+    cashOrders.forEach((order) => {
+      // Sum revenue for cash collected orders
+      if (order.cashCollected === true && order.status !== "cancelled") {
+        totalCashCollected += order.pricing?.total || 0;
+      }
+
+      // Calculate Admin Commission Due (Dynamic)
+      if (order.status !== "cancelled") {
+        const totalAmount = order.pricing?.total || 0;
+        const breakdown = order.commissionBreakdown;
+
+        if (breakdown && breakdown.admin > 0) {
+          adminCommissionDue += breakdown.admin;
+        } else {
+          const adminCommPercent = hotel.adminCommission || 0;
+          adminCommissionDue += (totalAmount * adminCommPercent) / 100;
+        }
+      }
+    });
 
     const summary = {
-      totalCashCollected: result.totalCashCollected,
-      adminCommissionDue: result.adminCommissionDue,
+      totalCashCollected: Math.round(totalCashCollected * 100) / 100,
+      adminCommissionDue: Math.round(adminCommissionDue * 100) / 100,
       settlementPaid: 0, // Should be managed via Admin settlement process
-      remainingSettlement: result.adminCommissionDue,
+      remainingSettlement: Math.round(adminCommissionDue * 100) / 100,
     };
 
     return res.status(200).json({

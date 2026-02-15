@@ -3,14 +3,7 @@ import {
   errorResponse,
 } from "../../../shared/utils/response.js";
 
-/**
- * Hotel Requests Controller
- *
- * NOTE: Backend order-request model/service isn't implemented in this repo yet.
- * For now we return empty arrays and zero stats so frontend pages work end-to-end
- * without 404s. Later we can wire this to a real model (e.g. HotelRequest/Order).
- */
-
+import mongoose from "mongoose";
 import Order from "../../order/models/Order.js";
 
 export const getHotelRequests = async (req, res) => {
@@ -18,6 +11,8 @@ export const getHotelRequests = async (req, res) => {
     const hotelId = req.hotel.hotelId;
     const _id = req.hotel._id;
     const { status, page = 1, limit = 20 } = req.query;
+
+    console.log(`🔍 [DEBUG] getHotelRequests for Hotel: ${hotelId} (${_id})`);
 
     // Build query - use both string ID and ObjectId for robust matching
     const query = {
@@ -35,11 +30,22 @@ export const getHotelRequests = async (req, res) => {
 
     // Fetch orders with pagination
     const skip = (page - 1) * limit;
-    const requests = await Order.find(query)
+    const orders = await Order.find(query)
       .populate("userId", "name phone email profileImage")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
+
+    // Map orders to the format expected by the frontend (HotelRequests page)
+    const requests = orders.map((order) => ({
+      ...order.toObject(),
+      requestId: order.orderId, // Map orderId to requestId
+      totalAmount: order.pricing?.total || 0, // Map pricing.total to totalAmount
+      items: order.items.map((item) => ({
+        ...item,
+        itemName: item.name, // Ensure itemName is available if frontend expects it
+      })),
+    }));
 
     // Get total count for pagination
     const totalRequests = await Order.countDocuments(query);
@@ -54,103 +60,74 @@ export const getHotelRequests = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error("❌ [DEBUG] Error in getHotelRequests:", err);
     return errorResponse(res, 500, err.message || "Failed to fetch requests");
   }
 };
 
 export const getHotelRequestStats = async (req, res) => {
   try {
-    const hotelId = req.hotel.hotelId;
-    const _id = req.hotel._id;
+    const hotelIdStr = req.hotel.hotelId;
+    const hotelObjectId = req.hotel._id;
 
-    console.log(
-      `🔍 [DEBUG] getHotelRequestStats called for Hotel: ${hotelId} (${_id})`,
-    );
+    // Fetch the hotel to get current commission settings for fallback
+    const Hotel = (await import("../../hotel/models/Hotel.js")).default;
+    const hotel = await Hotel.findById(hotelObjectId).lean();
+    if (!hotel) {
+      return errorResponse(res, 404, "Hotel not found");
+    }
 
     const query = {
       $or: [
-        { hotelId: _id },
-        { hotelReference: hotelId },
-        { hotelReference: _id.toString() },
+        { hotelId: hotelObjectId },
+        { hotelReference: hotelIdStr },
+        { hotelReference: hotelObjectId.toString() },
       ],
     };
 
-    // Use aggregation for accurate results (matching hotelOrdersController logic)
-    const stats = await Order.aggregate([
-      {
-        $match: query,
-      },
-      {
-        $group: {
-          _id: null,
-          totalRequests: { $sum: 1 },
-          totalRevenue: {
-            $sum: {
-              $cond: [{ $ne: ["$status", "cancelled"] }, "$pricing.total", 0],
-            },
-          },
-          yourEarnings: {
-            $sum: {
-              $cond: [
-                { $eq: ["$commissionDistributed", true] },
-                "$hotelCommission",
-                0,
-              ],
-            },
-          },
-          pending: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "pending"] }, 1, 0],
-            },
-          },
-          confirmed: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "confirmed"] }, 1, 0],
-            },
-          },
-          completed: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "delivered"] }, 1, 0],
-            },
-          },
-          cancelled: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0],
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          totalRequests: 1,
-          totalRevenue: { $round: ["$totalRevenue", 2] },
-          yourEarnings: { $round: ["$yourEarnings", 2] },
-          pending: 1,
-          confirmed: 1,
-          completed: 1,
-          cancelled: 1,
-        },
-      },
-    ]);
+    // Fetch all non-cancelled orders for the hotel for stats
+    const allOrders = await Order.find(query).lean();
 
-    const result = stats[0] || {
-      totalRequests: 0,
+    const stats = {
+      totalRequests: allOrders.length,
       totalRevenue: 0,
-      yourEarnings: 0,
+      totalHotelRevenue: 0,
       pending: 0,
       confirmed: 0,
       completed: 0,
       cancelled: 0,
     };
 
+    allOrders.forEach((order) => {
+      // Basic counts
+      if (order.status === "pending") stats.pending++;
+      else if (order.status === "confirmed") stats.confirmed++;
+      else if (order.status === "delivered") stats.completed++;
+      else if (order.status === "cancelled") stats.cancelled++;
+
+      // Revenue and Earnings (exclude cancelled)
+      if (order.status !== "cancelled") {
+        const totalAmount = order.pricing?.total || 0;
+        stats.totalRevenue += totalAmount;
+
+        const breakdown = order.commissionBreakdown;
+        if (breakdown && breakdown.hotel > 0) {
+          stats.totalHotelRevenue += breakdown.hotel;
+        } else {
+          // Fallback: Use current hotel settings
+          const hotelCommPercent = hotel.commission || 0;
+          stats.totalHotelRevenue += (totalAmount * hotelCommPercent) / 100;
+        }
+      }
+    });
+
     return successResponse(res, 200, "Request stats fetched successfully", {
-      totalRequests: result.totalRequests,
-      pendingRequests: result.pending + result.confirmed,
-      completedRequests: result.completed,
-      cancelledRequests: result.cancelled,
-      totalRevenue: result.totalRevenue,
-      totalHotelRevenue: result.yourEarnings,
+      totalRequests: stats.totalRequests,
+      pendingRequests: stats.pending + stats.confirmed,
+      completedRequests: stats.completed,
+      cancelledRequests: stats.cancelled,
+      totalRevenue: Math.round(stats.totalRevenue * 100) / 100,
+      totalHotelRevenue: Math.round(stats.totalHotelRevenue * 100) / 100,
     });
   } catch (err) {
     console.error("❌ [DEBUG] Error in getHotelRequestStats:", err);

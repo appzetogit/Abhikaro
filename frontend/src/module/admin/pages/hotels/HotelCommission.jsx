@@ -149,7 +149,7 @@ export default function HotelCommission() {
             <p className="text-sm font-medium text-gray-500">Total Hotel Commission</p>
             <div className="flex items-center gap-1">
               <IndianRupee className="h-4 w-4 text-gray-900" />
-              <p className="text-2xl font-bold text-gray-900">{stats.totalHotelCommission.toLocaleString('en-IN')}</p>
+              <p className="text-2xl font-bold text-gray-900">{(Number(stats.totalHotelCommission) || 0).toLocaleString('en-IN')}</p>
             </div>
           </div>
         </div>
@@ -162,7 +162,7 @@ export default function HotelCommission() {
             <p className="text-sm font-medium text-gray-500">Total Admin Commission</p>
             <div className="flex items-center gap-1">
               <IndianRupee className="h-4 w-4 text-gray-900" />
-              <p className="text-2xl font-bold text-gray-900">{stats.totalAdminHotelCommission.toLocaleString('en-IN')}</p>
+              <p className="text-2xl font-bold text-gray-900">{(Number(stats.totalAdminHotelCommission) || 0).toLocaleString('en-IN')}</p>
             </div>
           </div>
         </div>
@@ -175,7 +175,7 @@ export default function HotelCommission() {
             <p className="text-sm font-medium text-gray-500">Total Combined Earnings</p>
             <div className="flex items-center gap-1">
               <IndianRupee className="h-4 w-4 text-gray-900" />
-              <p className="text-2xl font-bold text-gray-900">{stats.totalCombinedCommission.toLocaleString('en-IN')}</p>
+              <p className="text-2xl font-bold text-gray-900">{(Number(stats.totalCombinedCommission) || 0).toLocaleString('en-IN')}</p>
             </div>
           </div>
         </div>
@@ -232,6 +232,12 @@ export default function HotelCommission() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total Commission
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Earned (Hotel)
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Earned (Admin)
+                    </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
@@ -283,6 +289,22 @@ export default function HotelCommission() {
                           <Percent className="h-4 w-4 text-gray-400" />
                           <span className="text-sm font-medium text-gray-900">
                             {((hotel.commission || 0) + (hotel.adminCommission || 0)).toFixed(1)}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <IndianRupee className="h-3.5 w-3.5 text-gray-900" />
+                          <span className="text-sm font-semibold text-gray-900">
+                            {(Number(hotel.earnings?.hotelCommission) || 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <IndianRupee className="h-3.5 w-3.5 text-gray-700" />
+                          <span className="text-sm font-medium text-gray-700">
+                            {(Number(hotel.earnings?.adminCommission) || 0).toLocaleString('en-IN')}
                           </span>
                         </div>
                       </td>
