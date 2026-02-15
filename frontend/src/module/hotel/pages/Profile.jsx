@@ -63,6 +63,22 @@ export default function HotelProfile() {
           // Check if QR code already exists
           if (hotelData.qrCode) {
             setQrCodeData(hotelData.qrCode)
+            // Also fetch latest QR code from API to ensure it's updated (backend will auto-update localhost URLs)
+            hotelAPI.getQRCode()
+              .then(response => {
+                if (response.data?.success) {
+                  const updatedQrData = response.data.data?.qrData || response.data.data?.qrCode
+                  if (updatedQrData && updatedQrData !== hotelData.qrCode) {
+                    setQrCodeData(updatedQrData)
+                    // Update hotel state with updated QR code
+                    setHotel(prev => prev ? { ...prev, qrCode: updatedQrData } : null)
+                  }
+                }
+              })
+              .catch(error => {
+                console.error("Error fetching updated QR code:", error)
+                // Don't show error to user, just use existing QR code
+              })
           }
         }
       } catch (error) {
@@ -171,13 +187,9 @@ export default function HotelProfile() {
   }
 
   const handleGenerateQR = async () => {
-    // Don't allow regeneration if QR code already exists
-    if (qrCodeData) {
-      return
-    }
-
     setLoadingQR(true)
     try {
+      // Always fetch latest QR code from backend (backend will update localhost URLs automatically)
       const response = await hotelAPI.getQRCode()
       if (response.data?.success) {
         const qrData = response.data.data?.qrData || response.data.data?.qrCode
@@ -185,6 +197,10 @@ export default function HotelProfile() {
         // Update hotel state with QR code
         if (hotel) {
           setHotel({ ...hotel, qrCode: qrData })
+        }
+        // Show success message if QR code was updated
+        if (qrCodeData && qrCodeData !== qrData) {
+          toast.success("QR code updated with production URL")
         }
       }
     } catch (error) {

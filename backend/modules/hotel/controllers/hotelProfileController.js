@@ -68,21 +68,51 @@ export const getHotelQRCode = asyncHandler(async (req, res) => {
 
   // Check if QR code already exists
   if (hotel.qrCode) {
+    // Get correct frontend URL
+    const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 
+      (process.env.NODE_ENV === 'production' ? 'https://foods.abhikaro.in' : 'http://localhost:5173');
+    
     // If QR code is in old JSON format, convert it to URL format
     let qrData = hotel.qrCode;
+    let needsUpdate = false;
+    
     try {
       const parsed = JSON.parse(hotel.qrCode);
       // If it's JSON format (old), convert to URL
       if (parsed.type === "hotel" && parsed.hotelId) {
-        const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 
-          (process.env.NODE_ENV === 'production' ? 'https://foods.abhikaro.in' : 'http://localhost:5173');
         qrData = `${frontendUrl}/hotel/view/${parsed.hotelId}?hotelRef=${parsed.hotelId}`;
-        // Update in database
-        hotel.qrCode = qrData;
-        await hotel.save();
+        needsUpdate = true;
       }
     } catch (e) {
       // Not JSON, assume it's already a URL
+      // Check if it contains localhost and needs to be updated
+      if (qrData && typeof qrData === 'string') {
+        // Check if URL contains localhost or 127.0.0.1
+        if (qrData.includes('localhost') || qrData.includes('127.0.0.1') || qrData.includes('localhost:5173')) {
+          // Extract hotel ID from existing URL
+          const hotelIdMatch = qrData.match(/\/hotel\/view\/([^/?]+)/);
+          if (hotelIdMatch) {
+            const hotelId = hotelIdMatch[1];
+            qrData = `${frontendUrl}/hotel/view/${hotelId}?hotelRef=${hotelId}`;
+            needsUpdate = true;
+          } else {
+            // Try to extract from hotelRef parameter
+            const hotelRefMatch = qrData.match(/hotelRef=([^&]+)/);
+            if (hotelRefMatch) {
+              const hotelId = hotelRefMatch[1];
+              qrData = `${frontendUrl}/hotel/view/${hotelId}?hotelRef=${hotelId}`;
+              needsUpdate = true;
+            }
+          }
+        }
+      }
+    }
+    
+    // Update in database if URL was changed
+    if (needsUpdate) {
+      hotel.qrCode = qrData;
+      await hotel.save();
+      console.log('✅ Updated QR code URL from localhost to production:', qrData);
     }
     
     return successResponse(res, 200, "QR code data fetched successfully", {
