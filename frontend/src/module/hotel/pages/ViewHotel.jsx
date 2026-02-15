@@ -26,19 +26,20 @@ export default function ViewHotel() {
         console.log("🔍 Fetching hotel with ID:", hotelId)
         const response = await hotelPublicAPI.getHotelByHotelId(hotelId)
         console.log("📦 Hotel API response:", response)
-        
+
         if (response.data?.success && response.data.data?.hotel) {
           const hotelData = response.data.data.hotel
           setHotel(hotelData)
-          
+
           // Store hotel reference for order tracking
           // Get hotelRef from URL params or use hotelId
           const hotelRef = searchParams.get("hotelRef") || hotelId || hotelData.hotelId
           if (hotelRef) {
-            // Store in localStorage so it persists across sessions
-            localStorage.setItem("hotelReference", hotelRef)
-            localStorage.setItem("hotelReferenceName", hotelData.hotelName || "")
-            localStorage.setItem("hotelReferenceTimestamp", Date.now().toString())
+            // Store in sessionStorage so it persists across sessions (session-scoped)
+            sessionStorage.setItem("hotelReference", hotelRef)
+            sessionStorage.setItem("hotelReferenceName", hotelData.hotelName || "")
+            sessionStorage.setItem("isHotelOrder", "true")
+            sessionStorage.setItem("hotelReferenceTimestamp", Date.now().toString())
             console.log("✅ Hotel reference stored:", {
               hotelRef,
               hotelName: hotelData.hotelName,
@@ -177,11 +178,10 @@ export default function ViewHotel() {
             <div className="flex items-center gap-4 pt-4 border-t">
               <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">Status</p>
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                  hotel.isActive
-                    ? "bg-green-100 text-green-800"
-                    : "bg-yellow-100 text-yellow-800"
-                }`}>
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${hotel.isActive
+                  ? "bg-green-100 text-green-800"
+                  : "bg-yellow-100 text-yellow-800"
+                  }`}>
                   {hotel.isActive ? "Active" : "Pending Approval"}
                 </span>
               </div>
@@ -193,7 +193,7 @@ export default function ViewHotel() {
         <div className="bg-[#ff8100] rounded-lg shadow-sm p-6 text-center text-white">
           <h3 className="text-xl font-bold mb-2">Order Food from {hotel.hotelName}</h3>
           <p className="mb-4 opacity-90">
-            {localStorage.getItem("hotelReference") === hotelId 
+            {sessionStorage.getItem("hotelReference") === hotelId
               ? "✅ Hotel reference active - Your orders will be linked to this hotel"
               : "Your orders will be linked to this hotel"}
           </p>

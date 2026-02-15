@@ -1,4 +1,7 @@
-import { successResponse, errorResponse } from "../../../shared/utils/response.js";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import Hotel from "../../hotel/models/Hotel.js";
 
@@ -57,8 +60,86 @@ export const getHotels = asyncHandler(async (req, res) => {
   // Get total count
   const total = await Hotel.countDocuments(query);
 
+  // AGGREGATE EARNINGS FOR EACH HOTEL
+  // We do this dynamically to ensure "genuine" data
+  const Order = (await import("../../order/models/Order.js")).default;
+
+  const hotelIds = hotels.map((h) => h._id);
+  const hotelIdsStrings = hotels.map((h) => h.hotelId).filter(Boolean);
+
+  // Fetch non-cancelled QR orders for these hotels
+  const orders = await Order.find({
+    $or: [
+      { hotelId: { $in: hotelIds } },
+      {
+        hotelReference: {
+          $in: [...hotelIds.map((id) => id.toString()), ...hotelIdsStrings],
+        },
+      },
+    ],
+    status: { $ne: "cancelled" },
+  }).lean();
+
+  // Process earnings per hotel
+  const hotelsWithEarnings = hotels.map((hotel) => {
+    const hotelObj = hotel.toObject();
+    const hotelRefIds = [hotel._id.toString(), hotel.hotelId].filter(Boolean);
+
+    // Filter orders for this specific hotel
+    const hotelOrders = orders.filter((o) => {
+      const oId = o.hotelId ? o.hotelId.toString() : null;
+      const oRef = o.hotelReference ? o.hotelReference.toString() : null;
+      const match =
+        (oId && hotelRefIds.includes(oId)) ||
+        (oRef && hotelRefIds.includes(oRef));
+      return match;
+    });
+
+    console.log(
+      `[DEBUG] Hotel: ${hotel.hotelName}, IDs: ${JSON.stringify(hotelRefIds)}, Matched: ${hotelOrders.length}`,
+    );
+
+    let totalHotelCommission = 0;
+    let totalAdminHotelCommission = 0;
+
+    hotelOrders.forEach((order) => {
+      const breakdown = order.commissionBreakdown;
+      const totalAmount = Number(order.pricing?.total) || 0;
+
+      if (
+        breakdown &&
+        (Number(breakdown.hotel) > 0 || Number(breakdown.admin) > 0)
+      ) {
+        totalHotelCommission += Number(breakdown.hotel) || 0;
+        totalAdminHotelCommission += Number(breakdown.admin) || 0;
+      } else {
+        // Fallback: Use current settings
+        const hotelCommPercent = Number(hotel.commission) || 0;
+        const adminCommPercent = Number(hotel.adminCommission) || 0;
+        totalHotelCommission += (totalAmount * hotelCommPercent) / 100;
+        totalAdminHotelCommission += (totalAmount * adminCommPercent) / 100;
+      }
+    });
+
+    console.log(
+      `[DEBUG]   -> Earnings: ${totalHotelCommission} / ${totalAdminHotelCommission}`,
+    );
+
+    return {
+      ...hotelObj,
+      earnings: {
+        hotelCommission: Math.round(totalHotelCommission * 100) / 100,
+        adminCommission: Math.round(totalAdminHotelCommission * 100) / 100,
+        combinedCommission:
+          Math.round((totalHotelCommission + totalAdminHotelCommission) * 100) /
+          100,
+        orderCount: hotelOrders.length,
+      },
+    };
+  });
+
   return successResponse(res, 200, "Hotels fetched successfully", {
-    hotels,
+    hotels: hotelsWithEarnings,
     pagination: {
       page: pageNum,
       limit: limitNum,
@@ -94,18 +175,18 @@ export const updateHotel = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
 
-    // Allowed fields to update
-    const allowedFields = [
-      "hotelName",
-      "email",
-      "address",
-      "phone",
-      "isActive",
-      "profileImage",
-      "rejectionReason",
-      "commission",
-      "adminCommission",
-    ];
+  // Allowed fields to update
+  const allowedFields = [
+    "hotelName",
+    "email",
+    "address",
+    "phone",
+    "isActive",
+    "profileImage",
+    "rejectionReason",
+    "commission",
+    "adminCommission",
+  ];
 
   const updateData = {};
   for (const field of allowedFields) {
@@ -154,14 +235,13 @@ export const createHotel = asyncHandler(async (req, res) => {
     return errorResponse(
       res,
       400,
-      "Hotel name, email, address, and phone are required"
+      "Hotel name, email, address, and phone are required",
     );
   }
 
   // Normalize phone
-  const { normalizePhoneNumber } = await import(
-    "../../../shared/utils/phoneUtils.js"
-  );
+  const { normalizePhoneNumber } =
+    await import("../../../shared/utils/phoneUtils.js");
   const normalizedPhone = normalizePhoneNumber(phone);
   if (!normalizedPhone) {
     return errorResponse(res, 400, "Invalid phone number format");
@@ -173,7 +253,7 @@ export const createHotel = asyncHandler(async (req, res) => {
     return errorResponse(
       res,
       400,
-      "Hotel already exists with this phone number"
+      "Hotel already exists with this phone number",
     );
   }
 
@@ -248,7 +328,7 @@ export const createHotel = asyncHandler(async (req, res) => {
   // Create hotel
   try {
     const hotel = await Hotel.create(hotelData);
-    
+
     console.log("✅ Hotel created successfully:", {
       hotelId: hotel._id,
       hotelName: hotel.hotelName,
@@ -272,7 +352,7 @@ export const createHotel = asyncHandler(async (req, res) => {
       return errorResponse(
         res,
         400,
-        `Hotel with this ${duplicateField} already exists`
+        `Hotel with this ${duplicateField} already exists`,
       );
     }
 
@@ -288,7 +368,7 @@ export const createHotel = asyncHandler(async (req, res) => {
     return errorResponse(
       res,
       500,
-      `Failed to create hotel: ${createError.message}`
+      `Failed to create hotel: ${createError.message}`,
     );
   }
 });
@@ -375,5 +455,87 @@ export const getHotelRequests = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error("Error fetching hotel requests:", error);
     return errorResponse(res, 500, "Failed to fetch hotel requests");
+  }
+});
+
+/**
+ * Get accumulated hotel commission stats
+ * GET /api/admin/hotels/commission-stats
+ *
+ * NOTE: We now calculate from Order model instead of OrderSettlement
+ * for more "genuine" and "real-time" data as requested.
+ */
+export const getHotelCommissionStats = asyncHandler(async (req, res) => {
+  try {
+    const Order = (await import("../../order/models/Order.js")).default;
+    const Hotel = (await import("../../hotel/models/Hotel.js")).default;
+
+    // Fetch all hotels to have their commission settings as fallback
+    const hotels = await Hotel.find({}).lean();
+    const hotelSettingsMap = {};
+    hotels.forEach((h) => {
+      hotelSettingsMap[h._id.toString()] = h;
+      if (h.hotelId) hotelSettingsMap[h.hotelId] = h;
+    });
+
+    // Query non-cancelled QR orders
+    const orders = await Order.find({
+      $or: [
+        { hotelReference: { $ne: null } },
+        { hotelId: { $ne: null } },
+        { orderType: "QR" },
+      ],
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    let totalHotelCommission = 0;
+    let totalAdminHotelCommission = 0;
+
+    orders.forEach((order) => {
+      const breakdown = order.commissionBreakdown;
+      const totalAmount = Number(order.pricing?.total) || 0;
+
+      // Logic: Use breakdown if it has values, otherwise calculate from hotel settings
+      if (
+        breakdown &&
+        (Number(breakdown.hotel) > 0 || Number(breakdown.admin) > 0)
+      ) {
+        totalHotelCommission += Number(breakdown.hotel) || 0;
+        totalAdminHotelCommission += Number(breakdown.admin) || 0;
+      } else {
+        // Fallback: Dynamic calculation based on current hotel settings
+        const hotelRef = order.hotelId || order.hotelReference;
+        const hotel = hotelRef ? hotelSettingsMap[hotelRef.toString()] : null;
+
+        if (hotel) {
+          const hotelCommPercent = Number(hotel.commission) || 0;
+          const adminCommPercent = Number(hotel.adminCommission) || 0;
+
+          const calculatedHotelComm = (totalAmount * hotelCommPercent) / 100;
+          const calculatedAdminComm = (totalAmount * adminCommPercent) / 100;
+
+          totalHotelCommission += calculatedHotelComm;
+          totalAdminHotelCommission += calculatedAdminComm;
+        }
+      }
+    });
+
+    return successResponse(
+      res,
+      200,
+      "Hotel commission stats retrieved successfully",
+      {
+        totalHotelCommission: Math.round(totalHotelCommission * 100) / 100,
+        totalAdminHotelCommission:
+          Math.round(totalAdminHotelCommission * 100) / 100,
+        totalCombinedCommission:
+          Math.round((totalHotelCommission + totalAdminHotelCommission) * 100) /
+          100,
+        orderCount: orders.length,
+      },
+    );
+  } catch (error) {
+    console.error("Error fetching hotel commission stats:", error);
+    return errorResponse(res, 500, "Failed to fetch hotel commission stats");
   }
 });

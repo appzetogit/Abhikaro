@@ -238,6 +238,9 @@ export const API_ENDPOINTS = {
     REQUESTS: "/hotel/requests",
     REQUEST_BY_ID: "/hotel/requests/:id",
     REQUEST_STATS: "/hotel/requests/stats",
+    SETTLEMENT_SUMMARY: "/hotel/orders/settlement-summary",
+    ORDER_COLLECT_PAYMENT: "/hotel/orders/:orderId/collect-payment",
+    ORDER_DELIVER: "/hotel/orders/:orderId/deliver",
     PUBLIC: "/hotel/public/:hotelId", // Public endpoint for QR code scanning
   },
   // Delivery endpoints
@@ -301,6 +304,7 @@ export const API_ENDPOINTS = {
     RESTAURANT_ANALYTICS: "/admin/restaurant-analytics/:restaurantId",
     HOTELS: "/admin/hotels",
     HOTEL_REQUESTS: "/admin/hotels/requests",
+    HOTEL_COMMISSION_STATS: "/admin/hotels-commissions/stats",
     HOTEL_BY_ID: "/admin/hotels/:id",
     RESTAURANT_STATUS: "/admin/restaurants/:id/status",
     RESTAURANT_MENU: "/admin/restaurants/:id/menu",
@@ -397,6 +401,7 @@ export const API_ENDPOINTS = {
       "/admin/restaurant-commission/restaurant/:restaurantId",
     RESTAURANT_COMMISSION_BY_ID: "/admin/restaurant-commission/:id",
     RESTAURANT_COMMISSION_STATUS: "/admin/restaurant-commission/:id/status",
+    RESTAURANT_COMMISSION_STATS: "/admin/restaurant-commission/stats",
     RESTAURANT_COMMISSION_CALCULATE: "/admin/restaurant-commission/calculate",
     RESTAURANT_COMPLAINTS: "/admin/restaurant-complaints",
     RESTAURANT_COMPLAINT_BY_ID: "/admin/restaurant-complaints/:id",

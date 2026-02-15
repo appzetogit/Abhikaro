@@ -776,7 +776,11 @@ export const restaurantAPI = {
 export const hotelPublicAPI = {
   getHotelByHotelId: (hotelId) => {
     const endpoint = API_ENDPOINTS.HOTEL.PUBLIC.replace(":hotelId", hotelId);
-    console.log("🔍 Fetching hotel via public API:", { hotelId, endpoint, fullUrl: `${apiClient.defaults.baseURL}${endpoint}` });
+    console.log("🔍 Fetching hotel via public API:", {
+      hotelId,
+      endpoint,
+      fullUrl: `${apiClient.defaults.baseURL}${endpoint}`,
+    });
     return apiClient.get(endpoint);
   },
 };
@@ -810,8 +814,10 @@ export const hotelAPI = {
     if (email != null) payload.email = email;
     if (address != null) payload.address = address;
     if (aadharCardImage != null) payload.aadharCardImage = aadharCardImage;
-    if (hotelRentProofImage != null) payload.hotelRentProofImage = hotelRentProofImage;
-    if (cancelledCheckImages != null) payload.cancelledCheckImages = cancelledCheckImages;
+    if (hotelRentProofImage != null)
+      payload.hotelRentProofImage = hotelRentProofImage;
+    if (cancelledCheckImages != null)
+      payload.cancelledCheckImages = cancelledCheckImages;
     return apiClient.post(API_ENDPOINTS.HOTEL.AUTH.VERIFY_OTP, payload);
   },
 
@@ -844,9 +850,7 @@ export const hotelAPI = {
 
   // Get request by ID
   getRequestById: (id) => {
-    return apiClient.get(
-      API_ENDPOINTS.HOTEL.REQUEST_BY_ID.replace(":id", id),
-    );
+    return apiClient.get(API_ENDPOINTS.HOTEL.REQUEST_BY_ID.replace(":id", id));
   },
 
   // Get request stats
@@ -862,6 +866,23 @@ export const hotelAPI = {
   // Wallet
   getWallet: () => {
     return apiClient.get(API_ENDPOINTS.HOTEL.WALLET);
+  },
+
+  // Settlement
+  getSettlementSummary: () => {
+    return apiClient.get(API_ENDPOINTS.HOTEL.SETTLEMENT_SUMMARY);
+  },
+
+  collectPayment: (orderId) => {
+    return apiClient.post(
+      API_ENDPOINTS.HOTEL.ORDER_COLLECT_PAYMENT.replace(":orderId", orderId),
+    );
+  },
+
+  deliverOrder: (orderId) => {
+    return apiClient.post(
+      API_ENDPOINTS.HOTEL.ORDER_DELIVER.replace(":orderId", orderId),
+    );
   },
 };
 
@@ -1201,7 +1222,7 @@ export const adminAPI = {
   // Get restaurant menu (Admin)
   getRestaurantMenu: (id) => {
     return apiClient.get(
-      API_ENDPOINTS.ADMIN.RESTAURANT_MENU.replace(":id", id)
+      API_ENDPOINTS.ADMIN.RESTAURANT_MENU.replace(":id", id),
     );
   },
 
@@ -1209,7 +1230,7 @@ export const adminAPI = {
   updateRestaurantMenu: (id, menuData) => {
     return apiClient.put(
       API_ENDPOINTS.ADMIN.RESTAURANT_MENU.replace(":id", id),
-      menuData
+      menuData,
     );
   },
 
@@ -1267,12 +1288,20 @@ export const adminAPI = {
 
   // Update hotel
   updateHotel: (id, data) => {
-    return apiClient.put(API_ENDPOINTS.ADMIN.HOTEL_BY_ID.replace(":id", id), data);
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.HOTEL_BY_ID.replace(":id", id),
+      data,
+    );
   },
 
   // Delete hotel
   deleteHotel: (id) => {
     return apiClient.delete(API_ENDPOINTS.ADMIN.HOTEL_BY_ID.replace(":id", id));
+  },
+
+  // Get hotel commission stats
+  getHotelCommissionStats: () => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.HOTEL_COMMISSION_STATS);
   },
 
   // Get all offers (with restaurant and dish details)
@@ -1335,6 +1364,10 @@ export const adminAPI = {
       restaurantId,
       orderAmount,
     });
+  },
+
+  getCommissionStats: () => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.RESTAURANT_COMMISSION_STATS);
   },
 
   // Restaurant Complaint Management

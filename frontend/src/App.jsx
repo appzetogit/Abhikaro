@@ -17,6 +17,8 @@ const PaymentPage = lazy(() => import("@/module/usermain/pages/PaymentPage"))
 const OrdersPage = lazy(() => import("@/module/usermain/pages/OrdersPage"))
 const OrderDetailsPage = lazy(() => import("@/module/usermain/pages/OrderDetailsPage"))
 const WishlistPage = lazy(() => import("@/module/usermain/pages/WishlistPage"))
+const HotelMenuLanding = lazy(() => import("@/module/user/pages/HotelMenuLanding"))
+
 
 // Restaurant Module
 const RestaurantOrdersPage = lazy(() => import("@/module/restaurant/pages/OrdersPage"))
@@ -124,9 +126,11 @@ const DeliveryWelcome = lazy(() => import("@/module/delivery/pages/auth/Welcome"
 const HotelSignup = lazy(() => import("@/module/hotel/pages/auth/Signup"))
 const HotelOTP = lazy(() => import("@/module/hotel/pages/auth/OTP"))
 const HotelDashboard = lazy(() => import("@/module/hotel/pages/Dashboard"))
-const HotelRequests = lazy(() => import("@/module/hotel/pages/Requests"))
+const HotelOrders = lazy(() => import("@/module/hotel/pages/HotelOrders"))
+
 const HotelProfile = lazy(() => import("@/module/hotel/pages/Profile"))
 const HotelWallet = lazy(() => import("@/module/hotel/pages/Wallet"))
+const HotelSettlement = lazy(() => import("@/module/hotel/pages/HotelSettlement"))
 const ViewHotel = lazy(() => import("@/module/hotel/pages/ViewHotel"))
 
 function UserPathRedirect() {
@@ -141,7 +145,12 @@ export default function App() {
       <Routes>
         <Route path="/user" element={<Navigate to="/" replace />} />
         <Route path="/user/*" element={<UserPathRedirect />} />
+
+        {/* Hotel QR Menu Landing - Public route for QR code scanning */}
+        <Route path="/hotel-menu" element={<HotelMenuLanding />} />
+
         {/* Removed /routes route - Home should be accessed through UserRouter */}
+
 
         {/* Restaurant Public Routes */}
         <Route path="/restaurant/welcome" element={<AuthRedirect module="restaurant"><RestaurantWelcome /></AuthRedirect>} />
@@ -190,6 +199,22 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
               <HotelDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hotel/orders"
+          element={
+            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
+              <HotelOrders />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hotel/settlement"
+          element={
+            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
+              <HotelSettlement />
             </ProtectedRoute>
           }
         />
@@ -827,14 +852,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/hotel/requests"
-          element={
-            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
-              <HotelRequests />
-            </ProtectedRoute>
-          }
-        />
+
         <Route
           path="/hotel/profile"
           element={

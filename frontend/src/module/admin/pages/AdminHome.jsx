@@ -22,7 +22,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { Activity, ArrowUpRight, ShoppingBag, CreditCard, Truck, Receipt, DollarSign, Store, UserCheck, Package, UserCircle, Clock, CheckCircle, Plus } from "lucide-react"
+import { Activity, ArrowUpRight, ShoppingBag, CreditCard, Truck, Receipt, DollarSign, Store, UserCheck, Package, UserCircle, Clock, CheckCircle, Plus, QrCode } from "lucide-react"
 import appzetoLogo from "@/assets/appzetologo.png"
 import { adminAPI } from "@/lib/api"
 
@@ -78,7 +78,7 @@ export default function AdminHome() {
         { label: "Pending", value: 0, color: "#10b981" },
       ]
     }
-    
+
     const byStatus = dashboardData.orders.byStatus
     return [
       { label: "Delivered", value: byStatus.delivered || 0, color: "#0ea5e9" },
@@ -95,7 +95,7 @@ export default function AdminHome() {
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
       return monthNames.map(month => ({ month, commission: 0, revenue: 0, orders: 0 }))
     }
-    
+
     // Use real monthly data from backend
     return dashboardData.monthlyData.map(item => ({
       month: item.month,
@@ -117,7 +117,7 @@ export default function AdminHome() {
   const gstTotal = dashboardData?.gst?.total || 0
   // Total revenue = Commission + Platform Fee + Delivery Fee + GST
   const totalAdminEarnings = commissionTotal + platformFeeTotal + deliveryFeeTotal + gstTotal
-  
+
   // Additional stats
   const totalRestaurants = dashboardData?.restaurants?.total || 0
   const pendingRestaurantRequests = dashboardData?.restaurants?.pendingRequests || 0
@@ -272,10 +272,10 @@ export default function AdminHome() {
               accent="bg-purple-200/40"
             />
             <MetricCard
-              title="Total addons"
-              value={totalAddons.toLocaleString("en-IN")}
-              helper="Active addon items"
-              icon={<Plus className="h-5 w-5 text-pink-600" />}
+              title="Hotel QR Commission"
+              value={`₹${(dashboardData?.qrCommission?.total || 0).toLocaleString("en-IN")}`}
+              helper="From QR Orders"
+              icon={<QrCode className="h-5 w-5 text-pink-600" />}
               accent="bg-pink-200/40"
             />
             <MetricCard

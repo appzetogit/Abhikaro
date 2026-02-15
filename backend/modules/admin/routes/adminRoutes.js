@@ -39,6 +39,7 @@ import {
   updateHotel,
   deleteHotel,
   getHotelRequests,
+  getHotelCommissionStats,
 } from "../controllers/hotelController.js";
 import {
   getBusinessSettings,
@@ -133,6 +134,7 @@ import {
   deleteRestaurantCommission,
   toggleRestaurantCommissionStatus,
   calculateCommission as calculateRestaurantCommission,
+  getCommissionStats,
 } from "../controllers/restaurantCommissionController.js";
 import {
   getPendingFoodApprovals,
@@ -166,6 +168,10 @@ import {
   getTerms,
   updateTerms,
 } from "../controllers/termsAndConditionController.js";
+import {
+  getCommissionSettings,
+  updateCommissionSettings,
+} from "../controllers/commissionController.js";
 import {
   getPrivacy,
   updatePrivacy,
@@ -283,6 +289,8 @@ router.put("/profile", updateAdminProfile);
 
 // Settings Management
 router.put("/settings/change-password", changeAdminPassword);
+router.get("/commission-settings", getCommissionSettings);
+router.put("/commission-settings", updateCommissionSettings);
 
 // User Management
 router.get("/users", getUsers);
@@ -307,6 +315,7 @@ router.delete("/restaurants/:id", deleteRestaurant);
 // Hotel Management
 router.get("/hotels", getHotels);
 router.get("/hotels/requests", getHotelRequests);
+router.get("/hotels-commissions/stats", getHotelCommissionStats);
 router.post("/hotels", createHotel);
 router.get("/hotels/:id", getHotelById);
 router.put("/hotels/:id", updateHotel);
@@ -392,6 +401,7 @@ router.get(
   "/restaurant-commission/approved-restaurants",
   getApprovedRestaurants,
 );
+router.get("/restaurant-commission/stats", getCommissionStats);
 router.get(
   "/restaurant-commission/restaurant/:restaurantId",
   getCommissionByRestaurantId,

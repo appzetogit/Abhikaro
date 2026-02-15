@@ -1,8 +1,8 @@
-import Order from '../models/Order.js';
-import OrderSettlement from '../models/OrderSettlement.js';
-import UserWallet from '../../user/models/UserWallet.js';
-import AdminWallet from '../../admin/models/AdminWallet.js';
-import AuditLog from '../../admin/models/AuditLog.js';
+import Order from "../models/Order.js";
+import OrderSettlement from "../models/OrderSettlement.js";
+import UserWallet from "../../user/models/UserWallet.js";
+import AdminWallet from "../../admin/models/AdminWallet.js";
+import AuditLog from "../../admin/models/AuditLog.js";
 
 /**
  * Hold funds in escrow when order is placed
@@ -17,33 +17,33 @@ export const holdEscrow = async (orderId, userId, amount) => {
     }
 
     // Update escrow status
-    settlement.escrowStatus = 'held';
+    settlement.escrowStatus = "held";
     settlement.escrowAmount = amount;
     settlement.escrowHeldAt = new Date();
     await settlement.save();
 
     // Create audit log
     await AuditLog.createLog({
-      entityType: 'order',
+      entityType: "order",
       entityId: orderId,
-      action: 'escrow_hold',
-      actionType: 'create',
+      action: "escrow_hold",
+      actionType: "create",
       performedBy: {
-        type: 'system',
-        name: 'System'
+        type: "system",
+        name: "System",
       },
       transactionDetails: {
         amount: amount,
-        type: 'escrow_hold',
-        status: 'success',
-        orderId: orderId
+        type: "escrow_hold",
+        status: "success",
+        orderId: orderId,
       },
-      description: `Escrow held for order ${settlement.orderNumber}`
+      description: `Escrow held for order ${settlement.orderNumber}`,
     });
 
     return settlement;
   } catch (error) {
-    console.error('Error holding escrow:', error);
+    console.error("Error holding escrow:", error);
     throw new Error(`Failed to hold escrow: ${error.message}`);
   }
 };
@@ -55,15 +55,17 @@ export const releaseEscrow = async (orderId) => {
   try {
     const settlement = await OrderSettlement.findOne({ orderId });
     if (!settlement) {
-      throw new Error('Settlement not found');
+      throw new Error("Settlement not found");
     }
 
-    if (settlement.escrowStatus !== 'held') {
-      throw new Error(`Escrow not in held status. Current status: ${settlement.escrowStatus}`);
+    if (settlement.escrowStatus !== "held") {
+      throw new Error(
+        `Escrow not in held status. Current status: ${settlement.escrowStatus}`,
+      );
     }
 
     // Update escrow status
-    settlement.escrowStatus = 'released';
+    settlement.escrowStatus = "released";
     settlement.escrowReleasedAt = new Date();
     await settlement.save();
 
@@ -76,36 +78,43 @@ export const releaseEscrow = async (orderId) => {
         settlement.restaurantEarning.netEarning, // ₹170 (₹200 - ₹30)
         settlement.orderNumber,
         settlement.restaurantEarning.foodPrice, // Full order value for reference
-        settlement.restaurantEarning.commission // Commission deducted
+        settlement.restaurantEarning.commission, // Commission deducted
       );
-      settlement.restaurantEarning.status = 'credited';
+      settlement.restaurantEarning.status = "credited";
       settlement.restaurantEarning.creditedAt = new Date();
       settlement.restaurantSettled = true;
     }
 
     // Credit delivery partner wallet
-    if (settlement.deliveryPartnerId && settlement.deliveryPartnerEarning.totalEarning > 0) {
+    if (
+      settlement.deliveryPartnerId &&
+      settlement.deliveryPartnerEarning.totalEarning > 0
+    ) {
       await creditDeliveryWallet(
         settlement.deliveryPartnerId,
         settlement.orderId,
         settlement.deliveryPartnerEarning.totalEarning,
-        settlement.orderNumber
+        settlement.orderNumber,
       );
-      settlement.deliveryPartnerEarning.status = 'credited';
+      settlement.deliveryPartnerEarning.status = "credited";
       settlement.deliveryPartnerEarning.creditedAt = new Date();
       settlement.deliveryPartnerSettled = true;
     }
 
     // Credit hotel wallet if order came from hotel QR code
-    if (settlement.hotelEarning && settlement.hotelEarning.hotelId && settlement.hotelEarning.commission > 0) {
+    if (
+      settlement.hotelEarning &&
+      settlement.hotelEarning.hotelId &&
+      settlement.hotelEarning.commission > 0
+    ) {
       await creditHotelWallet(
         settlement.hotelEarning.hotelId,
         settlement.orderId,
         settlement.hotelEarning.commission,
         settlement.orderNumber,
-        settlement.userPayment.total
+        settlement.userPayment.total,
       );
-      settlement.hotelEarning.status = 'credited';
+      settlement.hotelEarning.status = "credited";
       settlement.hotelEarning.creditedAt = new Date();
       settlement.hotelSettled = true;
     }
@@ -116,38 +125,38 @@ export const releaseEscrow = async (orderId) => {
       settlement.adminEarning,
       settlement.orderNumber,
       settlement.restaurantId,
-      settlement // Pass settlement for reference
+      settlement, // Pass settlement for reference
     );
-    settlement.adminEarning.status = 'credited';
+    settlement.adminEarning.status = "credited";
     settlement.adminEarning.creditedAt = new Date();
     settlement.adminSettled = true;
 
     // Update settlement status
-    settlement.settlementStatus = 'completed';
+    settlement.settlementStatus = "completed";
     await settlement.save();
 
     // Create audit log
     await AuditLog.createLog({
-      entityType: 'order',
+      entityType: "order",
       entityId: orderId,
-      action: 'escrow_release',
-      actionType: 'settle',
+      action: "escrow_release",
+      actionType: "settle",
       performedBy: {
-        type: 'system',
-        name: 'System'
+        type: "system",
+        name: "System",
       },
       transactionDetails: {
         amount: settlement.escrowAmount,
-        type: 'escrow_release',
-        status: 'success',
-        orderId: orderId
+        type: "escrow_release",
+        status: "success",
+        orderId: orderId,
       },
-      description: `Escrow released and funds distributed for order ${settlement.orderNumber}`
+      description: `Escrow released and funds distributed for order ${settlement.orderNumber}`,
     });
 
     return settlement;
   } catch (error) {
-    console.error('Error releasing escrow:', error);
+    console.error("Error releasing escrow:", error);
     throw new Error(`Failed to release escrow: ${error.message}`);
   }
 };
@@ -161,48 +170,58 @@ export const releaseEscrow = async (orderId) => {
  * @param {Number} foodPrice - Full food price (for reference)
  * @param {Number} commission - Commission deducted (for reference)
  */
-const creditRestaurantWallet = async (restaurantId, orderId, netAmount, orderNumber, foodPrice = null, commission = null) => {
+export const creditRestaurantWallet = async (
+  restaurantId,
+  orderId,
+  netAmount,
+  orderNumber,
+  foodPrice = null,
+  commission = null,
+) => {
   try {
-    const RestaurantWallet = (await import('../../restaurant/models/RestaurantWallet.js')).default;
-    const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurantId);
-    
+    const RestaurantWallet = (
+      await import("../../restaurant/models/RestaurantWallet.js")
+    ).default;
+    const wallet =
+      await RestaurantWallet.findOrCreateByRestaurantId(restaurantId);
+
     // Create description with breakdown
     let description = `Payment for order ${orderNumber}`;
     if (foodPrice && commission) {
       description = `Payment for order ${orderNumber} (Order: ₹${foodPrice}, Commission: ₹${commission}, Net: ₹${netAmount})`;
     }
-    
+
     wallet.addTransaction({
       amount: netAmount, // Credit net amount (₹170)
-      type: 'payment',
-      status: 'Completed',
+      type: "payment",
+      status: "Completed",
       description: description,
-      orderId: orderId
+      orderId: orderId,
     });
-    
+
     await wallet.save();
 
     // Create audit log
     await AuditLog.createLog({
-      entityType: 'restaurant',
+      entityType: "restaurant",
       entityId: restaurantId,
-      action: 'wallet_credit',
-      actionType: 'credit',
+      action: "wallet_credit",
+      actionType: "credit",
       performedBy: {
-        type: 'system',
-        name: 'System'
+        type: "system",
+        name: "System",
       },
       transactionDetails: {
         amount: netAmount,
-        type: 'payment',
-        status: 'success',
+        type: "payment",
+        status: "success",
         orderId: orderId,
-        walletType: 'restaurant'
+        walletType: "restaurant",
       },
-      description: `Restaurant wallet credited for order ${orderNumber}`
+      description: `Restaurant wallet credited for order ${orderNumber}`,
     });
   } catch (error) {
-    console.error('Error crediting restaurant wallet:', error);
+    console.error("Error crediting restaurant wallet:", error);
     throw error;
   }
 };
@@ -210,43 +229,50 @@ const creditRestaurantWallet = async (restaurantId, orderId, netAmount, orderNum
 /**
  * Credit delivery partner wallet
  */
-const creditDeliveryWallet = async (deliveryId, orderId, amount, orderNumber) => {
+export const creditDeliveryWallet = async (
+  deliveryId,
+  orderId,
+  amount,
+  orderNumber,
+) => {
   try {
-    const DeliveryWallet = (await import('../../delivery/models/DeliveryWallet.js')).default;
+    const DeliveryWallet = (
+      await import("../../delivery/models/DeliveryWallet.js")
+    ).default;
     const wallet = await DeliveryWallet.findOrCreateByDeliveryId(deliveryId);
-    
+
     wallet.addTransaction({
       amount: amount,
-      type: 'payment',
-      status: 'Completed',
+      type: "payment",
+      status: "Completed",
       description: `Payment for order ${orderNumber}`,
       orderId: orderId,
-      paymentCollected: false // Will be updated when COD is collected
+      paymentCollected: false, // Will be updated when COD is collected
     });
-    
+
     await wallet.save();
 
     // Create audit log
     await AuditLog.createLog({
-      entityType: 'delivery',
+      entityType: "delivery",
       entityId: deliveryId,
-      action: 'wallet_credit',
-      actionType: 'credit',
+      action: "wallet_credit",
+      actionType: "credit",
       performedBy: {
-        type: 'system',
-        name: 'System'
+        type: "system",
+        name: "System",
       },
       transactionDetails: {
         amount: amount,
-        type: 'payment',
-        status: 'success',
+        type: "payment",
+        status: "success",
         orderId: orderId,
-        walletType: 'delivery'
+        walletType: "delivery",
       },
-      description: `Delivery partner wallet credited for order ${orderNumber}`
+      description: `Delivery partner wallet credited for order ${orderNumber}`,
     });
   } catch (error) {
-    console.error('Error crediting delivery wallet:', error);
+    console.error("Error crediting delivery wallet:", error);
     throw error;
   }
 };
@@ -259,49 +285,59 @@ const creditDeliveryWallet = async (deliveryId, orderId, amount, orderNumber) =>
  * @param {String} orderNumber - Order number
  * @param {Number} orderTotal - Order total (for reference)
  */
-const creditHotelWallet = async (hotelId, orderId, commissionAmount, orderNumber, orderTotal = null) => {
+export const creditHotelWallet = async (
+  hotelId,
+  orderId,
+  commissionAmount,
+  orderNumber,
+  orderTotal = null,
+) => {
   try {
-    const HotelWallet = (await import('../../hotel/models/HotelWallet.js')).default;
+    const HotelWallet = (await import("../../hotel/models/HotelWallet.js"))
+      .default;
     const wallet = await HotelWallet.findOrCreateByHotelId(hotelId);
-    
+
     // Create description with breakdown
     let description = `Commission from order ${orderNumber}`;
     if (orderTotal) {
-      const commissionPercent = orderTotal > 0 ? ((commissionAmount / orderTotal) * 100).toFixed(2) : '0';
+      const commissionPercent =
+        orderTotal > 0
+          ? ((commissionAmount / orderTotal) * 100).toFixed(2)
+          : "0";
       description = `Commission from order ${orderNumber} (${commissionPercent}% of ₹${orderTotal})`;
     }
-    
+
     wallet.addTransaction({
       amount: commissionAmount,
-      type: 'commission',
-      status: 'Completed',
+      type: "commission",
+      status: "Completed",
       description: description,
-      orderId: orderId
+      orderId: orderId,
     });
-    
+
     await wallet.save();
 
     // Create audit log
     await AuditLog.createLog({
-      entityType: 'hotel',
+      entityType: "hotel",
       entityId: hotelId,
-      action: 'wallet_credit',
-      actionType: 'credit',
+      action: "wallet_credit",
+      actionType: "credit",
       performedBy: {
-        type: 'system',
-        name: 'System'
+        type: "system",
+        name: "System",
       },
       transactionDetails: {
         amount: commissionAmount,
-        type: 'commission',
-        status: 'success',
+        type: "commission",
+        status: "success",
         orderId: orderId,
-        walletType: 'hotel'
+        walletType: "hotel",
       },
-      description: `Hotel wallet credited for order ${orderNumber}`
+      description: `Hotel wallet credited for order ${orderNumber}`,
     });
   } catch (error) {
-    console.error('Error crediting hotel wallet:', error);
+    console.error("Error crediting hotel wallet:", error);
     throw error;
   }
 };
@@ -309,27 +345,50 @@ const creditHotelWallet = async (hotelId, orderId, commissionAmount, orderNumber
 /**
  * Credit admin wallet
  * @param {ObjectId} orderId - Order ID
- * @param {Object} adminEarning - Admin earning breakdown
+ * @param {Object|Number} adminEarning - Admin earning breakdown OR total amount
  * @param {String} orderNumber - Order number
  * @param {ObjectId} restaurantId - Restaurant ID
  * @param {Object} settlement - Settlement object (optional, for reference)
  */
-const creditAdminWallet = async (orderId, adminEarning, orderNumber, restaurantId, settlement = null) => {
+export const creditAdminWallet = async (
+  orderId,
+  adminEarning,
+  orderNumber,
+  restaurantId = null,
+  settlement = null,
+) => {
   try {
     const wallet = await AdminWallet.findOrCreate();
+
+    // Handle case where adminEarning is just a number (for instant credits)
+    if (typeof adminEarning === "number") {
+      wallet.addTransaction({
+        amount: adminEarning,
+        type: "commission",
+        status: "Completed",
+        description: `Instant commission from order ${orderNumber}`,
+        orderId: orderId,
+        restaurantId: restaurantId,
+      });
+      await wallet.save();
+      return;
+    }
 
     // Credit commission (from restaurant)
     // This is the commission deducted from restaurant's food price
     if (adminEarning.commission > 0) {
       const foodPrice = settlement?.restaurantEarning?.foodPrice || 0;
-      const commissionPercent = foodPrice > 0 ? ((adminEarning.commission / foodPrice) * 100).toFixed(1) : '0';
+      const commissionPercent =
+        foodPrice > 0
+          ? ((adminEarning.commission / foodPrice) * 100).toFixed(1)
+          : "0";
       wallet.addTransaction({
         amount: adminEarning.commission,
-        type: 'commission',
-        status: 'Completed',
+        type: "commission",
+        status: "Completed",
         description: `Restaurant commission from order ${orderNumber} (${commissionPercent}% of ₹${foodPrice})`,
         orderId: orderId,
-        restaurantId: restaurantId
+        restaurantId: restaurantId,
       });
     }
 
@@ -337,10 +396,10 @@ const creditAdminWallet = async (orderId, adminEarning, orderNumber, restaurantI
     if (adminEarning.platformFee > 0) {
       wallet.addTransaction({
         amount: adminEarning.platformFee,
-        type: 'platform_fee',
-        status: 'Completed',
+        type: "platform_fee",
+        status: "Completed",
         description: `Platform fee from order ${orderNumber}`,
-        orderId: orderId
+        orderId: orderId,
       });
     }
 
@@ -348,10 +407,10 @@ const creditAdminWallet = async (orderId, adminEarning, orderNumber, restaurantI
     if (adminEarning.deliveryFee > 0) {
       wallet.addTransaction({
         amount: adminEarning.deliveryFee,
-        type: 'delivery_fee',
-        status: 'Completed',
+        type: "delivery_fee",
+        status: "Completed",
         description: `Delivery fee from order ${orderNumber}`,
-        orderId: orderId
+        orderId: orderId,
       });
     }
 
@@ -359,24 +418,27 @@ const creditAdminWallet = async (orderId, adminEarning, orderNumber, restaurantI
     if (adminEarning.gst > 0) {
       wallet.addTransaction({
         amount: adminEarning.gst,
-        type: 'gst',
-        status: 'Completed',
+        type: "gst",
+        status: "Completed",
         description: `GST from order ${orderNumber}`,
-        orderId: orderId
+        orderId: orderId,
       });
     }
 
     // Credit hotel commission (admin's share from hotel QR orders)
     if (adminEarning.hotelCommission > 0) {
       const orderTotal = settlement?.userPayment?.total || 0;
-      const commissionPercent = orderTotal > 0 ? ((adminEarning.hotelCommission / orderTotal) * 100).toFixed(2) : '0';
+      const commissionPercent =
+        orderTotal > 0
+          ? ((adminEarning.hotelCommission / orderTotal) * 100).toFixed(2)
+          : "0";
       wallet.addTransaction({
         amount: adminEarning.hotelCommission,
-        type: 'commission',
-        status: 'Completed',
+        type: "commission",
+        status: "Completed",
         description: `Hotel commission from order ${orderNumber} (${commissionPercent}% of ₹${orderTotal})`,
         orderId: orderId,
-        hotelId: settlement?.hotelEarning?.hotelId || null
+        hotelId: settlement?.hotelEarning?.hotelId || null,
       });
     }
 
@@ -384,26 +446,25 @@ const creditAdminWallet = async (orderId, adminEarning, orderNumber, restaurantI
 
     // Create audit log
     await AuditLog.createLog({
-      entityType: 'order',
+      entityType: "order",
       entityId: orderId,
-      action: 'admin_wallet_credit',
-      actionType: 'credit',
+      action: "admin_wallet_credit",
+      actionType: "credit",
       performedBy: {
-        type: 'system',
-        name: 'System'
+        type: "system",
+        name: "System",
       },
       transactionDetails: {
         amount: adminEarning.totalEarning,
-        type: 'platform_earning',
-        status: 'success',
+        type: "platform_earning",
+        status: "success",
         orderId: orderId,
-        walletType: 'admin'
+        walletType: "admin",
       },
-      description: `Admin wallet credited for order ${orderNumber}`
+      description: `Admin wallet credited for order ${orderNumber}`,
     });
   } catch (error) {
-    console.error('Error crediting admin wallet:', error);
+    console.error("Error crediting admin wallet:", error);
     throw error;
   }
 };
-

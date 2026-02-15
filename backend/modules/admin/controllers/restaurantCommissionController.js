@@ -1,9 +1,12 @@
-import RestaurantCommission from '../models/RestaurantCommission.js';
-import Restaurant from '../../restaurant/models/Restaurant.js';
-import { successResponse, errorResponse } from '../../../shared/utils/response.js';
-import { asyncHandler } from '../../../shared/middleware/asyncHandler.js';
-import AuditLog from '../models/AuditLog.js';
-import mongoose from 'mongoose';
+import RestaurantCommission from "../models/RestaurantCommission.js";
+import Restaurant from "../../restaurant/models/Restaurant.js";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../shared/utils/response.js";
+import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
+import AuditLog from "../models/AuditLog.js";
+import mongoose from "mongoose";
 
 /**
  * Get all restaurant commissions
@@ -12,26 +15,21 @@ import mongoose from 'mongoose';
  */
 export const getRestaurantCommissions = asyncHandler(async (req, res) => {
   try {
-    const { 
-      status,
-      search,
-      page = 1,
-      limit = 50
-    } = req.query;
+    const { status, search, page = 1, limit = 50 } = req.query;
 
     // Build query
     const query = {};
 
     // Status filter
     if (status !== undefined) {
-      query.status = status === 'true' || status === true;
+      query.status = status === "true" || status === true;
     }
 
     // Search filter
     if (search) {
       query.$or = [
-        { restaurantName: { $regex: search, $options: 'i' } },
-        { restaurantId: { $regex: search, $options: 'i' } }
+        { restaurantName: { $regex: search, $options: "i" } },
+        { restaurantId: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -44,9 +42,9 @@ export const getRestaurantCommissions = asyncHandler(async (req, res) => {
 
     // Get commissions
     const commissions = await RestaurantCommission.find(query)
-      .populate('restaurant', 'name restaurantId isActive email phone')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
+      .populate("restaurant", "name restaurantId isActive email phone")
+      .populate("createdBy", "name email")
+      .populate("updatedBy", "name email")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -55,21 +53,26 @@ export const getRestaurantCommissions = asyncHandler(async (req, res) => {
     // Add serial numbers
     const commissionsWithSl = commissions.map((commission, index) => ({
       ...commission,
-      sl: skip + index + 1
+      sl: skip + index + 1,
     }));
 
-    return successResponse(res, 200, 'Restaurant commissions retrieved successfully', {
-      commissions: commissionsWithSl,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: limitNum,
-        pages: Math.ceil(total / limitNum)
-      }
-    });
+    return successResponse(
+      res,
+      200,
+      "Restaurant commissions retrieved successfully",
+      {
+        commissions: commissionsWithSl,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: limitNum,
+          pages: Math.ceil(total / limitNum),
+        },
+      },
+    );
   } catch (error) {
-    console.error('Error fetching restaurant commissions:', error);
-    return errorResponse(res, 500, 'Failed to fetch restaurant commissions');
+    console.error("Error fetching restaurant commissions:", error);
+    return errorResponse(res, 500, "Failed to fetch restaurant commissions");
   }
 });
 
@@ -79,25 +82,21 @@ export const getRestaurantCommissions = asyncHandler(async (req, res) => {
  */
 export const getApprovedRestaurants = asyncHandler(async (req, res) => {
   try {
-    const { 
-      search,
-      page = 1,
-      limit = 100
-    } = req.query;
+    const { search, page = 1, limit = 100 } = req.query;
 
     // Build query - only approved restaurants
     const query = {
-      isActive: true
+      isActive: true,
     };
 
     // Search filter
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { restaurantId: { $regex: search, $options: 'i' } },
-        { ownerName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } }
+        { name: { $regex: search, $options: "i" } },
+        { restaurantId: { $regex: search, $options: "i" } },
+        { ownerName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -110,40 +109,51 @@ export const getApprovedRestaurants = asyncHandler(async (req, res) => {
 
     // Get restaurants
     const restaurants = await Restaurant.find(query)
-      .select('_id name restaurantId ownerName email phone isActive approvedAt businessModel')
+      .select(
+        "_id name restaurantId ownerName email phone isActive approvedAt businessModel",
+      )
       .sort({ approvedAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
       .lean();
 
     // Check which restaurants already have commission setup
-    const restaurantIds = restaurants.map(r => r._id);
+    const restaurantIds = restaurants.map((r) => r._id);
     const existingCommissions = await RestaurantCommission.find({
-      restaurant: { $in: restaurantIds }
-    }).select('restaurant').lean();
-    
+      restaurant: { $in: restaurantIds },
+    })
+      .select("restaurant")
+      .lean();
+
     const commissionRestaurantIds = new Set(
-      existingCommissions.map(c => c.restaurant.toString())
+      existingCommissions.map((c) => c.restaurant.toString()),
     );
 
     // Add commission setup status
-    const restaurantsWithStatus = restaurants.map(restaurant => ({
+    const restaurantsWithStatus = restaurants.map((restaurant) => ({
       ...restaurant,
-      hasCommissionSetup: commissionRestaurantIds.has(restaurant._id.toString())
+      hasCommissionSetup: commissionRestaurantIds.has(
+        restaurant._id.toString(),
+      ),
     }));
 
-    return successResponse(res, 200, 'Approved restaurants retrieved successfully', {
-      restaurants: restaurantsWithStatus,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: limitNum,
-        pages: Math.ceil(total / limitNum)
-      }
-    });
+    return successResponse(
+      res,
+      200,
+      "Approved restaurants retrieved successfully",
+      {
+        restaurants: restaurantsWithStatus,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: limitNum,
+          pages: Math.ceil(total / limitNum),
+        },
+      },
+    );
   } catch (error) {
-    console.error('Error fetching approved restaurants:', error);
-    return errorResponse(res, 500, 'Failed to fetch approved restaurants');
+    console.error("Error fetching approved restaurants:", error);
+    return errorResponse(res, 500, "Failed to fetch approved restaurants");
   }
 });
 
@@ -156,25 +166,33 @@ export const getRestaurantCommissionById = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return errorResponse(res, 400, 'Invalid commission ID');
+      return errorResponse(res, 400, "Invalid commission ID");
     }
 
     const commission = await RestaurantCommission.findById(id)
-      .populate('restaurant', 'name restaurantId isActive email phone ownerName businessModel')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
+      .populate(
+        "restaurant",
+        "name restaurantId isActive email phone ownerName businessModel",
+      )
+      .populate("createdBy", "name email")
+      .populate("updatedBy", "name email")
       .lean();
 
     if (!commission) {
-      return errorResponse(res, 404, 'Restaurant commission not found');
+      return errorResponse(res, 404, "Restaurant commission not found");
     }
 
-    return successResponse(res, 200, 'Restaurant commission retrieved successfully', {
-      commission
-    });
+    return successResponse(
+      res,
+      200,
+      "Restaurant commission retrieved successfully",
+      {
+        commission,
+      },
+    );
   } catch (error) {
-    console.error('Error fetching restaurant commission:', error);
-    return errorResponse(res, 500, 'Failed to fetch restaurant commission');
+    console.error("Error fetching restaurant commission:", error);
+    return errorResponse(res, 500, "Failed to fetch restaurant commission");
   }
 });
 
@@ -187,25 +205,39 @@ export const getCommissionByRestaurantId = asyncHandler(async (req, res) => {
     const { restaurantId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return errorResponse(res, 400, 'Invalid restaurant ID');
+      return errorResponse(res, 400, "Invalid restaurant ID");
     }
 
-    const commission = await RestaurantCommission.findOne({ restaurant: restaurantId })
-      .populate('restaurant', 'name restaurantId isActive email phone ownerName businessModel')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
+    const commission = await RestaurantCommission.findOne({
+      restaurant: restaurantId,
+    })
+      .populate(
+        "restaurant",
+        "name restaurantId isActive email phone ownerName businessModel",
+      )
+      .populate("createdBy", "name email")
+      .populate("updatedBy", "name email")
       .lean();
 
     if (!commission) {
-      return errorResponse(res, 404, 'Commission not found for this restaurant');
+      return errorResponse(
+        res,
+        404,
+        "Commission not found for this restaurant",
+      );
     }
 
-    return successResponse(res, 200, 'Restaurant commission retrieved successfully', {
-      commission
-    });
+    return successResponse(
+      res,
+      200,
+      "Restaurant commission retrieved successfully",
+      {
+        commission,
+      },
+    );
   } catch (error) {
-    console.error('Error fetching restaurant commission:', error);
-    return errorResponse(res, 500, 'Failed to fetch restaurant commission');
+    console.error("Error fetching restaurant commission:", error);
+    return errorResponse(res, 500, "Failed to fetch restaurant commission");
   }
 });
 
@@ -215,72 +247,107 @@ export const getCommissionByRestaurantId = asyncHandler(async (req, res) => {
  */
 export const createRestaurantCommission = asyncHandler(async (req, res) => {
   try {
-    const {
-      restaurantId,
-      commissionRules,
-      defaultCommission,
-      status,
-      notes
-    } = req.body;
+    const { restaurantId, commissionRules, defaultCommission, status, notes } =
+      req.body;
 
     const adminId = req.user._id;
 
     // Validate restaurant ID
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return errorResponse(res, 400, 'Invalid restaurant ID');
+      return errorResponse(res, 400, "Invalid restaurant ID");
     }
 
     // Check if restaurant exists and is approved
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
-      return errorResponse(res, 404, 'Restaurant not found');
+      return errorResponse(res, 404, "Restaurant not found");
     }
 
     if (!restaurant.isActive) {
-      return errorResponse(res, 400, 'Restaurant is not approved. Please approve the restaurant first.');
+      return errorResponse(
+        res,
+        400,
+        "Restaurant is not approved. Please approve the restaurant first.",
+      );
     }
 
     // Check if commission already exists
-    const existingCommission = await RestaurantCommission.findOne({ restaurant: restaurantId });
+    const existingCommission = await RestaurantCommission.findOne({
+      restaurant: restaurantId,
+    });
     if (existingCommission) {
-      return errorResponse(res, 400, 'Commission already exists for this restaurant. Use update instead.');
+      return errorResponse(
+        res,
+        400,
+        "Commission already exists for this restaurant. Use update instead.",
+      );
     }
 
     // Validate default commission
-    if (!defaultCommission || !defaultCommission.type || defaultCommission.value === undefined) {
-      return errorResponse(res, 400, 'Default commission is required');
+    if (
+      !defaultCommission ||
+      !defaultCommission.type ||
+      defaultCommission.value === undefined
+    ) {
+      return errorResponse(res, 400, "Default commission is required");
     }
 
-    if (defaultCommission.type === 'percentage' && (defaultCommission.value < 0 || defaultCommission.value > 100)) {
-      return errorResponse(res, 400, 'Percentage must be between 0-100');
+    if (
+      defaultCommission.type === "percentage" &&
+      (defaultCommission.value < 0 || defaultCommission.value > 100)
+    ) {
+      return errorResponse(res, 400, "Percentage must be between 0-100");
     }
 
-    if (defaultCommission.type === 'amount' && defaultCommission.value < 0) {
-      return errorResponse(res, 400, 'Amount must be >= 0');
+    if (defaultCommission.type === "amount" && defaultCommission.value < 0) {
+      return errorResponse(res, 400, "Amount must be >= 0");
     }
 
     // Validate commission rules
     if (commissionRules && Array.isArray(commissionRules)) {
       for (const rule of commissionRules) {
         if (!rule.type || rule.value === undefined) {
-          return errorResponse(res, 400, 'Each commission rule must have type and value');
+          return errorResponse(
+            res,
+            400,
+            "Each commission rule must have type and value",
+          );
         }
 
-        if (rule.type === 'percentage' && (rule.value < 0 || rule.value > 100)) {
-          return errorResponse(res, 400, 'Percentage in commission rules must be between 0-100');
+        if (
+          rule.type === "percentage" &&
+          (rule.value < 0 || rule.value > 100)
+        ) {
+          return errorResponse(
+            res,
+            400,
+            "Percentage in commission rules must be between 0-100",
+          );
         }
 
-        if (rule.type === 'amount' && rule.value < 0) {
-          return errorResponse(res, 400, 'Amount in commission rules must be >= 0');
+        if (rule.type === "amount" && rule.value < 0) {
+          return errorResponse(
+            res,
+            400,
+            "Amount in commission rules must be >= 0",
+          );
         }
 
         if (rule.minOrderAmount === undefined || rule.minOrderAmount < 0) {
-          return errorResponse(res, 400, 'minOrderAmount is required and must be >= 0');
+          return errorResponse(
+            res,
+            400,
+            "minOrderAmount is required and must be >= 0",
+          );
         }
 
         if (rule.maxOrderAmount !== null && rule.maxOrderAmount !== undefined) {
           if (rule.maxOrderAmount <= rule.minOrderAmount) {
-            return errorResponse(res, 400, 'maxOrderAmount must be greater than minOrderAmount');
+            return errorResponse(
+              res,
+              400,
+              "maxOrderAmount must be greater than minOrderAmount",
+            );
           }
         }
       }
@@ -294,11 +361,11 @@ export const createRestaurantCommission = asyncHandler(async (req, res) => {
       commissionRules: commissionRules || [],
       defaultCommission: {
         type: defaultCommission.type,
-        value: defaultCommission.value
+        value: defaultCommission.value,
       },
       status: status !== undefined ? status : true,
-      notes: notes || '',
-      createdBy: adminId
+      notes: notes || "",
+      createdBy: adminId,
     });
 
     await commission.save();
@@ -306,45 +373,56 @@ export const createRestaurantCommission = asyncHandler(async (req, res) => {
     // Create audit log
     try {
       await AuditLog.createLog({
-        entityType: 'commission',
+        entityType: "commission",
         entityId: commission._id,
-        action: 'create_restaurant_commission',
-        actionType: 'create',
+        action: "create_restaurant_commission",
+        actionType: "create",
         performedBy: {
-          type: 'admin',
+          type: "admin",
           userId: adminId,
-          name: req.user?.name || 'Admin'
+          name: req.user?.name || "Admin",
         },
         commissionChange: {
           restaurantId: restaurantId,
           newValue: defaultCommission.value,
           newType: defaultCommission.type,
-          reason: 'Commission created'
+          reason: "Commission created",
         },
-        description: `Restaurant commission created for ${restaurant.name}`
+        description: `Restaurant commission created for ${restaurant.name}`,
       });
     } catch (auditError) {
-      console.error('Error creating audit log:', auditError);
+      console.error("Error creating audit log:", auditError);
       // Don't fail commission creation if audit log fails
     }
 
     // Populate and return
-    const populatedCommission = await RestaurantCommission.findById(commission._id)
-      .populate('restaurant', 'name restaurantId isActive email phone')
-      .populate('createdBy', 'name email')
+    const populatedCommission = await RestaurantCommission.findById(
+      commission._id,
+    )
+      .populate("restaurant", "name restaurantId isActive email phone")
+      .populate("createdBy", "name email")
       .lean();
 
-    return successResponse(res, 201, 'Restaurant commission created successfully', {
-      commission: populatedCommission
-    });
+    return successResponse(
+      res,
+      201,
+      "Restaurant commission created successfully",
+      {
+        commission: populatedCommission,
+      },
+    );
   } catch (error) {
-    console.error('Error creating restaurant commission:', error);
-    
+    console.error("Error creating restaurant commission:", error);
+
     if (error.code === 11000) {
-      return errorResponse(res, 400, 'Commission already exists for this restaurant');
+      return errorResponse(
+        res,
+        400,
+        "Commission already exists for this restaurant",
+      );
     }
-    
-    return errorResponse(res, 500, 'Failed to create restaurant commission');
+
+    return errorResponse(res, 500, "Failed to create restaurant commission");
   }
 });
 
@@ -355,70 +433,95 @@ export const createRestaurantCommission = asyncHandler(async (req, res) => {
 export const updateRestaurantCommission = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      commissionRules,
-      defaultCommission,
-      status,
-      notes
-    } = req.body;
+    const { commissionRules, defaultCommission, status, notes } = req.body;
 
     const adminId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return errorResponse(res, 400, 'Invalid commission ID');
+      return errorResponse(res, 400, "Invalid commission ID");
     }
 
     const commission = await RestaurantCommission.findById(id);
     if (!commission) {
-      return errorResponse(res, 404, 'Restaurant commission not found');
+      return errorResponse(res, 404, "Restaurant commission not found");
     }
 
     // Validate default commission if provided
     if (defaultCommission) {
       if (!defaultCommission.type || defaultCommission.value === undefined) {
-        return errorResponse(res, 400, 'Default commission must have type and value');
+        return errorResponse(
+          res,
+          400,
+          "Default commission must have type and value",
+        );
       }
 
-      if (defaultCommission.type === 'percentage' && (defaultCommission.value < 0 || defaultCommission.value > 100)) {
-        return errorResponse(res, 400, 'Percentage must be between 0-100');
+      if (
+        defaultCommission.type === "percentage" &&
+        (defaultCommission.value < 0 || defaultCommission.value > 100)
+      ) {
+        return errorResponse(res, 400, "Percentage must be between 0-100");
       }
 
-      if (defaultCommission.type === 'amount' && defaultCommission.value < 0) {
-        return errorResponse(res, 400, 'Amount must be >= 0');
+      if (defaultCommission.type === "amount" && defaultCommission.value < 0) {
+        return errorResponse(res, 400, "Amount must be >= 0");
       }
 
       commission.defaultCommission = {
         type: defaultCommission.type,
-        value: defaultCommission.value
+        value: defaultCommission.value,
       };
     }
 
     // Validate and update commission rules if provided
     if (commissionRules !== undefined) {
       if (!Array.isArray(commissionRules)) {
-        return errorResponse(res, 400, 'Commission rules must be an array');
+        return errorResponse(res, 400, "Commission rules must be an array");
       }
 
       for (const rule of commissionRules) {
         if (!rule.type || rule.value === undefined) {
-          return errorResponse(res, 400, 'Each commission rule must have type and value');
+          return errorResponse(
+            res,
+            400,
+            "Each commission rule must have type and value",
+          );
         }
 
-        if (rule.type === 'percentage' && (rule.value < 0 || rule.value > 100)) {
-          return errorResponse(res, 400, 'Percentage in commission rules must be between 0-100');
+        if (
+          rule.type === "percentage" &&
+          (rule.value < 0 || rule.value > 100)
+        ) {
+          return errorResponse(
+            res,
+            400,
+            "Percentage in commission rules must be between 0-100",
+          );
         }
 
-        if (rule.type === 'amount' && rule.value < 0) {
-          return errorResponse(res, 400, 'Amount in commission rules must be >= 0');
+        if (rule.type === "amount" && rule.value < 0) {
+          return errorResponse(
+            res,
+            400,
+            "Amount in commission rules must be >= 0",
+          );
         }
 
         if (rule.minOrderAmount === undefined || rule.minOrderAmount < 0) {
-          return errorResponse(res, 400, 'minOrderAmount is required and must be >= 0');
+          return errorResponse(
+            res,
+            400,
+            "minOrderAmount is required and must be >= 0",
+          );
         }
 
         if (rule.maxOrderAmount !== null && rule.maxOrderAmount !== undefined) {
           if (rule.maxOrderAmount <= rule.minOrderAmount) {
-            return errorResponse(res, 400, 'maxOrderAmount must be greater than minOrderAmount');
+            return errorResponse(
+              res,
+              400,
+              "maxOrderAmount must be greater than minOrderAmount",
+            );
           }
         }
       }
@@ -438,7 +541,7 @@ export const updateRestaurantCommission = asyncHandler(async (req, res) => {
     // Store old values for audit log
     const oldDefaultCommission = {
       type: commission.defaultCommission.type,
-      value: commission.defaultCommission.value
+      value: commission.defaultCommission.value,
     };
 
     commission.updatedBy = adminId;
@@ -446,24 +549,25 @@ export const updateRestaurantCommission = asyncHandler(async (req, res) => {
     await commission.save();
 
     // Create audit log for commission change
-    if (defaultCommission && (
-      oldDefaultCommission.value !== defaultCommission.value ||
-      oldDefaultCommission.type !== defaultCommission.type
-    )) {
+    if (
+      defaultCommission &&
+      (oldDefaultCommission.value !== defaultCommission.value ||
+        oldDefaultCommission.type !== defaultCommission.type)
+    ) {
       try {
         await AuditLog.createLog({
-          entityType: 'commission',
+          entityType: "commission",
           entityId: commission._id,
-          action: 'update_restaurant_commission',
-          actionType: 'commission_change',
+          action: "update_restaurant_commission",
+          actionType: "commission_change",
           performedBy: {
-            type: 'admin',
+            type: "admin",
             userId: adminId,
-            name: req.user?.name || 'Admin'
+            name: req.user?.name || "Admin",
           },
           changes: {
             before: oldDefaultCommission,
-            after: defaultCommission
+            after: defaultCommission,
           },
           commissionChange: {
             restaurantId: commission.restaurant,
@@ -471,29 +575,36 @@ export const updateRestaurantCommission = asyncHandler(async (req, res) => {
             newValue: defaultCommission.value,
             oldType: oldDefaultCommission.type,
             newType: defaultCommission.type,
-            reason: notes || 'Commission updated'
+            reason: notes || "Commission updated",
           },
-          description: `Restaurant commission updated for ${commission.restaurantName}`
+          description: `Restaurant commission updated for ${commission.restaurantName}`,
         });
       } catch (auditError) {
-        console.error('Error creating audit log:', auditError);
+        console.error("Error creating audit log:", auditError);
         // Don't fail commission update if audit log fails
       }
     }
 
     // Populate and return
-    const populatedCommission = await RestaurantCommission.findById(commission._id)
-      .populate('restaurant', 'name restaurantId isActive email phone')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
+    const populatedCommission = await RestaurantCommission.findById(
+      commission._id,
+    )
+      .populate("restaurant", "name restaurantId isActive email phone")
+      .populate("createdBy", "name email")
+      .populate("updatedBy", "name email")
       .lean();
 
-    return successResponse(res, 200, 'Restaurant commission updated successfully', {
-      commission: populatedCommission
-    });
+    return successResponse(
+      res,
+      200,
+      "Restaurant commission updated successfully",
+      {
+        commission: populatedCommission,
+      },
+    );
   } catch (error) {
-    console.error('Error updating restaurant commission:', error);
-    return errorResponse(res, 500, 'Failed to update restaurant commission');
+    console.error("Error updating restaurant commission:", error);
+    return errorResponse(res, 500, "Failed to update restaurant commission");
   }
 });
 
@@ -506,20 +617,24 @@ export const deleteRestaurantCommission = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return errorResponse(res, 400, 'Invalid commission ID');
+      return errorResponse(res, 400, "Invalid commission ID");
     }
 
     const commission = await RestaurantCommission.findById(id);
     if (!commission) {
-      return errorResponse(res, 404, 'Restaurant commission not found');
+      return errorResponse(res, 404, "Restaurant commission not found");
     }
 
     await RestaurantCommission.findByIdAndDelete(id);
 
-    return successResponse(res, 200, 'Restaurant commission deleted successfully');
+    return successResponse(
+      res,
+      200,
+      "Restaurant commission deleted successfully",
+    );
   } catch (error) {
-    console.error('Error deleting restaurant commission:', error);
-    return errorResponse(res, 500, 'Failed to delete restaurant commission');
+    console.error("Error deleting restaurant commission:", error);
+    return errorResponse(res, 500, "Failed to delete restaurant commission");
   }
 });
 
@@ -527,36 +642,43 @@ export const deleteRestaurantCommission = asyncHandler(async (req, res) => {
  * Toggle commission status
  * PATCH /api/admin/restaurant-commission/:id/status
  */
-export const toggleRestaurantCommissionStatus = asyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    const adminId = req.user._id;
+export const toggleRestaurantCommissionStatus = asyncHandler(
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const adminId = req.user._id;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return errorResponse(res, 400, 'Invalid commission ID');
-    }
-
-    const commission = await RestaurantCommission.findById(id);
-    if (!commission) {
-      return errorResponse(res, 404, 'Restaurant commission not found');
-    }
-
-    commission.status = !commission.status;
-    commission.updatedBy = adminId;
-
-    await commission.save();
-
-    return successResponse(res, 200, `Commission ${commission.status ? 'enabled' : 'disabled'} successfully`, {
-      commission: {
-        _id: commission._id,
-        status: commission.status
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return errorResponse(res, 400, "Invalid commission ID");
       }
-    });
-  } catch (error) {
-    console.error('Error toggling commission status:', error);
-    return errorResponse(res, 500, 'Failed to toggle commission status');
-  }
-});
+
+      const commission = await RestaurantCommission.findById(id);
+      if (!commission) {
+        return errorResponse(res, 404, "Restaurant commission not found");
+      }
+
+      commission.status = !commission.status;
+      commission.updatedBy = adminId;
+
+      await commission.save();
+
+      return successResponse(
+        res,
+        200,
+        `Commission ${commission.status ? "enabled" : "disabled"} successfully`,
+        {
+          commission: {
+            _id: commission._id,
+            status: commission.status,
+          },
+        },
+      );
+    } catch (error) {
+      console.error("Error toggling commission status:", error);
+      return errorResponse(res, 500, "Failed to toggle commission status");
+    }
+  },
+);
 
 /**
  * Calculate commission for an order
@@ -567,26 +689,75 @@ export const calculateCommission = asyncHandler(async (req, res) => {
     const { restaurantId, orderAmount } = req.body;
 
     if (!restaurantId || !orderAmount) {
-      return errorResponse(res, 400, 'Restaurant ID and order amount are required');
+      return errorResponse(
+        res,
+        400,
+        "Restaurant ID and order amount are required",
+      );
     }
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return errorResponse(res, 400, 'Invalid restaurant ID');
+      return errorResponse(res, 400, "Invalid restaurant ID");
     }
 
     const orderAmountNum = parseFloat(orderAmount);
     if (isNaN(orderAmountNum) || orderAmountNum < 0) {
-      return errorResponse(res, 400, 'Order amount must be a valid positive number');
+      return errorResponse(
+        res,
+        400,
+        "Order amount must be a valid positive number",
+      );
     }
 
-    const result = await RestaurantCommission.calculateCommissionForOrder(restaurantId, orderAmountNum);
+    const result = await RestaurantCommission.calculateCommissionForOrder(
+      restaurantId,
+      orderAmountNum,
+    );
 
-    return successResponse(res, 200, 'Commission calculated successfully', {
-      calculation: result
+    return successResponse(res, 200, "Commission calculated successfully", {
+      calculation: result,
     });
   } catch (error) {
-    console.error('Error calculating commission:', error);
-    return errorResponse(res, 500, 'Failed to calculate commission');
+    console.error("Error calculating commission:", error);
+    return errorResponse(res, 500, "Failed to calculate commission");
   }
 });
 
+/**
+ * Get accumulated commission stats
+ * GET /api/admin/restaurant-commission/stats
+ */
+export const getCommissionStats = asyncHandler(async (req, res) => {
+  try {
+    const OrderSettlement = (
+      await import("../../order/models/OrderSettlement.js")
+    ).default;
+
+    // Aggregate total commission from settlements
+    const stats = await OrderSettlement.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalCommission: { $sum: "$adminEarning.commission" },
+          totalEarnings: { $sum: "$adminEarning.totalEarning" },
+        },
+      },
+    ]);
+
+    const totalCommission = stats.length > 0 ? stats[0].totalCommission : 0;
+    const totalEarnings = stats.length > 0 ? stats[0].totalEarnings : 0;
+
+    return successResponse(
+      res,
+      200,
+      "Commission stats retrieved successfully",
+      {
+        totalCommission: Math.round(totalCommission * 100) / 100,
+        totalEarnings: Math.round(totalEarnings * 100) / 100,
+      },
+    );
+  } catch (error) {
+    console.error("Error fetching commission stats:", error);
+    return errorResponse(res, 500, "Failed to fetch commission stats");
+  }
+});

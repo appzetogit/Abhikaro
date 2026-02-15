@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react"
-import { 
-  Search, Plus, Edit, Trash2, ArrowUpDown, 
+import {
+  Search, Plus, Edit, Trash2, ArrowUpDown,
   DollarSign, Percent, Loader2, X, Building2, IndianRupee
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -13,6 +13,7 @@ export default function RestaurantCommission() {
   const [searchQuery, setSearchQuery] = useState("")
   const [commissions, setCommissions] = useState([])
   const [approvedRestaurants, setApprovedRestaurants] = useState([])
+  const [stats, setStats] = useState({ totalCommission: 0, totalEarnings: 0 })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -43,7 +44,7 @@ export default function RestaurantCommission() {
     if (!searchQuery.trim()) {
       return commissions
     }
-    
+
     const query = searchQuery.toLowerCase().trim()
     return commissions.filter(commission =>
       commission.restaurantName?.toLowerCase().includes(query) ||
@@ -56,7 +57,7 @@ export default function RestaurantCommission() {
     if (!searchQuery.trim()) {
       return approvedRestaurants
     }
-    
+
     const query = searchQuery.toLowerCase().trim()
     return approvedRestaurants.filter(restaurant =>
       restaurant.name?.toLowerCase().includes(query) ||
@@ -69,13 +70,25 @@ export default function RestaurantCommission() {
   useEffect(() => {
     fetchCommissions()
     fetchApprovedRestaurants()
+    fetchStats()
   }, [])
+
+  const fetchStats = async () => {
+    try {
+      const response = await adminAPI.getCommissionStats()
+      if (response?.data?.success) {
+        setStats(response.data.data)
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error)
+    }
+  }
 
   const fetchCommissions = async () => {
     try {
       setLoading(true)
       const response = await adminAPI.getRestaurantCommissions({})
-      
+
       let commissionsData = null
       if (response?.data?.success && response?.data?.data?.commissions) {
         commissionsData = response.data.data.commissions
@@ -84,7 +97,7 @@ export default function RestaurantCommission() {
       } else if (response?.data?.commissions) {
         commissionsData = response.data.commissions
       }
-      
+
       if (commissionsData && Array.isArray(commissionsData)) {
         setCommissions(commissionsData)
       } else {
@@ -92,7 +105,7 @@ export default function RestaurantCommission() {
       }
     } catch (error) {
       console.error('Error fetching commissions:', error)
-      
+
       // Handle network errors
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         toast.error(`Cannot connect to backend server. Please ensure the backend is running on ${API_BASE_URL.replace('/api', '')}`)
@@ -112,7 +125,7 @@ export default function RestaurantCommission() {
   const fetchApprovedRestaurants = async () => {
     try {
       const response = await adminAPI.getApprovedRestaurants({ limit: 1000 })
-      
+
       let restaurantsData = null
       if (response?.data?.success && response?.data?.data?.restaurants) {
         restaurantsData = response.data.data.restaurants
@@ -121,7 +134,7 @@ export default function RestaurantCommission() {
       } else if (response?.data?.restaurants) {
         restaurantsData = response.data.restaurants
       }
-      
+
       if (restaurantsData && Array.isArray(restaurantsData)) {
         setApprovedRestaurants(restaurantsData)
       } else {
@@ -129,7 +142,7 @@ export default function RestaurantCommission() {
       }
     } catch (error) {
       console.error('Error fetching approved restaurants:', error)
-      
+
       // Handle network errors silently (already handled in fetchCommissions)
       if (error.code !== 'ERR_NETWORK' && error.message !== 'Network Error') {
         toast.error(error.response?.data?.message || 'Failed to fetch approved restaurants')
@@ -177,7 +190,7 @@ export default function RestaurantCommission() {
     try {
       setLoading(true)
       const response = await adminAPI.getRestaurantCommissionById(commission._id)
-      
+
       let commissionData = null
       if (response?.data?.success && response?.data?.data?.commission) {
         commissionData = response.data.data.commission
@@ -190,7 +203,7 @@ export default function RestaurantCommission() {
       if (commissionData) {
         setSelectedCommission(commissionData)
         setSelectedRestaurant(commissionData.restaurant)
-        
+
         // Handle restaurant ID - it can be an object with _id or just an ID string
         let restaurantId = ""
         if (commissionData.restaurant) {
@@ -205,7 +218,7 @@ export default function RestaurantCommission() {
           // Fallback to restaurantId field if restaurant object is not populated
           restaurantId = commissionData.restaurantId || commissionData.restaurant || ""
         }
-        
+
         setFormData({
           restaurantId: restaurantId,
           defaultCommission: {
@@ -250,7 +263,7 @@ export default function RestaurantCommission() {
 
   const validateForm = () => {
     const errors = {}
-    
+
     if (!formData.restaurantId) {
       errors.restaurantId = "Restaurant is required"
     }
@@ -259,8 +272,8 @@ export default function RestaurantCommission() {
       errors.defaultCommission = "Default commission value is required"
     }
 
-    if (formData.defaultCommission.type === "percentage" && 
-        (parseFloat(formData.defaultCommission.value) < 0 || parseFloat(formData.defaultCommission.value) > 100)) {
+    if (formData.defaultCommission.type === "percentage" &&
+      (parseFloat(formData.defaultCommission.value) < 0 || parseFloat(formData.defaultCommission.value) > 100)) {
       errors.defaultCommission = "Percentage must be between 0-100"
     }
 
@@ -276,7 +289,7 @@ export default function RestaurantCommission() {
 
     try {
       setSaving(true)
-      
+
       const payload = {
         restaurantId: formData.restaurantId,
         defaultCommission: {
@@ -328,13 +341,29 @@ export default function RestaurantCommission() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button 
+              <button
                 onClick={handleAdd}
                 className="px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2 transition-all shadow-md"
               >
                 <Plus className="w-4 h-4" />
                 Add Commission
               </button>
+            </div>
+          </div>
+
+
+          {/* Stats Card */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex items-center gap-4">
+              <div className="p-3 bg-blue-100 rounded-full text-blue-600">
+                <IndianRupee className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-500 font-medium">Total Commission Earned</p>
+                <h3 className="text-2xl font-bold text-slate-800">
+                  ₹{stats.totalCommission?.toLocaleString('en-IN') || '0'}
+                </h3>
+              </div>
             </div>
           </div>
 
@@ -435,14 +464,12 @@ export default function RestaurantCommission() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button
                               onClick={() => handleToggleStatus(commission)}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                                commission.status ? "bg-blue-600" : "bg-slate-300"
-                              }`}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${commission.status ? "bg-blue-600" : "bg-slate-300"
+                                }`}
                             >
                               <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                  commission.status ? "translate-x-6" : "translate-x-1"
-                                }`}
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${commission.status ? "translate-x-6" : "translate-x-1"
+                                  }`}
                               />
                             </button>
                           </td>
@@ -565,9 +592,8 @@ export default function RestaurantCommission() {
                       ...prev,
                       defaultCommission: { ...prev.defaultCommission, value: e.target.value }
                     }))}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      formErrors.defaultCommission ? "border-red-500" : "border-slate-300"
-                    }`}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${formErrors.defaultCommission ? "border-red-500" : "border-slate-300"
+                      }`}
                     placeholder={formData.defaultCommission.type === "percentage" ? "e.g., 10" : "e.g., 5.00"}
                   />
                   {formErrors.defaultCommission && (
@@ -640,7 +666,7 @@ export default function RestaurantCommission() {
         </DialogContent>
       </Dialog>
 
-    </div>
+    </div >
   )
 }
 

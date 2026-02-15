@@ -25,17 +25,17 @@ export function useZone(location) {
     try {
       setLoading(true)
       setError(null)
-      
+
       const response = await zoneAPI.detectZone(lat, lng)
-      
+
       if (response.data?.success) {
         const data = response.data.data
-        
+
         if (data.status === 'IN_SERVICE' && data.zoneId) {
           setZoneId(data.zoneId)
           setZone(data.zone)
           setZoneStatus('IN_SERVICE')
-          
+
           // Store in localStorage for persistence
           localStorage.setItem('userZoneId', data.zoneId)
           localStorage.setItem('userZone', JSON.stringify(data.zone))
@@ -56,7 +56,7 @@ export function useZone(location) {
       setZoneStatus('OUT_OF_SERVICE')
       setZoneId(null)
       setZone(null)
-      
+
       // Try to use cached zone if available
       const cachedZoneId = localStorage.getItem('userZoneId')
       if (cachedZoneId) {
@@ -77,7 +77,7 @@ export function useZone(location) {
 
     // Check if coordinates have changed significantly (threshold: ~10 meters)
     const coordThreshold = 0.0001 // approximately 10 meters
-    const coordsChanged = 
+    const coordsChanged =
       !prevCoordsRef.current.latitude ||
       !prevCoordsRef.current.longitude ||
       Math.abs(prevCoordsRef.current.latitude - (lat || 0)) > coordThreshold ||
@@ -120,8 +120,8 @@ export function useZone(location) {
     zoneStatus,
     loading,
     error,
-    isInService: zoneStatus === 'IN_SERVICE',
-    isOutOfService: zoneStatus === 'OUT_OF_SERVICE',
+    isInService: true, // zoneStatus === 'IN_SERVICE', // FORCED FOR TESTING
+    isOutOfService: false, // zoneStatus === 'OUT_OF_SERVICE', // FORCED FOR TESTING
     refreshZone
   }
 }

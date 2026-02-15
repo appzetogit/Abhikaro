@@ -130,6 +130,9 @@ export default function UserLayout() {
     location.pathname === "/user/profile" ||
     location.pathname.startsWith("/user/profile")
 
+  // Hide navigation components for hotel orders (QR redirect flow)
+  const isHotelOrder = sessionStorage.getItem('isHotelOrder') === 'true'
+
   return (
     <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] transition-colors duration-200">
       <CartProvider>
@@ -138,12 +141,12 @@ export default function UserLayout() {
             <SearchOverlayProvider>
               <LocationSelectorProvider>
                 {/* <Navbar /> */}
-                {showBottomNav && <DesktopNavbar />}
+                {!isHotelOrder && showBottomNav && <DesktopNavbar />}
                 <LocationPrompt />
                 <main>
                   <Outlet />
                 </main>
-                {showBottomNav && <BottomNavigation />}
+                {!isHotelOrder && showBottomNav && <BottomNavigation />}
               </LocationSelectorProvider>
             </SearchOverlayProvider>
           </OrdersProvider>
