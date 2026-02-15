@@ -14,14 +14,22 @@ import emailService from "../../auth/services/emailService.js";
 export const getRestaurants = async (req, res) => {
   try {
     const { city } = req.query;
-    let query = {};
+    let query = {
+      isActive: true,
+      'diningSettings.isEnabled': true // Only restaurants with dining enabled
+    };
 
     // Simple filter support
     if (city) {
-      query.location = { $regex: city, $options: "i" };
+      query['location.addressLine1'] = { $regex: city, $options: "i" };
     }
 
-    const restaurants = await DiningRestaurant.find(query);
+    // Use main Restaurant model instead of DiningRestaurant
+    // This ensures we get restaurants that have diningSettings.isEnabled === true
+    const restaurants = await Restaurant.find(query)
+      .select('-password -refreshToken -email -phone') // Exclude sensitive data
+      .lean();
+
     res.status(200).json({
       success: true,
       count: restaurants.length,

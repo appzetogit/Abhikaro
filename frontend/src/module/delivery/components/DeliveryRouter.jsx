@@ -43,6 +43,7 @@ const TimeOnOrders = lazy(() => import("../pages/TimeOnOrders"))
 const PocketBalancePage = lazy(() => import("../pages/PocketBalance"))
 const CustomerTipsBalancePage = lazy(() => import("../pages/CustomerTips"))
 const PocketDetails = lazy(() => import("../pages/PocketDetails"))
+const OrderChat = lazy(() => import("../pages/OrderChat"))
 
 export default function DeliveryRouter() {
   return (
@@ -426,6 +427,16 @@ export default function DeliveryRouter() {
             </ProtectedRoute>
           }
           path="/help/language"
+        />
+        <Route
+          element={
+            <ProtectedRoute>
+              <DeliveryLayout>
+                <OrderChat />
+              </DeliveryLayout>
+            </ProtectedRoute>
+          }
+          path="/chat/:orderId"
         />
       </Routes>
     </Suspense>

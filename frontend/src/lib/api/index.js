@@ -2120,3 +2120,21 @@ export const heroBannerAPI = {
     return apiClient.get(API_ENDPOINTS.HERO_BANNER.GOURMET_PUBLIC);
   },
 };
+
+// Export chat API helper functions
+export const chatAPI = {
+  // Get chat messages for an order
+  getMessages: (orderId) => {
+    return apiClient.get(`/chat/order/${orderId}`);
+  },
+
+  // Send a message
+  sendMessage: (orderId, message) => {
+    return apiClient.post("/chat/send", { orderId, message });
+  },
+
+  // Mark messages as read
+  markAsRead: (orderId) => {
+    return apiClient.put(`/chat/order/${orderId}/read`);
+  },
+};

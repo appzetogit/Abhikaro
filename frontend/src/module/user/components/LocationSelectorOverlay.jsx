@@ -1499,7 +1499,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       clearTimeout(reverseGeocodeTimeoutRef.current)
     }
 
-    // Debounce: Wait 300ms before making the API call
+    // Debounce: Wait 500ms before making the API call (increased to reduce API calls)
     reverseGeocodeTimeoutRef.current = setTimeout(async () => {
       // Update last coordinates
       lastReverseGeocodeCoordsRef.current = { lat: roundedLat, lng: roundedLng }
@@ -1525,12 +1525,51 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
 
         if (GOOGLE_MAPS_API_KEY) {
           try {
+            // Check cache first before making API calls
+            let cacheModule = null;
+            try {
+              cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
+            } catch (err) {
+              console.warn('Cache utility not available:', err);
+            }
+
             // Step 1: Use Google Geocoding API for address components
             // Get API key dynamically from backend
             const { getGoogleMapsApiKey } = await import('@/lib/utils/googleMapsApiKey.js');
             const apiKey = await getGoogleMapsApiKey() || GOOGLE_MAPS_API_KEY;
-            const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${roundedLat},${roundedLng}&key=${apiKey}&language=en&region=in&result_type=street_address|premise|point_of_interest|establishment`
-            const geocodeResponse = await fetch(geocodeUrl).then(res => res.json())
+            
+            // Check cache for geocoding result
+            let geocodeResponse = null;
+            if (cacheModule) {
+              const { getCached, setCached, shouldMakeApiCall } = cacheModule;
+              const cachedGeocode = getCached('geocoding', roundedLat, roundedLng);
+              if (cachedGeocode) {
+                console.log('✅ Using cached geocoding result');
+                geocodeResponse = cachedGeocode;
+              } else if (!shouldMakeApiCall('geocoding')) {
+                console.warn('⚠️ Geocoding API rate limit reached, using fallback');
+                // Use fallback - create basic address from coordinates
+                geocodeResponse = {
+                  status: "OK",
+                  results: [{
+                    formatted_address: `${roundedLat.toFixed(6)}, ${roundedLng.toFixed(6)}`,
+                    address_components: []
+                  }]
+                };
+              }
+            }
+            
+            // Make API call only if not cached and rate limit allows
+            if (!geocodeResponse) {
+              const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${roundedLat},${roundedLng}&key=${apiKey}&language=en&region=in&result_type=street_address|premise|point_of_interest|establishment`
+              geocodeResponse = await fetch(geocodeUrl).then(res => res.json())
+              
+              // Cache the result
+              if (cacheModule && geocodeResponse.status === "OK") {
+                const { setCached } = cacheModule;
+                setCached('geocoding', geocodeResponse, roundedLat, roundedLng);
+              }
+            }
 
             if (geocodeResponse.status === "OK" && geocodeResponse.results && geocodeResponse.results.length > 0) {
               // Find result with POI/premise for most accurate address
@@ -1576,12 +1615,37 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                 }
               }
 
-              // Step 2: Use Places API for even more detailed information
+              // Step 2: Use Places API for even more detailed information (only if needed)
               try {
-                const nearbyUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${roundedLat},${roundedLng}&radius=50&key=${apiKey}&language=en`
-                const nearbyResponse = await fetch(nearbyUrl).then(res => res.json())
+                // Check cache for Places API
+                let nearbyResponse = null;
+                if (cacheModule) {
+                  const { getCached, setCached, shouldMakeApiCall } = cacheModule;
+                  const cachedPlaces = getCached('places', roundedLat, roundedLng, 50);
+                  if (cachedPlaces) {
+                    console.log('✅ Using cached Places API result');
+                    nearbyResponse = cachedPlaces;
+                  } else if (!shouldMakeApiCall('places')) {
+                    console.warn('⚠️ Places API rate limit reached, skipping Places API');
+                    nearbyResponse = { status: "RATE_LIMIT", results: [] };
+                    // Continue with geocoding result only - still usable, just less detailed
+                  }
+                }
+                
+                // Make API call only if not cached
+                if (!nearbyResponse) {
+                  const nearbyUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${roundedLat},${roundedLng}&radius=50&key=${apiKey}&language=en`
+                  nearbyResponse = await fetch(nearbyUrl).then(res => res.json())
+                  
+                  // Cache the result
+                  if (cacheModule && nearbyResponse.status === "OK") {
+                    const { setCached } = cacheModule;
+                    setCached('places', nearbyResponse, roundedLat, roundedLng, 50);
+                  }
+                }
 
-                if (nearbyResponse.status === "OK" && nearbyResponse.results && nearbyResponse.results.length > 0) {
+                // Only process Places API results if we got valid response (not rate limited)
+                if (nearbyResponse && nearbyResponse.status === "OK" && nearbyResponse.results && nearbyResponse.results.length > 0) {
                   const placeId = nearbyResponse.results[0].place_id
                   const placeName = nearbyResponse.results[0].name
 
@@ -1590,22 +1654,34 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                     pointOfInterest = placeName
                   }
 
-                  // Get place details for complete address
-                  if (placeId) {
-                    const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_address,address_components&key=${apiKey}&language=en`
-                    const detailsResponse = await fetch(detailsUrl).then(res => res.json())
+                  // Get place details for complete address (only if really needed)
+                  // OPTIMIZATION: Skip place details API call if we already have good address from geocoding
+                  // This saves one API call per location
+                  if (placeId && (!formattedAddress || formattedAddress.split(',').length < 3)) {
+                    // Only call if address is incomplete
+                    try {
+                      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_address,address_components&key=${apiKey}&language=en`
+                      const detailsResponse = await fetch(detailsUrl).then(res => res.json())
 
-                    if (detailsResponse.status === "OK" && detailsResponse.result) {
-                      // Use Places API formatted address if it's more complete
-                      const placesAddress = detailsResponse.result.formatted_address || ""
-                      if (placesAddress && placesAddress.split(',').length > formattedAddress.split(',').length) {
-                        formattedAddress = placesAddress
+                      if (detailsResponse.status === "OK" && detailsResponse.result) {
+                        // Use Places API formatted address if it's more complete
+                        const placesAddress = detailsResponse.result.formatted_address || ""
+                        if (placesAddress && placesAddress.split(',').length > formattedAddress.split(',').length) {
+                          formattedAddress = placesAddress
+                        }
                       }
+                    } catch (detailsError) {
+                      // If place details fails, continue with geocoding address (still usable)
+                      console.warn('⚠️ Place details API failed, using geocoding address:', detailsError);
                     }
                   }
+                } else if (nearbyResponse && nearbyResponse.status === "RATE_LIMIT") {
+                  // Rate limit hit - continue with geocoding result only (still usable)
+                  console.log('ℹ️ Using geocoding result only (Places API rate limited)');
                 }
               } catch (placesError) {
                 console.warn("⚠️ Places API error (non-critical):", placesError.message)
+                // Continue with geocoding result - app still works
               }
 
               console.log("✅✅✅ Google Maps - Complete Address Details:", {

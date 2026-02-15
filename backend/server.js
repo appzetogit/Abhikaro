@@ -53,6 +53,7 @@ import locationRoutes from './modules/location/index.js';
 import heroBannerRoutes from './modules/heroBanner/index.js';
 import diningRoutes from './modules/dining/index.js';
 import diningAdminRoutes from './modules/dining/routes/diningAdminRoutes.js';
+import chatRoutes from './modules/chat/routes/chatRoutes.js';
 
 
 // Validate required environment variables
@@ -402,6 +403,7 @@ app.use('/api', safetyEmergencyPublicRoutes);
 app.use('/api', zonePublicRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api', uploadModuleRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api', heroBannerRoutes);
 app.use('/api/dining', diningRoutes);
@@ -566,6 +568,31 @@ io.on('connection', (socket) => {
     if (deliveryId) {
       socket.join(`delivery:${deliveryId}`);
       console.log(`Delivery boy joined: ${deliveryId}`);
+    }
+  });
+
+  // Chat functionality
+  // Join chat room for an order
+  socket.on('join-chat', (orderId) => {
+    if (orderId) {
+      // Join with string orderId (could be MongoDB _id or custom orderId string)
+      socket.join(`order:${orderId}`);
+      console.log(`✅ User/Delivery joined chat room: order:${orderId}`);
+      
+      // Also try to join with ObjectId format if it's a valid ObjectId
+      if (mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24) {
+        const objectIdStr = new mongoose.Types.ObjectId(orderId).toString();
+        socket.join(`order:${objectIdStr}`);
+        console.log(`✅ Also joined ObjectId room: order:${objectIdStr}`);
+      }
+    }
+  });
+
+  // User joins user room for notifications
+  socket.on('join-user', (userId) => {
+    if (userId) {
+      socket.join(`user:${userId}`);
+      console.log(`User joined user room: ${userId}`);
     }
   });
 

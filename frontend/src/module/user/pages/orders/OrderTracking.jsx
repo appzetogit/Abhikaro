@@ -1,4 +1,4 @@
-import { useParams, Link, useSearchParams } from "react-router-dom"
+import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom"
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
@@ -206,6 +206,7 @@ const SectionItem = ({ icon: Icon, title, subtitle, onClick, showArrow = true, r
 
 export default function OrderTracking() {
   const { orderId } = useParams()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const confirmed = searchParams.get("confirmed") === "true"
   const { getOrderById } = useOrders()
@@ -1014,6 +1015,21 @@ export default function OrderTracking() {
             title="Add delivery instructions"
             subtitle=""
           />
+          {order?.deliveryPartnerId && (
+            <SectionItem
+              icon={MessageSquare}
+              title="Chat with Delivery Partner"
+              subtitle="Send a message to your delivery partner"
+              onClick={() => {
+                const orderIdForChat = order?._id || orderId;
+                if (orderIdForChat) {
+                  navigate(`/user/orders/${orderIdForChat}/chat`);
+                } else {
+                  toast.error('Order ID not available');
+                }
+              }}
+            />
+          )}
         </motion.div>
 
         {/* Restaurant Section */}

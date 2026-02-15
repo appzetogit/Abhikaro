@@ -95,6 +95,61 @@ export const updateLocation = asyncHandler(async (req, res) => {
 
     const currentLocation = updatedDelivery.availability?.currentLocation;
 
+    // Broadcast location update to all active orders for this delivery partner via socket
+    if (typeof latitude === 'number' && typeof longitude === 'number' && currentLocation) {
+      try {
+        const io = req.app.get('io');
+        if (io) {
+          // Find all active orders assigned to this delivery partner
+          const Order = (await import('../../order/models/Order.js')).default;
+          const activeOrders = await Order.find({
+            deliveryPartnerId: delivery._id,
+            status: { $nin: ['delivered', 'cancelled'] },
+            'deliveryState.currentPhase': { $ne: 'completed' }
+          })
+            .select('orderId _id')
+            .lean();
+
+          // Broadcast location to each order's tracking room
+          activeOrders.forEach(order => {
+            const orderId = order.orderId || order._id.toString();
+            const locationData = {
+              orderId: orderId,
+              lat: latitude,
+              lng: longitude,
+              heading: 0, // Can be enhanced later if heading is available
+              timestamp: Date.now()
+            };
+
+            // Send to order tracking room (customer tracking this order)
+            io.to(`order:${orderId}`).emit(`location-receive-${orderId}`, locationData);
+            
+            console.log(`📍 Location broadcasted to order room ${orderId} for delivery partner ${delivery._id}:`, {
+              lat: latitude,
+              lng: longitude
+            });
+          });
+
+          // Also emit via socket 'update-location' event for backward compatibility
+          if (activeOrders.length > 0) {
+            activeOrders.forEach(order => {
+              const orderId = order.orderId || order._id.toString();
+              io.to(`order:${orderId}`).emit('update-location', {
+                orderId: orderId,
+                lat: latitude,
+                lng: longitude,
+                heading: 0,
+                timestamp: Date.now()
+              });
+            });
+          }
+        }
+      } catch (socketError) {
+        // Log but don't fail the request if socket broadcast fails
+        logger.warn(`Failed to broadcast location via socket: ${socketError.message}`);
+      }
+    }
+
     return successResponse(res, 200, 'Status updated successfully', {
       location: currentLocation ? {
         latitude: currentLocation.coordinates[1],

@@ -43,7 +43,35 @@ function CompletedOrders({ onSelectOrder }) {
 
         if (response.data?.success && response.data.data?.orders) {
           const completedOrders = response.data.data.orders.filter(
-            order => order.status === 'delivered' || order.status === 'completed'
+            order => {
+              // Only show orders that are actually delivered/completed
+              // Main status must be 'delivered' (not 'completed', 'accepted', 'out_for_delivery', etc.)
+              const isDelivered = order.status === 'delivered'
+              
+              // Exclude orders that are not delivered
+              if (!isDelivered) {
+                return false
+              }
+              
+              // Also check deliveryState to ensure order is actually completed
+              // This prevents orders that are just accepted or out_for_delivery from showing
+              const deliveryStateStatus = order.deliveryState?.status
+              const deliveryPhase = order.deliveryState?.currentPhase
+              
+              // If deliveryState exists, it must indicate completion
+              if (order.deliveryState) {
+                const isDeliveryCompleted = deliveryStateStatus === 'delivered' || 
+                                           deliveryPhase === 'completed'
+                if (!isDeliveryCompleted) {
+                  // Order status is 'delivered' but deliveryState shows it's not completed yet
+                  // This means order was just accepted or is out_for_delivery
+                  return false
+                }
+              }
+              
+              // Order is delivered and (deliveryState indicates completion OR deliveryState doesn't exist)
+              return true
+            }
           )
 
           const transformedOrders = completedOrders.map(order => ({

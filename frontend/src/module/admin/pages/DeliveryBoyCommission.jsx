@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Search, Edit, Trash2, IndianRupee, Settings, Check, Columns, MapPin, Loader2 } from "lucide-react"
+import { Search, Edit, Trash2, IndianRupee, Settings, Check, Columns, MapPin, Loader2, Plus } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { adminAPI } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
@@ -253,13 +253,7 @@ export default function DeliveryBoyCommission() {
           toast.success('Commission rule updated successfully')
         }
       } else {
-        // Only allow one commission rule - check if one already exists
-        if (commissions.length > 0) {
-          toast.error('Only one commission rule is allowed. Please edit the existing rule instead.')
-          return
-        }
-        
-        // Create new commission (only if no existing rule)
+        // Create new commission rule
         const response = await adminAPI.createCommissionRule(commissionData)
         let commission = null
         if (response?.data?.success && response?.data?.data?.commission) {
@@ -271,11 +265,12 @@ export default function DeliveryBoyCommission() {
         }
         
         if (commission) {
+          // Add new commission to the list with proper serial number
           const newCommission = {
             ...commission,
-            sl: 1
+            sl: commissions.length + 1
           }
-          setCommissions([newCommission])
+          setCommissions([...commissions, newCommission])
           toast.success('Commission rule created successfully')
         }
       }
@@ -400,6 +395,13 @@ export default function DeliveryBoyCommission() {
             </div>
 
             <div className="flex items-center gap-2">
+              <button 
+                onClick={handleAdd}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-all shadow-md"
+              >
+                <Plus className="w-4 h-4" />
+                Add Commission Rule
+              </button>
               <button 
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-all"

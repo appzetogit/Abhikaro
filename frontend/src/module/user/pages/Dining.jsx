@@ -9,7 +9,7 @@ import AnimatedPage from "../components/AnimatedPage"
 import { useSearchOverlay, useLocationSelector } from "../components/UserLayout"
 import { useLocation as useLocationHook } from "../hooks/useLocation"
 import { useProfile } from "../context/ProfileContext"
-import { diningAPI } from "@/lib/api"
+import { diningAPI, restaurantAPI } from "@/lib/api"
 import api from "@/lib/api"
 import PageNavbar from "../components/PageNavbar"
 import OptimizedImage from "@/components/OptimizedImage"
@@ -98,11 +98,11 @@ export default function Dining() {
   useEffect(() => {
     const fetchDiningData = async () => {
       try {
-        const [cats, limes, tries, rests, offers] = await Promise.all([
+        const [cats, limes, tries, restsResponse, offers] = await Promise.all([
           diningAPI.getCategories(),
           diningAPI.getOfferBanners(),
           diningAPI.getStories(),
-          diningAPI.getRestaurants(location?.city ? { city: location.city } : {}),
+          restaurantAPI.getRestaurants(location?.city ? { city: location.city } : {}),
           diningAPI.getBankOffers()
         ])
 
@@ -111,7 +111,34 @@ export default function Dining() {
           setLimelightItems(limes.data.data)
         }
         if (tries.data.success && tries.data.data.length > 0) setMustTryItems(tries.data.data)
-        if (rests.data.success && rests.data.data.length > 0) setRestaurantList(rests.data.data)
+        
+        // Filter restaurants to show only those with dining enabled
+        if (restsResponse.data && restsResponse.data.success) {
+          const restaurantsData = restsResponse.data.data.restaurants || restsResponse.data.data || []
+          // Filter only restaurants with diningSettings.isEnabled === true
+          const diningEnabledRestaurants = restaurantsData.filter(r => r.diningSettings?.isEnabled === true)
+          
+          // Map to match the expected format
+          const mappedRestaurants = diningEnabledRestaurants.map(r => ({
+            id: r._id || r.id,
+            name: r.name,
+            rating: r.rating || r.avgRating || 0,
+            location: r.location?.addressLine1 || r.address || r.location || "Location not available",
+            distance: r.distance || "2.5 km", // Placeholder if not available
+            cuisine: Array.isArray(r.cuisines) ? r.cuisines[0] : (r.cuisine || "Multi-cuisine"),
+            price: r.costForTwo ? `₹${r.costForTwo} for two` : "Price not available",
+            image: r.coverImage || r.profileImage?.url || r.logo || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop",
+            offer: r.discount ? `Flat ${r.discount}% OFF` : "Great Offers",
+            deliveryTime: r.deliveryTime ? `${r.deliveryTime} mins` : "30-40 mins",
+            featuredDish: "Special",
+            featuredPrice: 250,
+            diningType: r.diningSettings?.diningType,
+            slug: r.slug || r.name.toLowerCase().replace(/\s+/g, "-")
+          }))
+          
+          if (mappedRestaurants.length > 0) setRestaurantList(mappedRestaurants)
+        }
+        
         if (offers.data.success && offers.data.data.length > 0) setBankOfferItems(offers.data.data)
       } catch (error) {
         console.error("Failed to fetch dining data", error)
@@ -135,7 +162,12 @@ export default function Dining() {
   }
 
   const filteredRestaurants = useMemo(() => {
-    let filtered = [...restaurantList]
+    // Filter only restaurants with dining enabled (already filtered in fetch, but double-check)
+    let filtered = restaurantList.filter(r => {
+      // If restaurant has diningSettings, check isEnabled
+      // Since we already filter in fetch, this is a safety check
+      return true // All restaurants in list should already be dining-enabled
+    })
 
     if (activeFilters.has('delivery-under-30')) {
       filtered = filtered.filter(r => {
@@ -184,7 +216,7 @@ export default function Dining() {
     }
 
     return filtered
-  }, [activeFilters, selectedCuisine, sortBy])
+  }, [restaurantList, activeFilters, selectedCuisine, sortBy])
 
 
   const handleSearchFocus = useCallback(() => {

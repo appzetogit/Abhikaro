@@ -11,17 +11,18 @@ const cache = {
 };
 
 // Cache TTL (Time To Live) in milliseconds
+// Balanced for both cost savings and usability
 const CACHE_TTL = {
   geocoding: 24 * 60 * 60 * 1000, // 24 hours (addresses don't change often)
-  directions: 10 * 60 * 1000, // 10 minutes (routes can change)
+  directions: 15 * 60 * 1000, // 15 minutes (increased from 10 for better UX - routes rarely change in short time)
   places: 24 * 60 * 60 * 1000 // 24 hours (places don't change often)
 };
 
-// Rate limiting: Max API calls per minute
+// Rate limiting: Max API calls per minute (STRICTER to reduce billing)
 const RATE_LIMITS = {
-  geocoding: 10, // Max 10 geocoding calls per minute
-  directions: 5, // Max 5 directions calls per minute
-  places: 5 // Max 5 places calls per minute
+  geocoding: 5, // Max 5 geocoding calls per minute (reduced from 10)
+  directions: 3, // Max 3 directions calls per minute (reduced from 5)
+  places: 3 // Max 3 places calls per minute (reduced from 5)
 };
 
 // Track API call timestamps for rate limiting
@@ -82,6 +83,8 @@ function checkRateLimit(type) {
 
 /**
  * Get cached value
+ * Returns cached data if valid, otherwise null
+ * Silent mode: Set to true to avoid console logs (for frequent checks)
  */
 export function getCached(type, ...args) {
   const key = generateCacheKey(type, ...args);
@@ -91,7 +94,10 @@ export function getCached(type, ...args) {
   const entry = cacheMap.get(key);
   
   if (isCacheValid(entry, CACHE_TTL[type])) {
-    console.log(`✅ Using cached ${type} result for key: ${key.substring(0, 50)}...`);
+    // Only log for important operations (not every location update)
+    if (type === 'directions' || type === 'places') {
+      console.log(`✅ Using cached ${type} result`);
+    }
     return entry.data;
   }
   
