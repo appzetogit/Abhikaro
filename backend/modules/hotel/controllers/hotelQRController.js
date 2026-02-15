@@ -21,7 +21,8 @@ export const generateHotelQR = async (req, res) => {
 
     // Generate QR code URL with hotel reference
     // This URL will be scanned by customers
-    const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const baseUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 
+      (process.env.NODE_ENV === 'production' ? 'https://foods.abhikaro.in' : 'http://localhost:5173');
     const qrUrl = `${baseUrl}/hotel-menu?ref=${hotelId}`;
 
     // Generate QR code as data URL
@@ -126,7 +127,8 @@ export const getHotelQR = async (req, res) => {
 
     // If QR code doesn't exist, generate it
     if (!hotel.qrCode) {
-      const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const baseUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 
+        (process.env.NODE_ENV === 'production' ? 'https://foods.abhikaro.in' : 'http://localhost:5173');
       const qrUrl = `${baseUrl}/hotel-menu?ref=${hotelId}`;
 
       const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, {

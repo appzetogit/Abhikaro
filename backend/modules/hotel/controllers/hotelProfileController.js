@@ -74,7 +74,8 @@ export const getHotelQRCode = asyncHandler(async (req, res) => {
       const parsed = JSON.parse(hotel.qrCode);
       // If it's JSON format (old), convert to URL
       if (parsed.type === "hotel" && parsed.hotelId) {
-        const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || "http://localhost:5173";
+        const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 
+          (process.env.NODE_ENV === 'production' ? 'https://foods.abhikaro.in' : 'http://localhost:5173');
         qrData = `${frontendUrl}/hotel/view/${parsed.hotelId}?hotelRef=${parsed.hotelId}`;
         // Update in database
         hotel.qrCode = qrData;
@@ -93,8 +94,9 @@ export const getHotelQRCode = asyncHandler(async (req, res) => {
   }
 
   // Generate QR code URL that links to this hotel with reference parameter
-  // Get frontend URL from environment or use default
-  const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || "http://localhost:5173";
+  // Get frontend URL from environment or use default based on NODE_ENV
+  const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 
+    (process.env.NODE_ENV === 'production' ? 'https://foods.abhikaro.in' : 'http://localhost:5173');
   const hotelId = hotel.hotelId || hotel._id.toString();
   
   // Create URL that will open hotel details page with hotel reference for order tracking
