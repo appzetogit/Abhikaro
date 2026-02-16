@@ -1,5 +1,5 @@
 import admin from 'firebase-admin';
-import FcmToken from '../models/FcmToken.js';
+import User from '../../auth/models/User.js';
 import mongoose from 'mongoose';
 
 let fcmInitialized = false;
@@ -42,83 +42,98 @@ export function initializeFcm() {
 
 /**
  * Save or update FCM token for a user
- * Overwrites old token for same device; allows multiple tokens for multiple devices
+ * Saves token to User model based on platform (web -> fcmtokenWeb, mobile -> fcmtokenMobile)
  */
 export async function saveFcmToken({ userId, role, fcmToken, platform = 'web', deviceId = null }) {
   if (!userId || !role || !fcmToken) {
     throw new Error('userId, role, and fcmToken are required');
   }
 
-  const validRoles = ['user', 'restaurant', 'hotel', 'delivery'];
-  if (!validRoles.includes(role)) {
-    throw new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
+  // Only support user role - tokens are stored in User model
+  if (role !== 'user') {
+    throw new Error('FCM tokens are only supported for user role');
   }
 
   const validPlatforms = ['web', 'android', 'ios'];
   const plat = validPlatforms.includes(platform) ? platform : 'web';
 
-  const userModelMap = {
-    user: 'User',
-    restaurant: 'Restaurant',
-    hotel: 'Hotel',
-    delivery: 'Delivery',
-  };
-
   const objectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
-  const userModel = userModelMap[role];
 
-  // Upsert: update if same fcmToken exists (token refresh), else create
-  const doc = {
-    userId: objectId,
-    userModel,
-    role,
-    fcmToken,
-    platform: plat,
-    deviceId: deviceId || null,
-  };
+  // Determine which field to update based on platform
+  const updateField = plat === 'web' ? 'fcmtokenWeb' : 'fcmtokenMobile';
+  const updateDoc = { [updateField]: fcmToken };
 
-  console.log('💾 [FCM] Checking if token already exists...');
-  const existing = await FcmToken.findOne({ fcmToken });
+  console.log('💾 [FCM] Saving token to User model...');
+  console.log('💾 [FCM] Platform:', plat);
+  console.log('💾 [FCM] Field:', updateField);
   
-  if (existing) {
-    console.log('🔄 [FCM] Token exists, updating...');
-  } else {
-    console.log('✨ [FCM] New token, creating document...');
-  }
-  
-  const result = await FcmToken.findOneAndUpdate(
-    { fcmToken },
-    { $set: { ...doc, updatedAt: new Date() } },
-    { upsert: true, new: true, runValidators: true }
+  const result = await User.findByIdAndUpdate(
+    objectId,
+    { $set: updateDoc },
+    { new: true, runValidators: true }
   );
 
-  if (existing) {
-    console.log('🔄 [FCM] Token updated successfully (existing token refreshed)');
-  } else {
-    console.log('✨ [FCM] New token created successfully in database');
+  if (!result) {
+    throw new Error('User not found');
   }
-  
-  console.log('💾 [FCM] Document saved with ID:', result._id);
-  console.log('💾 [FCM] Timestamp:', result.createdAt || result.updatedAt);
+
+  console.log('✅ [FCM] Token saved successfully to User model');
+  console.log('💾 [FCM] User ID:', result._id);
 
   return result;
 }
 
 /**
  * Remove FCM token (e.g. on logout)
+ * Removes token from User model by finding user with matching token
  */
 export async function removeFcmToken(fcmToken) {
   if (!fcmToken) return;
-  await FcmToken.deleteOne({ fcmToken });
+  
+  // Find user with this token in either field and remove it
+  const user = await User.findOne({
+    $or: [
+      { fcmtokenWeb: fcmToken },
+      { fcmtokenMobile: fcmToken }
+    ]
+  });
+  
+  if (user) {
+    if (user.fcmtokenWeb === fcmToken) {
+      user.fcmtokenWeb = null;
+    }
+    if (user.fcmtokenMobile === fcmToken) {
+      user.fcmtokenMobile = null;
+    }
+    await user.save();
+  }
 }
 
 /**
  * Get all FCM tokens for a user (by role)
+ * Returns array of tokens from User model
  */
 export async function getTokensForUser(userId, role) {
+  if (role !== 'user') {
+    return []; // Only support user role
+  }
+  
   const objectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
-  const tokens = await FcmToken.find({ userId: objectId, role }).lean();
-  return tokens.map((t) => t.fcmToken);
+  const user = await User.findById(objectId).select('fcmtokenWeb fcmtokenMobile').lean();
+  
+  if (!user) {
+    return [];
+  }
+  
+  const tokens = [];
+  if (user.fcmtokenWeb) {
+    tokens.push(user.fcmtokenWeb);
+  }
+  if (user.fcmtokenMobile) {
+    tokens.push(user.fcmtokenMobile);
+  }
+  
+  return tokens;
 }
 
 /**
@@ -162,7 +177,15 @@ export async function sendNotification(tokens, notification, data = {}) {
       }
     });
     if (invalidTokens.length > 0) {
-      await FcmToken.deleteMany({ fcmToken: { $in: invalidTokens } });
+      // Remove invalid tokens from User model
+      await User.updateMany(
+        { fcmtokenWeb: { $in: invalidTokens } },
+        { $set: { fcmtokenWeb: null } }
+      );
+      await User.updateMany(
+        { fcmtokenMobile: { $in: invalidTokens } },
+        { $set: { fcmtokenMobile: null } }
+      );
     }
     return {
       success: response.successCount > 0,

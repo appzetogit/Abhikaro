@@ -200,6 +200,14 @@ const userSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  fcmtokenWeb: {
+    type: String,
+    default: null
+  },
+  fcmtokenMobile: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true
