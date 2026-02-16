@@ -15,6 +15,7 @@ import { foodImages } from "@/constants/images"
 import appzetoFoodLogo from "@/assets/appzetologo.png"
 import offerImage from "@/assets/offerimage.png"
 import AddToCartAnimation from "../components/AddToCartAnimation"
+import VariantSelector from "../components/VariantSelector"
 import OptimizedImage from "@/components/OptimizedImage"
 import api from "@/lib/api"
 import { restaurantAPI } from "@/lib/api"
@@ -24,13 +25,15 @@ export default function Under250() {
   const { location } = useLocation()
   const { zoneId, zoneStatus, isInService, isOutOfService } = useZone(location)
   const navigate = useNavigate()
-  const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
+  const { addToCart, updateQuantity, removeFromCart, getCartItem, getCartItemId, cart } = useCart()
   const [activeCategory, setActiveCategory] = useState(null)
   const [showSortPopup, setShowSortPopup] = useState(false)
   const [selectedSort, setSelectedSort] = useState(null)
   const [under30MinsFilter, setUnder30MinsFilter] = useState(false)
   const [showItemDetail, setShowItemDetail] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
+  const [selectedVariant, setSelectedVariant] = useState(null)
+  const [variantError, setVariantError] = useState(false)
   const [quantities, setQuantities] = useState({})
   const [bookmarkedItems, setBookmarkedItems] = useState(new Set())
   const [viewCartButtonBottom, setViewCartButtonBottom] = useState("bottom-20")
@@ -229,6 +232,23 @@ export default function Under250() {
     setQuantities(cartQuantities)
   }, [cart])
 
+  // When item detail modal opens: reset variant, auto-select if only one
+  useEffect(() => {
+    if (!selectedItem) {
+      setSelectedVariant(null)
+      setVariantError(false)
+      return
+    }
+    const variations = selectedItem?.variations || []
+    if (variations.length === 1) {
+      setSelectedVariant(variations[0])
+      setVariantError(false)
+    } else {
+      setSelectedVariant(null)
+      setVariantError(false)
+    }
+  }, [selectedItem])
+
   // Scroll detection for view cart button positioning
   useEffect(() => {
     const handleScroll = () => {
@@ -256,39 +276,55 @@ export default function Under250() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  // Helper function to update item quantity in bothlocal state and cart
-  const updateItemQuantity = (item, newQuantity, event = null, restaurantName = null) => {
-    // Check authentication
+  // Helper: update item quantity. variantOverride = { id, name, price } when item has variations
+  const updateItemQuantity = (item, newQuantity, event = null, restaurantName = null, variantOverride = null) => {
     if (!isModuleAuthenticated('user')) {
       toast.error("Please login to add items to cart")
       navigate('/user/auth/sign-in', { state: { from: location.pathname } })
       return
     }
 
-    // CRITICAL: Check if user is in service zone
     if (isOutOfService) {
       toast.error('You are outside the service zone. Please select a location within the service area.')
       return
     }
 
-    // Update local state
+    const variations = item?.variations || []
+    const hasVariants = variations.length > 0
+    if (hasVariants && !variantOverride) {
+      setVariantError(true)
+      toast.error("Please select a variant")
+      return
+    }
+
+    const cartItemId = getCartItemId(item.id, variantOverride?.id)
+    const effectivePrice = variantOverride ? (variantOverride.price ?? item.price) : item.price
+
     setQuantities((prev) => ({
       ...prev,
-      [item.id]: newQuantity,
+      [cartItemId]: newQuantity,
     }))
 
-    // Find restaurant name from the item or use provided parameter
     const restaurant = restaurantName || item.restaurant || "Under 250"
+    const restaurantId = item.restaurantId || null
 
-    // Prepare cart item with all required properties
     const cartItem = {
-      id: item.id,
+      productId: item.id,
+      id: cartItemId,
+      productName: item.name,
       name: item.name,
-      price: item.price,
+      price: effectivePrice,
+      variantPrice: effectivePrice,
       image: item.image,
-      restaurant: restaurant,
+      restaurant,
+      restaurantId,
       description: item.description || "",
       originalPrice: item.originalPrice || item.price,
+      isVeg: item.isVeg !== false,
+      ...(variantOverride && {
+        selectedVariantId: variantOverride.id,
+        selectedVariantName: variantOverride.name,
+      }),
     }
 
     // Get source position for animation from event target
@@ -314,47 +350,46 @@ export default function Under250() {
       }
     }
 
-    // Update cart context
     if (newQuantity <= 0) {
       const productInfo = {
-        id: item.id,
-        name: item.name,
+        id: cartItemId,
+        name: variantOverride ? `${item.name} - ${variantOverride.name}` : item.name,
         imageUrl: item.image,
       }
-      removeFromCart(item.id, sourcePosition, productInfo)
+      removeFromCart(cartItemId, sourcePosition, productInfo)
     } else {
-      const existingCartItem = getCartItem(item.id)
+      const existingCartItem = getCartItem(cartItemId)
       if (existingCartItem) {
         const productInfo = {
-          id: item.id,
-          name: item.name,
+          id: cartItemId,
+          name: variantOverride ? `${item.name} - ${variantOverride.name}` : item.name,
           imageUrl: item.image,
         }
 
         if (newQuantity > existingCartItem.quantity && sourcePosition) {
           addToCart(cartItem, sourcePosition)
           if (newQuantity > existingCartItem.quantity + 1) {
-            updateQuantity(item.id, newQuantity)
+            updateQuantity(cartItemId, newQuantity)
           }
         } else if (newQuantity < existingCartItem.quantity && sourcePosition) {
-          updateQuantity(item.id, newQuantity, sourcePosition, productInfo)
+          updateQuantity(cartItemId, newQuantity, sourcePosition, productInfo)
         } else {
-          updateQuantity(item.id, newQuantity)
+          updateQuantity(cartItemId, newQuantity)
         }
       } else {
         addToCart(cartItem, sourcePosition)
         if (newQuantity > 1) {
-          updateQuantity(item.id, newQuantity)
+          updateQuantity(cartItemId, newQuantity)
         }
       }
     }
   }
 
   const handleItemClick = (item, restaurant) => {
-    // Add restaurant info to item for display
     const itemWithRestaurant = {
       ...item,
       restaurant: restaurant.name,
+      restaurantId: restaurant._id || restaurant.restaurantId || restaurant.id,
       description: item.description || `${item.name} from ${restaurant.name}`,
       customisable: item.customisable || false,
       notEligibleForCoupons: item.notEligibleForCoupons || false,
@@ -559,7 +594,10 @@ export default function Under250() {
                       }}
                     >
                       {restaurant.menuItems.map((item, itemIndex) => {
-                        const quantity = quantities[item.id] || 0
+                        const hasVariantsCard = (item?.variations || []).length > 0
+                        const quantity = hasVariantsCard
+                          ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
+                          : (quantities[item.id] || 0)
                         return (
                           <motion.div
                             key={item.id}
@@ -897,79 +935,112 @@ export default function Under250() {
                     NOT ELIGIBLE FOR COUPONS
                   </p>
                 )}
+
+                {/* Variant Selection - Mandatory for items with variations */}
+                {(selectedItem?.variations || []).length > 0 && (
+                  <div className="mb-4">
+                    <VariantSelector
+                      variants={selectedItem.variations}
+                      selectedVariant={selectedVariant}
+                      onSelect={(v) => {
+                        setSelectedVariant(v)
+                        setVariantError(false)
+                      }}
+                      disabled={shouldShowGrayscale}
+                    />
+                    {variantError && (
+                      <p className="text-sm text-red-500 dark:text-red-400 mt-2">Please select a variant</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Bottom Action Bar */}
               <div className="border-t dark:border-gray-800 border-gray-200 px-4 md:px-6 lg:px-8 xl:px-10 py-4 md:py-5 lg:py-6 bg-white dark:bg-[#1a1a1a]">
-                <div className="flex items-center gap-4 md:gap-5 lg:gap-6">
-                  {/* Quantity Selector */}
-                  <div className={`flex items-center gap-3 md:gap-4 lg:gap-5 border-2 rounded-lg md:rounded-xl px-3 md:px-4 lg:px-5 h-[44px] md:h-[50px] lg:h-[56px] ${shouldShowGrayscale
-                    ? 'border-gray-300 dark:border-gray-700 opacity-50'
-                    : 'border-gray-300 dark:border-gray-700'
-                    }`}>
-                    <button
-                      onClick={(e) => {
-                        if (!shouldShowGrayscale) {
-                          updateItemQuantity(selectedItem, Math.max(0, (quantities[selectedItem.id] || 0) - 1), e)
-                        }
-                      }}
-                      disabled={(quantities[selectedItem.id] || 0) === 0 || shouldShowGrayscale}
-                      className={`${shouldShowGrayscale
-                        ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed'
-                        }`}
-                    >
-                      <Minus className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7" />
-                    </button>
-                    <span className={`text-lg md:text-xl lg:text-2xl font-semibold min-w-[2rem] md:min-w-[2.5rem] lg:min-w-[3rem] text-center ${shouldShowGrayscale
-                      ? 'text-gray-400 dark:text-gray-600'
-                      : 'text-gray-900 dark:text-white'
-                      }`}>
-                      {quantities[selectedItem.id] || 0}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        if (!shouldShowGrayscale) {
-                          updateItemQuantity(selectedItem, (quantities[selectedItem.id] || 0) + 1, e)
-                        }
-                      }}
-                      disabled={shouldShowGrayscale}
-                      className={shouldShowGrayscale
-                        ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                      }
-                    >
-                      <Plus className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7" />
-                    </button>
-                  </div>
-
-                  {/* Add Item Button */}
-                  <Button
-                    className={`flex-1 h-[44px] md:h-[50px] lg:h-[56px] rounded-lg md:rounded-xl font-semibold flex items-center justify-center gap-2 text-sm md:text-base lg:text-lg ${shouldShowGrayscale
-                      ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
-                      : 'bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white'
-                      }`}
-                    onClick={(e) => {
-                      if (!shouldShowGrayscale) {
-                        updateItemQuantity(selectedItem, (quantities[selectedItem.id] || 0) + 1, e)
-                        setShowItemDetail(false)
-                      }
-                    }}
-                    disabled={shouldShowGrayscale}
-                  >
-                    <span>Add item</span>
-                    <div className="flex items-center gap-1 md:gap-2">
-                      {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
-                        <span className="text-sm md:text-base lg:text-lg line-through text-red-200">
-                          ₹{Math.round(selectedItem.originalPrice)}
+                {(() => {
+                  const itemHasVariants = (selectedItem?.variations || []).length > 0
+                  const modalCartItemId = itemHasVariants && selectedVariant
+                    ? getCartItemId(selectedItem.id, selectedVariant.id)
+                    : selectedItem?.id
+                  const modalQuantity = quantities[modalCartItemId] || 0
+                  const displayPrice = itemHasVariants && selectedVariant
+                    ? (selectedVariant.price ?? selectedItem.price)
+                    : selectedItem?.price
+                  const canAdd = !itemHasVariants || (itemHasVariants && selectedVariant)
+                  return (
+                    <div className="flex items-center gap-4 md:gap-5 lg:gap-6">
+                      <div className={`flex items-center gap-3 md:gap-4 lg:gap-5 border-2 rounded-lg md:rounded-xl px-3 md:px-4 lg:px-5 h-[44px] md:h-[50px] lg:h-[56px] ${shouldShowGrayscale || !canAdd
+                        ? 'border-gray-300 dark:border-gray-700 opacity-50'
+                        : 'border-gray-300 dark:border-gray-700'
+                        }`}>
+                        <button
+                          onClick={(e) => {
+                            if (!shouldShowGrayscale && canAdd) {
+                              updateItemQuantity(selectedItem, Math.max(0, modalQuantity - 1), e, null, itemHasVariants ? selectedVariant : null)
+                            }
+                          }}
+                          disabled={modalQuantity === 0 || shouldShowGrayscale || !canAdd}
+                          className={`${shouldShowGrayscale || !canAdd
+                            ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed'
+                            }`}
+                        >
+                          <Minus className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7" />
+                        </button>
+                        <span className={`text-lg md:text-xl lg:text-2xl font-semibold min-w-[2rem] md:min-w-[2.5rem] lg:min-w-[3rem] text-center ${shouldShowGrayscale || !canAdd
+                          ? 'text-gray-400 dark:text-gray-600'
+                          : 'text-gray-900 dark:text-white'
+                          }`}>
+                          {modalQuantity}
                         </span>
-                      )}
-                      <span className="text-base md:text-lg lg:text-xl font-bold">
-                        ₹{Math.round(selectedItem.price)}
-                      </span>
+                        <button
+                          onClick={(e) => {
+                            if (!shouldShowGrayscale && canAdd) {
+                              updateItemQuantity(selectedItem, modalQuantity + 1, e, null, itemHasVariants ? selectedVariant : null)
+                            }
+                          }}
+                          disabled={shouldShowGrayscale || !canAdd}
+                          className={shouldShowGrayscale || !canAdd
+                            ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                          }
+                        >
+                          <Plus className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7" />
+                        </button>
+                      </div>
+                      <Button
+                        className={`flex-1 h-[44px] md:h-[50px] lg:h-[56px] rounded-lg md:rounded-xl font-semibold flex items-center justify-center gap-2 text-sm md:text-base lg:text-lg ${!canAdd || shouldShowGrayscale
+                          ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
+                          : 'bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white'
+                          }`}
+                        onClick={(e) => {
+                          if (!canAdd) {
+                            setVariantError(true)
+                            toast.error("Please select a variant")
+                            return
+                          }
+                          if (!shouldShowGrayscale) {
+                            updateItemQuantity(selectedItem, modalQuantity + 1, e, null, itemHasVariants ? selectedVariant : null)
+                            setShowItemDetail(false)
+                          }
+                        }}
+                        disabled={!canAdd || shouldShowGrayscale}
+                      >
+                        <span>{canAdd ? "Add item" : "Select variant"}</span>
+                        <div className="flex items-center gap-1 md:gap-2">
+                          {selectedItem.originalPrice && selectedItem.originalPrice > displayPrice && (
+                            <span className="text-sm md:text-base lg:text-lg line-through text-red-200">
+                              ₹{Math.round(selectedItem.originalPrice)}
+                            </span>
+                          )}
+                          <span className="text-base md:text-lg lg:text-xl font-bold">
+                            ₹{Math.round(displayPrice)}
+                          </span>
+                        </div>
+                      </Button>
                     </div>
-                  </Button>
-                </div>
+                  )
+                })()}
               </div>
             </motion.div>
           </>

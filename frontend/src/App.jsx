@@ -421,6 +421,14 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/restaurant/code-of-conduct"
+          element={
+            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
+              <TermsAndConditionsPage />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/restaurant/config"

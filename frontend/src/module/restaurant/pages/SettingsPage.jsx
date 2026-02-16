@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { useNavigate } from "react-router-dom"
 import Lenis from "lenis"
-import { 
+import {
   ArrowLeft,
   User,
   Bell,
@@ -23,6 +23,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import BottomNavbar from "../components/BottomNavbar"
 import MenuOverlay from "../components/MenuOverlay"
+import { clearModuleAuth } from "@/lib/utils/auth"
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -82,10 +83,15 @@ export default function SettingsPage() {
       id: "actions",
       title: "Actions",
       items: [
-        { id: "logout", label: "Logout", icon: LogOut, isDestructive: true, action: () => {
-          console.log("Logout clicked")
-          // Add logout logic here
-        } },
+        {
+          id: "logout", label: "Logout", icon: LogOut, isDestructive: true, action: () => {
+            if (window.confirm("Are you sure you want to logout?")) {
+              clearModuleAuth("restaurant")
+              window.dispatchEvent(new Event("restaurantAuthChanged"))
+              navigate("/restaurant/login")
+            }
+          }
+        },
       ]
     }
   ]
@@ -94,7 +100,7 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-[#f6e9dc] overflow-x-hidden pb-24 md:pb-6">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50 flex items-center gap-3">
-        <button 
+        <button
           onClick={() => navigate(-1)}
           className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
         >
@@ -138,21 +144,18 @@ export default function SettingsPage() {
                             navigate(item.route)
                           }
                         }}
-                        className={`w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors ${
-                          item.isDestructive ? "text-red-600" : "text-gray-900"
-                        }`}
+                        className={`w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors ${item.isDestructive ? "text-red-600" : "text-gray-900"
+                          }`}
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className={`flex-shrink-0 p-1.5 rounded-lg ${
-                            item.isDestructive 
-                              ? "bg-red-100" 
+                          <div className={`flex-shrink-0 p-1.5 rounded-lg ${item.isDestructive
+                              ? "bg-red-100"
                               : "bg-[#ff8100]/10"
-                          }`}>
-                            <item.icon className={`w-4 h-4 ${
-                              item.isDestructive 
-                                ? "text-red-600" 
+                            }`}>
+                            <item.icon className={`w-4 h-4 ${item.isDestructive
+                                ? "text-red-600"
                                 : "text-[#ff8100]"
-                            }`} />
+                              }`} />
                           </div>
                           <span className="text-sm font-medium flex-1 text-left">
                             {item.label}
@@ -173,14 +176,12 @@ export default function SettingsPage() {
                                   item.onToggle(!item.toggleValue)
                                 }
                               }}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                item.toggleValue ? "bg-[#ff8100]" : "bg-gray-300"
-                              }`}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.toggleValue ? "bg-[#ff8100]" : "bg-gray-300"
+                                }`}
                             >
                               <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                  item.toggleValue ? "translate-x-6" : "translate-x-1"
-                                }`}
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${item.toggleValue ? "translate-x-6" : "translate-x-1"
+                                  }`}
                               />
                             </button>
                           </div>
@@ -201,7 +202,7 @@ export default function SettingsPage() {
 
       {/* Bottom Navigation Bar */}
       <BottomNavbar onMenuClick={() => setShowMenu(true)} />
-      
+
       {/* Menu Overlay */}
       <MenuOverlay showMenu={showMenu} setShowMenu={setShowMenu} />
     </div>

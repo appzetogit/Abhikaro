@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { ArrowLeft, Mail, ChevronDown, Phone } from "lucide-react"
 import { setAuthData } from "@/lib/utils/auth"
 import {
@@ -57,6 +57,30 @@ export default function RestaurantLogin() {
   })
   const [isSending, setIsSending] = useState(false)
   const [apiError, setApiError] = useState("")
+
+  // Prefill phone from sessionStorage when returning from OTP screen
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("restaurantAuthData")
+      if (stored) {
+        const data = JSON.parse(stored)
+        if (data.phone) {
+          const match = data.phone.match(/(\+\d+)\s*(.+)/)
+          if (match) {
+            const countryCode = match[1]
+            const digits = (match[2] || "").replace(/\D/g, "").slice(0, 10)
+            setFormData((prev) => ({
+              ...prev,
+              countryCode,
+              phone: digits,
+            }))
+          }
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [])
 
   // Get selected country details dynamically
   const selectedCountry = countryCodes.find(c => c.code === formData.countryCode) || countryCodes[2] // Default to India (+91)
@@ -328,8 +352,9 @@ export default function RestaurantLogin() {
   }
 
   const handlePhoneChange = (e) => {
-    // Only allow digits
-    const value = e.target.value.replace(/\D/g, "")
+    const raw = e.target.value.replace(/\D/g, "")
+    const maxLen = formData.countryCode === "+91" ? 10 : 15
+    const value = raw.slice(0, maxLen)
     const newFormData = {
       ...formData,
       phone: value,
@@ -409,6 +434,8 @@ export default function RestaurantLogin() {
             — restaurant partner —
           </span>
         </div>
+        {/* Screen heading - Login mode */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-4">Login</h2>
       </div>
 
       {/* Main Content - Form Section */}
@@ -419,7 +446,7 @@ export default function RestaurantLogin() {
             <p className="text-base text-gray-700 leading-relaxed">
               {loginMethod === "email"
                 ? "Enter your registered email and we will send an OTP to continue"
-                : "Enter your registered phone number and we will send an OTP to continue"
+                : "Enter your phone number and we will send an OTP to continue"
               }
             </p>
           </div>
@@ -463,13 +490,16 @@ export default function RestaurantLogin() {
                     value={formData.phone}
                     onChange={handlePhoneChange}
                     onBlur={handlePhoneBlur}
-                    className={`w-full px-4 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 text-base border rounded-lg min-w-0 bg-white ${errors.phone && formData.phone.length > 0
+                    maxLength={formData.countryCode === "+91" ? 10 : 15}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    className={`w-full px-4 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 text-base border rounded-lg min-w-0 bg-white ${errors.phone && (formData.phone.length > 0 || touched.phone)
                       ? "border-red-500 focus:ring-red-500 focus:border-red-500"
                       : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
                       }`}
                     style={{ height: '48px' }}
                   />
-                  {errors.phone && formData.phone.length > 0 && (
+                  {errors.phone && (formData.phone.length > 0 || touched.phone) && (
                     <p className="text-red-500 text-xs mt-1 ml-1">{errors.phone}</p>
                   )}
                 </div>
@@ -597,10 +627,12 @@ export default function RestaurantLogin() {
       <div className="px-6 pb-8 pt-4">
         <div className="w-full max-w-md mx-auto">
           <p className="text-xs text-center text-gray-600 leading-relaxed">
-            By continuing, you agree to our
-          </p>
-          <p className="text-xs text-center text-gray-600 underline mt-1">
-            Terms of Service | Privacy Policy | Code of Conduct
+            By continuing, you agree to our{" "}
+            <Link to="/restaurant/terms" className="underline hover:text-gray-800">Terms of Service</Link>
+            {" | "}
+            <Link to="/restaurant/privacy" className="underline hover:text-gray-800">Privacy Policy</Link>
+            {" | "}
+            <Link to="/restaurant/code-of-conduct" className="underline hover:text-gray-800">Code of Conduct</Link>
           </p>
         </div>
       </div>

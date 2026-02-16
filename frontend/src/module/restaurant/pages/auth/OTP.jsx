@@ -312,13 +312,13 @@ export default function RestaurantOTP() {
       {/* Header with Back Button and Title */}
       <div className="relative flex items-center justify-center py-4 px-4">
         <button
-          onClick={() => navigate("/restaurant/login")}
+          onClick={() => navigate(authData?.isSignUp ? "/restaurant/signup" : "/restaurant/login", { state: { fromOtp: true } })}
           className="absolute left-4 top-1/2 -translate-y-1/2"
           aria-label="Go back"
         >
           <ArrowLeft className="h-5 w-5 text-black" />
         </button>
-        <h2 className="text-lg font-bold text-black">Verify details</h2>
+        <h2 className="text-lg font-bold text-black">Verify OTP</h2>
       </div>
 
       {/* Main Content */}

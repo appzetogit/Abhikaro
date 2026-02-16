@@ -29,6 +29,14 @@ const orderItemSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    selectedVariantId: {
+      type: String,
+      default: null,
+    },
+    selectedVariantName: {
+      type: String,
+      default: null,
+    },
   },
   { _id: true },
 );

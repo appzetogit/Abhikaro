@@ -1,0 +1,39 @@
+{
+  "recentOrders": [
+    {
+      "orderId": "ORD-1771179281765-795",
+      "hotelReference": "HOTEL-1771058758254-3489",
+      "hotelId": null,
+      "status": "preparing",
+      "createdAt": "2026-02-15T18:14:41.987Z"
+    },
+    {
+      "orderId": "ORD-1771179179136-234",
+      "hotelReference": "HOTEL-1771058758254-3489",
+      "hotelId": null,
+      "status": "preparing",
+      "createdAt": "2026-02-15T18:12:59.188Z"
+    },
+    {
+      "orderId": "ORD-1771157344408-608",
+      "hotelReference": "HOTEL-1771157181188-4243",
+      "hotelId": null,
+      "status": "delivered",
+      "createdAt": "2026-02-15T12:09:04.641Z"
+    },
+    {
+      "orderId": "ORD-1771153244254-173",
+      "hotelReference": null,
+      "hotelId": null,
+      "status": "delivered",
+      "createdAt": "2026-02-15T11:00:44.604Z"
+    },
+    {
+      "orderId": "ORD-1771077238852-230",
+      "hotelReference": "HOTEL-1771058758254-3489",
+      "hotelId": null,
+      "status": "delivered",
+      "createdAt": "2026-02-14T13:53:58.948Z"
+    }
+  ]
+}

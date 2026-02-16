@@ -191,12 +191,16 @@ export default function MenuCategoriesPage() {
                     onClick={() => handleToggleActive(category)}
                     className={`p-2 rounded-lg transition-colors ${
                       category.isActive
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                        : 'bg-gray-100 text-gray-500 hover:bg-red-50'
                     }`}
                     title={category.isActive ? 'Deactivate' : 'Activate'}
                   >
-                    <Check className="w-4 h-4" />
+                    {category.isActive ? (
+                      <Check className="w-4 h-4 text-green-600" />
+                    ) : (
+                      <X className="w-4 h-4 text-gray-500" />
+                    )}
                   </button>
                   <button
                     onClick={() => handleEditCategory(category)}

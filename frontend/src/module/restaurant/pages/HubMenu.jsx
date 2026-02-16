@@ -13,6 +13,7 @@ import {
   X,
   Menu,
   Camera,
+  Upload,
   SlidersHorizontal,
   ArrowLeft,
   Trash2,
@@ -364,9 +365,9 @@ export default function HubMenu() {
       if (showLoading) setLoadingAddons(true)
       const response = await restaurantAPI.getAddons()
       const data = response?.data?.data?.addons || response?.data?.addons || []
-      // Filter to show only approved add-ons
-      const approvedAddons = data.filter(addon => addon.approvalStatus === 'approved')
-      setAddons(approvedAddons)
+      // Show approved and pending (so newly added appears immediately)
+      const visibleAddons = data.filter(addon => addon.approvalStatus === 'approved' || addon.approvalStatus === 'pending')
+      setAddons(visibleAddons)
     } catch (error) {
       console.error('Error fetching add-ons:', error)
       toast.error('Failed to load add-ons')
@@ -414,9 +415,7 @@ export default function HubMenu() {
     setAddonImages([...addonImages, ...newImagePreviews])
     setAddonImageFiles(newImageFilesMap)
     
-    if (addonFileInputRef.current) {
-      addonFileInputRef.current.value = ""
-    }
+    if (e?.target) e.target.value = ""
   }
 
   // Handle add-on image delete
@@ -2158,23 +2157,44 @@ export default function HubMenu() {
                     </div>
                   )}
 
-                  {/* Add Image Button */}
-                  <input
-                    ref={addonFileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleAddonImageAdd}
-                    className="hidden"
-                    id="addon-image-upload"
-                  />
-                  <label
-                    htmlFor="addon-image-upload"
-                    className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
-                  >
-                    <Camera className="h-5 w-5 text-gray-500" />
-                    <span className="text-sm font-medium text-gray-700">Add Images</span>
-                  </label>
+                  {/* Add Image Buttons - Camera & Gallery */}
+                  <div className="flex gap-2">
+                    <input
+                      ref={addonFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      multiple
+                      onChange={handleAddonImageAdd}
+                      className="hidden"
+                      id="addon-image-camera"
+                    />
+                    <label
+                      htmlFor="addon-image-camera"
+                      className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
+                    >
+                      <Camera className="h-5 w-5 text-gray-500" />
+                      <span className="text-sm font-medium text-gray-700">Camera</span>
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        handleAddonImageAdd(e)
+                        e.target.value = ""
+                      }}
+                      className="hidden"
+                      id="addon-image-gallery"
+                    />
+                    <label
+                      htmlFor="addon-image-gallery"
+                      className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
+                    >
+                      <Upload className="h-5 w-5 text-gray-500" />
+                      <span className="text-sm font-medium text-gray-700">Gallery</span>
+                    </label>
+                  </div>
                   <p className="text-xs text-gray-500 mt-1">Add multiple images (PNG, JPG, WEBP - max 5MB each)</p>
                 </div>
               </div>

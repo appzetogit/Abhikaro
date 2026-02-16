@@ -40,7 +40,7 @@ if (import.meta.env.DEV) {
  */
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30 seconds
+  timeout: 120000, // 120 seconds (increased from 30s for large camera uploads)
   headers: {
     "Content-Type": "application/json",
   },

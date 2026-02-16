@@ -61,79 +61,102 @@ export const getHotels = asyncHandler(async (req, res) => {
   const total = await Hotel.countDocuments(query);
 
   // AGGREGATE EARNINGS FOR EACH HOTEL
-  // We do this dynamically to ensure "genuine" data
   const Order = (await import("../../order/models/Order.js")).default;
-
   const hotelIds = hotels.map((h) => h._id);
-  const hotelIdsStrings = hotels.map((h) => h.hotelId).filter(Boolean);
 
-  // Fetch non-cancelled QR orders for these hotels
-  const orders = await Order.find({
-    $or: [
-      { hotelId: { $in: hotelIds } },
-      {
-        hotelReference: {
-          $in: [...hotelIds.map((id) => id.toString()), ...hotelIdsStrings],
+  const earningsAggregation = await Order.aggregate([
+    {
+      $match: {
+        $or: [
+          { "payment.status": "completed" },
+          {
+            $and: [
+              { "payment.method": "pay_at_hotel" },
+              { status: "delivered" },
+            ],
+          },
+        ],
+        status: { $ne: "cancelled" },
+        $or: [
+          { hotelId: { $in: hotelIds } },
+          {
+            hotelReference: {
+              $in: hotels.map((h) => h.hotelId).filter(Boolean),
+            },
+          },
+        ],
+      },
+    },
+    {
+      // Group by identifying the hotel (try to normalize to ObjectId if possible, or string)
+      // Since some orders use hotelId (ObjectId) and some use hotelReference (String)
+      $addFields: {
+        matchedHotelId: {
+          $ifNull: ["$hotelId", "$hotelReference"],
         },
       },
-    ],
-    status: { $ne: "cancelled" },
-  }).lean();
+    },
+    {
+      $group: {
+        _id: "$matchedHotelId",
+        totalHotel: { $sum: { $ifNull: ["$commissionBreakdown.hotel", 0] } },
+        totalAdmin: { $sum: { $ifNull: ["$commissionBreakdown.admin", 0] } },
+        orderCount: { $sum: 1 },
+        // Track orders that need fallback (missing breakdown)
+        fallbackOrders: {
+          $push: {
+            $cond: [
+              { $gt: [{ $ifNull: ["$commissionBreakdown.hotel", -1] }, -1] },
+              "$$REMOVE",
+              { amount: "$pricing.total" },
+            ],
+          },
+        },
+      },
+    },
+  ]);
 
-  // Process earnings per hotel
+  // Create a map for quick access
+  const earningsMap = {};
+  earningsAggregation.forEach((item) => {
+    earningsMap[item._id.toString()] = item;
+  });
+
   const hotelsWithEarnings = hotels.map((hotel) => {
     const hotelObj = hotel.toObject();
-    const hotelRefIds = [hotel._id.toString(), hotel.hotelId].filter(Boolean);
+    const hotelIdStr = hotel._id.toString();
+    const hotelRef = hotel.hotelId;
 
-    // Filter orders for this specific hotel
-    const hotelOrders = orders.filter((o) => {
-      const oId = o.hotelId ? o.hotelId.toString() : null;
-      const oRef = o.hotelReference ? o.hotelReference.toString() : null;
-      const match =
-        (oId && hotelRefIds.includes(oId)) ||
-        (oRef && hotelRefIds.includes(oRef));
-      return match;
-    });
+    // Get stats from map (check both _id and hotelId reference)
+    const stats = earningsMap[hotelIdStr] ||
+      earningsMap[hotelRef] || {
+        totalHotel: 0,
+        totalAdmin: 0,
+        orderCount: 0,
+        fallbackOrders: [],
+      };
 
-    console.log(
-      `[DEBUG] Hotel: ${hotel.hotelName}, IDs: ${JSON.stringify(hotelRefIds)}, Matched: ${hotelOrders.length}`,
-    );
+    let hotelComm = stats.totalHotel;
+    let adminComm = stats.totalAdmin;
 
-    let totalHotelCommission = 0;
-    let totalAdminHotelCommission = 0;
+    // Handle fallbacks for legacy orders in this page
+    if (stats.fallbackOrders && stats.fallbackOrders.length > 0) {
+      const hPct = Number(hotel.commission) || 0;
+      const aPct = Number(hotel.adminCommission) || 0;
 
-    hotelOrders.forEach((order) => {
-      const breakdown = order.commissionBreakdown;
-      const totalAmount = Number(order.pricing?.total) || 0;
-
-      if (
-        breakdown &&
-        (Number(breakdown.hotel) > 0 || Number(breakdown.admin) > 0)
-      ) {
-        totalHotelCommission += Number(breakdown.hotel) || 0;
-        totalAdminHotelCommission += Number(breakdown.admin) || 0;
-      } else {
-        // Fallback: Use current settings
-        const hotelCommPercent = Number(hotel.commission) || 0;
-        const adminCommPercent = Number(hotel.adminCommission) || 0;
-        totalHotelCommission += (totalAmount * hotelCommPercent) / 100;
-        totalAdminHotelCommission += (totalAmount * adminCommPercent) / 100;
-      }
-    });
-
-    console.log(
-      `[DEBUG]   -> Earnings: ${totalHotelCommission} / ${totalAdminHotelCommission}`,
-    );
+      stats.fallbackOrders.forEach((order) => {
+        hotelComm += (order.amount * hPct) / 100;
+        adminComm += (order.amount * aPct) / 100;
+      });
+    }
 
     return {
       ...hotelObj,
       earnings: {
-        hotelCommission: Math.round(totalHotelCommission * 100) / 100,
-        adminCommission: Math.round(totalAdminHotelCommission * 100) / 100,
-        combinedCommission:
-          Math.round((totalHotelCommission + totalAdminHotelCommission) * 100) /
-          100,
-        orderCount: hotelOrders.length,
+        hotelCommission: Math.round(hotelComm * 100) / 100,
+        adminCommission: Math.round(adminComm * 100) / 100,
+        combinedCommission: Math.round((hotelComm + adminComm) * 100) / 100,
+        orderCount: stats.orderCount,
       },
     };
   });
@@ -468,70 +491,115 @@ export const getHotelRequests = asyncHandler(async (req, res) => {
 export const getHotelCommissionStats = asyncHandler(async (req, res) => {
   try {
     const Order = (await import("../../order/models/Order.js")).default;
-    const Hotel = (await import("../../hotel/models/Hotel.js")).default;
 
-    // Fetch all hotels to have their commission settings as fallback
-    const hotels = await Hotel.find({}).lean();
-    const hotelSettingsMap = {};
-    hotels.forEach((h) => {
-      hotelSettingsMap[h._id.toString()] = h;
-      if (h.hotelId) hotelSettingsMap[h.hotelId] = h;
-    });
+    // Aggregation Pipeline for global stats
+    const statsResult = await Order.aggregate([
+      {
+        $match: {
+          $or: [
+            { "payment.status": "completed" },
+            {
+              $and: [
+                { "payment.method": { $in: ["pay_at_hotel", "cash"] } },
+                { status: "delivered" },
+              ],
+            },
+          ],
+          status: { $ne: "cancelled" },
+          $or: [
+            { hotelReference: { $ne: null } },
+            { hotelId: { $ne: null } },
+            { orderType: "QR" },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalHotelCommission: {
+            $sum: { $ifNull: ["$commissionBreakdown.hotel", 0] },
+          },
+          totalAdminHotelCommission: {
+            $sum: { $ifNull: ["$commissionBreakdown.admin", 0] },
+          },
+          orderCount: { $sum: 1 },
+          // Track orders that need fallback (missing breakdown)
+          fallbackOrders: {
+            $push: {
+              $cond: [
+                {
+                  $eq: [
+                    { $ifNull: ["$commissionBreakdown.hotel", "MISSING"] },
+                    "MISSING",
+                  ],
+                },
+                {
+                  amount: "$pricing.total",
+                  hotelId: "$hotelId",
+                  hotelRef: "$hotelReference",
+                },
+                "$$REMOVE",
+              ],
+            },
+          },
+        },
+      },
+    ]);
 
-    // Query non-cancelled QR orders
-    const orders = await Order.find({
-      $or: [
-        { hotelReference: { $ne: null } },
-        { hotelId: { $ne: null } },
-        { orderType: "QR" },
-      ],
-      status: { $ne: "cancelled" },
-    }).lean();
+    const result = statsResult[0] || {
+      totalHotelCommission: 0,
+      totalAdminHotelCommission: 0,
+      orderCount: 0,
+      fallbackOrders: [],
+    };
 
-    let totalHotelCommission = 0;
-    let totalAdminHotelCommission = 0;
+    let totalHotelComm = result.totalHotelCommission;
+    let totalAdminComm = result.totalAdminHotelCommission;
 
-    orders.forEach((order) => {
-      const breakdown = order.commissionBreakdown;
-      const totalAmount = Number(order.pricing?.total) || 0;
+    // 2. Handle Fallbacks (Legacy Orders)
+    if (result.fallbackOrders && result.fallbackOrders.length > 0) {
+      // Get unique hotel IDs/Refs from fallback orders
+      const hIds = result.fallbackOrders.map((o) => o.hotelId).filter(Boolean);
+      const hRefs = result.fallbackOrders
+        .map((o) => o.hotelRef)
+        .filter(Boolean);
 
-      // Logic: Use breakdown if it has values, otherwise calculate from hotel settings
-      if (
-        breakdown &&
-        (Number(breakdown.hotel) > 0 || Number(breakdown.admin) > 0)
-      ) {
-        totalHotelCommission += Number(breakdown.hotel) || 0;
-        totalAdminHotelCommission += Number(breakdown.admin) || 0;
-      } else {
-        // Fallback: Dynamic calculation based on current hotel settings
-        const hotelRef = order.hotelId || order.hotelReference;
-        const hotel = hotelRef ? hotelSettingsMap[hotelRef.toString()] : null;
+      const hotels = await Hotel.find({
+        $or: [{ _id: { $in: hIds } }, { hotelId: { $in: hRefs } }],
+      })
+        .select("commission adminCommission hotelId")
+        .lean();
 
+      // Create maps for quick access
+      const hotelMap = {};
+      hotels.forEach((h) => {
+        hotelMap[h._id.toString()] = h;
+        if (h.hotelId) hotelMap[h.hotelId] = h;
+      });
+
+      // Apply fallback math
+      result.fallbackOrders.forEach((order) => {
+        const hotel =
+          hotelMap[order.hotelId?.toString()] || hotelMap[order.hotelRef];
         if (hotel) {
-          const hotelCommPercent = Number(hotel.commission) || 0;
-          const adminCommPercent = Number(hotel.adminCommission) || 0;
-
-          const calculatedHotelComm = (totalAmount * hotelCommPercent) / 100;
-          const calculatedAdminComm = (totalAmount * adminCommPercent) / 100;
-
-          totalHotelCommission += calculatedHotelComm;
-          totalAdminHotelCommission += calculatedAdminComm;
+          totalHotelComm +=
+            (order.amount * (Number(hotel.commission) || 0)) / 100;
+          totalAdminComm +=
+            (order.amount * (Number(hotel.adminCommission) || 0)) / 100;
         }
-      }
-    });
+      });
+    }
 
     return successResponse(
       res,
       200,
       "Hotel commission stats retrieved successfully",
       {
-        totalHotelCommission: Math.round(totalHotelCommission * 100) / 100,
-        totalAdminHotelCommission:
-          Math.round(totalAdminHotelCommission * 100) / 100,
+        totalHotelCommission: Math.round(totalHotelComm * 100) / 100,
+        totalAdminHotelCommission: Math.round(totalAdminComm * 100) / 100,
         totalCombinedCommission:
-          Math.round((totalHotelCommission + totalAdminHotelCommission) * 100) /
-          100,
-        orderCount: orders.length,
+          Math.round((totalHotelComm + totalAdminComm) * 100) / 100,
+        orderCount: result.orderCount,
       },
     );
   } catch (error) {

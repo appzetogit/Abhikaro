@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -172,6 +172,7 @@ export default function RestaurantOnboarding() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const formContainerRef = useRef(null)
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -395,6 +396,34 @@ export default function RestaurantOnboarding() {
     fetchData()
   }, [])
 
+  // Prefill verified phone from auth when empty (e.g. fresh signup) - runs after loading
+  useEffect(() => {
+    if (loading) return
+    try {
+      const stored = localStorage.getItem("restaurant_user")
+      if (stored) {
+        const restaurant = JSON.parse(stored)
+        const verifiedPhone = restaurant.phone || restaurant.ownerPhone || restaurant.primaryContactNumber || ""
+        if (verifiedPhone) {
+          const displayPhone = typeof verifiedPhone === "string" ? verifiedPhone.replace(/\D/g, "").slice(-10) : ""
+          if (displayPhone) {
+            setStep1((prev) => {
+              const needsPrefill = !prev.ownerPhone && !prev.primaryContactNumber
+              if (!needsPrefill) return prev
+              return {
+                ...prev,
+                ownerPhone: displayPhone,
+                primaryContactNumber: displayPhone,
+              }
+            })
+          }
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  }, [loading])
+
   const handleUpload = async (file, folder) => {
     try {
       const res = await uploadAPI.uploadMedia(file, { folder })
@@ -511,6 +540,11 @@ export default function RestaurantOnboarding() {
 
     if (!step3.panNumber?.trim()) {
       errors.push("PAN number is required")
+    } else {
+      const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/
+      if (!panRegex.test(step3.panNumber.trim())) {
+        errors.push("Invalid PAN format. Use 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)")
+      }
     }
     if (!step3.nameOnPan?.trim()) {
       errors.push("Name on PAN is required")
@@ -1055,8 +1089,8 @@ export default function RestaurantOnboarding() {
             <Label className="text-xs text-gray-700">Phone number*</Label>
             <Input
               value={step1.ownerPhone || ""}
-              onChange={(e) => setStep1({ ...step1, ownerPhone: e.target.value })}
-              className="mt-1 bg-white text-sm text-black placeholder-black"
+              readOnly
+              className="mt-1 bg-gray-100 text-sm text-black placeholder-black cursor-not-allowed"
               placeholder="+91 98XXXXXX"
             />
           </div>
@@ -1069,10 +1103,8 @@ export default function RestaurantOnboarding() {
           <Label className="text-xs text-gray-700">Primary contact number*</Label>
           <Input
             value={step1.primaryContactNumber || ""}
-            onChange={(e) =>
-              setStep1({ ...step1, primaryContactNumber: e.target.value })
-            }
-            className="mt-1 bg-white text-sm text-black placeholder-black"
+            readOnly
+            className="mt-1 bg-gray-100 text-sm text-black placeholder-black cursor-not-allowed"
             placeholder="Restaurant's primary contact number"
           />
           <p className="text-[11px] text-gray-500 mt-1">
@@ -1084,6 +1116,39 @@ export default function RestaurantOnboarding() {
           <p className="text-sm text-gray-700">
             Add your restaurant's location for order pick-up.
           </p>
+          <Input
+            value={step1.location?.addressLine1 || ""}
+            onChange={(e) =>
+              setStep1({
+                ...step1,
+                location: { ...step1.location, addressLine1: e.target.value },
+              })
+            }
+            className="bg-white text-sm"
+            placeholder="Shop Name"
+          />
+          <Input
+            value={step1.location?.addressLine2 || ""}
+            onChange={(e) =>
+              setStep1({
+                ...step1,
+                location: { ...step1.location, addressLine2: e.target.value },
+              })
+            }
+            className="bg-white text-sm"
+            placeholder="Floor (optional)"
+          />
+          <Input
+            value={step1.location?.landmark || ""}
+            onChange={(e) =>
+              setStep1({
+                ...step1,
+                location: { ...step1.location, landmark: e.target.value },
+              })
+            }
+            className="bg-white text-sm"
+            placeholder="Nearby Landmark (optional)"
+          />
           <Input
             value={step1.location?.area || ""}
             onChange={(e) =>
@@ -1105,39 +1170,6 @@ export default function RestaurantOnboarding() {
             }
             className="bg-white text-sm"
             placeholder="City"
-          />
-          <Input
-            value={step1.location?.addressLine1 || ""}
-            onChange={(e) =>
-              setStep1({
-                ...step1,
-                location: { ...step1.location, addressLine1: e.target.value },
-              })
-            }
-            className="bg-white text-sm"
-            placeholder="Shop no. / building no. (optional)"
-          />
-          <Input
-            value={step1.location?.addressLine2 || ""}
-            onChange={(e) =>
-              setStep1({
-                ...step1,
-                location: { ...step1.location, addressLine2: e.target.value },
-              })
-            }
-            className="bg-white text-sm"
-            placeholder="Floor / tower (optional)"
-          />
-          <Input
-            value={step1.location?.landmark || ""}
-            onChange={(e) =>
-              setStep1({
-                ...step1,
-                location: { ...step1.location, landmark: e.target.value },
-              })
-            }
-            className="bg-white text-sm"
-            placeholder="Nearby landmark (optional)"
           />
           <p className="text-[11px] text-gray-500 mt-1">
             Please ensure that this address is the same as mentioned on your FSSAI license.
@@ -1172,31 +1204,49 @@ export default function RestaurantOnboarding() {
                 </span>
               </div>
             </div>
-            <label
-              htmlFor="menuImagesInput"
-              className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black  border-black text-xs font-medium cursor-pointer     w-full items-center"
-            >
-              <Upload className="w-4.5 h-4.5" />
-              <span>Choose files</span>
-            </label>
-            <input
-              id="menuImagesInput"
-              type="file"
-              multiple
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const files = Array.from(e.target.files || [])
-                if (!files.length) return
-                console.log('📸 Menu images selected:', files.length, 'files')
-                setStep2((prev) => ({
-                  ...prev,
-                  menuImages: [...(prev.menuImages || []), ...files], // Append new files to existing ones
-                }))
-                // Reset input to allow selecting same file again
-                e.target.value = ''
-              }}
-            />
+            <div className="flex gap-2">
+              <label
+                htmlFor="menuImagesCameraInput"
+                className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+              >
+                <ImageIcon className="w-4 h-4" />
+                <span>Camera</span>
+              </label>
+              <input
+                id="menuImagesCameraInput"
+                type="file"
+                multiple
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || [])
+                  if (!files.length) return
+                  setStep2((prev) => ({ ...prev, menuImages: [...(prev.menuImages || []), ...files] }))
+                  e.target.value = ""
+                }}
+              />
+              <label
+                htmlFor="menuImagesInput"
+                className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+              >
+                <Upload className="w-4.5 h-4.5" />
+                <span>Gallery</span>
+              </label>
+              <input
+                id="menuImagesInput"
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || [])
+                  if (!files.length) return
+                  setStep2((prev) => ({ ...prev, menuImages: [...(prev.menuImages || []), ...files] }))
+                  e.target.value = ""
+                }}
+              />
+            </div>
           </div>
 
           {/* Menu image previews */}
@@ -1291,31 +1341,45 @@ export default function RestaurantOnboarding() {
             </div>
 
           </div>
-          <label
-            htmlFor="profileImageInput"
-            className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black  border-black text-xs font-medium cursor-pointer     w-full items-center"
-          >
-            <Upload className="w-4.5 h-4.5" />
-            <span>Upload</span>
-          </label>
-          <input
-            id="profileImageInput"
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0] || null
-              if (file) {
-                console.log('📸 Profile image selected:', file.name)
-                setStep2((prev) => ({
-                  ...prev,
-                  profileImage: file,
-                }))
-              }
-              // Reset input to allow selecting same file again
-              e.target.value = ''
-            }}
-          />
+          <div className="flex gap-2">
+            <label
+              htmlFor="profileImageCameraInput"
+              className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+            >
+              <ImageIcon className="w-4 h-4" />
+              <span>Camera</span>
+            </label>
+            <input
+              id="profileImageCameraInput"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null
+                if (file) setStep2((prev) => ({ ...prev, profileImage: file }))
+                e.target.value = ""
+              }}
+            />
+            <label
+              htmlFor="profileImageInput"
+              className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+            >
+              <Upload className="w-4.5 h-4.5" />
+              <span>Gallery</span>
+            </label>
+            <input
+              id="profileImageInput"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null
+                if (file) setStep2((prev) => ({ ...prev, profileImage: file }))
+                e.target.value = ""
+              }}
+            />
+          </div>
         </div>
       </section>
 
@@ -1398,9 +1462,15 @@ export default function RestaurantOnboarding() {
             <Label className="text-xs text-gray-700">PAN number</Label>
             <Input
               value={step3.panNumber || ""}
-              onChange={(e) => setStep3({ ...step3, panNumber: e.target.value })}
-              className="mt-1 bg-white text-sm text-black placeholder-black"
+              onChange={(e) => setStep3({ ...step3, panNumber: e.target.value.toUpperCase() })}
+              onFocus={(e) => e.target.scrollIntoView({ behavior: "smooth", block: "center" })}
+              className="mt-1 bg-white text-sm text-black placeholder-black uppercase"
+              placeholder="ABCDE1234F"
+              maxLength={10}
             />
+            {step3.panNumber && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(step3.panNumber.trim()) && (
+              <p className="text-xs text-red-600 mt-1">Invalid PAN. Use 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)</p>
+            )}
           </div>
           <div>
             <Label className="text-xs text-gray-700">Name on PAN</Label>
@@ -1413,14 +1483,43 @@ export default function RestaurantOnboarding() {
         </div>
         <div>
           <Label className="text-xs text-gray-700">PAN image</Label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) =>
-              setStep3({ ...step3, panImage: e.target.files?.[0] || null })
-            }
-            className="mt-1 bg-white text-sm text-black placeholder-black"
-          />
+          <div className="mt-1 flex gap-2">
+            <label
+              htmlFor="panImageCameraInput"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+            >
+              <ImageIcon className="w-4 h-4" />
+              <span>Camera</span>
+            </label>
+            <input
+              id="panImageCameraInput"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                setStep3({ ...step3, panImage: e.target.files?.[0] || null })
+                e.target.value = ""
+              }}
+            />
+            <label
+              htmlFor="panImageInput"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Gallery</span>
+            </label>
+            <input
+              id="panImageInput"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                setStep3({ ...step3, panImage: e.target.files?.[0] || null })
+                e.target.value = ""
+              }}
+            />
+          </div>
         </div>
       </section>
 
@@ -1496,11 +1595,14 @@ export default function RestaurantOnboarding() {
                 >
                   <span className={step3.fssaiExpiry ? "text-gray-900" : "text-gray-500"}>
                     {step3.fssaiExpiry
-                      ? new Date(step3.fssaiExpiry).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })
+                      ? (() => {
+                          const [y, m, d] = step3.fssaiExpiry.split("-").map(Number)
+                          return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })
+                        })()
                       : "Select expiry date"}
                   </span>
                   <CalendarIcon className="w-4 h-4 text-gray-500" />
@@ -1509,11 +1611,20 @@ export default function RestaurantOnboarding() {
               <PopoverContent className="w-auto p-0" align="start">
                 <Calendar
                   mode="single"
-                  selected={step3.fssaiExpiry ? new Date(step3.fssaiExpiry) : undefined}
+                  selected={
+                    step3.fssaiExpiry
+                      ? (() => {
+                          const [y, m, d] = step3.fssaiExpiry.split("-").map(Number)
+                          return new Date(y, m - 1, d)
+                        })()
+                      : undefined
+                  }
                   onSelect={(date) => {
                     if (date) {
-                      const formattedDate = date.toISOString().split("T")[0]
-                      setStep3({ ...step3, fssaiExpiry: formattedDate })
+                      const y = date.getFullYear()
+                      const m = String(date.getMonth() + 1).padStart(2, "0")
+                      const d = String(date.getDate()).padStart(2, "0")
+                      setStep3({ ...step3, fssaiExpiry: `${y}-${m}-${d}` })
                     }
                   }}
                   initialFocus
@@ -1523,14 +1634,43 @@ export default function RestaurantOnboarding() {
             </Popover>
           </div>
         </div>
-        <Input
-          type="file"
-          accept="image/*"
-          onChange={(e) =>
-            setStep3({ ...step3, fssaiImage: e.target.files?.[0] || null })
-          }
-          className="bg-white text-sm"
-        />
+        <div className="flex gap-2">
+          <label
+            htmlFor="fssaiImageCameraInput"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span>Camera</span>
+          </label>
+          <input
+            id="fssaiImageCameraInput"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              setStep3({ ...step3, fssaiImage: e.target.files?.[0] || null })
+              e.target.value = ""
+            }}
+          />
+          <label
+            htmlFor="fssaiImageInput"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Gallery</span>
+          </label>
+          <input
+            id="fssaiImageInput"
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              setStep3({ ...step3, fssaiImage: e.target.files?.[0] || null })
+              e.target.value = ""
+            }}
+          />
+        </div>
       </section>
 
       <section className="bg-white p-4 sm:p-6 rounded-md space-y-4">
@@ -1639,9 +1779,21 @@ export default function RestaurantOnboarding() {
     return renderStep4()
   }
 
+  useEffect(() => {
+    const el = formContainerRef.current
+    if (!el) return
+    const handler = (e) => {
+      if (el.contains(e.target) && e.target.matches?.("input:not([type=file]):not([type=hidden]), textarea")) {
+        setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)
+      }
+    }
+    el.addEventListener("focusin", handler)
+    return () => el.removeEventListener("focusin", handler)
+  }, [])
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <div className="min-h-screen bg-gray-100 flex flex-col">
+      <div ref={formContainerRef} className="min-h-screen bg-gray-100 flex flex-col">
         <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">

@@ -33,6 +33,7 @@ const carouselData = [
 ]
 
 export default function RestaurantWelcome() {
+  const companyName = useCompanyName()
   const navigate = useNavigate()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [direction, setDirection] = useState(0) // 1 for next, -1 for previous
@@ -271,8 +272,8 @@ export default function RestaurantWelcome() {
                 setCurrentIndex(index)
               }}
               className={`transition-all duration-300 rounded-full ${index === currentIndex
-                  ? "w-2.5 h-2.5 bg-white"
-                  : "w-1.5 h-1.5 bg-white/50"
+                ? "w-2.5 h-2.5 bg-white"
+                : "w-1.5 h-1.5 bg-white/50"
                 }`}
               aria-label={`Go to slide ${index + 1}`}
             />

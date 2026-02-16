@@ -42,6 +42,7 @@ import AnimatedPage from "../../components/AnimatedPage"
 import { useCart } from "../../context/CartContext"
 import { useProfile } from "../../context/ProfileContext"
 import AddToCartAnimation from "../../components/AddToCartAnimation"
+import VariantSelector from "../../components/VariantSelector"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 
@@ -52,7 +53,7 @@ export default function RestaurantDetails() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
-  const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
+  const { addToCart, updateQuantity, removeFromCart, getCartItem, getCartItemId, cart } = useCart()
   const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite } = useProfile()
   const { location: userLocation } = useLocation() // Get user's current location
   const { zoneId, zone, loading: loadingZone, isOutOfService } = useZone(userLocation) // Get user's zone for zone-based filtering
@@ -80,6 +81,8 @@ export default function RestaurantDetails() {
     sortBy: null, // "low-to-high" | "high-to-low"
     vegNonVeg: null, // "veg" | "non-veg"
   })
+  const [selectedVariant, setSelectedVariant] = useState(null)
+  const [variantError, setVariantError] = useState(false)
 
   // Restaurant data state
   const [restaurant, setRestaurant] = useState(null)
@@ -709,6 +712,7 @@ export default function RestaurantDetails() {
   }, [userLocation?.latitude, userLocation?.longitude, restaurantLat, restaurantLng])
 
   // Sync quantities from cart on mount and when restaurant changes
+  // For variant items: key by cartItemId (productId__variantId); for non-variant: key by productId
   useEffect(() => {
     if (!restaurant || !restaurant.name) return
 
@@ -722,8 +726,26 @@ export default function RestaurantDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurant?.name, cart])
 
+  // When item detail modal opens: reset variant selection, auto-select if only one variant
+  useEffect(() => {
+    if (!selectedItem) {
+      setSelectedVariant(null)
+      setVariantError(false)
+      return
+    }
+    const variations = selectedItem?.variations || []
+    if (variations.length === 1) {
+      setSelectedVariant(variations[0])
+      setVariantError(false)
+    } else {
+      setSelectedVariant(null)
+      setVariantError(false)
+    }
+  }, [selectedItem])
+
   // Helper function to update item quantity in both local state and cart
-  const updateItemQuantity = (item, newQuantity, event = null) => {
+  // variantOverride: { id, name, price } when item has variations and user selected one
+  const updateItemQuantity = (item, newQuantity, event = null, variantOverride = null) => {
     // Check authentication
     if (!isModuleAuthenticated('user')) {
       toast.error("Please login to add items to cart")
@@ -731,29 +753,35 @@ export default function RestaurantDetails() {
       return
     }
 
-    // CRITICAL: Check if user is in service zone or restaurant is available
     if (isOutOfService) {
       toast.error('You are outside the service zone. Please select a location within the service area.');
       return;
     }
 
-    // Note: We don't block cart operations based on restaurant availability
-    // Only block if user is out of service zone
+    const variations = item?.variations || []
+    const hasVariants = variations.length > 0
 
-    // Update local state
+    // Mandatory variant selection: block add if item has variants and no variant selected
+    if (hasVariants && !variantOverride) {
+      setVariantError(true)
+      toast.error("Please select a variant")
+      return
+    }
+
+    const cartItemId = getCartItemId(item.id, variantOverride?.id)
+    const effectivePrice = variantOverride ? (variantOverride.price ?? item.price) : item.price
+
     setQuantities((prev) => ({
       ...prev,
-      [item.id]: newQuantity,
+      [cartItemId]: newQuantity,
     }))
 
-    // CRITICAL: Validate restaurant data before adding to cart
     if (!restaurant || !restaurant.name) {
       console.error('❌ Cannot add item to cart: Restaurant data is missing!');
       toast.error('Restaurant information is missing. Please refresh the page.');
       return;
     }
 
-    // Ensure we have a valid restaurantId
     const validRestaurantId = restaurant?.restaurantId || restaurant?._id || restaurant?.id;
     if (!validRestaurantId) {
       console.error('❌ Cannot add item to cart: Restaurant ID is missing!', {
@@ -766,26 +794,24 @@ export default function RestaurantDetails() {
       return;
     }
 
-    // Log for debugging
-    console.log('🛒 Adding item to cart:', {
-      itemName: item.name,
-      restaurantName: restaurant.name,
-      restaurantId: validRestaurantId,
-      restaurant_id: restaurant._id,
-      restaurant_restaurantId: restaurant.restaurantId
-    });
-
-    // Prepare cart item with all required properties
+    // Prepare cart item with variant support
     const cartItem = {
-      id: item.id,
+      productId: item.id,
+      id: cartItemId,
+      productName: item.name,
       name: item.name,
-      price: item.price,
+      price: effectivePrice,
+      variantPrice: effectivePrice,
       image: item.image,
-      restaurant: restaurant.name, // Use restaurant.name directly (already validated)
-      restaurantId: validRestaurantId, // Use validated restaurantId
+      restaurant: restaurant.name,
+      restaurantId: validRestaurantId,
       description: item.description,
       originalPrice: item.originalPrice,
-      isVeg: item.isVeg !== false // Add isVeg property
+      isVeg: item.isVeg !== false,
+      ...(variantOverride && {
+        selectedVariantId: variantOverride.id,
+        selectedVariantName: variantOverride.name,
+      }),
     }
 
     // Get source position for animation from event target
@@ -824,52 +850,44 @@ export default function RestaurantDetails() {
 
     // Update cart context
     if (newQuantity <= 0) {
-      // Pass sourcePosition and product info for removal animation
       const productInfo = {
-        id: item.id,
-        name: item.name,
+        id: cartItemId,
+        name: variantOverride ? `${item.name} - ${variantOverride.name}` : item.name,
         imageUrl: item.image,
       }
-      removeFromCart(item.id, sourcePosition, productInfo)
+      removeFromCart(cartItemId, sourcePosition, productInfo)
     } else {
-      const existingCartItem = getCartItem(item.id)
+      const existingCartItem = getCartItem(cartItemId)
       if (existingCartItem) {
-        // Prepare product info for animation
         const productInfo = {
-          id: item.id,
-          name: item.name,
+          id: cartItemId,
+          name: variantOverride ? `${item.name} - ${variantOverride.name}` : item.name,
           imageUrl: item.image,
         }
 
-        // If incrementing quantity, trigger add animation with sourcePosition
         if (newQuantity > existingCartItem.quantity && sourcePosition) {
           try {
             addToCart(cartItem, sourcePosition)
             if (newQuantity > existingCartItem.quantity + 1) {
-              updateQuantity(item.id, newQuantity)
+              updateQuantity(cartItemId, newQuantity)
             }
           } catch (error) {
-            // Handle restaurant mismatch error
             console.error('❌ Error adding item to cart:', error);
             toast.error(error.message || 'Cannot add item from different restaurant. Please clear cart first.');
-            return; // Don't update quantity if add failed
+            return;
           }
         }
-        // If decreasing quantity, trigger removal animation with sourcePosition
         else if (newQuantity < existingCartItem.quantity && sourcePosition) {
-          updateQuantity(item.id, newQuantity, sourcePosition, productInfo)
+          updateQuantity(cartItemId, newQuantity, sourcePosition, productInfo)
         }
-        // Otherwise just update quantity without animation
         else {
-          updateQuantity(item.id, newQuantity)
+          updateQuantity(cartItemId, newQuantity)
         }
       } else {
-        // Add to cart first (adds with quantity 1), then update to desired quantity
-        // Pass sourcePosition when adding a new item
         try {
           addToCart(cartItem, sourcePosition)
           if (newQuantity > 1) {
-            updateQuantity(item.id, newQuantity)
+            updateQuantity(cartItemId, newQuantity)
           }
         } catch (error) {
           // Handle restaurant mismatch error
@@ -1580,8 +1598,10 @@ export default function RestaurantDetails() {
                   {isExpanded && section.items && section.items.length > 0 && (
                     <div className="space-y-0">
                       {sortMenuItems(filterMenuItems(section.items)).map((item, itemIndex) => {
-                        const quantity = quantities[item.id] || 0
-                        // Determine veg/non-veg based on foodType
+                        const hasVariants = (item?.variations || []).length > 0
+                        const quantity = hasVariants
+                          ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
+                          : (quantities[item.id] || 0)
                         const isVeg = item.foodType === "Veg"
 
                         // Debug: Log preparationTime for troubleshooting
@@ -1627,7 +1647,11 @@ export default function RestaurantDetails() {
                               )}
 
                               <div className="flex items-center gap-3 mt-1">
-                                <p className="font-semibold text-gray-900 dark:text-white">₹{Math.round(item.price)}</p>
+                                <p className="font-semibold text-gray-900 dark:text-white">
+                                  {hasVariants
+                                    ? `From ₹${Math.round((item.variations || []).reduce((min, v) => Math.min(min, v.price || item.price), item.price || 0))}`
+                                    : `₹${Math.round(item.price)}`}
+                                </p>
                                 {/* Preparation Time - Show if available */}
                                 {item.preparationTime && String(item.preparationTime).trim() && (
                                   <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
@@ -1687,7 +1711,7 @@ export default function RestaurantDetails() {
                                   <span className="text-xs text-gray-400">No image</span>
                                 </div>
                               )}
-                              {quantity > 0 ? (
+                              {quantity > 0 && !hasVariants ? (
                                 <motion.div
                                   initial={{ opacity: 0, scale: 0.8 }}
                                   animate={{ opacity: 1, scale: 1 }}
@@ -1722,6 +1746,23 @@ export default function RestaurantDetails() {
                                     <Plus size={14} className="stroke-[3px]" />
                                   </button>
                                 </motion.div>
+                              ) : quantity > 0 && hasVariants ? (
+                                <motion.button
+                                  layoutId={`add-variant-${item.id}`}
+                                  initial={{ opacity: 0, scale: 0.9 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (!shouldShowGrayscale) handleItemClick(item)
+                                  }}
+                                  disabled={shouldShowGrayscale}
+                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${shouldShowGrayscale
+                                    ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                                    : 'border-green-600 text-green-600 hover:bg-green-50'
+                                    }`}
+                                >
+                                  <span className="text-sm">{quantity}</span> ADD
+                                </motion.button>
                               ) : (
                                 <motion.button
                                   layoutId={`add-button-${item.id}`}
@@ -1731,7 +1772,11 @@ export default function RestaurantDetails() {
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     if (!shouldShowGrayscale) {
-                                      updateItemQuantity(item, 1, e)
+                                      if (hasVariants) {
+                                        handleItemClick(item)
+                                      } else {
+                                        updateItemQuantity(item, 1, e)
+                                      }
                                     }
                                   }}
                                   disabled={shouldShowGrayscale}
@@ -1799,8 +1844,10 @@ export default function RestaurantDetails() {
                             {isSubsectionExpanded && subsection.items && subsection.items.length > 0 && (
                               <div className="space-y-0">
                                 {sortMenuItems(filterMenuItems(subsection.items)).map((item, itemIndex) => {
-                                  const quantity = quantities[item.id] || 0
-                                  // Determine veg/non-veg based on foodType
+                                  const hasVariantsSub = (item?.variations || []).length > 0
+                                  const quantity = hasVariantsSub
+                                    ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
+                                    : (quantities[item.id] || 0)
                                   const isVeg = item.foodType === "Veg"
 
                                   // Debug: Log preparationTime for troubleshooting
@@ -1846,7 +1893,11 @@ export default function RestaurantDetails() {
                                         )}
 
                                         <div className="flex items-center gap-3 mt-1">
-                                          <p className="font-semibold text-gray-900 dark:text-white">₹{Math.round(item.price)}</p>
+                                          <p className="font-semibold text-gray-900 dark:text-white">
+                                            {hasVariantsSub
+                                              ? `From ₹${Math.round((item.variations || []).reduce((min, v) => Math.min(min, v.price || item.price), item.price || 0))}`
+                                              : `₹${Math.round(item.price)}`}
+                                          </p>
                                           {/* Preparation Time - Show if available */}
                                           {item.preparationTime && String(item.preparationTime).trim() && (
                                             <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
@@ -1902,7 +1953,7 @@ export default function RestaurantDetails() {
                                             <span className="text-xs text-gray-400">No image</span>
                                           </div>
                                         )}
-                                        {quantity > 0 ? (
+                                        {quantity > 0 && !hasVariantsSub ? (
                                           <motion.div
                                             initial={{ opacity: 0, scale: 0.8 }}
                                             animate={{ opacity: 1, scale: 1 }}
@@ -1937,6 +1988,23 @@ export default function RestaurantDetails() {
                                               <Plus size={14} className="stroke-[3px]" />
                                             </button>
                                           </motion.div>
+                                        ) : quantity > 0 && hasVariantsSub ? (
+                                          <motion.button
+                                            layoutId={`add-variant-sub-${item.id}`}
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              if (!shouldShowGrayscale) handleItemClick(item)
+                                            }}
+                                            disabled={shouldShowGrayscale}
+                                            className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${shouldShowGrayscale
+                                              ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                                              : 'border-green-600 text-green-600 hover:bg-green-50'
+                                              }`}
+                                          >
+                                            <span className="text-sm">{quantity}</span> ADD
+                                          </motion.button>
                                         ) : (
                                           <motion.button
                                             layoutId={`add-button-sub-${item.id}`}
@@ -1946,7 +2014,11 @@ export default function RestaurantDetails() {
                                             onClick={(e) => {
                                               e.stopPropagation()
                                               if (!shouldShowGrayscale) {
-                                                updateItemQuantity(item, 1, e)
+                                                if (hasVariantsSub) {
+                                                  handleItemClick(item)
+                                                } else {
+                                                  updateItemQuantity(item, 1, e)
+                                                }
                                               }
                                             }}
                                             disabled={shouldShowGrayscale}
@@ -2621,78 +2693,116 @@ export default function RestaurantDetails() {
                         NOT ELIGIBLE FOR COUPONS
                       </p>
                     )}
+
+                    {/* Variant Selection - Mandatory for items with variations */}
+                    {(selectedItem?.variations || []).length > 0 && (
+                      <div className="mb-4">
+                        <VariantSelector
+                          variants={selectedItem.variations}
+                          selectedVariant={selectedVariant}
+                          onSelect={(v) => {
+                            setSelectedVariant(v)
+                            setVariantError(false)
+                          }}
+                          disabled={shouldShowGrayscale}
+                        />
+                        {variantError && (
+                          <p className="text-sm text-red-500 dark:text-red-400 mt-2">Please select a variant</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Bottom Action Bar */}
                   <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
                     <div className="flex items-center gap-4">
-                      {/* Quantity Selector */}
-                      <div className={`flex items-center gap-3 border-2 rounded-lg px-3 h-[44px] bg-white dark:bg-[#2a2a2a] ${shouldShowGrayscale
-                        ? 'border-gray-300 dark:border-gray-700 opacity-50'
-                        : 'border-gray-300 dark:border-gray-700'
-                        }`}>
-                        <button
-                          onClick={(e) => {
-                            if (!shouldShowGrayscale) {
-                              updateItemQuantity(selectedItem, Math.max(0, (quantities[selectedItem.id] || 0) - 1), e)
-                            }
-                          }}
-                          disabled={(quantities[selectedItem.id] || 0) === 0 || shouldShowGrayscale}
-                          className={`${shouldShowGrayscale
-                            ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed'
-                            }`}
-                        >
-                          <Minus className="h-5 w-5" />
-                        </button>
-                        <span className={`text-lg font-semibold min-w-[2rem] text-center ${shouldShowGrayscale
-                          ? 'text-gray-400 dark:text-gray-600'
-                          : 'text-gray-900 dark:text-white'
-                          }`}>
-                          {quantities[selectedItem.id] || 0}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            if (!shouldShowGrayscale) {
-                              updateItemQuantity(selectedItem, (quantities[selectedItem.id] || 0) + 1, e)
-                            }
-                          }}
-                          disabled={shouldShowGrayscale}
-                          className={shouldShowGrayscale
-                            ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                          }
-                        >
-                          <Plus className="h-5 w-5" />
-                        </button>
-                      </div>
+                      {(() => {
+                        const itemHasVariants = (selectedItem?.variations || []).length > 0
+                        const modalCartItemId = itemHasVariants && selectedVariant
+                          ? getCartItemId(selectedItem.id, selectedVariant.id)
+                          : selectedItem?.id
+                        const modalQuantity = quantities[modalCartItemId] || 0
+                        const displayPrice = itemHasVariants && selectedVariant
+                          ? (selectedVariant.price ?? selectedItem.price)
+                          : selectedItem?.price
+                        const canAdd = !itemHasVariants || (itemHasVariants && selectedVariant)
+                        return (
+                          <>
+                            {/* Quantity Selector */}
+                            <div className={`flex items-center gap-3 border-2 rounded-lg px-3 h-[44px] bg-white dark:bg-[#2a2a2a] ${shouldShowGrayscale || !canAdd
+                              ? 'border-gray-300 dark:border-gray-700 opacity-50'
+                              : 'border-gray-300 dark:border-gray-700'
+                              }`}>
+                              <button
+                                onClick={(e) => {
+                                  if (!shouldShowGrayscale && canAdd) {
+                                    updateItemQuantity(selectedItem, Math.max(0, modalQuantity - 1), e, itemHasVariants ? selectedVariant : null)
+                                  }
+                                }}
+                                disabled={modalQuantity === 0 || shouldShowGrayscale || !canAdd}
+                                className={`${shouldShowGrayscale || !canAdd
+                                  ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed'
+                                  }`}
+                              >
+                                <Minus className="h-5 w-5" />
+                              </button>
+                              <span className={`text-lg font-semibold min-w-[2rem] text-center ${shouldShowGrayscale || !canAdd
+                                ? 'text-gray-400 dark:text-gray-600'
+                                : 'text-gray-900 dark:text-white'
+                                }`}>
+                                {modalQuantity}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  if (!shouldShowGrayscale && canAdd) {
+                                    updateItemQuantity(selectedItem, modalQuantity + 1, e, itemHasVariants ? selectedVariant : null)
+                                  }
+                                }}
+                                disabled={shouldShowGrayscale || !canAdd}
+                                className={shouldShowGrayscale || !canAdd
+                                  ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                }
+                              >
+                                <Plus className="h-5 w-5" />
+                              </button>
+                            </div>
 
-                      {/* Add Item Button */}
-                      <Button
-                        className={`flex-1 h-[44px] rounded-lg font-semibold flex items-center justify-center gap-2 ${shouldShowGrayscale
-                          ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
-                          : 'bg-red-500 hover:bg-red-600 text-white'
-                          }`}
-                        onClick={(e) => {
-                          if (!shouldShowGrayscale) {
-                            updateItemQuantity(selectedItem, (quantities[selectedItem.id] || 0) + 1, e)
-                            setShowItemDetail(false)
-                          }
-                        }}
-                        disabled={shouldShowGrayscale}
-                      >
-                        <span>Add item</span>
-                        <div className="flex items-center gap-1">
-                          {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
-                            <span className="text-sm line-through text-red-200">
-                              ₹{Math.round(selectedItem.originalPrice)}
-                            </span>
-                          )}
-                          <span className="text-base font-bold">
-                            ₹{Math.round(selectedItem.price)}
-                          </span>
-                        </div>
-                      </Button>
+                            {/* Add Item Button - Disabled when variant required but not selected */}
+                            <Button
+                              className={`flex-1 h-[44px] rounded-lg font-semibold flex items-center justify-center gap-2 ${!canAdd || shouldShowGrayscale
+                                ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
+                                : 'bg-red-500 hover:bg-red-600 text-white'
+                                }`}
+                              onClick={(e) => {
+                                if (!canAdd) {
+                                  setVariantError(true)
+                                  toast.error("Please select a variant")
+                                  return
+                                }
+                                if (!shouldShowGrayscale) {
+                                  updateItemQuantity(selectedItem, modalQuantity + 1, e, itemHasVariants ? selectedVariant : null)
+                                  setShowItemDetail(false)
+                                }
+                              }}
+                              disabled={!canAdd || shouldShowGrayscale}
+                            >
+                              <span>{canAdd ? "Add item" : "Select variant"}</span>
+                              <div className="flex items-center gap-1">
+                                {selectedItem.originalPrice && selectedItem.originalPrice > displayPrice && (
+                                  <span className="text-sm line-through text-red-200">
+                                    ₹{Math.round(selectedItem.originalPrice)}
+                                  </span>
+                                )}
+                                <span className="text-base font-bold">
+                                  ₹{Math.round(displayPrice)}
+                                </span>
+                              </div>
+                            </Button>
+                          </>
+                        )
+                      })()}
                     </div>
                   </div>
                 </motion.div>

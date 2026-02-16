@@ -5,6 +5,7 @@ import {
   verifyPayment,
 } from "../../payment/services/razorpayService.js";
 import Restaurant from "../../restaurant/models/Restaurant.js";
+import Menu from "../../restaurant/models/Menu.js";
 import Zone from "../../admin/models/Zone.js";
 import mongoose from "mongoose";
 import winston from "winston";
@@ -322,6 +323,45 @@ export const createOrder = async (req, res) => {
       restaurant._id?.toString() || restaurant.restaurantId;
     assignedRestaurantName = restaurant.name;
 
+    // Validate variant selection for items with variations
+    const menu = await Menu.findOne({ restaurant: restaurant._id }).lean();
+    if (menu?.sections) {
+      const itemMap = {};
+      const collectItems = (sections) => {
+        if (!sections || !Array.isArray(sections)) return;
+        for (const sec of sections) {
+          for (const it of sec.items || []) {
+            if (it?.id) itemMap[it.id] = it;
+          }
+          for (const sub of sec.subsections || []) {
+            for (const it of sub.items || []) {
+              if (it?.id) itemMap[it.id] = it;
+            }
+          }
+        }
+      };
+      collectItems(menu.sections);
+      for (const orderItem of items) {
+        const itemId = orderItem.itemId || orderItem.id;
+        const menuItem = itemMap[itemId];
+        if (menuItem?.variations && Array.isArray(menuItem.variations) && menuItem.variations.length > 0) {
+          if (!orderItem.selectedVariantId) {
+            return res.status(400).json({
+              success: false,
+              message: `Variant selection is required for "${orderItem.name || menuItem.name}". Please select a variant.`,
+            });
+          }
+          const validVariant = menuItem.variations.find((v) => String(v.id) === String(orderItem.selectedVariantId));
+          if (!validVariant) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid variant selected for "${orderItem.name || menuItem.name}". Please refresh and try again.`,
+            });
+          }
+        }
+      }
+    }
+
     // Log restaurant assignment for debugging
     logger.info("✅ Restaurant assigned to order:", {
       assignedRestaurantId: assignedRestaurantId,
@@ -445,8 +485,40 @@ export const createOrder = async (req, res) => {
     if (!specificCommissionUsed) {
       if (hotelReference) {
         // QR Order Logic
-        const { hotel, admin } = commissionSettings.qrCommission;
-        // Removed user cashback as per new requirement
+        const Hotel = (await import("../../hotel/models/Hotel.js")).default;
+
+        // Fetch hotel to get its specific commission rules
+        let hotelDoc = null;
+        try {
+          if (mongoose.Types.ObjectId.isValid(hotelReference)) {
+            hotelDoc = await Hotel.findById(hotelReference).lean();
+          } else {
+            hotelDoc = await Hotel.findOne({ hotelId: hotelReference }).lean();
+          }
+        } catch (hError) {
+          logger.warn(
+            "⚠️ Failed to fetch hotel for specific commission, using global settings:",
+            hError.message,
+          );
+        }
+
+        let hotelPct = 0;
+        let adminPct = 0;
+
+        if (hotelDoc) {
+          hotelPct = Number(hotelDoc.commission) || 0;
+          adminPct = Number(hotelDoc.adminCommission) || 0;
+          logger.info(
+            `🎯 Using hotel-specific commission: Hotel ${hotelPct}%, Admin ${adminPct}%`,
+          );
+        } else {
+          const { hotel, admin } = commissionSettings.qrCommission;
+          hotelPct = hotel;
+          adminPct = admin;
+          logger.info(
+            `ℹ️ Using global QR commission: Hotel ${hotelPct}%, Admin ${adminPct}%`,
+          );
+        }
 
         // Logic:
         // Hotel gets Fixed % (e.g. 10%) of subtotal/commissionable amount
@@ -455,28 +527,28 @@ export const createOrder = async (req, res) => {
 
         const commissionableAmount = pricing.subtotal;
 
-        const hotelAmount = (commissionableAmount * hotel) / 100;
-        const adminAmount = (commissionableAmount * admin) / 100;
+        const hotelAmount = (commissionableAmount * hotelPct) / 100;
+        const adminAmount = (commissionableAmount * adminPct) / 100;
 
         // Restaurant gets whatever is left
         const restaurantAmount =
           commissionableAmount - hotelAmount - adminAmount;
 
         commissionBreakdown = {
-          hotel: hotelAmount,
-          admin: adminAmount,
-          restaurant: restaurantAmount,
+          hotel: Math.round(hotelAmount * 100) / 100,
+          admin: Math.round(adminAmount * 100) / 100,
+          restaurant: Math.round(restaurantAmount * 100) / 100,
           user: 0,
         };
 
         commissionPercentages = {
-          hotel,
-          admin,
-          restaurant: 100 - hotel - admin,
+          hotel: hotelPct,
+          admin: adminPct,
+          restaurant: Math.round((100 - hotelPct - adminPct) * 100) / 100,
           user: 0,
         };
 
-        logger.info("💰 QR Order Commission Calculated (Global):", {
+        logger.info("💰 QR Order Commission Calculated:", {
           percentages: commissionPercentages,
           breakdown: commissionBreakdown,
           commissionableAmount,
@@ -488,9 +560,12 @@ export const createOrder = async (req, res) => {
 
         const commissionableAmount = pricing.subtotal;
 
-        commissionBreakdown.admin = (commissionableAmount * admin) / 100;
+        commissionBreakdown.user = 0;
+        commissionBreakdown.hotel = 0;
+        commissionBreakdown.admin =
+          Math.round(((commissionableAmount * admin) / 100) * 100) / 100;
         commissionBreakdown.restaurant =
-          (commissionableAmount * restaurant) / 100;
+          Math.round(((commissionableAmount * restaurant) / 100) * 100) / 100;
 
         logger.info("💰 Direct Order Commission Calculated (Global):", {
           percentages: commissionPercentages,

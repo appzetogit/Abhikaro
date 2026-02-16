@@ -5,6 +5,7 @@ const commissionSettingsSchema = new mongoose.Schema(
     qrCommission: {
       hotel: { type: Number, required: true, default: 10 },
       admin: { type: Number, required: true, default: 20 },
+      restaurant: { type: Number, required: true, default: 70 },
     },
     directCommission: {
       admin: { type: Number, required: true, default: 30 },
@@ -18,9 +19,12 @@ const commissionSettingsSchema = new mongoose.Schema(
 
 // Validation to ensure percentages sum to 100
 commissionSettingsSchema.pre("save", function (next) {
-  const qrTotal = this.qrCommission.hotel + this.qrCommission.admin;
-  if (qrTotal > 100) {
-    return next(new Error("QR Commission percentages must not exceed 100%"));
+  const qrTotal =
+    this.qrCommission.hotel +
+    this.qrCommission.admin +
+    this.qrCommission.restaurant;
+  if (qrTotal !== 100) {
+    return next(new Error("QR Commission percentages must sum to 100%"));
   }
 
   const directTotal =

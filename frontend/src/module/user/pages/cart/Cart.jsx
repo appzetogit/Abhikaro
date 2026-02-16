@@ -99,7 +99,8 @@ export default function Cart() {
   const [hotelName, setHotelName] = useState('') // Hotel name for display
   const [walletBalance, setWalletBalance] = useState(0)
   const [isLoadingWallet, setIsLoadingWallet] = useState(false)
-  const [deliveryFleet] = useState("standard") // Default to standard fleet
+  const [deliveryFleet, setDeliveryFleet] = useState("standard") // Added setter
+  const [showFleetOptions, setShowFleetOptions] = useState(false) // Added state
   const [note, setNote] = useState("")
   const [showNoteInput, setShowNoteInput] = useState(false)
   const [sendCutlery, setSendCutlery] = useState(true)
@@ -547,13 +548,15 @@ export default function Cart() {
       try {
         setLoadingPricing(true)
         const items = cart.map(item => ({
-          itemId: item.id,
-          name: item.name,
-          price: item.price, // Price should already be in INR
+          itemId: item.productId || item.id,
+          name: item.selectedVariantName ? `${item.productName || item.name} - ${item.selectedVariantName}` : (item.productName || item.name),
+          price: item.variantPrice ?? item.price,
           quantity: item.quantity || 1,
           image: item.image,
           description: item.description,
-          isVeg: item.isVeg !== false
+          isVeg: item.isVeg !== false,
+          selectedVariantId: item.selectedVariantId || null,
+          selectedVariantName: item.selectedVariantName || null,
         }))
 
         const response = await orderAPI.calculateOrder({
@@ -712,13 +715,15 @@ export default function Cart() {
       if (cart.length > 0 && defaultAddress) {
         try {
           const items = cart.map(item => ({
-            itemId: item.id,
-            name: item.name,
-            price: item.price,
+            itemId: item.productId || item.id,
+            name: item.selectedVariantName ? `${item.productName || item.name} - ${item.selectedVariantName}` : (item.productName || item.name),
+            price: item.variantPrice ?? item.price,
             quantity: item.quantity || 1,
             image: item.image,
             description: item.description,
-            isVeg: item.isVeg !== false
+            isVeg: item.isVeg !== false,
+            selectedVariantId: item.selectedVariantId || null,
+            selectedVariantName: item.selectedVariantName || null,
           }))
 
           const response = await orderAPI.calculateOrder({
@@ -823,13 +828,17 @@ export default function Cart() {
       // Include all cart items (main items + addons)
       // Note: Addons are added as separate cart items when user clicks the + button
       const orderItems = cart.map(item => ({
-        itemId: item.id,
-        name: item.name,
-        price: item.price,
+        itemId: item.productId || item.id,
+        name: item.selectedVariantName
+          ? `${item.productName || item.name} - ${item.selectedVariantName}`
+          : (item.productName || item.name),
+        price: item.variantPrice ?? item.price,
         quantity: item.quantity || 1,
         image: item.image || "",
         description: item.description || "",
-        isVeg: item.isVeg !== false
+        isVeg: item.isVeg !== false,
+        selectedVariantId: item.selectedVariantId || null,
+        selectedVariantName: item.selectedVariantName || null,
       }))
 
       console.log("📋 Order items to send:", orderItems)
@@ -1344,9 +1353,9 @@ export default function Cart() {
       </div>
 
       {/* Scrollable Content Area */}
-      <div 
-        className="overflow-y-auto overflow-x-hidden pt-16 md:pt-20 pb-40 md:pb-48" 
-        style={{ 
+      <div
+        className="overflow-y-auto overflow-x-hidden pt-16 md:pt-20 pb-40 md:pb-48"
+        style={{
           height: '100vh',
           WebkitOverflowScrolling: 'touch',
           paddingTop: '64px', // Header height
@@ -1379,7 +1388,11 @@ export default function Cart() {
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm md:text-base font-medium text-gray-800 dark:text-gray-200 leading-tight">{item.name}</p>
+                        <p className="text-sm md:text-base font-medium text-gray-800 dark:text-gray-200 leading-tight">
+                          {item.selectedVariantName
+                            ? `${item.productName || item.name} - ${item.selectedVariantName}`
+                            : (item.productName || item.name)}
+                        </p>
                         <button className="text-xs md:text-sm text-blue-600 dark:text-blue-400 font-medium flex items-center gap-0.5 mt-0.5">
                           Edit <ChevronRight className="h-3 w-3 md:h-4 md:w-4" />
                         </button>

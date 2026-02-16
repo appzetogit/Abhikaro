@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Phone, User, AlertCircle, Loader2, UtensilsCrossed } from "lucide-react"
 import { restaurantAPI } from "@/lib/api"
@@ -54,6 +54,31 @@ export default function RestaurantSignup() {
   const [isLoading, setIsLoading] = useState(false)
   const [apiError, setApiError] = useState("")
 
+  // Prefill from sessionStorage when returning from OTP screen
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("restaurantAuthData")
+      if (stored) {
+        const data = JSON.parse(stored)
+        if (data.phone) {
+          const match = data.phone.match(/(\+\d+)\s*(.+)/)
+          if (match) {
+            const countryCode = match[1]
+            const digits = (match[2] || "").replace(/\D/g, "").slice(0, 10)
+            setFormData((prev) => ({
+              ...prev,
+              countryCode,
+              phone: digits,
+              name: data.name || prev.name,
+            }))
+          }
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [])
+
   const validatePhone = (phone) => {
     if (!phone.trim()) {
       return "Phone number is required"
@@ -81,16 +106,21 @@ export default function RestaurantSignup() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
+    let finalValue = value
+    if (name === "phone") {
+      const digits = value.replace(/\D/g, "").slice(0, 10)
+      finalValue = digits
+    }
     setFormData({
       ...formData,
-      [name]: value,
+      [name]: finalValue,
     })
 
     // Real-time validation
     if (name === "phone") {
-      setErrors({ ...errors, phone: validatePhone(value) })
+      setErrors({ ...errors, phone: validatePhone(finalValue) })
     } else if (name === "name") {
-      setErrors({ ...errors, name: validateName(value) })
+      setErrors({ ...errors, name: validateName(finalValue) })
     }
   }
 
@@ -211,10 +241,10 @@ export default function RestaurantSignup() {
           className="flex-1 flex flex-col items-center justify-center px-6 sm:px-10 lg:px-16 pb-8"
           style={{ animation: "fadeInUp 0.8s ease-out 0.15s both" }}
         >
-          {/* Title */}
+          {/* Title - Sign Up mode */}
           <div className="mb-8 text-center">
             <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 mb-2">
-              Register Your Restaurant
+              Sign Up
             </h2>
             <p className="text-sm text-gray-500">
               Enter your details to get started.
@@ -287,6 +317,8 @@ export default function RestaurantSignup() {
                       id="phone"
                       name="phone"
                       type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
                       placeholder="Enter phone number"
                       value={formData.phone}
                       onChange={handleChange}

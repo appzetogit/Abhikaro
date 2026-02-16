@@ -22,6 +22,8 @@ const defaultCartContext = {
   getCartCount: () => 0,
   isInCart: () => false,
   getCartItem: () => null,
+  getCartItemId: (productId, selectedVariantId) =>
+    selectedVariantId ? `${productId}__${selectedVariantId}` : (productId || ''),
   clearCart: () => {
     console.warn('CartProvider not available - clearCart called');
   },
@@ -58,92 +60,125 @@ export function CartProvider({ children }) {
     }
   }, [cart])
 
+  // Generate cart item ID: productId for no variant, productId__variantId for variants
+  const getCartItemId = (productId, selectedVariantId) => {
+    const pid = productId ?? '';
+    if (selectedVariantId) {
+      return `${pid}__${selectedVariantId}`;
+    }
+    return pid;
+  };
+
   const addToCart = (item, sourcePosition = null) => {
     setCart((prev) => {
+      const productId = item.productId ?? item.id;
+      const selectedVariantId = item.selectedVariantId ?? null;
+      const cartItemId = getCartItemId(productId, selectedVariantId);
+
       // CRITICAL: Validate restaurant consistency
-      // If cart already has items, ensure new item belongs to the same restaurant
       if (prev.length > 0) {
         const firstItemRestaurantId = prev[0]?.restaurantId;
         const firstItemRestaurantName = prev[0]?.restaurant;
         const newItemRestaurantId = item?.restaurantId;
         const newItemRestaurantName = item?.restaurant;
 
-        // Check restaurant ID first (most reliable)
         if (firstItemRestaurantId && newItemRestaurantId) {
           const firstIdStr = String(firstItemRestaurantId).trim();
           const newIdStr = String(newItemRestaurantId).trim();
 
           if (firstIdStr === newIdStr) {
-            // IDs match exactly - this is the same restaurant even if name changed
-            return prev.map((i) =>
-              i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-            );
+            const existing = prev.find((i) => i.id === cartItemId);
+            if (existing) {
+              if (sourcePosition) {
+                setLastAddEvent({
+                  product: {
+                    id: cartItemId,
+                    name: item.productName ?? item.name,
+                    imageUrl: item.image || item.imageUrl,
+                  },
+                  sourcePosition,
+                });
+                setTimeout(() => setLastAddEvent(null), 1500);
+              }
+              return prev.map((i) =>
+                i.id === cartItemId ? { ...i, quantity: i.quantity + 1 } : i
+              );
+            }
           }
         }
 
-        // Fallback to name comparison for legacy items or name-only matches
         const normalizeName = (name) => name ? name.trim().toLowerCase() : '';
         const firstRestaurantNameNormalized = normalizeName(firstItemRestaurantName);
         const newRestaurantNameNormalized = normalizeName(newItemRestaurantName);
 
-        if (firstRestaurantNameNormalized && newRestaurantNameNormalized) {
-          if (firstRestaurantNameNormalized !== newRestaurantNameNormalized) {
-            console.error('❌ Cannot add item: Restaurant mismatch!', {
-              cartRestaurantId: firstItemRestaurantId,
-              cartRestaurantName: firstItemRestaurantName,
-              newItemRestaurantId: newItemRestaurantId,
-              newItemRestaurantName: newItemRestaurantName
-            });
-            throw new Error(`Cart already contains items from "${firstItemRestaurantName}". Please clear cart or complete order first.`);
-          }
+        if (firstRestaurantNameNormalized && newRestaurantNameNormalized &&
+            firstRestaurantNameNormalized !== newRestaurantNameNormalized) {
+          console.error('❌ Cannot add item: Restaurant mismatch!', {
+            cartRestaurantId: firstItemRestaurantId,
+            cartRestaurantName: firstItemRestaurantName,
+            newItemRestaurantId,
+            newItemRestaurantName
+          });
+          throw new Error(`Cart already contains items from "${firstItemRestaurantName}". Please clear cart or complete order first.`);
         }
       }
 
-      const existing = prev.find((i) => i.id === item.id)
+      const existing = prev.find((i) => i.id === cartItemId);
       if (existing) {
-        // Set last add event for animation when incrementing existing item
         if (sourcePosition) {
           setLastAddEvent({
             product: {
-              id: item.id,
-              name: item.name,
+              id: cartItemId,
+              name: item.productName ?? item.name,
               imageUrl: item.image || item.imageUrl,
             },
             sourcePosition,
-          })
-          // Clear after animation completes (increased delay)
-          setTimeout(() => setLastAddEvent(null), 1500)
+          });
+          setTimeout(() => setLastAddEvent(null), 1500);
         }
         return prev.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-        )
+          i.id === cartItemId ? { ...i, quantity: i.quantity + 1 } : i
+        );
       }
 
-      // Validate item has required restaurant info
       if (!item.restaurantId && !item.restaurant) {
         console.error('❌ Cannot add item: Missing restaurant information!', item);
         throw new Error('Item is missing restaurant information. Please refresh the page.');
       }
 
-      const newItem = { ...item, quantity: 1 }
+      const variantPrice = item.variantPrice ?? item.price;
+      const quantity = item.quantity ?? 1;
+      const totalPrice = variantPrice * quantity;
 
-      // Set last add event for animation if sourcePosition is provided
+      const newItem = {
+        ...item,
+        id: cartItemId,
+        productId,
+        productName: item.productName ?? item.name,
+        name: item.productName ?? item.name,
+        selectedVariantId: selectedVariantId || undefined,
+        selectedVariantName: item.selectedVariantName || undefined,
+        variantPrice,
+        price: variantPrice,
+        quantity,
+        totalPrice,
+      };
+
       if (sourcePosition) {
         setLastAddEvent({
           product: {
-            id: item.id,
-            name: item.name,
+            id: cartItemId,
+            name: newItem.name + (item.selectedVariantName ? ` - ${item.selectedVariantName}` : ''),
             imageUrl: item.image || item.imageUrl,
           },
           sourcePosition,
-        })
-        // Clear after animation completes (increased delay to allow full animation)
-        setTimeout(() => setLastAddEvent(null), 1500)
+        });
+        setTimeout(() => setLastAddEvent(null), 1500);
       }
 
-      return [...prev, newItem]
-    })
-  }
+      return [...prev, newItem];
+    });
+  };
 
   const removeFromCart = (itemId, sourcePosition = null, productInfo = null) => {
     setCart((prev) => {
@@ -320,7 +355,9 @@ export function CartProvider({ children }) {
     const items = cart.map(item => ({
       product: {
         id: item.id,
-        name: item.name,
+        name: item.selectedVariantName
+          ? `${item.productName || item.name} - ${item.selectedVariantName}`
+          : (item.productName || item.name),
         imageUrl: item.image || item.imageUrl,
       },
       quantity: item.quantity || 1,
@@ -339,9 +376,7 @@ export function CartProvider({ children }) {
   const value = useMemo(
     () => ({
       _isProvider: true, // Flag to identify this is from the actual provider
-      // Keep original cart array for backward compatibility
       cart,
-      // Add animation-compatible structure
       items: cartForAnimation.items,
       itemCount: cartForAnimation.itemCount,
       total: cartForAnimation.total,
@@ -353,6 +388,7 @@ export function CartProvider({ children }) {
       getCartCount,
       isInCart,
       getCartItem,
+      getCartItemId,
       clearCart,
       cleanCartForRestaurant,
     }),

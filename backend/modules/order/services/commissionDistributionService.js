@@ -49,12 +49,52 @@ export const distributeCommissions = async (orderId) => {
       restaurantId,
       orderId: orderNumber,
     } = order;
-    const totalAmount = pricing.subtotal; // Using subtotal for commission split
+    const totalAmount = pricing.subtotal;
 
-    // Split logic: 10/20/70
-    const hotelShare = Math.round(totalAmount * 0.1 * 100) / 100;
-    const adminShare = Math.round(totalAmount * 0.2 * 100) / 100;
-    const restaurantShare = Math.round(totalAmount * 0.7 * 100) / 100;
+    // Split logic: Use stored breakdown if available, otherwise fallback to 10/20 default
+    let hotelShare = 0;
+    let adminShare = 0;
+    let restaurantShare = 0;
+
+    if (
+      order.commissionBreakdown &&
+      (order.commissionBreakdown.hotel > 0 ||
+        order.commissionBreakdown.admin > 0)
+    ) {
+      hotelShare = order.commissionBreakdown.hotel || 0;
+      adminShare = order.commissionBreakdown.admin || 0;
+      restaurantShare = order.commissionBreakdown.restaurant || 0;
+      logger.info(
+        `💰 Using stored commission breakdown for order ${orderNumber}`,
+      );
+    } else {
+      // Fallback: Use stored percentages if breakdown is missing but percentages exist
+      if (
+        order.commissionPercentages &&
+        (order.commissionPercentages.hotel > 0 ||
+          order.commissionPercentages.admin > 0)
+      ) {
+        hotelShare =
+          Math.round(
+            totalAmount * (order.commissionPercentages.hotel / 100) * 100,
+          ) / 100;
+        adminShare =
+          Math.round(
+            totalAmount * (order.commissionPercentages.admin / 100) * 100,
+          ) / 100;
+        restaurantShare =
+          Math.round((totalAmount - hotelShare - adminShare) * 100) / 100;
+        logger.info(
+          `💰 Using stored commission percentages for order ${orderNumber}`,
+        );
+      } else {
+        // Ultimate fallback: 10/20 split (legacy behavior)
+        hotelShare = Math.round(totalAmount * 0.1 * 100) / 100;
+        adminShare = Math.round(totalAmount * 0.2 * 100) / 100;
+        restaurantShare = Math.round(totalAmount * 0.7 * 100) / 100;
+        logger.info(`💰 Using legacy 10/20 split for order ${orderNumber}`);
+      }
+    }
 
     logger.info(`💰 Distributing commission for order ${orderNumber}:`, {
       total: totalAmount,

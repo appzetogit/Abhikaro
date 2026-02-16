@@ -1,0 +1,117 @@
+{
+  "hotels": [
+    {
+      "name": "crown capita",
+      "_id": "69903646283fd2205f830dbb",
+      "hotelId": "HOTEL-1771058758254-3489"
+    },
+    {
+      "name": "Hotel Ajay",
+      "_id": "6991dfb587cc7dd13d5eb69d",
+      "hotelId": "HOTEL-1771167669560-1076"
+    }
+  ],
+  "orders": [
+    {
+      "orderId": "ORD-1770972591137-37",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770972982687-696",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770973621344-929",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770973924132-4",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770975321312-605",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770975945504-741",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770976218792-929",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770976396074-705",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770977589412-931",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770977639875-841",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770977745462-485",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770980338143-129",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770981952261-710",
+      "hotelReference": "HOTEL-1770727134998-39053",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770981967703-846",
+      "hotelReference": "HOTEL-1770727134998-39053",
+      "status": "ready"
+    },
+    {
+      "orderId": "ORD-1770982733909-176",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770983594573-614",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "cancelled"
+    },
+    {
+      "orderId": "ORD-1770983687375-43",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "ready"
+    },
+    {
+      "orderId": "ORD-1770984217635-494",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "ready"
+    },
+    {
+      "orderId": "ORD-1770984258896-295",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "ready"
+    },
+    {
+      "orderId": "ORD-1770985004696-457",
+      "hotelReference": "HOTEL-1770727134998-3905",
+      "status": "delivered"
+    }
+  ],
+  "totalOrders": 99
+}
