@@ -25,35 +25,42 @@ export default function OTP() {
 
   useEffect(() => {
     // Redirect to home if already authenticated
-    const { isModuleAuthenticated } = import("@/lib/utils/auth")
-    if (isModuleAuthenticated && isModuleAuthenticated("user")) {
-      navigate("/user", { replace: true })
-      return
-    }
-
-    // Get auth data from sessionStorage
-    const stored = sessionStorage.getItem("userAuthData")
-    if (!stored) {
-      navigate("/user/auth/sign-in", { replace: true })
-      return
-    }
-    const data = JSON.parse(stored)
-    setAuthData(data)
-
-    if (data.method === "email" && data.email) {
-      setContactType("email")
-      setContactInfo(data.email)
-    } else if (data.phone) {
-      setContactType("phone")
-      const phoneMatch = data.phone?.match(/(\+\d+)\s*(.+)/)
-      if (phoneMatch) {
-        setContactInfo(`${phoneMatch[1]}-${phoneMatch[2].replace(/\D/g, "")}`)
-      } else {
-        setContactInfo(data.phone || "")
+    import("@/lib/utils/auth").then(({ isModuleAuthenticated }) => {
+      if (isModuleAuthenticated && isModuleAuthenticated("user")) {
+        // Check for saved redirect path
+        const savedRedirectPath = sessionStorage.getItem("user_redirectPath")
+        const redirectTo = savedRedirectPath ? savedRedirectPath.replace(/^\/user/, "") || "/" : "/"
+        if (savedRedirectPath) {
+          sessionStorage.removeItem("user_redirectPath")
+        }
+        navigate(redirectTo, { replace: true })
+        return
       }
-    }
 
-    startResendTimer()
+      // Get auth data from sessionStorage
+      const stored = sessionStorage.getItem("userAuthData")
+      if (!stored) {
+        navigate("/user/auth/sign-in", { replace: true })
+        return
+      }
+      const data = JSON.parse(stored)
+      setAuthData(data)
+
+      if (data.method === "email" && data.email) {
+        setContactType("email")
+        setContactInfo(data.email)
+      } else if (data.phone) {
+        setContactType("phone")
+        const phoneMatch = data.phone?.match(/(\+\d+)\s*(.+)/)
+        if (phoneMatch) {
+          setContactInfo(`${phoneMatch[1]}-${phoneMatch[2].replace(/\D/g, "")}`)
+        } else {
+          setContactInfo(data.phone || "")
+        }
+      }
+
+      startResendTimer()
+    })
   }, [navigate])
 
   const startResendTimer = () => {
@@ -168,8 +175,15 @@ export default function OTP() {
         }).catch(() => {})
       })
 
+      // Check for saved redirect path
+      const savedRedirectPath = sessionStorage.getItem("user_redirectPath")
+      const redirectTo = savedRedirectPath ? savedRedirectPath.replace(/^\/user/, "") || "/" : "/"
+      if (savedRedirectPath) {
+        sessionStorage.removeItem("user_redirectPath")
+      }
+
       setSuccess(true)
-      setTimeout(() => navigate("/user"), 1000)
+      setTimeout(() => navigate(redirectTo), 1000)
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || "Verification failed")
     } finally {
@@ -209,8 +223,15 @@ export default function OTP() {
         }).catch(() => {})
       })
 
+      // Check for saved redirect path
+      const savedRedirectPath = sessionStorage.getItem("user_redirectPath")
+      const redirectTo = savedRedirectPath ? savedRedirectPath.replace(/^\/user/, "") || "/" : "/"
+      if (savedRedirectPath) {
+        sessionStorage.removeItem("user_redirectPath")
+      }
+
       setSuccess(true)
-      setTimeout(() => navigate("/user"), 1000)
+      setTimeout(() => navigate(redirectTo), 1000)
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || "Registration failed")
     } finally {

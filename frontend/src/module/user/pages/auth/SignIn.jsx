@@ -161,8 +161,22 @@ export default function SignIn() {
           window.history.replaceState({}, document.title, window.location.pathname)
         }
 
-        console.log(`✅ Navigating to user dashboard from ${source}...`)
-        navigate("/user", { replace: true })
+        // Check if there's a saved redirect path (from ProtectedRoute or previous navigation)
+        const savedRedirectPath = sessionStorage.getItem("user_redirectPath")
+        let redirectTo = "/"
+        
+        if (savedRedirectPath) {
+          // Remove /user prefix if present (since routes are normalized)
+          redirectTo = savedRedirectPath.replace(/^\/user/, "") || "/"
+          // Clear the saved path so it doesn't interfere with future navigations
+          sessionStorage.removeItem("user_redirectPath")
+          console.log(`✅ Redirecting to saved path: ${redirectTo}`)
+        } else {
+          console.log(`✅ No saved path, navigating to home`)
+        }
+
+        console.log(`✅ Navigating from ${source}...`)
+        navigate(redirectTo, { replace: true })
       } else {
         console.error(`❌ Invalid backend response from ${source}`)
         redirectHandledRef.current = false

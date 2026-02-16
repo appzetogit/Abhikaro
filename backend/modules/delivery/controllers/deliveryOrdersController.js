@@ -1642,6 +1642,31 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       console.warn(`⚠️ Using fallback earnings (delivery fee): ₹${totalEarning.toFixed(2)}`);
     }
 
+    // Store actual earnings on the order for trip history and reporting (end-to-end real data)
+    // Update order with calculated earnings BEFORE wallet update
+    try {
+      await Order.findByIdAndUpdate(
+        orderMongoId,
+        {
+          $set: {
+            estimatedEarnings: {
+              totalEarning: totalEarning,
+              basePayout: commissionBreakdown?.basePayout || 0,
+              distance: deliveryDistance,
+              commissionPerKm: commissionBreakdown?.commissionPerKm || 0,
+              distanceCommission: commissionBreakdown?.distanceCommission || 0,
+              breakdown: commissionBreakdown || {}
+            }
+          }
+        },
+        { new: false } // Don't need to return updated doc
+      );
+      console.log(`✅ Stored actual earnings ₹${totalEarning.toFixed(2)} on order ${orderIdForLog} for trip history`);
+    } catch (earningsStoreError) {
+      console.warn(`⚠️ Could not store earnings on order ${orderIdForLog}:`, earningsStoreError.message);
+      // Continue - earnings will still be added to wallet
+    }
+
     // Add earning to delivery boy's wallet
     let walletTransaction = null;
     try {

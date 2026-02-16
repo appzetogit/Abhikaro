@@ -50,11 +50,18 @@ export default function AuthCallback() {
             // Notify app of auth change
             window.dispatchEvent(new Event("userAuthChanged"))
 
+            // Check for saved redirect path
+            const savedRedirectPath = sessionStorage.getItem("user_redirectPath")
+            const redirectTo = savedRedirectPath ? savedRedirectPath.replace(/^\/user/, "") || "/" : "/"
+            if (savedRedirectPath) {
+              sessionStorage.removeItem("user_redirectPath")
+            }
+
             setStatus("success")
 
-            // Redirect to home after short delay
+            // Redirect after short delay
             setTimeout(() => {
-              navigate("/user", { replace: true })
+              navigate(redirectTo, { replace: true })
             }, 1000)
             return
           } catch (err) {
@@ -83,9 +90,16 @@ export default function AuthCallback() {
             timestamp: Date.now(),
           }))
 
-          // Redirect to home after short delay
+          // Check for saved redirect path
+          const savedRedirectPath = sessionStorage.getItem("user_redirectPath")
+          const redirectTo = savedRedirectPath ? savedRedirectPath.replace(/^\/user/, "") || "/" : "/"
+          if (savedRedirectPath) {
+            sessionStorage.removeItem("user_redirectPath")
+          }
+
+          // Redirect after short delay
           setTimeout(() => {
-            navigate("/user")
+            navigate(redirectTo)
           }, 1500)
           return
         }
@@ -123,9 +137,16 @@ export default function AuthCallback() {
 
         setStatus("success")
 
-        // Redirect to home
+        // Check for saved redirect path
+        const savedRedirectPath = sessionStorage.getItem("user_redirectPath")
+        const redirectTo = savedRedirectPath ? savedRedirectPath.replace(/^\/user/, "") || "/" : "/"
+        if (savedRedirectPath) {
+          sessionStorage.removeItem("user_redirectPath")
+        }
+
+        // Redirect
         setTimeout(() => {
-          navigate("/user")
+          navigate(redirectTo)
         }, 1500)
       } catch (err) {
         setStatus("error")

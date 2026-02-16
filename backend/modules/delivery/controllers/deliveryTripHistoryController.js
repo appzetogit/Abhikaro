@@ -3,6 +3,7 @@ import { successResponse, errorResponse } from '../../../shared/utils/response.j
 import Order from '../../order/models/Order.js';
 import Payment from '../../payment/models/Payment.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
+import DeliveryWallet from '../models/DeliveryWallet.js';
 import mongoose from 'mongoose';
 import winston from 'winston';
 
@@ -164,6 +165,29 @@ export const getTripHistory = asyncHandler(async (req, res) => {
       }
     }
 
+    // Fetch wallet data once before mapping (for real earnings data - end-to-end)
+    const earningsMap = new Map(); // Map orderId -> earning amount
+    try {
+      const wallet = await DeliveryWallet.findOne({ deliveryId: delivery._id });
+      if (wallet && wallet.transactions && Array.isArray(wallet.transactions)) {
+        // Create lookup map: orderId -> earning amount
+        wallet.transactions.forEach(t => {
+          if (t.type === 'payment' && t.status === 'Completed' && t.orderId) {
+            const orderIdStr = t.orderId.toString();
+            const orderIdObj = typeof t.orderId === 'object' ? t.orderId.toString() : orderIdStr;
+            const earningAmount = Number(t.amount) || 0;
+            if (earningAmount > 0) {
+              earningsMap.set(orderIdStr, earningAmount);
+              earningsMap.set(orderIdObj, earningAmount);
+            }
+          }
+        });
+        console.log(`💰 Loaded ${earningsMap.size} real earnings from wallet transactions`);
+      }
+    } catch (walletErr) {
+      logger.warn(`⚠️ Could not fetch wallet for earnings lookup:`, walletErr.message);
+    }
+
     // Format response
     const formattedTrips = orders.map((order, index) => {
       // Map backend status to frontend status
@@ -194,8 +218,42 @@ export const getTripHistory = asyncHandler(async (req, res) => {
                         'Unknown Restaurant';
       }
 
-      // Get order amount (delivery fee or total)
-      const amount = order.pricing?.deliveryFee || order.pricing?.total || 0;
+      // Calculate delivery partner earnings for this trip
+      // Priority 1: Get actual earnings from wallet transaction lookup map (most accurate - real data)
+      let earning = 0;
+      const orderIdStr = order._id?.toString();
+      if (orderIdStr && earningsMap.has(orderIdStr)) {
+        earning = earningsMap.get(orderIdStr);
+        console.log(`💰 Found real earnings from wallet: ₹${earning} for order ${order.orderId}`);
+      }
+
+      // Priority 2: Use estimatedEarnings if stored on the order (supports both number and object)
+      if (!earning || Number.isNaN(earning) || earning === 0) {
+        const estimatedEarnings = order.estimatedEarnings;
+        if (estimatedEarnings) {
+          if (typeof estimatedEarnings === 'object') {
+            // Support structures like { totalEarning, basePayout, ... }
+            if (estimatedEarnings.totalEarning != null) {
+              earning = Number(estimatedEarnings.totalEarning) || 0;
+            } else if (estimatedEarnings.basePayout != null) {
+              earning = Number(estimatedEarnings.basePayout) || 0;
+            }
+          } else if (typeof estimatedEarnings === 'number') {
+            earning = Number(estimatedEarnings) || 0;
+          }
+        }
+      }
+
+      // Priority 3: Fallback to deliveryFee if earnings is still 0 or not available
+      if (!earning || Number.isNaN(earning) || earning === 0) {
+        const deliveryFee = order.pricing?.deliveryFee || 0;
+        earning = Number(deliveryFee) || 0;
+      }
+
+      // Priority 4: As a last resort, fallback to total order amount (should be rare)
+      if (!earning || Number.isNaN(earning) || earning === 0) {
+        earning = Number(order.pricing?.total || 0) || 0;
+      }
 
       // Get payment method - check Payment collection as fallback (for COD orders)
       let paymentMethod = order.payment?.method || 'razorpay';
@@ -212,7 +270,8 @@ export const getTripHistory = asyncHandler(async (req, res) => {
         customer: order.userId?.name || 'Unknown Customer',
         status: displayStatus,
         time,
-        amount,
+        earning,           // Delivery partner earning for this order
+        amount: earning,   // Keep amount for backward compatibility (used by some frontends)
         paymentMethod: paymentMethod,
         payment: {
           method: paymentMethod

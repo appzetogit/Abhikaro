@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { ArrowLeft, Search, MoreVertical, ChevronRight, Star, RotateCcw, AlertCircle, Loader2, Clock } from "lucide-react"
+import { ArrowLeft, Search, MoreVertical, ChevronRight, Star, RotateCcw, AlertCircle, Loader2, Clock, Receipt } from "lucide-react"
 import { orderAPI, api, API_ENDPOINTS } from "@/lib/api"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
@@ -574,7 +574,13 @@ Order again from this restaurant in the ${companyName} app.`
                       <h3 className="font-semibold text-gray-800 text-lg leading-tight">{order.restaurant}</h3>
                       <p className="text-xs text-gray-500 mt-0.5">{location}</p>
                       {order.orderId && (
-                        <p className="text-xs text-gray-400 mt-0.5 font-mono">#{order.orderId}</p>
+                        <Link 
+                          to={`/user/orders/${order.id}/details`}
+                          className="text-xs text-gray-600 mt-0.5 font-mono hover:text-[#E23744] transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          Order #{order.orderId}
+                          <ChevronRight className="w-3 h-3" />
+                        </Link>
                       )}
                       {order.deliveryPartnerName && (
                         <p className="text-xs text-gray-600 mt-1">
@@ -623,6 +629,30 @@ Order again from this restaurant in the ${companyName} app.`
 
                 {/* Separator */}
                 <div className="border-t border-dashed border-gray-200 mx-4 my-1"></div>
+
+                {/* Order ID Card - Clickable */}
+                <Link to={`/user/orders/${order.id}/details`}>
+                  <div className="mx-4 my-2 bg-white border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors cursor-pointer">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                          <Receipt className="w-5 h-5 text-gray-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            Order #{order.orderId || order.id}
+                          </p>
+                          {order.items && order.items.length > 0 && (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                    </div>
+                  </div>
+                </Link>
 
                 {/* Items List */}
                 <div className="px-4 py-2 space-y-2">

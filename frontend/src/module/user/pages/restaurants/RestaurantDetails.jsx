@@ -1012,7 +1012,7 @@ export default function RestaurantDetails() {
     setShowMenuOptionsSheet(false)
   }
 
-  // Handle share restaurant
+  // Handle share restaurant - Uses Web Share API to show contact apps
   const handleShareRestaurant = async () => {
     const companyName = await getCompanyNameAsync()
     const restaurantSlug = restaurant?.slug || slug || ""
@@ -1022,7 +1022,7 @@ export default function RestaurantDetails() {
     const shareUrl = `${window.location.origin}/user/restaurants/${restaurantSlug}`
     const shareText = `Check out ${restaurantName} on ${companyName}! ${shareUrl}`
 
-    // Try Web Share API first (mobile)
+    // Use Web Share API which shows contact apps, messaging apps, etc.
     if (navigator.share) {
       try {
         await navigator.share({
@@ -1033,21 +1033,39 @@ export default function RestaurantDetails() {
         toast.success("Restaurant shared successfully")
         setShowMenuOptionsSheet(false)
       } catch (error) {
-        // User cancelled or error occurred
-        if (error.name !== "AbortError") {
-          // Fallback to copy to clipboard
-          await copyToClipboard(shareUrl)
+        // User cancelled - don't show error
+        if (error.name === "AbortError") {
+          return
         }
+        // For other errors, try fallback
+        console.error("Share error:", error)
+        await copyToClipboard(shareUrl)
       }
     } else {
-      // Fallback to copy to clipboard
-      await copyToClipboard(shareUrl)
+      // Fallback: Try to use Web Share API with canShare check
+      if (navigator.canShare && navigator.canShare({ text: shareText, url: shareUrl })) {
+        try {
+          await navigator.share({
+            text: shareText,
+            url: shareUrl,
+          })
+          toast.success("Restaurant shared successfully")
+          setShowMenuOptionsSheet(false)
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            await copyToClipboard(shareUrl)
+          }
+        }
+      } else {
+        // Final fallback: copy to clipboard
+        await copyToClipboard(shareUrl)
+      }
     }
   }
 
 
 
-  // Handle share click
+  // Handle share click - Uses Web Share API to show contact apps
   const handleShareClick = async (item) => {
     const restaurantId = restaurant?.restaurantId || restaurant?._id || restaurant?.id
     const dishId = item.id || item._id
@@ -1057,7 +1075,7 @@ export default function RestaurantDetails() {
     const shareUrl = `${window.location.origin}/user/restaurants/${restaurantSlug}?dish=${dishId}`
     const shareText = `Check out ${item.name} from ${restaurant?.name || "this restaurant"}! ${shareUrl}`
 
-    // Try Web Share API first (mobile)
+    // Use Web Share API which shows contact apps, messaging apps, etc.
     if (navigator.share) {
       try {
         await navigator.share({
@@ -1067,15 +1085,33 @@ export default function RestaurantDetails() {
         })
         toast.success("Dish shared successfully")
       } catch (error) {
-        // User cancelled or error occurred
-        if (error.name !== "AbortError") {
-          // Fallback to copy to clipboard
-          await copyToClipboard(shareUrl)
+        // User cancelled - don't show error
+        if (error.name === "AbortError") {
+          return
         }
+        // For other errors, try fallback
+        console.error("Share error:", error)
+        await copyToClipboard(shareUrl)
       }
     } else {
-      // Fallback to copy to clipboard
-      await copyToClipboard(shareUrl)
+      // Fallback: Try to use Web Share API with canShare check
+      // If not available, show copy option
+      if (navigator.canShare && navigator.canShare({ text: shareText, url: shareUrl })) {
+        try {
+          await navigator.share({
+            text: shareText,
+            url: shareUrl,
+          })
+          toast.success("Dish shared successfully")
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            await copyToClipboard(shareUrl)
+          }
+        }
+      } else {
+        // Final fallback: copy to clipboard
+        await copyToClipboard(shareUrl)
+      }
     }
   }
 
@@ -1932,8 +1968,12 @@ export default function RestaurantDetails() {
                                             />
                                           </button>
                                           <button
-                                            onClick={(e) => e.stopPropagation()}
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleShareClick(item)
+                                            }}
                                             className="p-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                            title="Share dish"
                                           >
                                             <Share2 size={18} />
                                           </button>
@@ -2629,7 +2669,14 @@ export default function RestaurantDetails() {
                             }`}
                         />
                       </button>
-                      <button className="h-10 w-10 rounded-full border border-white dark:border-gray-800 bg-white/90 dark:bg-[#1a1a1a]/90 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-[#2a2a2a] flex items-center justify-center transition-colors">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleShareClick(selectedItem)
+                        }}
+                        className="h-10 w-10 rounded-full border border-white dark:border-gray-800 bg-white/90 dark:bg-[#1a1a1a]/90 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-[#2a2a2a] flex items-center justify-center transition-colors"
+                        title="Share dish"
+                      >
                         <Share2 className="h-5 w-5" />
                       </button>
                     </div>
@@ -2664,7 +2711,14 @@ export default function RestaurantDetails() {
                               }`}
                           />
                         </button>
-                        <button className="h-8 w-8 rounded-full border border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex items-center justify-center transition-colors">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleShareClick(selectedItem)
+                          }}
+                          className="h-8 w-8 rounded-full border border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex items-center justify-center transition-colors"
+                          title="Share dish"
+                        >
                           <Share2 className="h-4 w-4" />
                         </button>
                       </div>

@@ -152,19 +152,43 @@ export default function PocketPage() {
 
   // Calculate weekly earnings from wallet transactions (payment + earning_addon bonus)
   // Include both payment and earning_addon transactions in weekly earnings
-  const weeklyEarnings = walletState?.transactions
-    ?.filter(t => {
-      // Include both payment and earning_addon transactions
-      if ((t.type !== 'payment' && t.type !== 'earning_addon') || t.status !== 'Completed') return false
-      const now = new Date()
-      const startOfWeek = new Date(now)
-      startOfWeek.setDate(now.getDate() - now.getDay())
-      startOfWeek.setHours(0, 0, 0, 0)
-      const transactionDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null)
-      if (!transactionDate) return false
-      return transactionDate >= startOfWeek && transactionDate <= now
-    })
-    .reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+  const calculateWeeklyEarningsFromTransactions = () => {
+    if (!walletState?.transactions || !Array.isArray(walletState.transactions)) {
+      return 0
+    }
+    
+    const now = new Date()
+    const startOfWeek = new Date(now)
+    startOfWeek.setDate(now.getDate() - now.getDay())
+    startOfWeek.setHours(0, 0, 0, 0)
+    
+    return walletState.transactions
+      .filter(t => {
+        // Include both payment and earning_addon transactions
+        if ((t.type !== 'payment' && t.type !== 'earning_addon') || t.status !== 'Completed') return false
+        
+        // Parse date - handle both Date objects and ISO strings
+        let transactionDate = null
+        if (t.date) {
+          transactionDate = t.date instanceof Date ? t.date : new Date(t.date)
+        } else if (t.createdAt) {
+          transactionDate = t.createdAt instanceof Date ? t.createdAt : new Date(t.createdAt)
+        }
+        
+        if (!transactionDate || isNaN(transactionDate.getTime())) return false
+        return transactionDate >= startOfWeek && transactionDate <= now
+      })
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+  }
+  
+  const weeklyEarningsFromTransactions = calculateWeeklyEarningsFromTransactions()
+  
+  // Use totalEarned from wallet as fallback ONLY if transactions are missing or empty
+  // This ensures we show earnings even if transactions are not properly returned
+  const hasTransactions = walletState?.transactions && Array.isArray(walletState.transactions) && walletState.transactions.length > 0
+  const weeklyEarnings = hasTransactions 
+    ? weeklyEarningsFromTransactions  // Use calculated value if transactions exist
+    : (walletState?.totalEarned || 0)  // Fallback to totalEarned only if no transactions
 
   // Calculate weekly orders count from transactions
   const calculateWeeklyOrders = () => {
@@ -438,13 +462,54 @@ export default function PocketPage() {
         setWalletLoading(true)
         const walletData = await fetchDeliveryWallet()
         setWalletState(walletData)
-        console.log('💰 Wallet data fetched:', walletData)
+        
+        // End-to-end real data logging
+        console.log('💰 Wallet data fetched (Real Data):', walletData)
         console.log('💰 Total Balance from API:', walletData?.totalBalance)
+        console.log('💰 Total Earned from API:', walletData?.totalEarned)
         console.log('💰 Pocket Balance from API:', walletData?.pocketBalance)
-        console.log('💰 Bonus Transactions:', walletData?.transactions?.filter(t => t.type === 'bonus'))
-        const totalBonus = walletData?.transactions?.filter(t => t.type === 'bonus' && t.status === 'Completed')
-          .reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+        console.log('💰 Transactions count:', walletData?.transactions?.length || 0)
+        
+        // Real earnings calculation from transactions
+        const paymentTransactions = walletData?.transactions?.filter(t => t.type === 'payment' && t.status === 'Completed') || []
+        const realEarningsFromTransactions = paymentTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+        console.log('💰 Real Earnings from Payment Transactions:', realEarningsFromTransactions)
+        console.log('💰 Payment transactions count:', paymentTransactions.length)
+        console.log('💰 Payment transactions:', paymentTransactions)
+        
+        // Bonus transactions
+        const bonusTransactions = walletData?.transactions?.filter(t => t.type === 'bonus' && t.status === 'Completed') || []
+        const totalBonus = bonusTransactions.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
         console.log('💰 Total Bonus Amount:', totalBonus)
+        console.log('💰 Bonus Transactions:', bonusTransactions)
+        
+        // Debug weekly earnings calculation with real data
+        console.log('💰 Weekly Earnings Calculation (Real Data):')
+        paymentTransactions.forEach(t => {
+          const transactionDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null)
+          const now = new Date()
+          const startOfWeek = new Date(now)
+          startOfWeek.setDate(now.getDate() - now.getDay())
+          startOfWeek.setHours(0, 0, 0, 0)
+          const isInCurrentWeek = transactionDate && transactionDate >= startOfWeek && transactionDate <= now
+          
+          console.log('  - Transaction:', {
+            amount: t.amount,
+            orderId: t.orderId,
+            date: t.date,
+            createdAt: t.createdAt,
+            dateParsed: transactionDate,
+            isInCurrentWeek: isInCurrentWeek,
+            description: t.description
+          })
+        })
+        
+        // Verify data consistency
+        console.log('💰 Data Consistency Check:', {
+          totalEarnedFromAPI: walletData?.totalEarned,
+          realEarningsFromTransactions: realEarningsFromTransactions,
+          match: Math.abs((walletData?.totalEarned || 0) - realEarningsFromTransactions) < 0.01
+        })
       } catch (error) {
         console.error('Error fetching wallet data:', error)
         // Keep empty state on error

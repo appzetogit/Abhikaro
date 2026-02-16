@@ -8,11 +8,21 @@ export default function BottomNavigation() {
   const isDining = location.pathname === "/dining" || location.pathname === "/user/dining"
   const isUnder250 = location.pathname === "/under-250" || location.pathname === "/user/under-250"
   const isProfile = location.pathname.startsWith("/profile") || location.pathname.startsWith("/user/profile")
-  const isDelivery = !isDining && !isUnder250 && !isProfile && (location.pathname === "/" || location.pathname === "/user" || (location.pathname.startsWith("/") && !location.pathname.startsWith("/restaurant") && !location.pathname.startsWith("/delivery") && !location.pathname.startsWith("/admin") && !location.pathname.startsWith("/usermain")))
+  const isDelivery = !isDining && !isUnder250 && !isProfile && (
+    location.pathname === "/" || 
+    location.pathname === "/user" || 
+    location.pathname.startsWith("/restaurants/") ||
+    (location.pathname.startsWith("/") && 
+     !location.pathname.startsWith("/restaurant") && 
+     !location.pathname.startsWith("/delivery") && 
+     !location.pathname.startsWith("/admin") && 
+     !location.pathname.startsWith("/usermain"))
+  )
 
   return (
     <div
-      className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-800 z-50 shadow-lg"
+      className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-800 z-[60] shadow-lg safe-area-inset-bottom"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0)' }}
     >
       <div className="flex items-center justify-around h-auto px-4 sm:px-6">
         {/* Delivery Tab */}

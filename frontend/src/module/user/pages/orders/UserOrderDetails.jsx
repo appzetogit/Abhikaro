@@ -12,6 +12,7 @@ import {
   MapPin,
   RotateCcw,
   FileText,
+  Receipt,
 } from "lucide-react"
 import { orderAPI, restaurantAPI } from "@/lib/api"
 import { toast } from "sonner"
@@ -322,6 +323,45 @@ export default function UserOrderDetails() {
 
       {/* Scrollable Content */}
       <div className="p-4 space-y-4">
+        {/* Order ID and Date/Time Card */}
+        <div className="bg-white p-4 rounded-xl shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="bg-gray-100 p-2 rounded-lg">
+                <Receipt className="w-5 h-5 text-gray-600" />
+              </div>
+              <div>
+                <h2 className="font-bold text-gray-900 text-lg">
+                  Order #{orderIdDisplay}
+                </h2>
+                {paymentDate && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {paymentDate}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button type="button" onClick={handleCopyOrderId} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <Copy className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+              order.status === "delivered" || order.status === "completed"
+                ? "bg-green-100 text-green-700"
+                : order.status === "cancelled" || order.status === "restaurant_cancelled"
+                ? "bg-red-100 text-red-700"
+                : "bg-blue-100 text-blue-700"
+            }`}>
+              {order.status === "delivered" || order.status === "completed"
+                ? "Delivered"
+                : order.status === "cancelled" || order.status === "restaurant_cancelled"
+                ? "Cancelled"
+                : order.status || "Processing"}
+            </span>
+          </div>
+        </div>
+
         {/* Status Card */}
         <div className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm">
           <div className="bg-gray-100 p-2 rounded-lg">

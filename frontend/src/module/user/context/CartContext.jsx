@@ -249,7 +249,15 @@ export function CartProvider({ children }) {
 
   const getCartItem = (itemId) => cart.find((i) => i.id === itemId)
 
-  const clearCart = () => setCart([])
+  const clearCart = () => {
+    setCart([])
+    // Explicitly clear localStorage to ensure cart is cleared immediately
+    try {
+      localStorage.removeItem("cart")
+    } catch {
+      // ignore storage errors (private mode, quota, etc.)
+    }
+  }
 
   // Clean cart to remove items from different restaurants
   // Keeps only items from the specified restaurant

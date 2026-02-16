@@ -18,6 +18,11 @@ export default function ProtectedRoute({ children, requiredRole, loginPath }) {
 
   // If not authenticated for this module, redirect to login
   if (!isAuthenticated) {
+    // Save the intended route so we can redirect back after login
+    // Use sessionStorage to persist across page refreshes
+    const currentPath = location.pathname + location.search + location.hash;
+    sessionStorage.setItem(`${requiredRole}_redirectPath`, currentPath);
+    
     if (loginPath) {
       return <Navigate to={loginPath} state={{ from: location.pathname }} replace />;
     }

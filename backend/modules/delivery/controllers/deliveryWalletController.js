@@ -154,8 +154,9 @@ export const getWallet = asyncHandler(async (req, res) => {
       type: t.type,
       status: t.status,
       description: t.description,
-      date: t.createdAt || t.date,
-      createdAt: t.createdAt,
+      // Ensure date is properly serialized - use createdAt as primary source
+      date: t.createdAt ? (t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt) : (t.date ? (t.date instanceof Date ? t.date.toISOString() : t.date) : null),
+      createdAt: t.createdAt ? (t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt) : null,
       orderId: t.orderId,
       paymentMethod: t.paymentMethod,
       paymentCollected: t.paymentCollected
@@ -185,17 +186,31 @@ export const getWallet = asyncHandler(async (req, res) => {
       totalTransactions: wallet.transactions.length
     };
 
-    // Log wallet data for debugging
-    console.log('💰 Wallet API Response:', {
+    // Calculate real earnings from payment transactions (end-to-end real data)
+    const paymentTransactions = transactions.filter(t => t.type === 'payment' && t.status === 'Completed');
+    const realEarningsFromTransactions = paymentTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    
+    // Log wallet data for debugging (end-to-end real data tracking)
+    console.log('💰 Wallet API Response (Real Data):', {
       deliveryId: delivery._id,
       totalBalance: walletData.totalBalance,
+      totalEarned: walletData.totalEarned,
+      realEarningsFromTransactions: realEarningsFromTransactions,
       pocketBalance: walletData.pocketBalance,
       cashInHand: walletData.cashInHand,
       availableCashLimit: walletData.availableCashLimit,
       codCollectedTotal,
       totalBonus: totalBonus,
       bonusTransactionsCount: bonusTransactions.length,
-      totalTransactions: walletData.totalTransactions
+      paymentTransactionsCount: paymentTransactions.length,
+      totalTransactions: walletData.totalTransactions,
+      // Show recent payment transactions for verification
+      recentPaymentTransactions: paymentTransactions.slice(0, 5).map(t => ({
+        amount: t.amount,
+        orderId: t.orderId,
+        date: t.date,
+        description: t.description
+      }))
     });
 
     return successResponse(res, 200, 'Wallet balance retrieved successfully', {

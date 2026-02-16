@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import {
   ArrowLeft,
-  Share2,
   RefreshCw,
   Phone,
   ChevronRight,
@@ -216,10 +215,12 @@ export default function OrderTracking() {
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [restaurantPhone, setRestaurantPhone] = useState(null)
 
   const [showConfirmation, setShowConfirmation] = useState(confirmed)
   const [orderStatus, setOrderStatus] = useState('placed')
-  const [estimatedTime, setEstimatedTime] = useState(29)
+  const [estimatedTime, setEstimatedTime] = useState(null) // Will be calculated from order data
+  const [orderCreatedAt, setOrderCreatedAt] = useState(null) // Store order creation time
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [cancellationReason, setCancellationReason] = useState("")
@@ -382,20 +383,55 @@ export default function OrderTracking() {
             restaurantCoords = [apiOrder.restaurantId.location.longitude, apiOrder.restaurantId.location.latitude];
             console.log('✅ Found coordinates in restaurantId.location (lat/lng):', restaurantCoords);
           }
-          // Priority 3: Check if restaurantId is a string ID and fetch restaurant details
-          else if (typeof apiOrder.restaurantId === 'string') {
-            console.log('⚠️ restaurantId is a string ID, fetching restaurant details...', apiOrder.restaurantId);
+          // Priority 3: ALWAYS fetch restaurant details if restaurantId is a string
+          // Note: restaurantId in Order model is always a STRING, not populated
+          // We need to fetch restaurant details to get phone number
+          if (typeof apiOrder.restaurantId === 'string' && apiOrder.restaurantId) {
+            console.log('📞 Fetching restaurant details for phone and coordinates...', apiOrder.restaurantId);
             try {
               const restaurantResponse = await restaurantAPI.getRestaurantById(apiOrder.restaurantId);
               if (restaurantResponse?.data?.success && restaurantResponse.data.data?.restaurant) {
                 const restaurant = restaurantResponse.data.data.restaurant;
-                if (restaurant.location?.coordinates && Array.isArray(restaurant.location.coordinates) && restaurant.location.coordinates.length >= 2) {
+                // Get coordinates if not already found
+                if (!restaurantCoords && restaurant.location?.coordinates && Array.isArray(restaurant.location.coordinates) && restaurant.location.coordinates.length >= 2) {
                   restaurantCoords = restaurant.location.coordinates;
                   console.log('✅ Fetched restaurant coordinates from API:', restaurantCoords);
                 }
+                // ALWAYS fetch restaurant phone number (check multiple fields)
+                const phone = restaurant.primaryContactNumber || 
+                             restaurant.phone || 
+                             restaurant.ownerPhone ||
+                             restaurant.contactNumber || 
+                             null;
+                if (phone) {
+                  console.log('✅ Found restaurant phone:', phone);
+                  setRestaurantPhone(phone);
+                } else {
+                  console.warn('⚠️ Restaurant phone not found in API response. Available fields:', {
+                    restaurantId: apiOrder.restaurantId,
+                    restaurantName: restaurant.name,
+                    restaurantKeys: Object.keys(restaurant || {}),
+                    hasPrimaryContactNumber: !!restaurant.primaryContactNumber,
+                    hasPhone: !!restaurant.phone,
+                    hasOwnerPhone: !!restaurant.ownerPhone,
+                    hasContactNumber: !!restaurant.contactNumber
+                  });
+                }
+              } else {
+                console.warn('⚠️ Restaurant API response structure unexpected:', {
+                  success: restaurantResponse?.data?.success,
+                  hasData: !!restaurantResponse?.data?.data,
+                  hasRestaurant: !!restaurantResponse?.data?.data?.restaurant,
+                  fullResponse: restaurantResponse?.data
+                });
               }
             } catch (err) {
               console.error('❌ Error fetching restaurant details:', err);
+              console.error('❌ Error details:', {
+                message: err.message,
+                response: err.response?.data,
+                restaurantId: apiOrder.restaurantId
+              });
             }
           }
           // Priority 4: Check nested restaurant data
@@ -408,10 +444,12 @@ export default function OrderTracking() {
           console.log('📍 Customer coordinates:', apiOrder.address?.location?.coordinates);
 
           // Transform API order to match component structure
+          // Note: restaurantId is a STRING in Order model, not populated
+          const restaurantIdValue = apiOrder.restaurantId || null
           const transformedOrder = {
             id: apiOrder.orderId || apiOrder._id,
             restaurant: apiOrder.restaurantName || 'Restaurant',
-            restaurantId: apiOrder.restaurantId || null, // Include restaurantId for location access
+            restaurantId: restaurantIdValue, // This is a STRING ID, not populated object
             userId: apiOrder.userId || null, // Include user data for phone number
             userName: apiOrder.userName || apiOrder.userId?.name || apiOrder.userId?.fullName || '',
             userPhone: apiOrder.userPhone || apiOrder.userId?.phone || '',
@@ -444,7 +482,10 @@ export default function OrderTracking() {
             deliveryPartnerId: apiOrder.deliveryPartnerId?._id || apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
             assignmentInfo: apiOrder.assignmentInfo || null,
             tracking: apiOrder.tracking || {},
-            deliveryState: apiOrder.deliveryState || null
+            deliveryState: apiOrder.deliveryState || null,
+            estimatedDeliveryTime: apiOrder.estimatedDeliveryTime || null,
+            eta: apiOrder.eta || null,
+            createdAt: apiOrder.createdAt || null
           }
 
           if (apiOrder.hotelReference) {
@@ -452,6 +493,58 @@ export default function OrderTracking() {
           }
 
           setOrder(transformedOrder)
+
+          // Store order creation time for ETA calculation
+          if (apiOrder.createdAt) {
+            setOrderCreatedAt(new Date(apiOrder.createdAt))
+          }
+
+          // Calculate and set ETA from order data
+          const calculateETA = () => {
+            if (!apiOrder.createdAt) return null
+
+            const now = new Date()
+            const createdAt = new Date(apiOrder.createdAt)
+            const elapsedMinutes = Math.floor((now - createdAt) / 1000 / 60)
+
+            // Use eta.min/max if available, otherwise use estimatedDeliveryTime
+            let initialETA = null
+            if (apiOrder.eta?.min && apiOrder.eta?.max) {
+              // Use min ETA as the display value
+              initialETA = apiOrder.eta.min
+            } else if (apiOrder.estimatedDeliveryTime) {
+              initialETA = apiOrder.estimatedDeliveryTime
+            } else {
+              // Default fallback
+              initialETA = 30
+            }
+
+            // Calculate remaining time
+            const remainingTime = Math.max(0, initialETA - elapsedMinutes)
+            
+            console.log('⏱️ ETA Calculation:', {
+              initialETA,
+              elapsedMinutes,
+              remainingTime,
+              orderStatus: apiOrder.status,
+              eta: apiOrder.eta
+            })
+
+            return remainingTime
+          }
+
+          const calculatedETA = calculateETA()
+          if (calculatedETA !== null) {
+            setEstimatedTime(calculatedETA)
+          }
+
+          // Fetch restaurant phone number if not already fetched above
+          // Phone should be fetched when restaurant details are fetched for coordinates
+          // But if coordinates were found in order data, we still need to fetch phone
+          if (!restaurantPhone && restaurantIdValue) {
+            console.log('📞 Phone not yet fetched, fetching now for restaurantId:', restaurantIdValue)
+            fetchRestaurantPhone(restaurantIdValue, apiOrder)
+          }
 
           // Update orderStatus based on API order status
           if (apiOrder.status === 'cancelled') {
@@ -464,6 +557,7 @@ export default function OrderTracking() {
             setOrderStatus('pickup');
           } else if (apiOrder.status === 'delivered') {
             setOrderStatus('delivered');
+            setEstimatedTime(0); // Set to 0 when delivered
           }
         } else {
           throw new Error('Order not found')
@@ -492,13 +586,29 @@ export default function OrderTracking() {
     }
   }, [confirmed])
 
-  // Countdown timer
+  // ETA countdown timer - recalculate based on elapsed time
   useEffect(() => {
-    const timer = setInterval(() => {
-      setEstimatedTime((prev) => Math.max(0, prev - 1))
-    }, 60000)
+    if (!orderCreatedAt || estimatedTime === null) return
+
+    const updateETA = () => {
+      const now = new Date()
+      const createdAt = new Date(orderCreatedAt)
+      const elapsedMinutes = Math.floor((now - createdAt) / 1000 / 60)
+
+      // Get initial ETA from order
+      const initialETA = order?.eta?.min || order?.estimatedDeliveryTime || 30
+      const remainingTime = Math.max(0, initialETA - elapsedMinutes)
+
+      setEstimatedTime(remainingTime)
+    }
+
+    // Update immediately
+    updateETA()
+
+    // Update every minute
+    const timer = setInterval(updateETA, 60000)
     return () => clearInterval(timer)
-  }, [])
+  }, [orderCreatedAt, order?.eta?.min, order?.estimatedDeliveryTime])
 
   // Listen for order status updates from socket (e.g., "Delivery partner on the way")
   useEffect(() => {
@@ -597,6 +707,91 @@ export default function OrderTracking() {
     }
   };
 
+  // Fetch restaurant phone number
+  const fetchRestaurantPhone = async (restaurantId, apiOrder = null) => {
+    try {
+      // First check if phone is in order data (comprehensive check)
+      if (apiOrder?.restaurantId?.primaryContactNumber) {
+        setRestaurantPhone(apiOrder.restaurantId.primaryContactNumber)
+        return
+      }
+      if (apiOrder?.restaurantId?.phone) {
+        setRestaurantPhone(apiOrder.restaurantId.phone)
+        return
+      }
+      if (apiOrder?.restaurantId?.ownerPhone) {
+        setRestaurantPhone(apiOrder.restaurantId.ownerPhone)
+        return
+      }
+      if (apiOrder?.restaurantPhone) {
+        setRestaurantPhone(apiOrder.restaurantPhone)
+        return
+      }
+
+      // Extract restaurant ID string if it's an object
+      let restaurantIdString = null
+      if (typeof restaurantId === 'string') {
+        restaurantIdString = restaurantId
+      } else if (restaurantId && typeof restaurantId === 'object') {
+        // If restaurantId is an object, check for phone directly first
+        const phone = restaurantId.primaryContactNumber || restaurantId.phone || restaurantId.ownerPhone || restaurantId.contactNumber || null
+        if (phone) {
+          setRestaurantPhone(phone)
+          return
+        }
+        // Extract ID for API call
+        restaurantIdString = restaurantId._id || restaurantId.id || restaurantId.restaurantId || null
+      }
+
+      // Fetch restaurant details from API if we have an ID
+      if (restaurantIdString) {
+        console.log('📞 Fetching restaurant phone for ID:', restaurantIdString)
+        const restaurantResponse = await restaurantAPI.getRestaurantById(restaurantIdString)
+        if (restaurantResponse?.data?.success && restaurantResponse.data.data?.restaurant) {
+          const restaurant = restaurantResponse.data.data.restaurant
+          // Check multiple phone fields
+          const phone = restaurant.primaryContactNumber || 
+                       restaurant.phone || 
+                       restaurant.ownerPhone ||
+                       restaurant.contactNumber || 
+                       null
+          if (phone) {
+            console.log('✅ Found restaurant phone:', phone)
+            setRestaurantPhone(phone)
+          } else {
+            console.warn('⚠️ Restaurant phone not found in API response:', {
+              hasRestaurant: !!restaurant,
+              restaurantKeys: Object.keys(restaurant || {}),
+              restaurantId: restaurantIdString
+            })
+          }
+        } else {
+          console.warn('⚠️ Restaurant API response structure unexpected:', {
+            success: restaurantResponse?.data?.success,
+            hasData: !!restaurantResponse?.data?.data,
+            hasRestaurant: !!restaurantResponse?.data?.data?.restaurant
+          })
+        }
+      } else {
+        console.warn('⚠️ Cannot fetch restaurant phone - no valid restaurantId:', restaurantId)
+      }
+    } catch (error) {
+      console.error('❌ Error fetching restaurant phone:', error)
+      // Don't show error toast, just log it - user will see "not available" message
+    }
+  }
+
+  // Handle restaurant call
+  const handleCallRestaurant = () => {
+    if (!restaurantPhone) {
+      toast.error("Restaurant phone number not available")
+      return
+    }
+    // Remove any non-digit characters except + for international numbers
+    const cleanPhone = restaurantPhone.replace(/[^\d+]/g, '')
+    window.location.href = `tel:${cleanPhone}`
+  }
+
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
@@ -631,6 +826,11 @@ export default function OrderTracking() {
               if (restaurant.location?.coordinates && Array.isArray(restaurant.location.coordinates) && restaurant.location.coordinates.length >= 2) {
                 restaurantCoords = restaurant.location.coordinates;
                 console.log('✅ Fetched restaurant coordinates from API:', restaurantCoords);
+              }
+              // Also fetch restaurant phone number
+              const phone = restaurant.primaryContactNumber || restaurant.phone || restaurant.contactNumber || null;
+              if (phone) {
+                setRestaurantPhone(phone);
               }
             }
           } catch (err) {
@@ -671,13 +871,68 @@ export default function OrderTracking() {
             name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
             avatar: null
           } : null,
-          tracking: apiOrder.tracking || {}
+          tracking: apiOrder.tracking || {},
+          estimatedDeliveryTime: apiOrder.estimatedDeliveryTime || null,
+          eta: apiOrder.eta || null,
+          createdAt: apiOrder.createdAt || null
         }
         setOrder(transformedOrder)
+
+        // Update order creation time if available
+        if (apiOrder.createdAt) {
+          setOrderCreatedAt(new Date(apiOrder.createdAt))
+        }
+
+        // Recalculate ETA from refreshed order data
+        const calculateETA = () => {
+          if (!apiOrder.createdAt) return null
+
+          const now = new Date()
+          const createdAt = new Date(apiOrder.createdAt)
+          const elapsedMinutes = Math.floor((now - createdAt) / 1000 / 60)
+
+          // Use eta.min/max if available, otherwise use estimatedDeliveryTime
+          let initialETA = null
+          if (apiOrder.eta?.min && apiOrder.eta?.max) {
+            initialETA = apiOrder.eta.min
+          } else if (apiOrder.estimatedDeliveryTime) {
+            initialETA = apiOrder.estimatedDeliveryTime
+          } else {
+            initialETA = 30
+          }
+
+          const remainingTime = Math.max(0, initialETA - elapsedMinutes)
+          return remainingTime
+        }
+
+        const calculatedETA = calculateETA()
+        if (calculatedETA !== null) {
+          setEstimatedTime(calculatedETA)
+        }
+
+        // Fetch restaurant phone number - check multiple sources
+        // Priority 1: Check if phone is in populated restaurantId object
+        if (apiOrder.restaurantId?.primaryContactNumber) {
+          setRestaurantPhone(apiOrder.restaurantId.primaryContactNumber)
+        } else if (apiOrder.restaurantId?.phone) {
+          setRestaurantPhone(apiOrder.restaurantId.phone)
+        } else if (apiOrder.restaurantId?.ownerPhone) {
+          setRestaurantPhone(apiOrder.restaurantId.ownerPhone)
+        } 
+        // Priority 2: Check order-level restaurant phone
+        else if (apiOrder.restaurantPhone) {
+          setRestaurantPhone(apiOrder.restaurantPhone)
+        }
+        // Priority 3: Fetch from restaurant API if restaurantId is available
+        else if (transformedOrder.restaurantId) {
+          // Always try to fetch phone from restaurant API
+          fetchRestaurantPhone(transformedOrder.restaurantId, apiOrder)
+        }
 
         // Update order status for UI
         if (apiOrder.status === 'cancelled') {
           setOrderStatus('cancelled');
+          setEstimatedTime(0);
         } else if (apiOrder.status === 'preparing') {
           setOrderStatus('preparing')
         } else if (apiOrder.status === 'ready') {
@@ -686,6 +941,7 @@ export default function OrderTracking() {
           setOrderStatus('pickup')
         } else if (apiOrder.status === 'delivered') {
           setOrderStatus('delivered')
+          setEstimatedTime(0); // Set to 0 when delivered
         }
       }
     } catch (err) {
@@ -730,12 +986,12 @@ export default function OrderTracking() {
     },
     preparing: {
       title: "Preparing your order",
-      subtitle: `Arriving in ${estimatedTime} mins`,
+      subtitle: estimatedTime !== null && estimatedTime > 0 ? `Arriving in ${estimatedTime} mins` : "Food preparation will begin shortly",
       color: "bg-green-700"
     },
     pickup: {
       title: "Order picked up",
-      subtitle: `Arriving in ${estimatedTime} mins`,
+      subtitle: estimatedTime !== null && estimatedTime > 0 ? `Arriving in ${estimatedTime} mins` : "On the way",
       color: "bg-green-700"
     },
     delivered: {
@@ -807,24 +1063,18 @@ export default function OrderTracking() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
-          {/* Navigation bar */}
-          <div className="flex items-center justify-between px-4 py-3">
-            <Link to="/user/orders">
-              <motion.button
-                className="w-10 h-10 flex items-center justify-center"
-                whileTap={{ scale: 0.9 }}
-              >
-                <ArrowLeft className="w-6 h-6" />
-              </motion.button>
-            </Link>
-            <h2 className="font-semibold text-lg">{order.restaurant}</h2>
-            <motion.button
-              className="w-10 h-10 flex items-center justify-center"
-              whileTap={{ scale: 0.9 }}
-            >
-              <Share2 className="w-5 h-5" />
-            </motion.button>
-          </div>
+           {/* Navigation bar */}
+           <div className="flex items-center px-4 py-3 relative">
+             <Link to="/user/orders" className="absolute left-4">
+               <motion.button
+                 className="w-10 h-10 flex items-center justify-center"
+                 whileTap={{ scale: 0.9 }}
+               >
+                 <ArrowLeft className="w-6 h-6" />
+               </motion.button>
+             </Link>
+             <h2 className="font-semibold text-lg flex-1 text-center">{order.restaurant}</h2>
+           </div>
 
           {/* Status section */}
           <div className="px-4 pb-4 text-center">
@@ -960,9 +1210,6 @@ export default function OrderTracking() {
               defaultAddress?.phone ||
               'Phone number not available'
             }
-            rightContent={
-              <span className="text-green-600 font-medium text-sm">Edit</span>
-            }
           />
           <SectionItem
             icon={HomeIcon}
@@ -1006,9 +1253,6 @@ export default function OrderTracking() {
 
               return 'Add delivery address'
             })()}
-            rightContent={
-              <span className="text-green-600 font-medium text-sm">Edit</span>
-            }
           />
           <SectionItem
             icon={MessageSquare}
@@ -1048,33 +1292,37 @@ export default function OrderTracking() {
               <p className="text-sm text-gray-500">{order.address?.city || 'Local Area'}</p>
             </div>
             <motion.button
-              className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center"
+              onClick={handleCallRestaurant}
+              className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center hover:bg-green-200 transition-colors"
               whileTap={{ scale: 0.9 }}
+              title="Call restaurant"
             >
               <Phone className="w-5 h-5 text-green-700" />
             </motion.button>
           </div>
 
-          {/* Order Items */}
-          <div className="p-4 border-b border-dashed border-gray-200">
-            <div className="flex items-start gap-3">
-              <Receipt className="w-5 h-5 text-gray-500 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-medium text-gray-900">Order #{order?.id || order?.orderId || 'N/A'}</p>
-                <div className="mt-2 space-y-1">
-                  {order?.items?.map((item, index) => (
-                    <div key={index} className="flex items-center gap-2 text-sm text-gray-600">
-                      <span className="w-4 h-4 rounded border border-green-600 flex items-center justify-center">
-                        <span className="w-2 h-2 rounded-full bg-green-600" />
-                      </span>
-                      <span>{item.quantity} x {item.name}</span>
-                    </div>
-                  ))}
+          {/* Order Items - Clickable */}
+          <Link to={`/user/orders/${order?.id || order?.orderId || orderId}/details`}>
+            <div className="p-4 border-b border-dashed border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">
+              <div className="flex items-start gap-3">
+                <Receipt className="w-5 h-5 text-gray-500 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900">Order #{order?.id || order?.orderId || 'N/A'}</p>
+                  <div className="mt-2 space-y-1">
+                    {order?.items?.map((item, index) => (
+                      <div key={index} className="flex items-center gap-2 text-sm text-gray-600">
+                        <span className="w-4 h-4 rounded border border-green-600 flex items-center justify-center">
+                          <span className="w-2 h-2 rounded-full bg-green-600" />
+                        </span>
+                        <span>{item.quantity} x {item.name}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+                <ChevronRight className="w-5 h-5 text-gray-400" />
               </div>
-              <ChevronRight className="w-5 h-5 text-gray-400" />
             </div>
-          </div>
+          </Link>
         </motion.div>
 
         {/* Help Section */}

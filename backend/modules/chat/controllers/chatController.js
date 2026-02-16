@@ -99,6 +99,14 @@ export const sendMessage = async (req, res) => {
     const userId = req.user?._id || req.delivery?._id || req.user?.id || req.delivery?.id;
     const userType = req.user ? "user" : "delivery";
 
+    // Validate userId exists
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
     if (!orderId || !message || !message.trim()) {
       return res.status(400).json({
         success: false,
@@ -141,12 +149,43 @@ export const sendMessage = async (req, res) => {
           message: "No delivery partner assigned to this order",
         });
       }
-      receiverId = order.deliveryPartnerId._id || order.deliveryPartnerId;
+      // Handle both populated and non-populated deliveryPartnerId
+      receiverId = order.deliveryPartnerId?._id || order.deliveryPartnerId;
       receiverType = "delivery";
+      
+      // Validate receiverId exists
+      if (!receiverId) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid delivery partner ID",
+        });
+      }
     } else {
       // Delivery boy is sending, receiver is user
-      receiverId = order.userId._id || order.userId;
+      // Handle both populated and non-populated userId
+      receiverId = order.userId?._id || order.userId;
       receiverType = "user";
+      
+      // Validate receiverId exists
+      if (!receiverId) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid user ID",
+        });
+      }
+    }
+
+    // Validate all required fields before creating chat message
+    if (!orderMongoId || !userId || !receiverId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields for chat message",
+        details: {
+          hasOrderMongoId: !!orderMongoId,
+          hasUserId: !!userId,
+          hasReceiverId: !!receiverId
+        }
+      });
     }
 
     // Create chat message (use MongoDB _id for orderId)
@@ -225,6 +264,15 @@ export const sendMessage = async (req, res) => {
     }
   } catch (error) {
     console.error("Error sending message:", error);
+    console.error("Error stack:", error.stack);
+    console.error("Request details:", {
+      orderId: req.body?.orderId,
+      message: req.body?.message?.substring(0, 50),
+      userId: req.user?._id || req.delivery?._id || req.user?.id || req.delivery?.id,
+      userType: req.user ? "user" : "delivery",
+      hasUser: !!req.user,
+      hasDelivery: !!req.delivery
+    });
     res.status(500).json({
       success: false,
       message: "Server error",

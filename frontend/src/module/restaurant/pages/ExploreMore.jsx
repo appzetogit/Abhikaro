@@ -857,41 +857,6 @@ export default function ExploreMore() {
       {/* Main Content */}
       <div className="px-4 py-6">
         {/* Restaurant Information Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{
-            duration: 0.3,
-            delay: 0.05,
-            ease: [0.25, 0.1, 0.25, 1]
-          }}
-        >
-          <Card className="bg-white border-gray-200 py-3 mb-6 rounded-lg shadow-0">
-            <CardContent className="px-4">
-              <button
-                onClick={() => navigate("/restaurant/switch-outlet")}
-                className="w-full flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="p-2 bg-gray-100 rounded-lg">
-                    <Store className="w-5 h-5 text-gray-900" />
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <h2 className="text-base font-semibold text-gray-900 mb-0.5">
-                      {restaurantDisplayName}
-                    </h2>
-                    {restaurantDisplayAddress && (
-                      <p className="text-sm text-gray-500 truncate">
-                        {restaurantDisplayAddress}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
-              </button>
-            </CardContent>
-          </Card>
-        </motion.div>
 
         {/* Sections */}
         {filteredSections.length > 0 ? (

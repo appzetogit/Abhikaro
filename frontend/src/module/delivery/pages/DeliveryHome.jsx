@@ -7199,12 +7199,14 @@ export default function DeliveryHome() {
     // Only show for orders that are in pickup phase (en_route_to_pickup or at_pickup)
     const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
     const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+    const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
     
     // CRITICAL: Don't show if order is already delivered/completed
     const isDelivered = orderStatus === 'delivered' || 
                         deliveryPhase === 'completed' || 
                         deliveryPhase === 'delivered' ||
-                        selectedRestaurant?.deliveryState?.status === 'delivered'
+                        deliveryPhase === 'at_delivery' ||
+                        deliveryStateStatus === 'delivered'
 
     if (isDelivered) {
       // Hide popup if it's showing and order is delivered
@@ -7215,7 +7217,6 @@ export default function DeliveryHome() {
     }
     
     // CRITICAL: Don't show if reached pickup is already confirmed
-    const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
     const isReachedPickupConfirmed = deliveryStateStatus === 'reached_pickup' ||
                                      deliveryPhase === 'at_pickup'
     
@@ -7229,18 +7230,23 @@ export default function DeliveryHome() {
     }
     
     // CRITICAL: Don't show if order ID is already confirmed (en_route_to_delivery or order_confirmed)
+    // OR if we're in delivery phase (en_route_to_drop, at_delivery, etc.)
     const isOrderIdConfirmed = deliveryPhase === 'en_route_to_delivery' ||
                                deliveryPhase === 'picked_up' ||
                                deliveryPhase === 'en_route_to_drop' ||
+                               deliveryPhase === 'at_delivery' ||
                                orderStatus === 'out_for_delivery' ||
                                deliveryStateStatus === 'order_confirmed' ||
+                               deliveryStateStatus === 'en_route_to_delivery' ||
+                               deliveryStateStatus === 'en_route_to_drop' ||
                                selectedRestaurant?.deliveryState?.currentPhase === 'en_route_to_delivery' ||
-                               selectedRestaurant?.deliveryState?.currentPhase === 'en_route_to_drop'
+                               selectedRestaurant?.deliveryState?.currentPhase === 'en_route_to_drop' ||
+                               selectedRestaurant?.deliveryState?.currentPhase === 'at_delivery'
     
     if (isOrderIdConfirmed) {
-      // Order ID is already confirmed, don't show Reached Pickup popup
+      // Order ID is already confirmed OR we're in delivery phase, don't show Reached Pickup popup
       if (showreachedPickupPopup) {
-        console.log('🚫 Order ID already confirmed, closing Reached Pickup popup')
+        console.log('🚫 Order ID already confirmed or in delivery phase, closing Reached Pickup popup')
         setShowreachedPickupPopup(false)
       }
       return
@@ -7303,17 +7309,22 @@ export default function DeliveryHome() {
     const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
     const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
     
-    // Check if reached pickup is already confirmed
+    // Check if reached pickup is already confirmed OR if we're in delivery phase
     const isReachedPickupConfirmed = deliveryStateStatus === 'reached_pickup' ||
                                      deliveryPhase === 'at_pickup' ||
                                      deliveryPhase === 'en_route_to_delivery' ||
                                      deliveryPhase === 'picked_up' ||
                                      deliveryPhase === 'en_route_to_drop' ||
+                                     deliveryPhase === 'at_delivery' ||
                                      orderStatus === 'out_for_delivery' ||
-                                     deliveryStateStatus === 'order_confirmed'
+                                     deliveryStateStatus === 'order_confirmed' ||
+                                     deliveryStateStatus === 'en_route_to_delivery' ||
+                                     deliveryStateStatus === 'en_route_to_drop' ||
+                                     selectedRestaurant?.deliveryState?.currentPhase === 'en_route_to_drop' ||
+                                     selectedRestaurant?.deliveryState?.currentPhase === 'at_delivery'
     
     if (isReachedPickupConfirmed) {
-      console.log('🚫 Order status changed - reached pickup already confirmed, closing popup')
+      console.log('🚫 Order status changed - reached pickup already confirmed or in delivery phase, closing popup')
       setShowreachedPickupPopup(false)
     }
   }, [
@@ -7383,9 +7394,13 @@ export default function DeliveryHome() {
           const isInDeliveryPhase = orderStatus === 'out_for_delivery' ||
                                    deliveryPhase === 'en_route_to_delivery' ||
                                    deliveryPhase === 'picked_up' ||
+                                   deliveryPhase === 'en_route_to_drop' ||
                                    deliveryPhase === 'at_delivery' ||
                                    deliveryStateStatus === 'order_confirmed' ||
-                                   deliveryStateStatus === 'en_route_to_delivery'
+                                   deliveryStateStatus === 'en_route_to_delivery' ||
+                                   deliveryStateStatus === 'en_route_to_drop' ||
+                                   selectedRestaurant?.deliveryState?.currentPhase === 'en_route_to_drop' ||
+                                   selectedRestaurant?.deliveryState?.currentPhase === 'at_delivery'
           
           const isDelivered = orderStatus === 'delivered' ||
                             deliveryPhase === 'completed' ||
@@ -7394,6 +7409,11 @@ export default function DeliveryHome() {
           
           if (isInDeliveryPhase && !isDelivered) {
             console.log('✅ Restoring Reached Drop popup after returning from chat')
+            // CRITICAL: Close Reached Pickup popup if it's showing (shouldn't be, but defensive)
+            if (showreachedPickupPopup) {
+              console.log('🚫 Closing Reached Pickup popup - order is in delivery phase')
+              setShowreachedPickupPopup(false)
+            }
             setTimeout(() => {
               setShowReachedDropPopup(true)
               // Clear saved state after restoring

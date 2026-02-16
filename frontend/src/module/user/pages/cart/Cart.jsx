@@ -790,6 +790,12 @@ export default function Cart() {
       return
     }
 
+    // Validate additional address (make it mandatory)
+    if (!additionalAddress || !additionalAddress.trim()) {
+      toast.error("Please enter additional address details (e.g., Flat no., Floor, Landmark)")
+      return
+    }
+
     if (cart.length === 0) {
       alert("Your cart is empty")
       return
@@ -1045,7 +1051,7 @@ export default function Cart() {
         sendCutlery: sendCutlery,
         paymentMethod: selectedPaymentMethod,
         zoneId: zoneId, // CRITICAL: Pass zoneId for strict zone validation
-        additionalAddress: additionalAddress || null, // Additional address details
+        additionalAddress: additionalAddress.trim(), // Additional address details (required)
         // Hotel order fields
         hotelReference: isHotelOrder ? sessionStorage.getItem('hotelReference') : null,
         hotelName: isHotelOrder ? sessionStorage.getItem('hotelReferenceName') : null,
@@ -1397,9 +1403,6 @@ export default function Cart() {
                             ? `${item.productName || item.name} - ${item.selectedVariantName}`
                             : (item.productName || item.name)}
                         </p>
-                        <button className="text-xs md:text-sm text-blue-600 dark:text-blue-400 font-medium flex items-center gap-0.5 mt-0.5">
-                          Edit <ChevronRight className="h-3 w-3 md:h-4 md:w-4" />
-                        </button>
                       </div>
 
                       <div className="flex items-center gap-3 md:gap-4">
@@ -1641,49 +1644,6 @@ export default function Cart() {
                 </div>
               </div>
 
-              {/* Delivery Fleet Type */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
-                <button
-                  onClick={() => setShowFleetOptions(!showFleetOptions)}
-                  className="flex items-center justify-between w-full"
-                >
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <Truck className="h-4 w-4 md:h-5 md:w-5 text-gray-500 dark:text-gray-400" />
-                    <span className="text-sm md:text-base text-gray-800 dark:text-gray-200">Choose delivery fleet type</span>
-                  </div>
-                  {showFleetOptions ? <ChevronUp className="h-4 w-4 md:h-5 md:w-5 text-gray-400" /> : <ChevronDown className="h-4 w-4 md:h-5 md:w-5 text-gray-400" />}
-                </button>
-
-                {showFleetOptions && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mt-3 md:mt-4">
-                    <button
-                      onClick={() => setDeliveryFleet("standard")}
-                      className={`p-3 md:p-4 rounded-lg md:rounded-xl border-2 text-left transition-colors ${deliveryFleet === "standard" ? "border-red-600 dark:border-red-500 bg-red-50 dark:bg-red-900/20" : "border-gray-200 dark:border-gray-700"}`}
-                    >
-                      <div className="flex items-center justify-between mb-1 md:mb-2">
-                        <span className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">Standard Fleet</span>
-                        <div className="w-8 h-8 md:w-10 md:h-10 bg-orange-100 dark:bg-orange-900/20 rounded-full flex items-center justify-center">
-                          <Truck className="h-4 w-4 md:h-5 md:w-5 text-orange-600 dark:text-orange-400" />
-                        </div>
-                      </div>
-                      <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Our standard food delivery experience</p>
-                    </button>
-                    <button
-                      onClick={() => setDeliveryFleet("veg")}
-                      className={`p-3 md:p-4 rounded-lg md:rounded-xl border-2 text-left transition-colors ${deliveryFleet === "veg" ? "border-red-600 dark:border-red-500 bg-red-50 dark:bg-red-900/20" : "border-gray-200 dark:border-gray-700"}`}
-                    >
-                      <div className="flex items-center justify-between mb-1 md:mb-2">
-                        <span className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">Special Veg-only Fleet</span>
-                        <div className="w-8 h-8 md:w-10 md:h-10 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center">
-                          <Leaf className="h-4 w-4 md:h-5 md:w-5 text-green-600 dark:text-green-400" />
-                        </div>
-                      </div>
-                      <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Fleet delivering only from Pure Veg restaurants</p>
-                    </button>
-                  </div>
-                )}
-              </div>
-
               {/* Delivery Address */}
               <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
                 <Link className="flex items-center justify-between">
@@ -1725,12 +1685,13 @@ export default function Cart() {
                 </Link>
               </div>
 
-              {/* Additional Address */}
+              {/* Additional Address (Required) */}
               <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
                 <div className="flex items-center gap-3 md:gap-4 mb-2">
                   <MapPin className="h-4 w-4 md:h-5 md:w-5 text-gray-500 dark:text-gray-400" />
-                  <label className="text-sm md:text-base text-gray-800 dark:text-gray-200 font-medium">
-                    Additional Address (Optional)
+                  <label className="text-sm md:text-base text-gray-800 dark:text-gray-200 font-medium flex items-center gap-1">
+                    <span>Additional Address</span>
+                    <span className="text-red-500">*</span>
                   </label>
                 </div>
                 <Input

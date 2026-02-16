@@ -345,7 +345,21 @@ export default function OrderChat() {
       }
     } catch (error) {
       console.error("Error sending message:", error);
-      toast.error("Failed to send message");
+      console.error("Error details:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        orderId,
+        messageText: messageText.substring(0, 50)
+      });
+      
+      // Show more specific error message
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          "Failed to send message";
+      toast.error(errorMessage);
+      
       // Remove optimistic message on error
       setMessages((prev) => prev.filter(msg => msg._id !== tempMessageId));
     } finally {
