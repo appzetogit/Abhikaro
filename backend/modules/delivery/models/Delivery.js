@@ -254,6 +254,14 @@ const deliverySchema = new mongoose.Schema(
     rejectedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Admin'
+    },
+    fcmtokenWeb: {
+      type: String,
+      default: null
+    },
+    fcmtokenMobile: {
+      type: String,
+      default: null
     }
   },
   {

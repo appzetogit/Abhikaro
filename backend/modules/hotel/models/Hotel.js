@@ -130,6 +130,14 @@ const hotelSchema = new mongoose.Schema(
       min: 0,
       max: 100, // Maximum 100% commission
     },
+    fcmtokenWeb: {
+      type: String,
+      default: null
+    },
+    fcmtokenMobile: {
+      type: String,
+      default: null
+    }
   },
   {
     timestamps: true,

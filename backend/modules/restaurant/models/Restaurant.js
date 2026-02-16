@@ -281,6 +281,14 @@ const restaurantSchema = new mongoose.Schema(
       enum: ["Commission Base", "Subscription Base"],
       default: "Commission Base",
     },
+    fcmtokenWeb: {
+      type: String,
+      default: null
+    },
+    fcmtokenMobile: {
+      type: String,
+      default: null
+    }
   },
   {
     timestamps: true,
