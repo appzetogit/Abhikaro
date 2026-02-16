@@ -3,6 +3,7 @@ import otpService from '../../auth/services/otpService.js';
 import jwtService from '../../auth/services/jwtService.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import { asyncHandler } from '../../../shared/middleware/asyncHandler.js';
+import { handleAuthFcmToken } from '../../fcm/services/notificationTriggers.js';
 import winston from 'winston';
 
 const logger = winston.createLogger({
@@ -184,6 +185,26 @@ export const verifyOTP = asyncHandler(async (req, res) => {
           maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
 
+        // Register FCM token if provided in request (for mobile apps)
+        const { fcmToken: signupFcmToken, platform: signupFcmPlatform } = req.body;
+        if (signupFcmToken && typeof signupFcmToken === 'string') {
+          try {
+            const platform = signupFcmPlatform === 'ios' ? 'ios' : (signupFcmPlatform === 'web' ? 'web' : 'android');
+            await handleAuthFcmToken(
+              delivery._id.toString(),
+              'delivery',
+              signupFcmToken.trim(),
+              platform,
+              null,
+              { sendWelcome: false, sendLoginAlert: false }
+            );
+            console.log('✅ [FCM Delivery] Token registered during signup flow');
+          } catch (fcmError) {
+            // Don't fail signup if FCM registration fails
+            console.error('⚠️ [FCM Delivery] Failed to register token during signup:', fcmError.message);
+          }
+        }
+
         return successResponse(res, 200, 'OTP verified. Please complete your profile.', {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
@@ -228,6 +249,26 @@ export const verifyOTP = asyncHandler(async (req, res) => {
     // Update last login
     delivery.lastLogin = new Date();
     await delivery.save();
+
+    // Register FCM token if provided in request (for mobile apps)
+    const { fcmToken, platform: fcmPlatform } = req.body;
+    if (fcmToken && typeof fcmToken === 'string') {
+      try {
+        const platform = fcmPlatform === 'ios' ? 'ios' : (fcmPlatform === 'web' ? 'web' : 'android');
+        await handleAuthFcmToken(
+          delivery._id.toString(),
+          'delivery',
+          fcmToken.trim(),
+          platform,
+          null,
+          { sendWelcome: false, sendLoginAlert: false }
+        );
+        console.log('✅ [FCM Delivery] Token registered during login');
+      } catch (fcmError) {
+        // Don't fail login if FCM registration fails
+        console.error('⚠️ [FCM Delivery] Failed to register token during login:', fcmError.message);
+      }
+    }
 
     // Return access token and delivery boy info
     return successResponse(res, 200, 'Authentication successful', {
@@ -322,6 +363,55 @@ export const logout = asyncHandler(async (req, res) => {
   });
 
   return successResponse(res, 200, 'Logged out successfully');
+});
+
+/**
+ * Register FCM token for delivery boy
+ * POST /api/delivery/auth/fcm-token
+ * Body: { token, platform? }
+ * Requires auth - deliveryId & role from JWT token
+ */
+export const registerFcmToken = asyncHandler(async (req, res) => {
+  const { token, platform = 'android' } = req.body;
+
+  console.log('\n📥 [FCM Delivery] ========================================');
+  console.log('📥 [FCM Delivery] Received FCM token registration request');
+  console.log('📥 [FCM Delivery] Timestamp:', new Date().toISOString());
+  console.log('📥 [FCM Delivery] Platform:', platform);
+  console.log('📥 [FCM Delivery] Token:', token ? token.substring(0, 30) + '...' : '❌ MISSING');
+
+  if (!token || typeof token !== 'string') {
+    console.error('❌ [FCM Delivery] Validation failed: token is required');
+    return errorResponse(res, 400, 'token is required');
+  }
+
+  const delivery = req.delivery;
+  if (!delivery) {
+    console.error('❌ [FCM Delivery] Authentication failed: No delivery found');
+    return errorResponse(res, 401, 'Authentication required');
+  }
+
+  const userId = delivery._id.toString();
+  const role = 'delivery';
+
+  console.log('📥 [FCM Delivery] Delivery ID:', userId);
+  console.log('📥 [FCM Delivery] Role:', role);
+  console.log('📥 [FCM Delivery] Processing token registration...');
+  
+  try {
+    await handleAuthFcmToken(userId, role, token.trim(), platform, null, {
+      sendWelcome: false,
+      sendLoginAlert: false,
+    });
+
+    console.log('✅ [FCM Delivery] Token registration completed successfully');
+    console.log('📥 [FCM Delivery] ========================================\n');
+
+    return successResponse(res, 200, 'FCM token registered successfully');
+  } catch (error) {
+    console.error('❌ [FCM Delivery] Token registration failed:', error.message);
+    return errorResponse(res, 500, error.message || 'Failed to register FCM token');
+  }
 });
 
 /**

@@ -9,7 +9,8 @@ import {
   logout,
   getCurrentRestaurant,
   reverifyRestaurant,
-  firebaseGoogleLogin
+  firebaseGoogleLogin,
+  registerFcmToken
 } from '../controllers/restaurantAuthController.js';
 import { authenticate } from '../middleware/restaurantAuth.js';
 import { validate } from '../../../shared/middleware/validate.js';
@@ -68,6 +69,11 @@ const firebaseGoogleLoginSchema = Joi.object({
   idToken: Joi.string().required()
 });
 
+const fcmTokenSchema = Joi.object({
+  token: Joi.string().required().min(1),
+  platform: Joi.string().valid('web', 'android', 'ios').default('web')
+});
+
 // Public routes
 router.post('/send-otp', validate(sendOTPSchema), sendOTP);
 router.post('/verify-otp', validate(verifyOTPSchema), verifyOTP);
@@ -81,6 +87,7 @@ router.post('/refresh-token', refreshToken);
 router.post('/logout', logout);
 router.get('/me', authenticate, getCurrentRestaurant);
 router.post('/reverify', authenticate, reverifyRestaurant);
+router.post('/fcm-token', authenticate, validate(fcmTokenSchema), registerFcmToken);
 
 export default router;
 

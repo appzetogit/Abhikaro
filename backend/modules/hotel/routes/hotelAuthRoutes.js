@@ -5,6 +5,7 @@ import {
   getCurrentHotel,
   refreshToken,
   logout,
+  registerFcmToken
 } from '../controllers/hotelAuthController.js';
 import { authenticate } from '../middleware/hotelAuth.js';
 import { validate } from '../../../shared/middleware/validate.js';
@@ -59,6 +60,11 @@ const verifyOTPSchema = Joi.object({
   ).optional()
 });
 
+const fcmTokenSchema = Joi.object({
+  token: Joi.string().required().min(1),
+  platform: Joi.string().valid('web', 'android', 'ios').default('web')
+});
+
 // Public routes
 router.post('/send-otp', validate(sendOTPSchema), sendOTP);
 router.post('/verify-otp', validate(verifyOTPSchema), verifyOTP);
@@ -67,5 +73,6 @@ router.post('/verify-otp', validate(verifyOTPSchema), verifyOTP);
 router.post('/refresh-token', refreshToken);
 router.post('/logout', logout);
 router.get('/me', authenticate, getCurrentHotel);
+router.post('/fcm-token', authenticate, validate(fcmTokenSchema), registerFcmToken);
 
 export default router;

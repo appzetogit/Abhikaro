@@ -4,7 +4,8 @@ import {
   verifyOTP,
   refreshToken,
   logout,
-  getCurrentDelivery
+  getCurrentDelivery,
+  registerFcmToken
 } from '../controllers/deliveryAuthController.js';
 import { authenticate } from '../middleware/deliveryAuth.js';
 import { validate } from '../../../shared/middleware/validate.js';
@@ -30,7 +31,14 @@ const verifyOTPSchema = Joi.object({
   purpose: Joi.string()
     .valid('login', 'register', 'reset-password', 'verify-phone')
     .default('login'),
-  name: Joi.string().allow(null, '').optional()
+  name: Joi.string().allow(null, '').optional(),
+  fcmToken: Joi.string().optional().allow(null, ''),
+  platform: Joi.string().valid('web', 'android', 'ios').optional()
+});
+
+const fcmTokenSchema = Joi.object({
+  token: Joi.string().required().min(1),
+  platform: Joi.string().valid('web', 'android', 'ios').default('android')
 });
 
 // Public routes
@@ -41,6 +49,7 @@ router.post('/refresh-token', refreshToken);
 // Protected routes (require authentication)
 router.post('/logout', authenticate, logout);
 router.get('/me', authenticate, getCurrentDelivery);
+router.post('/fcm-token', authenticate, validate(fcmTokenSchema), registerFcmToken);
 
 export default router;
 

@@ -312,6 +312,26 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
+    // Register FCM token if provided in request (for mobile apps)
+    const { fcmToken, platform: fcmPlatform } = req.body;
+    if (fcmToken && typeof fcmToken === 'string') {
+      try {
+        const platform = fcmPlatform === 'ios' ? 'ios' : (fcmPlatform === 'web' ? 'web' : 'android');
+        await handleAuthFcmToken(
+          user._id.toString(),
+          user.role || 'user',
+          fcmToken.trim(),
+          platform,
+          null,
+          { sendWelcome: false, sendLoginAlert: false }
+        );
+        console.log('✅ [FCM User] Token registered during OTP verification');
+      } catch (fcmError) {
+        // Don't fail login if FCM registration fails
+        console.error('⚠️ [FCM User] Failed to register token during OTP verification:', fcmError.message);
+      }
+    }
+
     // Return access token and user info
     return successResponse(res, 200, "Authentication successful", {
       accessToken: tokens.accessToken,
@@ -559,6 +579,26 @@ export const login = asyncHandler(async (req, res) => {
     sameSite: "strict",
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
+
+  // Register FCM token if provided in request (for mobile apps)
+  const { fcmToken, platform: fcmPlatform } = req.body;
+  if (fcmToken && typeof fcmToken === 'string') {
+    try {
+      const platform = fcmPlatform === 'ios' ? 'ios' : (fcmPlatform === 'web' ? 'web' : 'android');
+      await handleAuthFcmToken(
+        user._id.toString(),
+        user.role || 'user',
+        fcmToken.trim(),
+        platform,
+        null,
+        { sendWelcome: false, sendLoginAlert: false }
+      );
+      console.log('✅ [FCM User] Token registered during email login');
+    } catch (fcmError) {
+      // Don't fail login if FCM registration fails
+      console.error('⚠️ [FCM User] Failed to register token during login:', fcmError.message);
+    }
+  }
 
   logger.info(`User logged in via email: ${user._id}`, {
     email,

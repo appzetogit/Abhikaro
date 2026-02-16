@@ -7,6 +7,7 @@ import {
 } from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
+import { handleAuthFcmToken } from "../../fcm/services/notificationTriggers.js";
 import winston from "winston";
 
 /**
@@ -272,6 +273,26 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
+    // Register FCM token if provided in request (for mobile apps)
+    const { fcmToken, platform: fcmPlatform } = req.body;
+    if (fcmToken && typeof fcmToken === 'string') {
+      try {
+        const platform = fcmPlatform === 'ios' ? 'ios' : (fcmPlatform === 'web' ? 'web' : 'android');
+        await handleAuthFcmToken(
+          hotel._id.toString(),
+          'hotel',
+          fcmToken.trim(),
+          platform,
+          null,
+          { sendWelcome: false, sendLoginAlert: false }
+        );
+        console.log('✅ [FCM Hotel] Token registered during login');
+      } catch (fcmError) {
+        // Don't fail login if FCM registration fails
+        console.error('⚠️ [FCM Hotel] Failed to register token during login:', fcmError.message);
+      }
+    }
+
     logger.info(`Hotel ${purpose === "register" ? "registered" : "logged in"}: ${hotel._id}`, {
       phone: normalizedPhone,
       hotelId: hotel._id,
@@ -302,6 +323,55 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       error: error.message,
     });
     return errorResponse(res, 400, error.message);
+  }
+});
+
+/**
+ * Register FCM token for hotel
+ * POST /api/hotel/auth/fcm-token
+ * Body: { token, platform? }
+ * Requires auth - hotelId & role from JWT token
+ */
+export const registerFcmToken = asyncHandler(async (req, res) => {
+  const { token, platform = 'web' } = req.body;
+
+  console.log('\n📥 [FCM Hotel] ========================================');
+  console.log('📥 [FCM Hotel] Received FCM token registration request');
+  console.log('📥 [FCM Hotel] Timestamp:', new Date().toISOString());
+  console.log('📥 [FCM Hotel] Platform:', platform);
+  console.log('📥 [FCM Hotel] Token:', token ? token.substring(0, 30) + '...' : '❌ MISSING');
+
+  if (!token || typeof token !== 'string') {
+    console.error('❌ [FCM Hotel] Validation failed: token is required');
+    return errorResponse(res, 400, 'token is required');
+  }
+
+  const hotel = req.hotel;
+  if (!hotel) {
+    console.error('❌ [FCM Hotel] Authentication failed: No hotel found');
+    return errorResponse(res, 401, 'Authentication required');
+  }
+
+  const userId = hotel._id.toString();
+  const role = 'hotel';
+
+  console.log('📥 [FCM Hotel] Hotel ID:', userId);
+  console.log('📥 [FCM Hotel] Role:', role);
+  console.log('📥 [FCM Hotel] Processing token registration...');
+  
+  try {
+    await handleAuthFcmToken(userId, role, token.trim(), platform, null, {
+      sendWelcome: false,
+      sendLoginAlert: false,
+    });
+
+    console.log('✅ [FCM Hotel] Token registration completed successfully');
+    console.log('📥 [FCM Hotel] ========================================\n');
+
+    return successResponse(res, 200, 'FCM token registered successfully');
+  } catch (error) {
+    console.error('❌ [FCM Hotel] Token registration failed:', error.message);
+    return errorResponse(res, 500, error.message || 'Failed to register FCM token');
   }
 });
 

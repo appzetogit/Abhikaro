@@ -8,6 +8,7 @@ import {
 } from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
+import { handleAuthFcmToken } from "../../fcm/services/notificationTriggers.js";
 import winston from "winston";
 
 /**
@@ -669,6 +670,26 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
+    // Register FCM token if provided in request (for mobile apps)
+    const { fcmToken, platform: fcmPlatform } = req.body;
+    if (fcmToken && typeof fcmToken === 'string') {
+      try {
+        const platform = fcmPlatform === 'ios' ? 'ios' : (fcmPlatform === 'web' ? 'web' : 'android');
+        await handleAuthFcmToken(
+          restaurant._id.toString(),
+          'restaurant',
+          fcmToken.trim(),
+          platform,
+          null,
+          { sendWelcome: false, sendLoginAlert: false }
+        );
+        console.log('✅ [FCM Restaurant] Token registered during login');
+      } catch (fcmError) {
+        // Don't fail login if FCM registration fails
+        console.error('⚠️ [FCM Restaurant] Failed to register token during login:', fcmError.message);
+      }
+    }
+
     // Return access token and restaurant info
     return successResponse(res, 200, "Authentication successful", {
       accessToken: tokens.accessToken,
@@ -854,6 +875,26 @@ export const login = asyncHandler(async (req, res) => {
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
 
+  // Register FCM token if provided in request (for mobile apps)
+  const { fcmToken, platform: fcmPlatform } = req.body;
+  if (fcmToken && typeof fcmToken === 'string') {
+    try {
+      const platform = fcmPlatform === 'ios' ? 'ios' : (fcmPlatform === 'web' ? 'web' : 'android');
+      await handleAuthFcmToken(
+        restaurant._id.toString(),
+        'restaurant',
+        fcmToken.trim(),
+        platform,
+        null,
+        { sendWelcome: false, sendLoginAlert: false }
+      );
+      console.log('✅ [FCM Restaurant] Token registered during email login');
+    } catch (fcmError) {
+      // Don't fail login if FCM registration fails
+      console.error('⚠️ [FCM Restaurant] Failed to register token during login:', fcmError.message);
+    }
+  }
+
   logger.info(`Restaurant logged in via email: ${restaurant._id}`, {
     email,
     restaurantId: restaurant._id,
@@ -1002,6 +1043,55 @@ export const logout = asyncHandler(async (req, res) => {
  * Get current restaurant
  * GET /api/restaurant/auth/me
  */
+/**
+ * Register FCM token for restaurant
+ * POST /api/restaurant/auth/fcm-token
+ * Body: { token, platform? }
+ * Requires auth - restaurantId & role from JWT token
+ */
+export const registerFcmToken = asyncHandler(async (req, res) => {
+  const { token, platform = 'web' } = req.body;
+
+  console.log('\n📥 [FCM Restaurant] ========================================');
+  console.log('📥 [FCM Restaurant] Received FCM token registration request');
+  console.log('📥 [FCM Restaurant] Timestamp:', new Date().toISOString());
+  console.log('📥 [FCM Restaurant] Platform:', platform);
+  console.log('📥 [FCM Restaurant] Token:', token ? token.substring(0, 30) + '...' : '❌ MISSING');
+
+  if (!token || typeof token !== 'string') {
+    console.error('❌ [FCM Restaurant] Validation failed: token is required');
+    return errorResponse(res, 400, 'token is required');
+  }
+
+  const restaurant = req.restaurant;
+  if (!restaurant) {
+    console.error('❌ [FCM Restaurant] Authentication failed: No restaurant found');
+    return errorResponse(res, 401, 'Authentication required');
+  }
+
+  const userId = restaurant._id.toString();
+  const role = 'restaurant';
+
+  console.log('📥 [FCM Restaurant] Restaurant ID:', userId);
+  console.log('📥 [FCM Restaurant] Role:', role);
+  console.log('📥 [FCM Restaurant] Processing token registration...');
+  
+  try {
+    await handleAuthFcmToken(userId, role, token.trim(), platform, null, {
+      sendWelcome: false,
+      sendLoginAlert: false,
+    });
+
+    console.log('✅ [FCM Restaurant] Token registration completed successfully');
+    console.log('📥 [FCM Restaurant] ========================================\n');
+
+    return successResponse(res, 200, 'FCM token registered successfully');
+  } catch (error) {
+    console.error('❌ [FCM Restaurant] Token registration failed:', error.message);
+    return errorResponse(res, 500, error.message || 'Failed to register FCM token');
+  }
+});
+
 export const getCurrentRestaurant = asyncHandler(async (req, res) => {
   // Restaurant is attached by authenticate middleware
   return successResponse(res, 200, "Restaurant retrieved successfully", {
