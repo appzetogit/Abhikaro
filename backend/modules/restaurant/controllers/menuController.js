@@ -769,6 +769,9 @@ export const addAddon = asyncHandler(async (req, res) => {
   };
 
   menu.addons.push(newAddon);
+  // Mark addons array as modified to ensure Mongoose properly saves nested array changes
+  // This is CRITICAL for nested arrays in Mongoose, especially with Date objects
+  menu.markModified('addons');
   await menu.save();
 
   return successResponse(res, 201, 'Add-on added successfully. Pending admin approval.', {
@@ -855,13 +858,16 @@ export const getAddonsByRestaurantId = async (req, res) => {
     console.log(`[ADDONS] Menu isActive: ${menu.isActive}`);
     console.log(`[ADDONS] Total addons in menu: ${(menu.addons || []).length}`);
 
-    // Show all addons - no filtering (as per user request to show addons "kaise bhi")
+    // Filter to show only approved and available addons for users
     const allAddons = menu.addons || [];
+    const approvedAddons = allAddons.filter(addon => 
+      addon.approvalStatus === 'approved' && addon.isAvailable !== false
+    );
     
-    // Log all addons for debugging
-    console.log(`[ADDONS] Returning all addons: ${allAddons.length}`);
-    if (allAddons.length > 0) {
-      console.log(`[ADDONS] Addon details:`, allAddons.map(a => ({
+    // Log filtered addons for debugging
+    console.log(`[ADDONS] Total addons: ${allAddons.length}, Approved addons: ${approvedAddons.length}`);
+    if (approvedAddons.length > 0) {
+      console.log(`[ADDONS] Approved addon details:`, approvedAddons.map(a => ({
         id: a.id,
         name: a.name,
         isAvailable: a.isAvailable,
@@ -869,11 +875,11 @@ export const getAddonsByRestaurantId = async (req, res) => {
         price: a.price
       })));
     } else {
-      console.log(`[ADDONS] Menu.addons is:`, menu.addons);
+      console.log(`[ADDONS] No approved addons found. Total addons: ${allAddons.length}`);
     }
 
     return successResponse(res, 200, 'Add-ons retrieved successfully', {
-      addons: allAddons,
+      addons: approvedAddons,
     });
   } catch (error) {
     console.error('Error fetching addons by restaurant ID:', error);

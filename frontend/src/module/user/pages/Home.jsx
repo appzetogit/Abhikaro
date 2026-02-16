@@ -179,7 +179,7 @@ export default function Home() {
   const [searchParams] = useSearchParams()
   const query = searchParams.get("q") || ""
   const [heroSearch, setHeroSearch] = useState("")
-  const { openSearch, closeSearch, searchValue, setSearchValue } = useSearchOverlay()
+  const { openSearch, closeSearch, searchValue, setSearchValue, isSearchOpen } = useSearchOverlay()
   const { openLocationSelector } = useLocationSelector()
   const { vegMode, setVegMode: setVegModeContext } = useProfile()
   const [prevVegMode, setPrevVegMode] = useState(vegMode)
@@ -1242,6 +1242,7 @@ export default function Home() {
           {/* Content */}
           <div className="relative z-20 max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-6 lg:px-8">
             {/* Search Bar and VEG MODE Container - Sticky */}
+            {!isSearchOpen && (
             <motion.div
               className="sticky top-4 z-30 flex items-center gap-3 sm:gap-4 lg:gap-6"
               initial={{ opacity: 0, y: 20 }}
@@ -1318,6 +1319,7 @@ export default function Home() {
                 />
               </motion.div>
             </motion.div>
+            )}
           </div>
         </section>
       </div>

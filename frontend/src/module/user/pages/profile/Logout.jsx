@@ -120,7 +120,7 @@ export default function Logout() {
             </Card>
 
             {/* Action Buttons */}
-            <div className="space-y-3 md:space-y-4">
+            <div className="space-y-3 md:space-y-4 mb-6 md:mb-8 lg:mb-10">
               <Button
                 onClick={handleLogout}
                 className="w-full bg-red-600 hover:bg-red-700 text-white text-sm md:text-base h-10 md:h-12"

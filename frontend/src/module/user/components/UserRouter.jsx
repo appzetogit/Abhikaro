@@ -312,6 +312,11 @@ export default function UserRouter() {
               </ProtectedRoute>
             }
           />
+          {/* Public Terms and Privacy routes (accessible without login) */}
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+          
+          {/* Protected Terms and Privacy routes (for logged-in users) */}
           <Route
             path="/profile/terms"
             element={

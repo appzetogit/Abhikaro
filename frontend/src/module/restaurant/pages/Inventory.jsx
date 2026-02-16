@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  ThumbsUp
+  ThumbsUp,
+  Send
 } from "lucide-react"
 import RestaurantNavbar from "../components/RestaurantNavbar"
 import BottomNavOrders from "../components/BottomNavOrders"
@@ -757,9 +758,8 @@ export default function Inventory() {
       if (showLoading) setLoadingAddons(true)
       const response = await restaurantAPI.getAddons()
       const data = response?.data?.data?.addons || response?.data?.addons || []
-      // Filter to show only approved add-ons
-      const approvedAddons = data.filter(addon => addon.approvalStatus === 'approved')
-      setAddons(approvedAddons)
+      // Show all add-ons (approved, pending, rejected) so restaurant can see rejection reasons
+      setAddons(data)
     } catch (error) {
       console.error('Error fetching add-ons:', error)
       toast.error('Failed to load add-ons')
@@ -774,6 +774,29 @@ export default function Inventory() {
       fetchAddons(true)
     }
   }, [activeTab])
+
+  // Handle resend rejected add-on for approval
+  const handleResendAddon = async (addon) => {
+    if (addon.approvalStatus !== 'rejected') {
+      return
+    }
+
+    try {
+      // Update addon with same data to trigger resubmission (status will change to pending)
+      await restaurantAPI.updateAddon(addon.id, {
+        name: addon.name,
+        description: addon.description || '',
+        price: addon.price,
+        image: addon.image || '',
+        images: addon.images || []
+      })
+      toast.success('Add-on resubmitted for approval')
+      fetchAddons(true)
+    } catch (error) {
+      console.error('Error resending add-on:', error)
+      toast.error(error?.response?.data?.message || 'Failed to resend add-on')
+    }
+  }
 
   // Handle addon toggle
   const handleAddonToggle = async (addonId, isAvailable) => {
@@ -1441,14 +1464,23 @@ export default function Inventory() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
                             <h3 className="text-base font-semibold text-gray-900">{addon.name}</h3>
+                            {addon.approvalStatus === 'pending' && (
+                              <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">Pending</span>
+                            )}
                             {addon.approvalStatus === 'approved' && (
                               <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">Approved</span>
+                            )}
+                            {addon.approvalStatus === 'rejected' && (
+                              <span className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded">Rejected</span>
                             )}
                           </div>
                           {addon.description && (
                             <p className="text-sm text-gray-600 mb-2">{addon.description}</p>
                           )}
                           <p className="text-base font-bold text-gray-900">₹{addon.price}</p>
+                          {addon.rejectionReason && (
+                            <p className="text-xs text-red-600 mt-1">Reason: {addon.rejectionReason}</p>
+                          )}
                         </div>
                         <div className="flex items-start gap-2">
                           {addon.images && addon.images.length > 0 && addon.images[0] && (
@@ -1461,7 +1493,16 @@ export default function Inventory() {
                               }}
                             />
                           )}
-                          <div className="flex items-center">
+                          <div className="flex flex-col gap-2 items-center">
+                            {addon.approvalStatus === 'rejected' && (
+                              <button
+                                onClick={() => handleResendAddon(addon)}
+                                className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+                                title="Resend for approval"
+                              >
+                                <Send className="h-4 w-4" />
+                              </button>
+                            )}
                             <Switch
                               checked={addon.isAvailable !== false}
                               onCheckedChange={(checked) =>

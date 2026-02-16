@@ -138,8 +138,78 @@ export default function EditProfile() {
     }))
   }
 
-  const handleImageSelect = async (e) => {
-    const file = e.target.files?.[0]
+  // Handle camera capture with Flutter support
+  const handleCameraCapture = async () => {
+    try {
+      // Check if Flutter InAppWebView handler is available
+      if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === 'function') {
+        console.log('📸 Using Flutter InAppWebView camera handler')
+        
+        // Call Flutter handler to open camera
+        const result = await window.flutter_inappwebview.callHandler('openCamera', {
+          source: 'camera', // 'camera' for camera, 'gallery' for file picker
+          accept: 'image/*',
+          multiple: false,
+          quality: 0.8 // Image quality (0.0 to 1.0)
+        })
+        
+        console.log('📸 Flutter handler response:', result)
+        
+        if (result && result.success) {
+          // Handle the result - could be base64, file path, or file object
+          let file = null
+          
+          if (result.file) {
+            // If Flutter returns a File object (preferred method)
+            file = result.file
+            console.log('✅ Received File object from Flutter')
+          } else if (result.base64) {
+            // Convert base64 to File object
+            const base64Data = result.base64
+            const mimeType = result.mimeType || 'image/jpeg'
+            const fileName = result.fileName || 'camera-image.jpg'
+            
+            // Convert base64 to blob
+            const byteCharacters = atob(base64Data.split(',')[1] || base64Data)
+            const byteNumbers = new Array(byteCharacters.length)
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i)
+            }
+            const byteArray = new Uint8Array(byteNumbers)
+            const blob = new Blob([byteArray], { type: mimeType })
+            file = new File([blob], fileName, { type: mimeType })
+            console.log('✅ Converted base64 to File object')
+          }
+          
+          if (file) {
+            await processImageFile(file)
+          } else {
+            console.error('❌ No file data in Flutter response:', result)
+            toast.error('Failed to get image from camera')
+          }
+        } else {
+          console.log('ℹ️ Camera cancelled by user or failed')
+        }
+      } else {
+        // Fallback to standard file input for web browsers
+        console.log('📸 Flutter handler not available, using standard file input')
+        if (fileInputRef.current) {
+          fileInputRef.current.click()
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error opening camera:', error)
+      toast.error('Failed to open camera. Please try again.')
+      
+      // Fallback to standard file input
+      if (fileInputRef.current) {
+        fileInputRef.current.click()
+      }
+    }
+  }
+
+  // Process image file (extracted for reuse)
+  const processImageFile = async (file) => {
     if (!file) return
 
     // Validate file type
@@ -186,6 +256,12 @@ export default function EditProfile() {
     } finally {
       setIsUploadingImage(false)
     }
+  }
+
+  const handleImageSelect = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await processImageFile(file)
   }
 
   const handleUpdate = async () => {
@@ -285,22 +361,41 @@ export default function EditProfile() {
                 {avatarInitial}
               </AvatarFallback>
             </Avatar>
-            {/* Edit Icon */}
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploadingImage}
-              className="absolute bottom-0 right-0 w-8 h-8 bg-green-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isUploadingImage ? (
-                <Loader2 className="h-4 w-4 text-white animate-spin" />
-              ) : (
-                <Pencil className="h-4 w-4 text-white" />
-              )}
-            </button>
+            {/* Edit Icon - with camera/gallery options */}
+            <div className="absolute bottom-0 right-0 flex gap-2">
+              <button 
+                onClick={handleCameraCapture}
+                disabled={isUploadingImage}
+                className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Take photo"
+              >
+                {isUploadingImage ? (
+                  <Loader2 className="h-4 w-4 text-white animate-spin" />
+                ) : (
+                  <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                )}
+              </button>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingImage}
+                className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Choose from gallery"
+              >
+                {isUploadingImage ? (
+                  <Loader2 className="h-4 w-4 text-white animate-spin" />
+                ) : (
+                  <Pencil className="h-4 w-4 text-white" />
+                )}
+              </button>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              capture="environment"
               onChange={handleImageSelect}
               className="hidden"
             />
@@ -336,7 +431,7 @@ export default function EditProfile() {
               </div>
             </div>
 
-            {/* Mobile Field */}
+            {/* Mobile Field - Read-only if user is authenticated (OTP verified) */}
             <div className="space-y-1.5">
               <Label htmlFor="mobile" className="text-sm font-medium text-gray-700 dark:text-white">
                 Mobile
@@ -346,11 +441,23 @@ export default function EditProfile() {
                   id="mobile"
                   type="tel"
                   value={formData.mobile}
-                  onChange={(e) => handleChange('mobile', e.target.value)}
-                  className="flex-1 h-12 text-base  border border-gray-300 dark:border-gray-700 focus:border-green-600 focus:ring-1 focus:ring-green-600 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white"
+                  onChange={(e) => {
+                    // Only allow changes if mobile is empty (new user) or not verified
+                    if (!formData.mobile || formData.mobile.trim() === '') {
+                      handleChange('mobile', e.target.value)
+                    }
+                  }}
+                  disabled={!!(formData.mobile && formData.mobile.trim() !== '')}
+                  readOnly={!!(formData.mobile && formData.mobile.trim() !== '')}
+                  className="flex-1 h-12 text-base border border-gray-300 dark:border-gray-700 focus:border-green-600 focus:ring-1 focus:ring-green-600 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
                   placeholder="Mobile"
                 />
               </div>
+              {formData.mobile && formData.mobile.trim() !== '' && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Phone number cannot be changed after verification
+                </p>
+              )}
             </div>
 
             {/* Email Field */}
