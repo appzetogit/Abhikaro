@@ -99,7 +99,8 @@ export default function Cart() {
   const [hotelName, setHotelName] = useState('') // Hotel name for display
   const [walletBalance, setWalletBalance] = useState(0)
   const [isLoadingWallet, setIsLoadingWallet] = useState(false)
-  const [deliveryFleet] = useState("standard") // Default to standard fleet
+  const [deliveryFleet, setDeliveryFleet] = useState("standard") // Default to standard fleet
+  const [showFleetOptions, setShowFleetOptions] = useState(false)
   const [note, setNote] = useState("")
   const [showNoteInput, setShowNoteInput] = useState(false)
   const [sendCutlery, setSendCutlery] = useState(true)
@@ -409,16 +410,20 @@ export default function Cart() {
         })
 
         const data = response?.data?.data?.addons || response?.data?.addons || []
-        console.log("📊 Fetched addons count:", data.length)
+        // Filter to show only approved and available addons for users
+        const approvedAddons = data.filter(addon => 
+          addon.approvalStatus === 'approved' && addon.isAvailable !== false
+        )
+        console.log("📊 Fetched addons count:", data.length, "Approved addons:", approvedAddons.length)
         console.log("📋 Fetched addons data:", JSON.stringify(data, null, 2))
 
-        if (data.length === 0) {
-          console.warn("⚠️ No addons returned from API. Response:", response?.data)
+        if (approvedAddons.length === 0) {
+          console.warn("⚠️ No approved addons returned from API. Response:", response?.data)
         } else {
-          console.log("✅ Successfully fetched", data.length, "addons:", data.map(a => a.name))
+          console.log("✅ Successfully fetched", approvedAddons.length, "approved addons:", approvedAddons.map(a => a.name))
         }
 
-        setAddons(data)
+        setAddons(approvedAddons)
       } catch (error) {
         // Log error for debugging
         console.error("❌ Addons fetch error:", {

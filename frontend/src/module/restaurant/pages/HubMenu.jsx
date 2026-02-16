@@ -17,7 +17,8 @@ import {
   ArrowLeft,
   Trash2,
   RefreshCw,
-  Loader2
+  Loader2,
+  Send
 } from "lucide-react"
 import BottomNavOrders from "../components/BottomNavOrders"
 // Removed foodManagement - now using backend API directly
@@ -364,9 +365,8 @@ export default function HubMenu() {
       if (showLoading) setLoadingAddons(true)
       const response = await restaurantAPI.getAddons()
       const data = response?.data?.data?.addons || response?.data?.addons || []
-      // Filter to show only approved add-ons
-      const approvedAddons = data.filter(addon => addon.approvalStatus === 'approved')
-      setAddons(approvedAddons)
+      // Show all add-ons (approved, pending, rejected) so restaurant can see rejection reasons
+      setAddons(data)
     } catch (error) {
       console.error('Error fetching add-ons:', error)
       toast.error('Failed to load add-ons')
@@ -558,6 +558,29 @@ export default function HubMenu() {
     } catch (error) {
       console.error('Error deleting add-on:', error)
       toast.error(error?.response?.data?.message || 'Failed to delete add-on')
+    }
+  }
+
+  // Handle resend rejected add-on for approval
+  const handleResendAddon = async (addon) => {
+    if (addon.approvalStatus !== 'rejected') {
+      return
+    }
+
+    try {
+      // Update addon with same data to trigger resubmission (status will change to pending)
+      await restaurantAPI.updateAddon(addon.id, {
+        name: addon.name,
+        description: addon.description || '',
+        price: addon.price,
+        image: addon.image || '',
+        images: addon.images || []
+      })
+      toast.success('Add-on resubmitted for approval')
+      fetchAddons(true)
+    } catch (error) {
+      console.error('Error resending add-on:', error)
+      toast.error(error?.response?.data?.message || 'Failed to resend add-on')
     }
   }
 
@@ -1135,6 +1158,15 @@ export default function HubMenu() {
                           />
                         )}
                         <div className="flex flex-col gap-2">
+                          {addon.approvalStatus === 'rejected' && (
+                            <button
+                              onClick={() => handleResendAddon(addon)}
+                              className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+                              title="Resend for approval"
+                            >
+                              <Send className="h-4 w-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleEditAddon(addon)}
                             className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
