@@ -52,6 +52,32 @@ export default function DeliverySignIn() {
   const [error, setError] = useState("")
   const [isSending, setIsSending] = useState(false)
 
+  // Prefill phone from sessionStorage when returning from OTP screen
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("deliveryAuthData")
+      if (stored) {
+        const data = JSON.parse(stored)
+        if (data.phone) {
+          const match = data.phone.match(/(\+\d+)\s*(.+)/)
+          if (match) {
+            const countryCode = match[1]
+            const digits = (match[2] || "").replace(/\D/g, "").slice(0, 10)
+            setFormData((prev) => ({
+              ...prev,
+              countryCode,
+              phone: digits,
+            }))
+            const validationError = validatePhone(digits, countryCode)
+            setError(validationError)
+          }
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [])
+
   // Get selected country details dynamically
   const selectedCountry = countryCodes.find(c => c.code === formData.countryCode) || countryCodes[2] // Default to India (+91)
 
@@ -62,19 +88,25 @@ export default function DeliverySignIn() {
 
     const digitsOnly = phone.replace(/\D/g, "")
 
-    if (digitsOnly.length < 7) {
-      return "Phone number must be at least 7 digits"
-    }
-
-    // India-specific validation
+    // For Indian numbers, strictly enforce 10 digits with valid prefixes
     if (countryCode === "+91") {
       if (digitsOnly.length !== 10) {
-        return "Indian phone number must be 10 digits"
+        return "Mobile number must be exactly 10 digits"
       }
       const firstDigit = digitsOnly[0]
       if (!["6", "7", "8", "9"].includes(firstDigit)) {
         return "Invalid Indian mobile number"
       }
+      return ""
+    }
+
+    // Generic validation for other country codes (7–15 digits)
+    if (digitsOnly.length < 7) {
+      return "Phone number must be at least 7 digits"
+    }
+
+    if (digitsOnly.length > 15) {
+      return "Phone number is too long"
     }
 
     return ""
@@ -121,19 +153,34 @@ export default function DeliverySignIn() {
   }
 
   const handlePhoneChange = (e) => {
-    // Only allow digits
-    const value = e.target.value.replace(/\D/g, "")
-    setFormData({
-      ...formData,
+    // Only allow numeric input and enforce max length
+    const raw = e.target.value.replace(/\D/g, "")
+    const maxLen = formData.countryCode === "+91" ? 10 : 15
+    const value = raw.slice(0, maxLen)
+
+    setFormData((prev) => ({
+      ...prev,
       phone: value,
-    })
+    }))
+
+    // Real-time validation feedback
+    const validationError = validatePhone(value, formData.countryCode)
+    setError(validationError)
   }
 
   const handleCountryCodeChange = (value) => {
-    setFormData({
-      ...formData,
+    setFormData((prev) => ({
+      ...prev,
       countryCode: value,
-    })
+    }))
+
+    // Re-validate when country code changes
+    if (formData.phone) {
+      const validationError = validatePhone(formData.phone, value)
+      setError(validationError)
+    } else {
+      setError("")
+    }
   }
 
   const isValid = !validatePhone(formData.phone, formData.countryCode)
@@ -202,6 +249,8 @@ export default function DeliverySignIn() {
                 placeholder="Enter mobile number"
                 value={formData.phone}
                 onChange={handlePhoneChange}
+                maxLength={formData.countryCode === "+91" ? 10 : 15}
+                pattern="[0-9]*"
                 autoComplete="off"
                 autoFocus={false}
                 className={`flex-1 h-12 px-4 text-gray-900 placeholder-gray-400 focus:outline-none text-base border rounded-lg min-w-0 ${error ? "border-red-500" : "border-gray-300"
@@ -241,9 +290,13 @@ export default function DeliverySignIn() {
           {/* Terms and Conditions */}
           <p className="text-xs text-center text-gray-600 px-4">
             By continuing, you agree to our{" "}
-            <a href="#" className="text-blue-600 hover:underline">
+            <button
+              type="button"
+              onClick={() => navigate("/delivery/profile/terms")}
+              className="text-blue-600 hover:underline"
+            >
               Terms and Conditions
-            </a>
+            </button>
           </p>
         </div>
       </div>

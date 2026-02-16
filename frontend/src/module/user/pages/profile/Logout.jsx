@@ -6,9 +6,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useState } from "react"
 import { authAPI } from "@/lib/api"
 import { firebaseAuth } from "@/lib/firebase"
+import { useProfile } from "../../context/ProfileContext"
 
 export default function Logout() {
   const navigate = useNavigate()
+  const { clearProfile } = useProfile()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [error, setError] = useState("")
 
@@ -17,6 +19,14 @@ export default function Logout() {
     setError("")
 
     try {
+      // Remove FCM token from backend (stop push notifications for this device)
+      try {
+        const { removeFcmToken } = await import("@/lib/fcmService.js")
+        await removeFcmToken()
+      } catch (fcmError) {
+        console.warn("FCM token removal failed:", fcmError)
+      }
+
       // Call backend logout API to invalidate refresh token
       try {
         await authAPI.logout()
@@ -37,6 +47,9 @@ export default function Logout() {
         console.warn("Firebase logout failed, continuing with local cleanup:", firebaseError)
       }
 
+      // Clear profile state and specific localStorage keys
+      clearProfile()
+
       // Clear all authentication data from localStorage
       localStorage.removeItem("accessToken")
       localStorage.removeItem("user_authenticated")
@@ -55,7 +68,7 @@ export default function Logout() {
     } catch (err) {
       // Even if there's an error, we should still clear local data and logout
       console.error("Error during logout:", err)
-      
+
       // Clear local data anyway
       localStorage.removeItem("accessToken")
       localStorage.removeItem("user_authenticated")
@@ -64,7 +77,7 @@ export default function Logout() {
       window.dispatchEvent(new Event("userAuthChanged"))
 
       setError("An error occurred during logout, but you have been signed out locally.")
-      
+
       // Still navigate after showing error
       setTimeout(() => {
         navigate("/user/auth/sign-in", { replace: true })

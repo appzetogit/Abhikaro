@@ -202,6 +202,17 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
       };
     }
 
+    // FCM push notification (if restaurant not on Socket)
+    try {
+      const { sendToUser } = await import('../../fcm/services/fcmService.js');
+      await sendToUser(restaurantId, 'restaurant', {
+        title: 'New Order Received',
+        body: `Order #${order.orderId} - ₹${order.pricing?.total || 0}`,
+      }, { type: 'new_order', orderId: order.orderId });
+    } catch (fcmErr) {
+      console.warn('FCM restaurant notification:', fcmErr.message);
+    }
+
     return {
       success: true,
       restaurantId,

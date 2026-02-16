@@ -135,6 +135,14 @@ export default function HotelProfile() {
     setIsLoggingOut(true)
 
     try {
+      // Remove FCM token from backend (stop push notifications for this device)
+      try {
+        const { removeFcmToken } = await import("@/lib/fcmService.js")
+        await removeFcmToken()
+      } catch (fcmError) {
+        console.warn("FCM token removal failed:", fcmError)
+      }
+
       // Call backend logout API to invalidate refresh token
       try {
         await hotelAPI.logout()

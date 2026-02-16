@@ -31,6 +31,7 @@ import paymentRoutes from './modules/payment/index.js';
 import menuRoutes from './modules/menu/index.js';
 import campaignRoutes from './modules/campaign/index.js';
 import notificationRoutes from './modules/notification/index.js';
+import fcmRoutes from './modules/fcm/index.js';
 import analyticsRoutes from './modules/analytics/index.js';
 import adminRoutes from './modules/admin/index.js';
 import categoryPublicRoutes from './modules/admin/routes/categoryPublicRoutes.js';
@@ -54,6 +55,7 @@ import heroBannerRoutes from './modules/heroBanner/index.js';
 import diningRoutes from './modules/dining/index.js';
 import diningAdminRoutes from './modules/dining/routes/diningAdminRoutes.js';
 import chatRoutes from './modules/chat/routes/chatRoutes.js';
+import firebaseSwRoute from './routes/firebaseSwRoute.js';
 
 
 // Validate required environment variables
@@ -309,8 +311,56 @@ connectRedis().catch(() => {
   // The app works without Redis
 });
 
-// Security middleware
-app.use(helmet());
+// Security middleware - configure CSP to allow Firebase scripts
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'", // Required for Firebase and some React features
+        "https://www.gstatic.com", // Firebase SDK
+        "https://www.google.com", // Google services
+        "https://apis.google.com", // Google API for sign-in
+        "https://maps.googleapis.com", // Google Maps
+      ],
+      styleSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "https://fonts.googleapis.com",
+      ],
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com",
+      ],
+      imgSrc: [
+        "'self'",
+        "data:",
+        "blob:",
+        "https:",
+        "http:",
+      ],
+      connectSrc: [
+        "'self'",
+        "https://www.googleapis.com",
+        "https://identitytoolkit.googleapis.com",
+        "https://securetoken.googleapis.com",
+        "https://firebase.googleapis.com",
+        "https://fcm.googleapis.com",
+        "https://*.googleapis.com",
+        "ws://localhost:*",
+        "http://localhost:*",
+      ],
+      frameSrc: [
+        "'self'",
+        "https://www.google.com",
+        "https://accounts.google.com", // Google sign-in iframe
+      ],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Allow Firebase to work
+}));
 // CORS configuration - allow multiple origins
 const allowedOrigins = [
   process.env.CORS_ORIGIN,
@@ -375,6 +425,9 @@ app.get('/health', (req, res) => {
   });
 });
 
+// FCM service worker - must be at root path for Firebase SDK
+app.use(firebaseSwRoute);
+
 // API routes
 app.use('/api', authRoutes);
 app.use('/api/user', userRoutes);
@@ -386,6 +439,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/campaign', campaignRoutes);
 app.use('/api/notification', notificationRoutes);
+app.use('/api/fcm', fcmRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', categoryPublicRoutes);

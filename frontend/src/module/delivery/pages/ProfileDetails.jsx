@@ -68,6 +68,15 @@ export default function ProfileDetails() {
     fetchProfile()
   }, [navigate])
 
+  const formatVehicleNumber = (value) => value.toUpperCase().replace(/\s/g, "")
+
+  const isValidVehicleNumber = (value) => {
+    const formatted = formatVehicleNumber(value)
+    // 2 letters + 2 digits + 1-2 letters + 4 digits
+    const vehiclePattern = /^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$/
+    return vehiclePattern.test(formatted)
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -365,23 +374,24 @@ export default function ProfileDetails() {
             <input
               type="text"
               value={vehicleInput}
-              onChange={(e) => setVehicleInput(e.target.value)}
-              placeholder="Enter vehicle number"
+              onChange={(e) => setVehicleInput(formatVehicleNumber(e.target.value))}
+              placeholder="e.g., MH12AB1234"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               autoFocus
             />
           </div>
           <button
             onClick={async () => {
-              if (vehicleInput.trim()) {
+              if (vehicleInput.trim() && isValidVehicleNumber(vehicleInput)) {
                 try {
+                  const formattedNumber = formatVehicleNumber(vehicleInput)
                   await deliveryAPI.updateProfile({
                     vehicle: {
                       ...profile?.vehicle,
-                      number: vehicleInput.trim()
+                      number: formattedNumber
                     }
                   })
-                  setVehicleNumber(vehicleInput.trim())
+                  setVehicleNumber(formattedNumber)
                   setShowVehiclePopup(false)
                   toast.success("Vehicle number updated successfully")
                   // Refetch profile
@@ -394,7 +404,7 @@ export default function ProfileDetails() {
                   toast.error("Failed to update vehicle number")
                 }
               } else {
-                toast.error("Please enter a valid vehicle number")
+                toast.error("Please enter a valid vehicle number (e.g., MH12AB1234)")
               }
             }}
             className="w-full bg-black text-white py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors"

@@ -6,27 +6,79 @@ import { toast } from "sonner"
 
 export default function SignupStep1() {
   const navigate = useNavigate()
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    address: "",
-    city: "",
-    state: "",
-    vehicleType: "bike",
-    vehicleName: "",
-    vehicleNumber: "",
-    panNumber: "",
-    aadharNumber: ""
+  const [formData, setFormData] = useState(() => {
+    // Initialize from sessionStorage to persist data between steps
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("deliverySignupDetails")
+        if (stored) {
+          const parsed = JSON.parse(stored) || {}
+          return {
+            name: parsed.name || "",
+            email: parsed.email || "",
+            address: parsed.address || "",
+            city: parsed.city || "",
+            state: parsed.state || "",
+            vehicleType: parsed.vehicleType || "bike",
+            vehicleName: parsed.vehicleName || "",
+            vehicleNumber: parsed.vehicleNumber || "",
+            panNumber: parsed.panNumber || "",
+            aadharNumber: parsed.aadharNumber || ""
+          }
+        }
+      } catch {
+        // Ignore parse errors and fall back to defaults
+      }
+    }
+
+    return {
+      name: "",
+      email: "",
+      address: "",
+      city: "",
+      state: "",
+      vehicleType: "bike",
+      vehicleName: "",
+      vehicleNumber: "",
+      panNumber: "",
+      aadharNumber: ""
+    }
   })
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
+    let newValue = value
+
+    // Normalize and format specific fields
+    if (name === "vehicleNumber") {
+      // Remove spaces and convert letters to uppercase
+      newValue = value.toUpperCase().replace(/\s/g, "")
+    } else if (name === "panNumber") {
+      newValue = value.toUpperCase()
+    } else if (name === "aadharNumber") {
+      // Keep only digits for Aadhar
+      newValue = value.replace(/\D/g, "")
+    }
+
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        [name]: newValue
+      }
+
+      // Persist to sessionStorage so data survives navigation to/from documents step
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem("deliverySignupDetails", JSON.stringify(updated))
+        } catch {
+          // Ignore storage errors
+        }
+      }
+
+      return updated
+    })
     // Clear error for this field
     if (errors[name]) {
       setErrors(prev => ({
@@ -61,6 +113,13 @@ export default function SignupStep1() {
 
     if (!formData.vehicleNumber.trim()) {
       newErrors.vehicleNumber = "Vehicle number is required"
+    } else {
+      const formattedVehicle = formData.vehicleNumber.trim().toUpperCase().replace(/\s/g, "")
+      // Vehicle format: 2 letters + 2 digits + 1-2 letters + 4 digits (e.g., MH12AB1234 or MH12A1234)
+      const vehiclePattern = /^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$/
+      if (!vehiclePattern.test(formattedVehicle)) {
+        newErrors.vehicleNumber = "Invalid vehicle number format (e.g., MH12AB1234)"
+      }
     }
 
     if (!formData.panNumber.trim()) {

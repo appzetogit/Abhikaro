@@ -188,6 +188,14 @@ export default function HotelOTP() {
         // Dispatch custom event
         window.dispatchEvent(new Event("hotelAuthChanged"))
 
+        // Register FCM token for push notifications (non-blocking)
+        import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+          registerFcmToken(accessToken, {
+            sendWelcome: false,
+            sendLoginAlert: true,
+          }).catch(() => {})
+        })
+
         sessionStorage.removeItem("hotelAuthData")
 
         setTimeout(() => {
@@ -337,6 +345,14 @@ export default function HotelOTP() {
 
         // Dispatch custom event
         window.dispatchEvent(new Event("hotelAuthChanged"))
+
+        // Register FCM token for push notifications (non-blocking)
+        import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+          registerFcmToken(accessToken, {
+            sendWelcome: true,
+            sendLoginAlert: false,
+          }).catch(() => {})
+        })
 
         sessionStorage.removeItem("hotelAuthData")
 

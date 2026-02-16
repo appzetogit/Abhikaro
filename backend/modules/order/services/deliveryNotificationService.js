@@ -313,7 +313,18 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
     } else {
       console.error(`❌ Failed to send notification - no sockets found and broadcast failed`);
     }
-    
+
+    // FCM push notification for delivery partner
+    try {
+      const { sendToUser } = await import('../../fcm/services/fcmService.js');
+      await sendToUser(deliveryPartnerId, 'delivery', {
+        title: 'New Order Assigned',
+        body: `Order #${order.orderId} has been assigned to you.`,
+      }, { type: 'order_assigned', orderId: order.orderId });
+    } catch (fcmErr) {
+      console.warn('FCM delivery notification:', fcmErr.message);
+    }
+
     return {
       success: true,
       deliveryPartnerId,

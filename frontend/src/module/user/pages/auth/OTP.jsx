@@ -160,6 +160,14 @@ export default function OTP() {
       setUserAuthData("user", accessToken, user)
       window.dispatchEvent(new Event("userAuthChanged"))
 
+      // Register FCM token for push notifications (non-blocking)
+      import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+        registerFcmToken(accessToken, {
+          sendWelcome: !!isSignUp,
+          sendLoginAlert: !isSignUp,
+        }).catch(() => {})
+      })
+
       setSuccess(true)
       setTimeout(() => navigate("/user"), 1000)
     } catch (err) {
@@ -192,6 +200,14 @@ export default function OTP() {
       sessionStorage.removeItem("userAuthData")
       setUserAuthData("user", accessToken, user)
       window.dispatchEvent(new Event("userAuthChanged"))
+
+      // Register FCM token for push notifications (non-blocking)
+      import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+        registerFcmToken(accessToken, {
+          sendWelcome: !!isSignUp,
+          sendLoginAlert: !isSignUp,
+        }).catch(() => {})
+      })
 
       setSuccess(true)
       setTimeout(() => navigate("/user"), 1000)

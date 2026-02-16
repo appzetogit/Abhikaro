@@ -28,6 +28,7 @@ export default function SystemAddons() {
     FIREBASE_PROJECT_ID: "",
     FIREBASE_CLIENT_EMAIL: "",
     FIREBASE_PRIVATE_KEY: "",
+    FIREBASE_VAPID_KEY: "",
     
     // SMTP
     SMTP_HOST: "",
@@ -225,6 +226,11 @@ export default function SystemAddons() {
                   placeholder="Enter Firebase Private Key (can be multiline)"
                 />
               </div>
+              <InputField 
+                label="Firebase VAPID Key (Web Push)" 
+                fieldKey="FIREBASE_VAPID_KEY"
+                placeholder="From Firebase Console > Project Settings > Cloud Messaging > Web Push"
+              />
             </div>
           </div>
 

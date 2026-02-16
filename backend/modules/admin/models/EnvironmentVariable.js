@@ -78,6 +78,11 @@ const environmentVariableSchema = new mongoose.Schema(
       default: '',
       trim: true
     },
+    FIREBASE_VAPID_KEY: {
+      type: String,
+      default: '',
+      trim: true
+    },
     
     // SMTP
     SMTP_HOST: {

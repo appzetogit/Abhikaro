@@ -1212,12 +1212,12 @@ export default function RestaurantOnboarding() {
                 <ImageIcon className="w-4 h-4" />
                 <span>Camera</span>
               </label>
-              <input
-                id="menuImagesCameraInput"
-                type="file"
-                multiple
-                accept="image/*"
-                capture="environment"
+            <input
+              id="menuImagesCameraInput"
+              type="file"
+              multiple
+              accept="image/*"
+              capture="environment"
                 className="hidden"
                 onChange={(e) => {
                   const files = Array.from(e.target.files || [])

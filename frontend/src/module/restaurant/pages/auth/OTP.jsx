@@ -217,6 +217,14 @@ export default function RestaurantOTP() {
         // Store auth data using utility function to ensure proper module-specific token storage
         setRestaurantAuthData("restaurant", accessToken, restaurant)
 
+        // Register FCM token for push notifications (non-blocking)
+        import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+          registerFcmToken(accessToken, {
+            sendWelcome: !!authData?.isSignUp,
+            sendLoginAlert: !authData?.isSignUp,
+          }).catch(() => {})
+        })
+
         // Dispatch custom event for same-tab updates
         window.dispatchEvent(new Event("restaurantAuthChanged"))
 

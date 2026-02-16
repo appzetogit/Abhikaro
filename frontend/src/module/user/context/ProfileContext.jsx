@@ -14,7 +14,7 @@ export function ProfileProvider({ children }) {
         console.error("Error parsing user_user from localStorage:", e)
       }
     }
-    
+
     // Fallback to userProfile from localStorage
     const saved = localStorage.getItem("userProfile")
     if (saved) {
@@ -24,11 +24,11 @@ export function ProfileProvider({ children }) {
         console.error("Error parsing userProfile from localStorage:", e)
       }
     }
-    
+
     // Default empty profile
     return null
   })
-  
+
   const [loading, setLoading] = useState(true)
 
   const [addresses, setAddresses] = useState([])
@@ -106,9 +106,9 @@ export function ProfileProvider({ children }) {
   useEffect(() => {
     const fetchUserProfile = async () => {
       // Check if user is authenticated
-      const isAuthenticated = localStorage.getItem("user_authenticated") === "true" || 
-                             localStorage.getItem("user_accessToken")
-      
+      const isAuthenticated = localStorage.getItem("user_authenticated") === "true" ||
+        localStorage.getItem("user_accessToken")
+
       if (!isAuthenticated) {
         setLoading(false)
         return
@@ -116,11 +116,11 @@ export function ProfileProvider({ children }) {
 
       try {
         setLoading(true)
-        
+
         // Fetch user profile
         const response = await authAPI.getCurrentUser()
         const userData = response?.data?.data?.user || response?.data?.user || response?.data
-        
+
         if (userData) {
           setUserProfile(userData)
           // Update localStorage
@@ -164,14 +164,14 @@ export function ProfileProvider({ children }) {
     }
 
     fetchUserProfile()
-    
+
     // Listen for auth changes
     const handleAuthChange = () => {
       fetchUserProfile()
     }
-    
+
     window.addEventListener("userAuthChanged", handleAuthChange)
-    
+
     return () => {
       window.removeEventListener("userAuthChanged", handleAuthChange)
     }
@@ -182,7 +182,7 @@ export function ProfileProvider({ children }) {
     try {
       const response = await userAPI.addAddress(address)
       const newAddress = response?.data?.data?.address || response?.data?.address
-      
+
       if (newAddress) {
         setAddresses((prev) => {
           const updated = [...prev, newAddress]
@@ -201,7 +201,7 @@ export function ProfileProvider({ children }) {
     try {
       const response = await userAPI.updateAddress(id, updatedAddress)
       const updatedAddr = response?.data?.data?.address || response?.data?.address
-      
+
       if (updatedAddr) {
         setAddresses((prev) => {
           const updated = prev.map((addr) => (addr.id === id ? { ...updatedAddr, id } : addr))
@@ -265,12 +265,12 @@ export function ProfileProvider({ children }) {
     setPaymentMethods((prev) => {
       const paymentToDelete = prev.find((pm) => pm.id === id)
       const newPayments = prev.filter((pm) => pm.id !== id)
-      
+
       // If deleting default, set first remaining as default
       if (paymentToDelete?.isDefault && newPayments.length > 0) {
         newPayments[0].isDefault = true
       }
-      
+
       return newPayments
     })
   }, [])
@@ -329,7 +329,7 @@ export function ProfileProvider({ children }) {
   }, [])
 
   const removeDishFavorite = useCallback((dishId, restaurantId) => {
-    setDishFavorites((prev) => 
+    setDishFavorites((prev) =>
       prev.filter(fav => !(fav.id === dishId && fav.restaurantId === restaurantId))
     )
   }, [])
@@ -347,12 +347,35 @@ export function ProfileProvider({ children }) {
     setUserProfile((prev) => ({ ...prev, ...updatedProfile }))
   }, [])
 
+  // Clear profile data on logout
+  const clearProfile = useCallback(() => {
+    setUserProfile(null)
+    setAddresses([])
+    setPaymentMethods([])
+    setFavorites([])
+    setDishFavorites([])
+    setVegMode(true)
+
+    // Clear localStorage
+    const keysToRemove = [
+      "userProfile",
+      "user_user",
+      "userAddresses",
+      "userPaymentMethods",
+      "userFavorites",
+      "userDishFavorites",
+      "userVegMode"
+    ]
+    keysToRemove.forEach(key => localStorage.removeItem(key))
+  }, [])
+
   // Memoize the context value to prevent unnecessary re-renders
   const value = useMemo(
     () => ({
       userProfile,
       loading,
       updateUserProfile,
+      clearProfile,
       addresses,
       paymentMethods,
       favorites,
@@ -384,6 +407,7 @@ export function ProfileProvider({ children }) {
       userProfile,
       loading,
       updateUserProfile,
+      clearProfile,
       addresses,
       paymentMethods,
       favorites,

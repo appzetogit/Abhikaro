@@ -8,6 +8,11 @@
       name="description"
       content="Tastizo - The best food delivery app for your hunger cravings. Order now from top restaurants near you."
     />
+    <!-- Content Security Policy - Allow Firebase and Google sign-in scripts -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://apis.google.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https: http:; connect-src 'self' https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebase.googleapis.com https://fcm.googleapis.com https://*.googleapis.com ws://localhost:* http://localhost:*; frame-src 'self' https://www.google.com https://accounts.google.com;"
+    />
     <title>vite</title>
     <!-- Google Maps API will be loaded dynamically from environment variable -->
     <!-- Cloudinary Optimization -->

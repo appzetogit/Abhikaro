@@ -270,6 +270,11 @@ export default function RestaurantLogin() {
       if (accessToken && restaurant) {
         setAuthData("restaurant", accessToken, restaurant)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
+
+        // Register FCM token for push notifications (non-blocking)
+        import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+          registerFcmToken(accessToken, { sendLoginAlert: true }).catch(() => {})
+        })
         navigate("/restaurant", { replace: true })
       } else {
         throw new Error("Invalid response from server")
@@ -400,18 +405,6 @@ export default function RestaurantLogin() {
 
   return (
     <div className="max-h-screen h-screen bg-white flex flex-col">
-      {/* Header with Back Button */}
-      <div className="relative flex items-center justify-center py-4 px-4 mt-2">
-
-        <button
-          onClick={() => navigate("/restaurant/welcome")}
-          className="absolute left-4 top-4"
-          aria-label="Go back"
-        >
-          <ArrowLeft className="h-5 w-5 text-black" />
-        </button>
-      </div>
-
       {/* Top Section - Logo and Badge */}
       <div className="flex flex-col items-center pt-8 pb-8 px-6">
         {/* Appzeto Logo */}

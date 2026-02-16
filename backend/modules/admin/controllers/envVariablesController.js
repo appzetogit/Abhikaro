@@ -67,6 +67,7 @@ export const getPublicEnvVariables = asyncHandler(async (req, res) => {
       FIREBASE_MESSAGING_SENDER_ID: envData.FIREBASE_MESSAGING_SENDER_ID || "",
       FIREBASE_APP_ID: envData.FIREBASE_APP_ID || "",
       MEASUREMENT_ID: envData.MEASUREMENT_ID || "",
+      FIREBASE_VAPID_KEY: envData.FIREBASE_VAPID_KEY || "",
     };
 
     return successResponse(

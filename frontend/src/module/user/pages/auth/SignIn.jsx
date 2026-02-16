@@ -149,6 +149,11 @@ export default function SignIn() {
         setAuthData("user", accessToken, appUser)
         window.dispatchEvent(new Event("userAuthChanged"))
 
+        // Register FCM token for push notifications (non-blocking)
+        import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+          registerFcmToken(accessToken, { sendLoginAlert: true }).catch(() => {})
+        })
+
         // Clear any URL hash or params
         const hasHash = window.location.hash.length > 0
         const hasQueryParams = window.location.search.length > 0

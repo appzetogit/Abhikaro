@@ -3,6 +3,7 @@ import otpService from "../services/otpService.js";
 import jwtService from "../services/jwtService.js";
 import googleAuthService from "../services/googleAuthService.js";
 import firebaseAuthService from "../services/firebaseAuthService.js";
+import { handleAuthFcmToken } from "../../fcm/services/notificationTriggers.js";
 import {
   successResponse,
   errorResponse,
@@ -1098,4 +1099,48 @@ export const googleCallback = asyncHandler(async (req, res) => {
       `${process.env.FRONTEND_URL || "http://localhost:5173"}/restaurant/login?error=auth_failed`,
     );
   }
+});
+
+/**
+ * Register FCM token for authenticated user
+ * POST /api/auth/fcm-token
+ * Body: { token, platform? }
+ * Requires auth - userId & role from JWT token
+ */
+export const registerFcmToken = asyncHandler(async (req, res) => {
+  const { token, platform = 'web' } = req.body;
+
+  console.log('\n📥 [FCM Auth] ========================================');
+  console.log('📥 [FCM Auth] Received FCM token registration request');
+  console.log('📥 [FCM Auth] Timestamp:', new Date().toISOString());
+  console.log('📥 [FCM Auth] Platform:', platform);
+  console.log('📥 [FCM Auth] Token:', token ? token.substring(0, 30) + '...' : '❌ MISSING');
+
+  if (!token || typeof token !== 'string') {
+    console.error('❌ [FCM Auth] Validation failed: token is required');
+    return errorResponse(res, 400, 'token is required');
+  }
+
+  const userId = req.user?.userId;
+  const role = req.user?.role || 'user';
+
+  console.log('📥 [FCM Auth] User ID:', userId);
+  console.log('📥 [FCM Auth] Role:', role);
+
+  if (!userId) {
+    console.error('❌ [FCM Auth] Authentication failed: No userId');
+    return errorResponse(res, 401, 'Authentication required');
+  }
+
+  console.log('📥 [FCM Auth] Processing token registration...');
+  
+  await handleAuthFcmToken(userId, role, token.trim(), platform, null, {
+    sendWelcome: false,
+    sendLoginAlert: false,
+  });
+
+  console.log('✅ [FCM Auth] Token registration completed successfully');
+  console.log('📥 [FCM Auth] ========================================\n');
+
+  return successResponse(res, 200, 'FCM token registered successfully');
 });

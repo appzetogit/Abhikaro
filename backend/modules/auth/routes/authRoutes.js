@@ -10,9 +10,11 @@ import {
   getCurrentUser,
   googleAuth,
   googleCallback,
-  firebaseGoogleLogin
+  firebaseGoogleLogin,
+  registerFcmToken
 } from '../controllers/authController.js';
 import { authenticate } from '../middleware/auth.js';
+import { fcmAuth } from '../../fcm/middleware/fcmAuth.js';
 import { validate } from '../../../shared/middleware/validate.js';
 import Joi from 'joi';
 
@@ -69,6 +71,11 @@ const resetPasswordSchema = Joi.object({
   role: Joi.string().valid('user', 'restaurant', 'delivery', 'admin').optional()
 });
 
+const fcmTokenSchema = Joi.object({
+  token: Joi.string().required().min(1),
+  platform: Joi.string().valid('web', 'android', 'ios').default('web')
+});
+
 // Public routes
 // OTP-based authentication
 router.post('/send-otp', validate(sendOTPSchema), sendOTP);
@@ -89,6 +96,9 @@ router.post('/firebase/google-login', firebaseGoogleLogin);
 // Google OAuth routes
 router.get('/google/:role', googleAuth);
 router.get('/google/:role/callback', googleCallback);
+
+// FCM Token registration (requires authentication)
+router.post('/fcm-token', fcmAuth, validate(fcmTokenSchema), registerFcmToken);
 
 // Protected routes
 router.get('/me', authenticate, getCurrentUser);
