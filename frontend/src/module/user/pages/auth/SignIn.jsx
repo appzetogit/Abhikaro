@@ -63,6 +63,55 @@ export default function SignIn() {
   const [apiError, setApiError] = useState("")
   const redirectHandledRef = useRef(false)
 
+  // Restore form data from sessionStorage when component mounts (e.g., when coming back from OTP page)
+  useEffect(() => {
+    const stored = sessionStorage.getItem("userAuthData")
+    if (stored) {
+      try {
+        const authData = JSON.parse(stored)
+        if (authData.phone) {
+          // Extract country code and phone number from stored phone
+          const phoneMatch = authData.phone.match(/^(\+\d+)\s*(.+)$/)
+          if (phoneMatch) {
+            const [, countryCode, phoneNumber] = phoneMatch
+            setFormData(prev => ({
+              ...prev,
+              countryCode: countryCode,
+              phone: phoneNumber.replace(/\D/g, "").slice(0, 10), // Extract only digits and limit to 10
+            }))
+            setAuthMethod("phone")
+          } else {
+            // If format is different, try to extract
+            const digitsOnly = authData.phone.replace(/\D/g, "")
+            if (digitsOnly.length >= 10) {
+              // Assume +91 if no country code found
+              setFormData(prev => ({
+                ...prev,
+                countryCode: "+91",
+                phone: digitsOnly.slice(-10), // Take last 10 digits
+              }))
+              setAuthMethod("phone")
+            }
+          }
+        } else if (authData.email) {
+          setFormData(prev => ({
+            ...prev,
+            email: authData.email,
+          }))
+          setAuthMethod("email")
+        }
+        if (authData.name) {
+          setFormData(prev => ({
+            ...prev,
+            name: authData.name,
+          }))
+        }
+      } catch (error) {
+        console.error("Error parsing stored auth data:", error)
+      }
+    }
+  }, [])
+
   // Helper function to process signed-in user
   const processSignedInUser = async (user, source = "unknown") => {
     if (redirectHandledRef.current) {
@@ -207,7 +256,7 @@ export default function SignIn() {
   }, [navigate])
 
   // Get selected country details dynamically
-  const selectedCountry = countryCodes.find(c => c.code === formData.countryCode) || countryCodes[2] // Default to India (+91)
+  const selectedCountry = countryCodes.find(c => c.code === formData.countryCode) || countryCodes[2] // Default to  (+91)
 
   const validateEmail = (email) => {
     if (!email.trim()) {
@@ -225,9 +274,9 @@ export default function SignIn() {
       return "Phone number is required"
     }
     const cleanPhone = phone.replace(/[\s\-\(\)]/g, "")
-    const phoneRegex = /^\d{7,15}$/
+    const phoneRegex = /^\d{10}$/
     if (!phoneRegex.test(cleanPhone)) {
-      return "Phone number must be 7-15 digits"
+      return "Phone number must be exactly 10 digits"
     }
     return ""
   }
@@ -251,18 +300,28 @@ export default function SignIn() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData({
-      ...formData,
-      [name]: value,
-    })
-
-    // Real-time validation
-    if (name === "email") {
-      setErrors({ ...errors, email: validateEmail(value) })
-    } else if (name === "phone") {
-      setErrors({ ...errors, phone: validatePhone(value) })
-    } else if (name === "name") {
-      setErrors({ ...errors, name: validateName(value) })
+    
+    // For phone input, only allow digits and limit to 10 digits
+    if (name === "phone") {
+      const digitsOnly = value.replace(/\D/g, "") // Remove all non-digits
+      const limitedValue = digitsOnly.slice(0, 10) // Limit to 10 digits
+      setFormData({
+        ...formData,
+        [name]: limitedValue,
+      })
+      // Real-time validation
+      setErrors({ ...errors, phone: validatePhone(limitedValue) })
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value,
+      })
+      // Real-time validation
+      if (name === "email") {
+        setErrors({ ...errors, email: validateEmail(value) })
+      } else if (name === "name") {
+        setErrors({ ...errors, name: validateName(value) })
+      }
     }
   }
 
@@ -445,7 +504,7 @@ export default function SignIn() {
           {/* Heading */}
           <div className="text-center space-y-2 md:space-y-3">
             <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-black dark:text-white leading-tight">
-              India's #1 Food Delivery and Dining App
+             Food Delivery and Dining App
             </h2>
             <p className="text-sm sm:text-base md:text-lg text-gray-600 dark:text-gray-400">
               Log in or sign up
@@ -510,9 +569,12 @@ export default function SignIn() {
                     id="phone"
                     name="phone"
                     type="tel"
-                    placeholder="Enter Phone Number"
+                    placeholder="Enter 10-digit Phone Number"
                     value={formData.phone}
                     onChange={handleChange}
+                    maxLength={10}
+                    inputMode="numeric"
+                    pattern="[0-9]{10}"
                     className={`flex-1 h-12 md:h-14 text-base md:text-lg bg-white dark:bg-[#1a1a1a] text-black dark:text-white border-gray-300 dark:border-gray-700 rounded-lg ${errors.phone ? "border-red-500" : ""} transition-colors`}
                     aria-invalid={errors.phone ? "true" : "false"}
                   />
@@ -663,11 +725,21 @@ export default function SignIn() {
               By continuing, you agree to our
             </p>
             <div className="flex justify-center gap-2 flex-wrap">
-              <a href="#" className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Terms of Service</a>
+              <button
+                type="button"
+                onClick={() => navigate("/user/terms")}
+                className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              >
+                Terms of Service
+              </button>
               <span>•</span>
-              <a href="#" className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Privacy Policy</a>
-              <span>•</span>
-              <a href="#" className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Content Policy</a>
+              <button
+                type="button"
+                onClick={() => navigate("/user/privacy")}
+                className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              >
+                Privacy Policy
+              </button>
             </div>
           </div>
         </div>
