@@ -1,8 +1,9 @@
-import { Suspense, lazy } from "react"
-import { Routes, Route } from "react-router-dom"
+import { Suspense, lazy, useEffect } from "react"
+import { Routes, Route, useLocation, useNavigate } from "react-router-dom"
 import DeliveryLayout from "./DeliveryLayout"
 import ProtectedRoute from "./ProtectedRoute"
 import Loader from "@/components/Loader"
+import { isModuleAuthenticated } from "@/lib/utils/auth"
 
 // Main pages (with layout)
 const DeliveryHome = lazy(() => import("../pages/DeliveryHome"))

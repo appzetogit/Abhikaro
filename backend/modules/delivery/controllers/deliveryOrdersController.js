@@ -124,7 +124,8 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
     };
     
     // Valid statuses for order acceptance (unassigned orders in these statuses can be viewed by any delivery boy)
-    const validAcceptanceStatuses = ['preparing', 'ready'];
+    // FIXED: Delivery partner should ONLY see orders when status is 'ready' (Ready to Pickup)
+    const validAcceptanceStatuses = ['ready'];
     
     // If order is assigned to this delivery partner, allow access
     if (orderDeliveryPartnerId === currentDeliveryId) {
@@ -233,7 +234,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     const currentDeliveryId = delivery._id.toString();
 
     // If order is not assigned, check if this delivery boy was notified (priority-based system)
-    // Also allow acceptance if order is in valid status (preparing/ready) - more permissive
+    // FIXED: Only allow acceptance if order is in 'ready' status (Ready to Pickup)
     if (!orderDeliveryPartnerId) {
       console.log(`ℹ️ Order ${order.orderId} is not assigned yet. Checking if this delivery partner was notified...`);
       
@@ -266,11 +267,12 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       const wasNotified = normalizedPriorityIds.includes(normalizedCurrentId) || 
                          normalizedExpandedIds.includes(normalizedCurrentId);
       
-      // Also allow if order is in valid status (preparing/ready) - more permissive for unassigned orders
-      const isValidStatus = order.status === 'preparing' || order.status === 'ready';
+      // FIXED: Only allow acceptance if order is in 'ready' status (Ready to Pickup)
+      // Delivery partners should NOT accept orders that are still being prepared
+      const isValidStatus = order.status === 'ready';
       
       if (!wasNotified && !isValidStatus) {
-        console.error(`❌ Order ${order.orderId} is not assigned, delivery partner ${currentDeliveryId} was not notified, and order status is ${order.status}`);
+        console.error(`❌ Order ${order.orderId} is not assigned, delivery partner ${currentDeliveryId} was not notified, and order status is ${order.status} (must be 'ready')`);
         console.error(`❌ Full order details:`, {
           orderId: order.orderId,
           orderStatus: order.status,
@@ -280,14 +282,20 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           expandedIds: normalizedExpandedIds,
           currentDeliveryId: normalizedCurrentId
         });
-        return errorResponse(res, 403, 'This order is not available for you. It may have been assigned to another delivery partner or you were not notified about it.');
+        return errorResponse(res, 403, `This order is not ready for pickup. Order status: ${order.status}. Please wait until the restaurant marks it as ready.`);
       }
       
-      // Allow acceptance if delivery boy was notified OR order is in valid status
+      // FIXED: Additional validation - even if notified, order must be 'ready' to accept
+      if (!isValidStatus) {
+        console.error(`❌ Order ${order.orderId} status is ${order.status}, but must be 'ready' for delivery partner to accept`);
+        return errorResponse(res, 400, `Order cannot be accepted. Current status: ${order.status}. Order must be in 'ready' status (Ready to Pickup).`);
+      }
+      
+      // Allow acceptance if delivery boy was notified AND order is ready
       if (wasNotified) {
-        console.log(`✅ Delivery partner ${currentDeliveryId} was notified about this order. Assigning order to them...`);
-      } else if (isValidStatus) {
-        console.log(`⚠️ Order ${order.orderId} is not assigned and delivery partner ${currentDeliveryId} was not notified, but order is in valid status (${order.status}). Allowing acceptance and assigning order.`);
+        console.log(`✅ Delivery partner ${currentDeliveryId} was notified about this order and order is ready. Assigning order to them...`);
+      } else {
+        console.log(`✅ Order ${order.orderId} is ready and available. Assigning to delivery partner ${currentDeliveryId}.`);
       }
       
       // Proceed with assignment (first come first serve)
@@ -393,10 +401,11 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     });
 
     // Check if order is in valid state to accept
-    const validStatuses = ['preparing', 'ready'];
+    // FIXED: Delivery partner should ONLY see orders when status is 'ready' (Ready to Pickup)
+    const validStatuses = ['ready'];
     if (!validStatuses.includes(order.status)) {
       console.warn(`⚠️ Order ${order.orderId} cannot be accepted. Current status: ${order.status}, Valid statuses: ${validStatuses.join(', ')}`);
-      return errorResponse(res, 400, `Order cannot be accepted. Current status: ${order.status}. Order must be in 'preparing' or 'ready' status.`);
+      return errorResponse(res, 400, `Order cannot be accepted. Current status: ${order.status}. Order must be in 'ready' status (Ready to Pickup).`);
     }
 
     // Get restaurant location
@@ -804,21 +813,6 @@ export const confirmReachedPickup = asyncHandler(async (req, res) => {
       });
     }
 
-    // Check if order is in valid state
-    // Allow reached pickup if:
-    // - currentPhase is 'en_route_to_pickup' OR
-    // - currentPhase is 'at_pickup' (already at pickup - idempotent, allow re-confirmation)
-    // - status is 'accepted' OR  
-    // - currentPhase is 'accepted' (alternative phase name)
-    // - order status is 'preparing' or 'ready' (restaurant preparing/ready)
-    const isValidState = order.deliveryState.currentPhase === 'en_route_to_pickup' || 
-                         order.deliveryState.currentPhase === 'at_pickup' || // Already at pickup - idempotent
-                         order.deliveryState.status === 'accepted' ||
-                         order.deliveryState.status === 'reached_pickup' || // Already reached - idempotent
-                         order.deliveryState.currentPhase === 'accepted' ||
-                         order.status === 'preparing' || // Order is preparing, can reach pickup
-                         order.status === 'ready'; // Order is ready, can reach pickup
-
     // If already at pickup, just return success (idempotent operation)
     if (order.deliveryState.currentPhase === 'at_pickup' || order.deliveryState.status === 'reached_pickup') {
       console.log(`ℹ️ Order ${order.orderId} already at pickup. Returning success (idempotent).`);
@@ -828,8 +822,19 @@ export const confirmReachedPickup = asyncHandler(async (req, res) => {
       });
     }
 
+    // ENFORCE: Restaurant must have marked order as Ready to Pickup before delivery can "reach pickup"
+    if (order.status !== 'ready') {
+      console.error(`❌ Reached pickup rejected: Order ${order.orderId} status is '${order.status}'. Restaurant must mark as Ready to Pickup first.`);
+      return errorResponse(res, 400, 'Order is not ready for pickup. Ask the restaurant to mark the order as "Ready to Pickup" first.');
+    }
+
+    // Allow reached pickup only when en_route_to_pickup (and order is ready, checked above)
+    const isValidState = order.deliveryState.currentPhase === 'en_route_to_pickup' ||
+                         order.deliveryState.currentPhase === 'accepted' ||
+                         order.deliveryState.status === 'accepted';
+
     if (!isValidState) {
-      return errorResponse(res, 400, `Order is not in valid state for reached pickup. Current phase: ${order.deliveryState?.currentPhase || 'unknown'}, Status: ${order.deliveryState?.status || 'unknown'}, Order status: ${order.status || 'unknown'}`);
+      return errorResponse(res, 400, `Order is not in valid state for reached pickup. Current phase: ${order.deliveryState?.currentPhase || 'unknown'}, Status: ${order.deliveryState?.status || 'unknown'}`);
     }
 
     // Update order state
@@ -1037,21 +1042,20 @@ export const confirmOrderId = asyncHandler(async (req, res) => {
       });
     }
 
-    // Check if order is in valid state for order ID confirmation
-    // Allow confirmation if:
-    // - currentPhase is 'at_pickup' (after Reached Pickup) OR
-    // - status is 'reached_pickup' OR
-    // - order status is 'preparing' or 'ready' (restaurant preparing/ready) OR
-    // - currentPhase is 'en_route_to_pickup' or status is 'accepted' (Reached Pickup not yet persisted / edge case)
+    // ENFORCE: Restaurant must have marked order as Ready to Pickup before delivery can confirm order ID (pick up)
+    if (order.status !== 'ready') {
+      console.error(`❌ Confirm order ID rejected: Order ${order.orderId} status is '${order.status}'. Restaurant must mark as Ready to Pickup first.`);
+      return errorResponse(res, 400, 'Order is not ready for pickup. Ask the restaurant to mark the order as "Ready to Pickup" first.');
+    }
+
+    // Check if order is in valid state for order ID confirmation (phase must be at_pickup or reached_pickup so we've already passed "reached pickup")
     const isValidState = order.deliveryState.currentPhase === 'at_pickup' ||
                          order.deliveryState.status === 'reached_pickup' ||
-                         order.status === 'preparing' ||
-                         order.status === 'ready' ||
                          order.deliveryState.currentPhase === 'en_route_to_pickup' ||
                          order.deliveryState.status === 'accepted';
 
     if (!isValidState) {
-      return errorResponse(res, 400, `Order is not at pickup. Current phase: ${order.deliveryState?.currentPhase || 'unknown'}, Status: ${order.deliveryState?.status || 'unknown'}, Order status: ${order.status || 'unknown'}`);
+      return errorResponse(res, 400, `Order is not at pickup. Current phase: ${order.deliveryState?.currentPhase || 'unknown'}, Status: ${order.deliveryState?.status || 'unknown'}`);
     }
 
     // Get customer location
@@ -1446,6 +1450,23 @@ export const completeDelivery = asyncHandler(async (req, res) => {
     }
 
     // Check if order is already delivered/completed (idempotent - allow if already completed)
+    // FIXED: Log warning if order is being delivered without being marked as ready first
+    if (order.tracking?.ready?.status !== true && order.status !== 'delivered') {
+      console.error(`⚠️ STATUS VIOLATION: Order ${order.orderId} is being delivered without being marked as 'ready' first!`);
+      console.error(`⚠️ Order details:`, {
+        orderId: order.orderId,
+        orderStatus: order.status,
+        trackingReady: order.tracking?.ready?.status,
+        trackingReadyTimestamp: order.tracking?.ready?.timestamp,
+        trackingPreparing: order.tracking?.preparing?.status,
+        trackingPreparingTimestamp: order.tracking?.preparing?.timestamp,
+        restaurantId: order.restaurantId,
+        deliveryPartnerId: order.deliveryPartnerId,
+        deliveryStatePhase: order.deliveryState?.currentPhase,
+        deliveryStateStatus: order.deliveryState?.status
+      });
+    }
+    
     const isAlreadyDelivered = order.status === 'delivered' || 
                                order.deliveryState?.currentPhase === 'completed' ||
                                order.deliveryState?.status === 'delivered';
@@ -1901,6 +1922,30 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       } : null,
       message: 'Delivery completed successfully'
     };
+
+    // FIXED: Dispatch wallet update event via socket to refresh frontend immediately
+    try {
+      const serverModule = await import('../../../server.js');
+      const getIO = serverModule.getIO;
+      if (getIO) {
+        const io = getIO();
+        if (io) {
+          const deliveryNamespace = io.of('/delivery');
+          const deliveryId = delivery._id.toString();
+          // Emit wallet update event to trigger frontend refresh
+          deliveryNamespace.to(`delivery:${deliveryId}`).emit('wallet_updated', {
+            orderId: orderIdForLog,
+            earnings: totalEarning,
+            newBalance: wallet?.totalBalance || 0,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`💰 Wallet update event dispatched to delivery ${deliveryId} for order ${orderIdForLog}`);
+        }
+      }
+    } catch (socketError) {
+      console.warn('⚠️ Failed to dispatch wallet update event:', socketError.message);
+      // Don't fail the response if socket event fails
+    }
 
     // Send response immediately
     const response = successResponse(res, 200, 'Delivery completed successfully', responseData);

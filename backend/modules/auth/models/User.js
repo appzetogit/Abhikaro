@@ -201,6 +201,7 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // FCM tokens for push notifications (web vs mobile); set via POST /api/auth/fcm-token or POST /api/fcm/register-token
   fcmtokenWeb: {
     type: String,
     default: null

@@ -612,6 +612,7 @@ export default function OrdersMain() {
     isLoading: true
   })
   const [isReverifying, setIsReverifying] = useState(false)
+  const [restaurantLocationMissing, setRestaurantLocationMissing] = useState(false)
 
   // Restaurant notifications hook for real-time orders
   const { newOrder, clearNewOrder, isConnected } = useRestaurantNotifications()
@@ -638,6 +639,16 @@ export default function OrdersMain() {
             onboarding: restaurant.onboarding || null,
             isLoading: false
           })
+
+          // FIXED: Check if restaurant location is set (coordinates required for order processing)
+          const hasLocation = restaurant.location && 
+            restaurant.location.coordinates && 
+            Array.isArray(restaurant.location.coordinates) &&
+            restaurant.location.coordinates.length >= 2 &&
+            restaurant.location.coordinates[0] !== 0 &&
+            restaurant.location.coordinates[1] !== 0
+          
+          setRestaurantLocationMissing(!hasLocation)
 
           // Check if onboarding is incomplete and redirect if needed
           const completedSteps = restaurant.onboarding?.completedSteps || 0
@@ -668,9 +679,16 @@ export default function OrdersMain() {
     }
 
     window.addEventListener('restaurantProfileRefresh', handleProfileRefresh)
+    
+    // FIXED: Also refresh when returning from zone-setup page
+    const handleLocationSet = () => {
+      fetchRestaurantStatus()
+    }
+    window.addEventListener('restaurantLocationSet', handleLocationSet)
 
     return () => {
       window.removeEventListener('restaurantProfileRefresh', handleProfileRefresh)
+      window.removeEventListener('restaurantLocationSet', handleLocationSet)
     }
   }, [navigate])
 
@@ -865,6 +883,18 @@ export default function OrdersMain() {
 
   // Handle accept order
   const handleAcceptOrder = async () => {
+    // FIXED: Check restaurant location before accepting order
+    if (restaurantLocationMissing) {
+      toast.error('Restaurant location is not set. Please set your location first.', {
+        duration: 5000,
+        action: {
+          label: 'Set Location',
+          onClick: () => navigate('/restaurant/zone-setup')
+        }
+      })
+      return
+    }
+
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
@@ -886,8 +916,17 @@ export default function OrdersMain() {
           error.message ||
           'Failed to accept order. Please try again.'
 
-        // Show specific error message
-        if (error.response?.status === 400) {
+        // FIXED: Handle location error specifically
+        if (errorMessage.includes('location') && errorMessage.includes('not set')) {
+          toast.error('Restaurant location is not set. Please set your location to accept orders.', {
+            duration: 5000,
+            action: {
+              label: 'Set Location',
+              onClick: () => navigate('/restaurant/zone-setup')
+            }
+          })
+          setRestaurantLocationMissing(true)
+        } else if (error.response?.status === 400) {
           toast.error(errorMessage)
         } else if (error.response?.status === 404) {
           toast.error('Order not found. It may have been cancelled or already processed.')
@@ -1408,6 +1447,34 @@ export default function OrdersMain() {
           }
         `}</style>
 
+        {/* FIXED: Restaurant Location Missing Alert - Show if location is not set */}
+        {!restaurantStatus.isLoading && restaurantLocationMissing && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="mt-4 mb-4 rounded-2xl shadow-sm px-6 py-4 bg-white border border-red-200"
+          >
+            <div className="flex items-start gap-3 mb-3">
+              <div className="flex-shrink-0 rounded-full p-2 bg-red-100">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-bold text-red-600 mb-2">Restaurant location is not set</h3>
+                <p className="text-sm text-gray-700 mb-3">
+                  Your restaurant location is required to process orders. Please set your location to continue accepting orders.
+                </p>
+                <button
+                  onClick={() => navigate('/restaurant/zone-setup')}
+                  className="w-full px-6 py-2.5 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+                >
+                  Set Restaurant Location
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Verification Pending Card - Show if onboarding is complete (all 4 steps) and restaurant is not active */}
         {!restaurantStatus.isLoading &&
           !restaurantStatus.isActive &&
@@ -1609,15 +1676,23 @@ export default function OrdersMain() {
                     </AnimatePresence>
                   </div>
 
-                  {/* Send cutlery */}
-                  {(popupOrder || newOrder)?.sendCutlery && (
-                    <div className="mb-4 flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                      <span className="text-sm text-gray-700">Send cutlery</span>
+                  {/* Customer note */}
+                  {((popupOrder || newOrder)?.note) && (
+                    <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                      <p className="text-xs font-medium text-amber-800 mb-1">Customer note</p>
+                      <p className="text-sm text-gray-900">{(popupOrder || newOrder).note}</p>
                     </div>
                   )}
+
+                  {/* Cutlery: show Send cutlery or Don't send cutlery */}
+                  <div className="mb-4 flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                    <svg className="w-5 h-5 text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <span className="text-sm text-gray-700">
+                      {(popupOrder || newOrder)?.sendCutlery !== false ? "Send cutlery" : "Don't send cutlery"}
+                    </span>
+                  </div>
 
                   {/* Total bill */}
                   <div className="mb-4 flex items-center justify-between py-3 border-y border-gray-200">
@@ -1702,7 +1777,16 @@ export default function OrdersMain() {
 
                 {/* Footer */}
                 <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
-                  <button className="text-sm text-gray-600 hover:text-gray-900 transition-colors underline mx-auto block">
+                  <button 
+                    onClick={() => {
+                      if (selectedOrder?.orderId || selectedOrder?.mongoId) {
+                        navigate(`/restaurant/feedback?tab=complaints&orderId=${selectedOrder.orderId || selectedOrder.mongoId}`)
+                      } else {
+                        navigate('/restaurant/feedback?tab=complaints')
+                      }
+                    }}
+                    className="text-sm text-gray-600 hover:text-gray-900 transition-colors underline mx-auto block"
+                  >
                     Need help with this order?
                   </button>
                 </div>

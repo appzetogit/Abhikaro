@@ -190,8 +190,10 @@ export default function EditRestaurantAddress() {
           if (response?.data?.data?.restaurant) {
             // Update local state
             setLocation(updatedLocation)
-            // Dispatch event to notify other components
+            // FIXED: Dispatch events to notify other components that location was set
             window.dispatchEvent(new Event("addressUpdated"))
+            window.dispatchEvent(new Event('restaurantLocationSet'))
+            window.dispatchEvent(new Event('restaurantProfileRefresh'))
             setShowSelectOptionDialog(false)
             navigate(-1)
           } else {

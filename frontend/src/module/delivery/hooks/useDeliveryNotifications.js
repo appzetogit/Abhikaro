@@ -338,6 +338,15 @@ export const useDeliveryNotifications = () => {
       playNotificationSound();
     });
 
+    // FIXED: Listen for wallet update events to refresh wallet state immediately
+    socketRef.current.on('wallet_updated', (data) => {
+      console.log('💰 Wallet updated event received via socket:', data);
+      // Dispatch custom event to trigger wallet refresh in all components
+      window.dispatchEvent(new CustomEvent('deliveryWalletStateUpdated', { detail: data }));
+      // Also trigger storage event for cross-tab sync
+      window.dispatchEvent(new Event('storage'));
+    });
+
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();

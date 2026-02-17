@@ -50,6 +50,7 @@ export const getDashboard = asyncHandler(async (req, res) => {
     try {
       pendingOrders = await Order.countDocuments({ 
         deliveryPartnerId: delivery._id,
+        // FIXED: Only show orders that are 'ready' (Ready to Pickup) or already assigned
         status: { $in: ['out_for_delivery', 'ready'] }
       });
     } catch (error) {

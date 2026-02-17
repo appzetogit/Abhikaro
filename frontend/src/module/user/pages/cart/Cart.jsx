@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Truck, Leaf, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles } from "lucide-react"
+import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Truck, Leaf, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, AlertCircle } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import confetti from "canvas-confetti"
 
@@ -881,7 +881,33 @@ export default function Cart() {
             restaurantId: item.restaurantId
           }))
         });
-        alert('Error: Restaurant information is missing. Please refresh the page and try again.');
+        toast.error('Restaurant information is missing. Please refresh the page and try again.', {
+          duration: 5000
+        });
+        setIsPlacingOrder(false);
+        return;
+      }
+
+      // FIXED: Validate restaurant location before placing order
+      const hasRestaurantLocation = restaurantData?.location && 
+        restaurantData.location.coordinates && 
+        Array.isArray(restaurantData.location.coordinates) &&
+        restaurantData.location.coordinates.length >= 2 &&
+        restaurantData.location.coordinates[0] !== 0 &&
+        restaurantData.location.coordinates[1] !== 0
+
+      if (!hasRestaurantLocation) {
+        console.error('❌ CRITICAL: Cannot place order - Restaurant location is not set!');
+        toast.error("This restaurant's location is not configured. Please contact support or try ordering from another restaurant.", {
+          duration: 7000,
+          style: {
+            background: '#fee2e2',
+            color: '#991b1b',
+            border: '1px solid #fecaca',
+            fontSize: '14px',
+            padding: '12px 16px',
+          }
+        });
         setIsPlacingOrder(false);
         return;
       }
@@ -1290,14 +1316,77 @@ export default function Cart() {
       // Handle other axios errors
       else if (error.response) {
         // Server responded with error status
-        errorMessage = error.response.data?.message || `Server error: ${error.response.status}`
+        const backendMessage = error.response.data?.message || `Server error: ${error.response.status}`
+        
+        // FIXED: Handle restaurant location error specifically with user-friendly message
+        if (backendMessage.includes('location') && (backendMessage.includes('not set') || backendMessage.includes('not found'))) {
+          errorMessage = "This restaurant's location is not configured. Please contact support or try ordering from another restaurant."
+          toast.error(errorMessage, {
+            duration: 7000,
+            style: {
+              background: '#fee2e2',
+              color: '#991b1b',
+              border: '1px solid #fecaca',
+              fontSize: '14px',
+              padding: '12px 16px',
+            }
+          })
+          setIsPlacingOrder(false)
+          return
+        } else if (error.response.status === 400) {
+          // Bad request - validation error
+          errorMessage = backendMessage
+          toast.error(errorMessage, {
+            duration: 6000,
+            style: {
+              background: '#fee2e2',
+              color: '#991b1b',
+              border: '1px solid #fecaca',
+              fontSize: '14px',
+              padding: '12px 16px',
+            }
+          })
+          setIsPlacingOrder(false)
+          return
+        } else if (error.response.status === 403) {
+          // Forbidden - zone/availability error
+          errorMessage = backendMessage
+          toast.error(errorMessage, {
+            duration: 6000,
+            style: {
+              background: '#fee2e2',
+              color: '#991b1b',
+              border: '1px solid #fecaca',
+              fontSize: '14px',
+              padding: '12px 16px',
+            }
+          })
+          setIsPlacingOrder(false)
+          return
+        } else {
+          errorMessage = backendMessage
+        }
       }
       // Handle other errors
       else if (error.message) {
         errorMessage = error.message
       }
 
-      alert(errorMessage)
+      // Use toast for user-friendly errors, alert for critical network errors
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        alert(errorMessage)
+      } else {
+        toast.error(errorMessage, {
+          duration: 5000,
+          style: {
+            background: '#fee2e2',
+            color: '#991b1b',
+            border: '1px solid #fecaca',
+            fontSize: '14px',
+            padding: '12px 16px',
+          }
+        })
+      }
       setIsPlacingOrder(false)
     }
   }
@@ -1372,6 +1461,33 @@ export default function Cart() {
           paddingBottom: '200px' // Bottom button height + extra space
         }}
       >
+        {/* FIXED: Restaurant Location Missing Alert */}
+        {restaurantData && (!restaurantData.location || 
+          !restaurantData.location.coordinates || 
+          !Array.isArray(restaurantData.location.coordinates) ||
+          restaurantData.location.coordinates.length < 2 ||
+          restaurantData.location.coordinates[0] === 0 ||
+          restaurantData.location.coordinates[1] === 0) && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="mx-4 mt-4 mb-4 rounded-lg px-4 py-3 bg-red-50 border border-red-200"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-red-800 mb-1">
+                  Restaurant location is not set
+                </p>
+                <p className="text-xs text-red-700">
+                  This restaurant's location is not configured. Please contact support or try ordering from another restaurant.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Savings Banner */}
         {savings > 0 && (
           <div className="bg-blue-100 dark:bg-blue-900/20 px-4 md:px-6 py-2 md:py-3 flex-shrink-0">

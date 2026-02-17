@@ -144,8 +144,7 @@ const hotelSchema = new mongoose.Schema(
   },
 );
 
-// Indexes
-hotelSchema.index({ phone: 1 }, { unique: true });
+// Indexes (phone already has unique: true on field; avoid duplicate schema.index)
 hotelSchema.index({ email: 1 }, { sparse: true });
 
 // Hash password before saving

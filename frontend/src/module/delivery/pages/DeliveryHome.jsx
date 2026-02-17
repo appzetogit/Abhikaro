@@ -43,7 +43,7 @@ import { formatCurrency } from "../../restaurant/utils/currency"
 import { getAllDeliveryOrders } from "../utils/deliveryOrderStatus"
 import { getUnreadDeliveryNotificationCount } from "../utils/deliveryNotifications"
 import { deliveryAPI, restaurantAPI, uploadAPI } from "@/lib/api"
-import { useDeliveryNotifications } from "../hooks/useDeliveryNotifications"
+import { useDeliveryNotificationsContext } from "../context/DeliveryNotificationsContext"
 import { getGoogleMapsApiKey } from "@/lib/utils/googleMapsApiKey"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
 import { Loader } from "@googlemaps/js-api-loader"
@@ -390,8 +390,9 @@ export default function DeliveryHome() {
   })
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(() => getUnreadDeliveryNotificationCount())
   
-  // Delivery notifications hook
-  const { newOrder, clearNewOrder, orderReady, clearOrderReady, isConnected } = useDeliveryNotifications()
+  // Delivery notifications from shared socket (provided by DeliveryLayout)
+  const notifications = useDeliveryNotificationsContext()
+  const { newOrder, clearNewOrder, orderReady, clearOrderReady, isConnected } = notifications || {}
   
   // Default location - will be set from saved location or GPS, not hardcoded
   const [riderLocation, setRiderLocation] = useState(null) // Will be set from GPS or saved location

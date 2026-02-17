@@ -358,6 +358,10 @@ export default function ZoneSetup() {
         setRestaurantData(response.data.data.restaurant)
         alert("Location saved successfully!")
         
+        // FIXED: Dispatch event to notify other components that location was set
+        window.dispatchEvent(new Event('restaurantLocationSet'))
+        window.dispatchEvent(new Event('restaurantProfileRefresh'))
+        
         // Refresh the page to update navbar
         window.location.reload()
       } else {

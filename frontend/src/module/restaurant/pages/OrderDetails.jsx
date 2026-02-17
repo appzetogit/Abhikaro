@@ -164,6 +164,8 @@ export default function OrderDetails() {
               paymentStatus: order.payment?.status === 'completed' ? 'PAID' : 'PENDING'
             },
             reason: order.cancellationReason || '',
+            note: order.note || '',
+            sendCutlery: order.sendCutlery !== false,
             timeline: [
               { event: 'Order placed', timestamp: new Date(order.createdAt).toLocaleString('en-GB'), status: 'completed' },
               ...(order.status === 'confirmed' ? [{ event: 'Order confirmed', timestamp: order.tracking?.confirmed?.timestamp ? new Date(order.tracking.confirmed.timestamp).toLocaleString('en-GB') : '', status: 'completed' }] : []),
@@ -659,6 +661,27 @@ export default function OrderDetails() {
           </div>
 
         </div>
+
+        {/* Customer note & cutlery */}
+        {(orderData.note || orderData.sendCutlery !== undefined) && (
+          <div>
+            <h2 className="text-base font-bold text-gray-900 mb-3">Customer note & cutlery</h2>
+            <div className="bg-white rounded-lg p-4 space-y-3">
+              {orderData.note ? (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Note for restaurant</p>
+                  <p className="text-sm text-gray-900">{orderData.note}</p>
+                </div>
+              ) : null}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Cutlery</p>
+                <p className="text-sm text-gray-900">
+                  {orderData.sendCutlery ? "Send cutlery" : "Don't send cutlery"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Item Details Section */}
         <div>

@@ -269,9 +269,7 @@ const deliverySchema = new mongoose.Schema(
   }
 );
 
-// Indexes
-deliverySchema.index({ phone: 1 }, { unique: true });
-deliverySchema.index({ deliveryId: 1 }, { unique: true, sparse: true });
+// Indexes (phone and deliveryId already have unique/sparse on field def; avoid duplicate schema.index)
 deliverySchema.index({ 'availability.currentLocation': '2dsphere' });
 deliverySchema.index({ status: 1 });
 deliverySchema.index({ isActive: 1 });

@@ -25,3 +25,18 @@
 [2026-02-16T12:24:23.600Z] Checking Specific Commission for RestaurantId: 6992cc876b82788e862b54b4
 [2026-02-16T12:24:23.627Z] Found Commission: NO
 [2026-02-16T12:24:23.662Z] Any Commission Exists? NO
+[2026-02-16T15:58:29.324Z] Checking Specific Commission for RestaurantId: 6992cc876b82788e862b54b4
+[2026-02-16T15:58:29.359Z] Found Commission: YES
+[2026-02-16T15:58:29.360Z] Comm Data: {"type":"percentage","value":15}
+[2026-02-16T17:07:46.561Z] Checking Specific Commission for RestaurantId: 6992cc876b82788e862b54b4
+[2026-02-16T17:07:46.582Z] Found Commission: YES
+[2026-02-16T17:07:46.583Z] Comm Data: {"type":"percentage","value":15}
+[2026-02-16T17:09:09.035Z] Checking Specific Commission for RestaurantId: 6992f76ac6f27ff7ac1ece8e
+[2026-02-16T17:09:09.098Z] Found Commission: NO
+[2026-02-16T17:09:09.152Z] Any Commission Exists? NO
+[2026-02-16T17:12:22.473Z] Checking Specific Commission for RestaurantId: 6992f76ac6f27ff7ac1ece8e
+[2026-02-16T17:12:22.493Z] Found Commission: NO
+[2026-02-16T17:12:22.512Z] Any Commission Exists? NO
+[2026-02-16T17:19:27.672Z] Checking Specific Commission for RestaurantId: 6992f76ac6f27ff7ac1ece8e
+[2026-02-16T17:19:27.692Z] Found Commission: NO
+[2026-02-16T17:19:27.713Z] Any Commission Exists? NO
