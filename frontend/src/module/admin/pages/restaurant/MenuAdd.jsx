@@ -53,7 +53,7 @@ export default function MenuAdd() {
     image: "",
     images: [],
     price: 0,
-    foodType: "Non-Veg",
+    foodType: "Veg",
     category: "",
     description: "",
     preparationTime: "",
@@ -156,8 +156,32 @@ export default function MenuAdd() {
       image: "",
       images: [],
       price: 0,
-      foodType: "Non-Veg",
+      foodType: "Veg",
       category: section.name,
+      description: "",
+      preparationTime: "",
+      isAvailable: true,
+      isRecommended: false,
+      stock: true,
+      hasVariants: false,
+      variants: [],
+    })
+    setShowNewCategoryInput(false)
+    setNewCategoryName("")
+    setShowAddDishModal(true)
+  }
+
+  // Global Add Dish (from header) - category user will choose in modal
+  const handleAddDishGlobal = () => {
+    setSelectedSection(null)
+    setEditingDish(null)
+    setFormData({
+      name: "",
+      image: "",
+      images: [],
+      price: 0,
+      foodType: "Veg",
+      category: "",
       description: "",
       preparationTime: "",
       isAvailable: true,
@@ -633,9 +657,19 @@ export default function MenuAdd() {
               <h2 className="text-lg font-semibold text-gray-900">
                 Menu for {selectedRestaurant.name}
               </h2>
-              {loading && (
-                <Loader2 className="w-5 h-5 animate-spin text-gray-600" />
-              )}
+              <div className="flex items-center gap-3">
+                {loading && (
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-600" />
+                )}
+                <button
+                  type="button"
+                  onClick={handleAddDishGlobal}
+                  className="inline-flex items-center px-3 py-1 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Dish
+                </button>
+              </div>
             </div>
 
             {menu && menu.sections && menu.sections.length > 0 ? (
@@ -1099,7 +1133,6 @@ export default function MenuAdd() {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="Veg">Veg</option>
-                      <option value="Non-Veg">Non-Veg</option>
                     </select>
                   </div>
                 </div>

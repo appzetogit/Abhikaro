@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import appzetoFoodLogo from "@/assets/appzetologo.png"
 import api from "@/lib/api"
 import { API_ENDPOINTS } from "@/lib/api/config"
-import { useCompanyName } from "@/lib/hooks/useCompanyName"
+import { getCachedSettings, loadBusinessSettings } from "@/lib/utils/businessSettings"
 
 // Icon mapping
 const iconMap = {
@@ -21,7 +21,6 @@ const iconMap = {
 }
 
 export default function About() {
-  const companyName = useCompanyName()
   const [loading, setLoading] = useState(true)
   const [aboutData, setAboutData] = useState({
     appName: 'Appzeto Food',
@@ -31,9 +30,30 @@ export default function About() {
     features: [],
     stats: []
   })
+  const [businessLogoUrl, setBusinessLogoUrl] = useState(null)
 
+  // Load about data and business logo from public business settings
   useEffect(() => {
     fetchAboutData()
+
+    const loadLogoFromBusinessSettings = async () => {
+      try {
+        let cached = getCachedSettings()
+        if (cached?.logo?.url) {
+          setBusinessLogoUrl(cached.logo.url)
+          return
+        }
+
+        const settings = await loadBusinessSettings()
+        if (settings?.logo?.url) {
+          setBusinessLogoUrl(settings.logo.url)
+        }
+      } catch (error) {
+        console.warn("Failed to load business logo for About page:", error)
+      }
+    }
+
+    loadLogoFromBusinessSettings()
   }, [])
 
   const fetchAboutData = async () => {
@@ -95,9 +115,10 @@ export default function About() {
                   <div className="absolute inset-0 bg-green-400 rounded-full blur-2xl opacity-30 animate-pulse" />
                   <div className="relative bg-white dark:bg-gray-800 rounded-full p-4 md:p-6 shadow-xl">
                     <img
-                      src={aboutData.logo && aboutData.logo.trim() ? aboutData.logo : appzetoFoodLogo}
+                      src={businessLogoUrl || (aboutData.logo && aboutData.logo.trim() ? aboutData.logo : appzetoFoodLogo)}
                       alt={`${aboutData.appName} Logo`}
                       className="h-16 w-16 md:h-20 md:w-20 object-contain rounded-full"
+                      crossOrigin="anonymous"
                     />
                   </div>
                 </div>
@@ -290,7 +311,7 @@ export default function About() {
           className="text-center mt-8 mb-4"
         >
           <p className="text-sm text-gray-500 dark:text-gray-500">
-            © {new Date().getFullYear()} {companyName}. All rights reserved.
+            © {new Date().getFullYear()} {aboutData.appName}. All rights reserved.
           </p>
         </motion.div>
       </div>

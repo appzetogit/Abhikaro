@@ -6,6 +6,7 @@ import { useLocation as useLocationHook } from "../hooks/useLocation"
 import { useCart } from "../context/CartContext"
 import { useLocationSelector } from "./UserLayout"
 import { FaLocationDot } from "react-icons/fa6"
+import { getCachedSettings, loadBusinessSettings } from "@/lib/utils/businessSettings"
 
 export default function DesktopNavbar() {
   const location = useLocation()
@@ -15,6 +16,8 @@ export default function DesktopNavbar() {
   const cartCount = getCartCount()
   const [isVisible, setIsVisible] = useState(true)
   const lastScrollY = useRef(0)
+  const [logoUrl, setLogoUrl] = useState(null)
+  const [companyName, setCompanyName] = useState(null)
 
   // Show area if available, otherwise show city
   // Priority: area > city > "Select"
@@ -27,6 +30,37 @@ export default function DesktopNavbar() {
   const secondaryLocation = areaName
     ? (cityName || "")  // Show only city when area is available
     : (cityName && stateName ? `${cityName}, ${stateName}` : cityName || stateName || "")
+
+  // Load business settings logo/company name for desktop header
+  useEffect(() => {
+    const loadLogo = async () => {
+      try {
+        const cached = getCachedSettings()
+        if (cached) {
+          if (cached.logo?.url) {
+            setLogoUrl(cached.logo.url)
+          }
+          if (cached.companyName) {
+            setCompanyName(cached.companyName)
+          }
+        } else {
+          const settings = await loadBusinessSettings()
+          if (settings) {
+            if (settings.logo?.url) {
+              setLogoUrl(settings.logo.url)
+            }
+            if (settings.companyName) {
+              setCompanyName(settings.companyName)
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error loading desktop navbar logo:", error)
+      }
+    }
+
+    loadLogo()
+  }, [])
 
   const handleLocationClick = () => {
     // Open location selector overlay
@@ -90,8 +124,25 @@ export default function DesktopNavbar() {
       <div className="relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Left: Location */}
-            <div className="flex items-center gap-3 lg:gap-4 min-w-0">
+            {/* Left: Logo + Location */}
+            <div className="flex items-center gap-4 lg:gap-5 min-w-0">
+              {/* Company Logo from Business Settings */}
+              <Link to="/user" className="flex items-center justify-center flex-shrink-0 mr-2 pr-20">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt="Company Logo"
+                    className="h-8 w-auto lg:h-10 object-contain mr-0"
+                    crossOrigin="anonymous"
+                  />
+                ) : companyName ? (
+                  <span className="text-base lg:text-lg font-bold text-gray-900">
+                    {companyName}
+                  </span>
+                ) : null}
+              </Link>
+
+              {/* Location */}
               <Button
                 variant="ghost"
                 onClick={handleLocationClick}

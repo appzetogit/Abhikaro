@@ -89,6 +89,25 @@ const hotelSchema = new mongoose.Schema(
       type: String,
       default: null, // Store QR code data (JSON string)
     },
+    // Hotel stand request status
+    standRequestStatus: {
+      type: String,
+      enum: ["none", "requested", "approved"],
+      default: "none",
+    },
+    standRequestedAt: {
+      type: Date,
+      default: null,
+    },
+    standApprovedAt: {
+      type: Date,
+      default: null,
+    },
+    standApprovedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+    },
     isActive: {
       type: Boolean,
       default: false, // Hotels need admin approval

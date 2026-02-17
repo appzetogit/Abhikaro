@@ -8085,17 +8085,8 @@ export default function DeliveryHome() {
 
   // Bike marker update removed (Ola Maps removed)
 
-  // Carousel slides data - filter based on bank details status
-  const carouselSlides = useMemo(() => [
-    ...(bankDetailsFilled ? [] : [{
-      id: 2,
-      title: "Submit bank details",
-      subtitle: "PAN & bank details required for payouts",
-      icon: "bank",
-      buttonText: "Submit",
-      bgColor: "bg-yellow-400"
-    }])
-  ], [bankDetailsFilled])
+  // Carousel slides data - bank details banner removed for delivery boy
+  const carouselSlides = useMemo(() => [], [])
 
   // Auto-rotate carousel
   useEffect(() => {

@@ -115,17 +115,8 @@ export default function PocketPage() {
     }
   }, [])
 
-  // Carousel slides data - only show bank details banner when not filled
-  const carouselSlides = useMemo(() =>
-    bankDetailsFilled ? [] : [{
-      id: 2,
-      title: "Submit bank details",
-      subtitle: "PAN & bank details required for payouts",
-      icon: "bank",
-      buttonText: "Submit",
-      bgColor: "bg-yellow-400"
-    }]
-  , [bankDetailsFilled])
+  // Carousel slides data - bank details banner removed for delivery boy
+  const carouselSlides = useMemo(() => [], [])
 
   // Calculate balances
   const balances = calculateDeliveryBalances(walletState)

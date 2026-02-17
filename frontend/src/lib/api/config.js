@@ -304,6 +304,8 @@ export const API_ENDPOINTS = {
     RESTAURANT_ANALYTICS: "/admin/restaurant-analytics/:restaurantId",
     HOTELS: "/admin/hotels",
     HOTEL_REQUESTS: "/admin/hotels/requests",
+    HOTEL_STAND_REQUESTS: "/admin/hotels/stand-requests",
+    HOTEL_STAND_REQUEST_APPROVE: "/admin/hotels/stand-requests/:id/approve",
     HOTEL_COMMISSION_STATS: "/admin/hotels-commissions/stats",
     HOTEL_BY_ID: "/admin/hotels/:id",
     RESTAURANT_STATUS: "/admin/restaurants/:id/status",

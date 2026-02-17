@@ -607,3 +607,75 @@ export const getHotelCommissionStats = asyncHandler(async (req, res) => {
     return errorResponse(res, 500, "Failed to fetch hotel commission stats");
   }
 });
+
+/**
+ * GET /api/admin/hotels/stand-requests
+ * Get hotels that have requested a stand (or approved)
+ * Query params: status = requested | approved | all
+ */
+export const getHotelStandRequests = asyncHandler(async (req, res) => {
+  try {
+    const { status = "requested" } = req.query;
+
+    const query = {};
+    if (status === "requested") {
+      query.standRequestStatus = "requested";
+    } else if (status === "approved") {
+      query.standRequestStatus = "approved";
+    } else if (status === "none") {
+      query.standRequestStatus = { $in: [null, "none"] };
+    } else {
+      query.standRequestStatus = { $in: ["requested", "approved"] };
+    }
+
+    const hotels = await Hotel.find(query)
+      .select("-password")
+      .sort({ standRequestedAt: -1, createdAt: -1 });
+
+    return successResponse(res, 200, "Hotel stand requests fetched successfully", {
+      requests: hotels,
+    });
+  } catch (error) {
+    console.error("Error fetching hotel stand requests:", error);
+    return errorResponse(res, 500, "Failed to fetch hotel stand requests");
+  }
+});
+
+/**
+ * POST /api/admin/hotels/stand-requests/:id/approve
+ * Approve hotel stand request
+ */
+export const approveHotelStandRequest = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const admin = req.admin;
+
+  const hotel = await Hotel.findById(id);
+  if (!hotel) {
+    return errorResponse(res, 404, "Hotel not found");
+  }
+
+  hotel.standRequestStatus = "approved";
+  hotel.standApprovedAt = new Date();
+  hotel.standApprovedBy = admin ? admin._id : null;
+
+  // Ensure standRequestedAt is set if it wasn't previously
+  if (!hotel.standRequestedAt) {
+    hotel.standRequestedAt = new Date();
+  }
+
+  await hotel.save();
+
+  return successResponse(res, 200, "Hotel stand request approved successfully", {
+    hotel: {
+      _id: hotel._id,
+      hotelId: hotel.hotelId,
+      hotelName: hotel.hotelName,
+      phone: hotel.phone,
+      email: hotel.email,
+      address: hotel.address,
+      standRequestStatus: hotel.standRequestStatus,
+      standRequestedAt: hotel.standRequestedAt,
+      standApprovedAt: hotel.standApprovedAt,
+    },
+  });
+});

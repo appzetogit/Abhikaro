@@ -40,7 +40,7 @@ export default function ItemDetailsPage() {
   const [itemSizeQuantity, setItemSizeQuantity] = useState("")
   const [itemSizeUnit, setItemSizeUnit] = useState("piece")
   const [itemDescription, setItemDescription] = useState("")
-  const [foodType, setFoodType] = useState("Non-Veg")
+  const [foodType, setFoodType] = useState("Veg")
   const [basePrice, setBasePrice] = useState("0")
   const [preparationTime, setPreparationTime] = useState("")
   const [gst, setGst] = useState("5.0")
@@ -96,7 +96,8 @@ export default function ItemDetailsPage() {
         setItemSizeQuantity(item.itemSizeQuantity || "")
         setItemSizeUnit(item.itemSizeUnit || "piece")
         setItemDescription(item.description || "")
-        setFoodType(item.foodType === "Veg" ? "Veg" : (item.foodType === "Egg" ? "Egg" : "Non-Veg"))
+        // Force to Veg in UI (platform is Veg-only now)
+        setFoodType("Veg")
         setBasePrice(item.price?.toString() || "0")
         setPreparationTime(item.preparationTime || "")
         setGst(item.gst?.toString() || "5.0")
@@ -201,7 +202,8 @@ export default function ItemDetailsPage() {
             setItemSizeQuantity(foundItem.itemSizeQuantity || "")
             setItemSizeUnit(foundItem.itemSizeUnit || "piece")
             setItemDescription(foundItem.description || "")
-            setFoodType(foundItem.foodType === "Veg" ? "Veg" : (foundItem.foodType === "Egg" ? "Egg" : "Non-Veg"))
+            // Force to Veg in UI (platform is Veg-only now)
+            setFoodType("Veg")
             setBasePrice(foundItem.price?.toString() || "0")
             setPreparationTime(foundItem.preparationTime || "")
             setGst(foundItem.gst?.toString() || "5.0")
@@ -764,7 +766,8 @@ export default function ItemDetailsPage() {
         stock: "Unlimited",
         discount: null,
         originalPrice: null,
-        foodType: foodType === "Egg" ? "Non-Veg" : foodType, // Menu model only supports Veg/Non-Veg
+        // Always save as Veg (platform is Veg-only)
+        foodType: "Veg",
         availabilityTimeStart: "12:01 AM",
         availabilityTimeEnd: "11:57 PM",
         description: itemDescription.trim(),
@@ -1095,37 +1098,19 @@ export default function ItemDetailsPage() {
                 {descriptionLength} / {maxDescriptionLength}
               </span>
             </div>
-            {/* Dietary Options */}
+            {/* Dietary Options - only Veg */}
             <div className="flex gap-2 mt-3">
               <button
+                type="button"
                 onClick={() => setFoodType("Veg")}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Veg"
-                  ? "border-green-600 border-2 text-green-600"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  foodType === "Veg"
+                    ? "border-green-600 border-2 text-green-600"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
               >
                 {foodType === "Veg" && <Check className="w-4 h-4" />}
                 <span>Veg</span>
-              </button>
-              <button
-                onClick={() => setFoodType("Non-Veg")}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Non-Veg"
-                  ? "border-red-600 border-2 text-red-600"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-              >
-                {foodType === "Non-Veg" && <Check className="w-4 h-4" />}
-                <span>Non-Veg</span>
-              </button>
-              <button
-                onClick={() => setFoodType("Egg")}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Egg"
-                  ? "border-yellow-600 border-2 text-yellow-600"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-              >
-                {foodType === "Egg" && <Check className="w-4 h-4" />}
-                <span>Egg</span>
               </button>
             </div>
           </div>

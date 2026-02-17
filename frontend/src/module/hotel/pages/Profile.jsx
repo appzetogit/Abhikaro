@@ -31,6 +31,7 @@ export default function HotelProfile() {
   const [loadingQR, setLoadingQR] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [downloadingQR, setDownloadingQR] = useState(false)
+  const [standRequestStatus, setStandRequestStatus] = useState("none")
 
   // QR code is generated only once and stored in database
 
@@ -59,6 +60,7 @@ export default function HotelProfile() {
             address: hotelData.address || "",
           })
           setProfileImage(hotelData.profileImage)
+          setStandRequestStatus(hotelData.standRequestStatus || "none")
           
           // Check if QR code already exists
           if (hotelData.qrCode) {
@@ -191,6 +193,35 @@ export default function HotelProfile() {
       navigate("/hotel", { replace: true })
     } finally {
       setIsLoggingOut(false)
+    }
+  }
+
+  const handleStandRequest = async () => {
+    if (!hotel) return
+    if (standRequestStatus === "approved") return
+
+    try {
+      const response = await hotelAPI.requestStand()
+      if (response.data?.success) {
+        const status =
+          response.data.data?.standRequestStatus ||
+          response.data.data?.status ||
+          "requested"
+        setStandRequestStatus(status)
+        toast.success(
+          status === "approved"
+            ? "Stand request approved"
+            : "Stand request submitted",
+        )
+      } else {
+        toast.error("Failed to submit stand request")
+      }
+    } catch (error) {
+      console.error("Error requesting stand:", error)
+      toast.error(
+        error.response?.data?.message ||
+          "Failed to submit stand request. Please try again.",
+      )
     }
   }
 
@@ -562,6 +593,31 @@ export default function HotelProfile() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Hotel Stand Request */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Request Hotel Stand
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Request a branded stand for your hotel to display the QR code and promote orders.
+          </p>
+          <Button
+            onClick={handleStandRequest}
+            disabled={standRequestStatus === "requested" || standRequestStatus === "approved"}
+            className={`w-full max-w-xs ${
+              standRequestStatus === "approved"
+                ? "bg-green-600 hover:bg-green-700"
+                : "bg-[#ff8100] hover:bg-[#ff8100]/90"
+            } text-white`}
+          >
+            {standRequestStatus === "approved"
+              ? "Approved"
+              : standRequestStatus === "requested"
+              ? "Requested"
+              : "Request Stand"}
+          </Button>
         </div>
 
         {/* Logout */}

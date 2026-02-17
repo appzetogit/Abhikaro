@@ -884,6 +884,11 @@ export const hotelAPI = {
       API_ENDPOINTS.HOTEL.ORDER_DELIVER.replace(":orderId", orderId),
     );
   },
+
+  // Hotel stand request
+  requestStand: () => {
+    return apiClient.post("/hotel/auth/stand-request");
+  },
 };
 
 // Export delivery API helper functions
@@ -1274,6 +1279,16 @@ export const adminAPI = {
   // Get hotel requests
   getHotelRequests: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.ADMIN.HOTEL_REQUESTS, { params });
+  },
+
+  // Hotel stand requests
+  getHotelStandRequests: (params = {}) => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.HOTEL_STAND_REQUESTS, { params });
+  },
+  approveHotelStandRequest: (id) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.HOTEL_STAND_REQUEST_APPROVE.replace(":id", id),
+    );
   },
 
   // Create hotel

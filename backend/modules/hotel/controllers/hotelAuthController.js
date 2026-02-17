@@ -397,9 +397,56 @@ export const getCurrentHotel = asyncHandler(async (req, res) => {
       hotelRentProofImage: hotel.hotelRentProofImage,
       cancelledCheckImages: hotel.cancelledCheckImages,
       qrCode: hotel.qrCode,
+      standRequestStatus: hotel.standRequestStatus || "none",
+      standRequestedAt: hotel.standRequestedAt,
+      standApprovedAt: hotel.standApprovedAt,
       createdAt: hotel.createdAt,
       updatedAt: hotel.updatedAt,
     },
+  });
+});
+
+/**
+ * Request a hotel stand
+ * POST /api/hotel/auth/stand-request
+ * Requires hotel auth
+ */
+export const requestStand = asyncHandler(async (req, res) => {
+  const hotel = req.hotel;
+
+  // Simple rules: if already approved, do nothing
+  if (hotel.standRequestStatus === "approved") {
+    return successResponse(res, 200, "Stand request already approved", {
+      standRequestStatus: hotel.standRequestStatus,
+      standRequestedAt: hotel.standRequestedAt,
+      standApprovedAt: hotel.standApprovedAt,
+    });
+  }
+
+  // If already requested, just echo current state (idempotent)
+  if (hotel.standRequestStatus === "requested") {
+    return successResponse(res, 200, "Stand request already submitted", {
+      standRequestStatus: hotel.standRequestStatus,
+      standRequestedAt: hotel.standRequestedAt,
+      standApprovedAt: hotel.standApprovedAt,
+    });
+  }
+
+  const updated = await Hotel.findByIdAndUpdate(
+    hotel._id,
+    {
+      standRequestStatus: "requested",
+      standRequestedAt: new Date(),
+    },
+    { new: true },
+  ).select(
+    "standRequestStatus standRequestedAt standApprovedAt",
+  );
+
+  return successResponse(res, 200, "Stand request submitted successfully", {
+    standRequestStatus: updated.standRequestStatus,
+    standRequestedAt: updated.standRequestedAt,
+    standApprovedAt: updated.standApprovedAt,
   });
 });
 

@@ -128,6 +128,12 @@ export const sidebarMenuData = [
       },
       {
         type: "link",
+        label: "Hotel Stand Requests",
+        path: "/admin/hotel-stand-requests",
+        icon: "TicketCheck",
+      },
+      {
+        type: "link",
         label: "Hotel Commission",
         path: "/admin/hotels/commission",
         icon: "Percent",

@@ -1209,15 +1209,19 @@ export default function Home() {
                       }
                     }}
                   >
-                    <OptimizedImage
-                      src={image}
-                      alt={`Hero Banner ${index + 1}`}
-                      className="w-full h-full sm:rounded-2xl lg:rounded-3xl shadow-md"
-                      priority={index === 0}
-                      sizes="100vw"
-                      objectFit="cover"
-                      placeholder="blur"
-                    />
+                    <div className="relative h-full">
+                      <OptimizedImage
+                        src={image}
+                        alt={`Hero Banner ${index + 1}`}
+                        className="w-full h-full sm:rounded-2xl lg:rounded-3xl shadow-md"
+                        priority={index === 0}
+                        sizes="100vw"
+                        objectFit="cover"
+                        placeholder="blur"
+                      />
+                      {/* Mask for old embedded logo text on banner (desktop only) */}
+                      <div className="pointer-events-none hidden md:block absolute top-6 left-1/2 -translate-x-1/2 w-28 h-10 bg-gradient-to-b from-[#fec9d3] to-transparent rounded-full" />
+                    </div>
                   </div>
                 )
               })}
@@ -1308,8 +1312,8 @@ export default function Home() {
                 whileTap={{ scale: 0.95 }}
               >
                 <div className="flex flex-col items-center">
-                  <span className="text-white text-[13px] sm:text-[11px] lg:text-sm font-black leading-none">VEG</span>
-                  <span className="text-white text-[9.5px] sm:text-[10px] lg:text-xs font-black leading-none">MODE</span>
+                  <span className="text-white text-[13px] sm:text-[11px] lg:text-sm font-black leading-none">ALWAYS</span>
+                  <span className="text-white text-[9.5px] sm:text-[10px] lg:text-xs font-black leading-none">VEG</span>
                 </div>
                 <Switch
                   checked={vegMode}

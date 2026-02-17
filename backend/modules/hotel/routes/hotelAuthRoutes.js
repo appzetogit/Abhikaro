@@ -5,7 +5,8 @@ import {
   getCurrentHotel,
   refreshToken,
   logout,
-  registerFcmToken
+  registerFcmToken,
+  requestStand
 } from '../controllers/hotelAuthController.js';
 import { authenticate } from '../middleware/hotelAuth.js';
 import { validate } from '../../../shared/middleware/validate.js';
@@ -74,5 +75,6 @@ router.post('/refresh-token', refreshToken);
 router.post('/logout', logout);
 router.get('/me', authenticate, getCurrentHotel);
 router.post('/fcm-token', authenticate, validate(fcmTokenSchema), registerFcmToken);
+router.post('/stand-request', authenticate, requestStand);
 
 export default router;

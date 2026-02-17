@@ -921,7 +921,7 @@ export default function PageNavbar({
       className={`relative ${zIndexClass} w-full px-1 pr-2 sm:px-2 sm:pr-3 md:px-3 lg:px-6 xl:px-8 py-1.5 sm:py-3 lg:py-4`}
       onClick={onNavClick}
     >
-      <div className="flex items-center justify-between gap-2 sm:gap-3 md:gap-4 lg:gap-6 max-w-7xl mx-auto">
+      <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-3 md:gap-4 lg:gap-6 max-w-7xl mx-auto">
         {/* Left: Location - Hidden on desktop, shown on mobile */}
         <div className="flex md:hidden items-center gap-3 sm:gap-4 min-w-0">
           {/* Location Button */}
@@ -961,7 +961,7 @@ export default function PageNavbar({
             <img
               src={logoUrl}
               alt="Company Logo"
-              className="h-12 w-20 mr-3 sm:h-10 sm:w-10 md:h-12 md:w-12 object-contain"
+              className="h-14 w-24 mr-3 sm:h-12 sm:w-12 md:h-14 md:w-14 object-contain"
               crossOrigin="anonymous"
               onError={(e) => {
                 // Fallback to default logo if API logo fails
@@ -972,7 +972,7 @@ export default function PageNavbar({
             <img
               src={appzetoFoodLogo}
               alt={`${companyName} Logo`}
-              className="h-12 w-20 mr-3 sm:h-10 sm:w-10 md:h-12 md:w-12 object-contain"
+              className="h-14 w-24 mr-3 sm:h-12 sm:w-12 md:h-14 md:w-14 object-contain"
             />
           )}
         </Link>
