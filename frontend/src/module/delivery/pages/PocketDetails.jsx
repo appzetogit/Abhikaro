@@ -218,25 +218,21 @@ export default function PocketDetails() {
     return order.orderId || order._id || order.id || "N/A"
   }
 
-  // Get payment method for order
+  // Get payment method for order (all orders in Pocket Details are delivered → Paid)
   const getPaymentMethod = (order) => {
-    // Try multiple possible fields for payment method
     const paymentMethod = order.paymentMethod || 
                          order.payment?.method || 
                          (order.payment && typeof order.payment === 'object' ? order.payment.method : null)
     
     if (!paymentMethod) {
-      // Default to Online if not found
-      return { type: 'Online', label: 'Online', color: 'text-green-600' }
+      return { type: 'Online', label: 'Paid · Online', color: 'text-green-600' }
     }
     
     const method = String(paymentMethod).toLowerCase().trim()
-    // Check if it's COD (cash or cod)
     if (method === 'cash' || method === 'cod') {
-      return { type: 'COD', label: 'Cash on Delivery', color: 'text-amber-600' }
+      return { type: 'COD', label: 'Paid · COD', color: 'text-amber-600' }
     }
-    // Otherwise it's online payment (razorpay, wallet, upi, card, etc.)
-    return { type: 'Online', label: 'Online', color: 'text-green-600' }
+    return { type: 'Online', label: 'Paid · Online', color: 'text-green-600' }
   }
 
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -27,6 +28,7 @@ import appzetoLogo from "@/assets/appzetologo.png"
 import { adminAPI } from "@/lib/api"
 
 export default function AdminHome() {
+  const navigate = useNavigate()
   const [selectedZone, setSelectedZone] = useState("all")
   const [selectedPeriod, setSelectedPeriod] = useState("overall")
   const [isLoading, setIsLoading] = useState(true)
@@ -193,6 +195,7 @@ export default function AdminHome() {
               helper="Rolling 12 months"
               icon={<ShoppingBag className="h-5 w-5 text-emerald-600" />}
               accent="bg-emerald-200/40"
+              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Commission earned"
@@ -200,6 +203,7 @@ export default function AdminHome() {
               helper="Restaurant commission"
               icon={<ArrowUpRight className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
+              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Orders processed"
@@ -207,6 +211,7 @@ export default function AdminHome() {
               helper="Fulfilled & billed"
               icon={<Activity className="h-5 w-5 text-amber-600" />}
               accent="bg-amber-200/40"
+              onClick={() => navigate("/admin/orders/all")}
             />
             <MetricCard
               title="Platform fee"
@@ -214,6 +219,7 @@ export default function AdminHome() {
               helper="Total platform fees"
               icon={<CreditCard className="h-5 w-5 text-purple-600" />}
               accent="bg-purple-200/40"
+              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Delivery fee"
@@ -221,6 +227,7 @@ export default function AdminHome() {
               helper="Total delivery fees"
               icon={<Truck className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
+              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="GST"
@@ -228,6 +235,7 @@ export default function AdminHome() {
               helper="Total GST collected"
               icon={<Receipt className="h-5 w-5 text-orange-600" />}
               accent="bg-orange-200/40"
+              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Total revenue"
@@ -235,6 +243,7 @@ export default function AdminHome() {
               helper={`Commission ₹${commissionTotal.toFixed(2)} + Platform ₹${platformFeeTotal.toFixed(2)} + Delivery ₹${deliveryFeeTotal.toFixed(2)} + GST ₹${gstTotal.toFixed(2)}`}
               icon={<DollarSign className="h-5 w-5 text-green-600" />}
               accent="bg-green-200/40"
+              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Total restaurants"
@@ -242,6 +251,7 @@ export default function AdminHome() {
               helper="All registered restaurants"
               icon={<Store className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
+              onClick={() => navigate("/admin/restaurants")}
             />
             <MetricCard
               title="Restaurant request pending"
@@ -249,6 +259,7 @@ export default function AdminHome() {
               helper="Awaiting approval"
               icon={<UserCheck className="h-5 w-5 text-orange-600" />}
               accent="bg-orange-200/40"
+              onClick={() => navigate("/admin/restaurants/joining-request")}
             />
             <MetricCard
               title="Total delivery boy"
@@ -256,6 +267,7 @@ export default function AdminHome() {
               helper="All delivery partners"
               icon={<Truck className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
+              onClick={() => navigate("/admin/delivery-partners")}
             />
             <MetricCard
               title="Delivery boy request pending"
@@ -263,6 +275,7 @@ export default function AdminHome() {
               helper="Awaiting verification"
               icon={<Clock className="h-5 w-5 text-yellow-600" />}
               accent="bg-yellow-200/40"
+              onClick={() => navigate("/admin/delivery-partners/join-request")}
             />
             <MetricCard
               title="Total foods"
@@ -270,6 +283,7 @@ export default function AdminHome() {
               helper="Active menu items"
               icon={<Package className="h-5 w-5 text-purple-600" />}
               accent="bg-purple-200/40"
+              onClick={() => navigate("/admin/foods")}
             />
             <MetricCard
               title="Hotel QR Commission"
@@ -277,6 +291,7 @@ export default function AdminHome() {
               helper="From QR Orders"
               icon={<QrCode className="h-5 w-5 text-pink-600" />}
               accent="bg-pink-200/40"
+              onClick={() => navigate("/admin/hotels")}
             />
             <MetricCard
               title="Total customers"
@@ -284,6 +299,7 @@ export default function AdminHome() {
               helper="Registered users"
               icon={<UserCircle className="h-5 w-5 text-cyan-600" />}
               accent="bg-cyan-200/40"
+              onClick={() => navigate("/admin/customers")}
             />
             <MetricCard
               title="Pending orders"
@@ -291,6 +307,7 @@ export default function AdminHome() {
               helper="Orders awaiting processing"
               icon={<Clock className="h-5 w-5 text-red-600" />}
               accent="bg-red-200/40"
+              onClick={() => navigate("/admin/orders/pending")}
             />
             <MetricCard
               title="Completed orders"
@@ -298,6 +315,7 @@ export default function AdminHome() {
               helper="Successfully delivered"
               icon={<CheckCircle className="h-5 w-5 text-emerald-600" />}
               accent="bg-emerald-200/40"
+              onClick={() => navigate("/admin/orders/delivered")}
             />
           </div>
 
@@ -499,9 +517,13 @@ export default function AdminHome() {
   )
 }
 
-function MetricCard({ title, value, helper, icon, accent }) {
+function MetricCard({ title, value, helper, icon, accent, onClick }) {
   return (
-    <Card className="overflow-hidden border-neutral-200 bg-white p-0">
+    <Card
+      className={`overflow-hidden border-neutral-200 bg-white p-0 ${onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+    >
       <CardContent className="relative flex flex-col gap-2 px-4 pb-4 pt-4">
         <div className={`absolute inset-0 ${accent} `} />
         <div className="relative flex items-center justify-between">

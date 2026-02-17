@@ -1557,6 +1557,68 @@ export const getOrderDetails = async (req, res) => {
 };
 
 /**
+ * Update delivery instructions (note) for an order
+ * PATCH /api/order/:id/note
+ */
+export const updateOrderNote = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { note } = req.body;
+
+    // Find order by MongoDB _id or orderId
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      order = await Order.findOne({ _id: id, userId });
+    }
+    if (!order) {
+      order = await Order.findOne({ orderId: id, userId });
+    }
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (order.status === "delivered") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot update delivery instructions for a delivered order",
+      });
+    }
+
+    if (order.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot update delivery instructions for a cancelled order",
+      });
+    }
+
+    order.note = typeof note === "string" ? note.trim() : "";
+    await order.save();
+
+    res.json({
+      success: true,
+      message: "Delivery instructions updated",
+      data: {
+        order: {
+          orderId: order.orderId,
+          note: order.note,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error(`Error updating order note: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update delivery instructions",
+    });
+  }
+};
+
+/**
  * Cancel order by user
  * PATCH /api/order/:id/cancel
  */

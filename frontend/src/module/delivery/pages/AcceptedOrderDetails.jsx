@@ -11,8 +11,10 @@ import {
   Home,
   FileText,
   UtensilsCrossed,
-  User
+  User,
+  Loader2
 } from "lucide-react"
+import { deliveryAPI } from "@/lib/api"
 import { 
   getDeliveryOrderStatus, 
   getDeliveryStatusMessage,
@@ -29,6 +31,32 @@ export default function AcceptedOrderDetails() {
   const { orderId } = useParams()
   const [orderStatus, setOrderStatus] = useState(() => getDeliveryOrderStatus(orderId))
   const [paymentStatus, setPaymentStatus] = useState(() => getDeliveryOrderPaymentStatus(orderId))
+  const [order, setOrder] = useState(null)
+  const [loadingOrder, setLoadingOrder] = useState(true)
+
+  // Fetch order details for price breakdown and real data
+  useEffect(() => {
+    if (!orderId) {
+      setLoadingOrder(false)
+      return
+    }
+    let cancelled = false
+    const fetchOrder = async () => {
+      try {
+        setLoadingOrder(true)
+        const res = await deliveryAPI.getOrderDetails(orderId)
+        if (cancelled) return
+        const data = res?.data?.data?.order || res?.data?.order
+        if (data) setOrder(data)
+      } catch (e) {
+        if (!cancelled) console.error('Failed to fetch order details:', e)
+      } finally {
+        if (!cancelled) setLoadingOrder(false)
+      }
+    }
+    fetchOrder()
+    return () => { cancelled = true }
+  }, [orderId])
 
   // Listen for order status updates
   useEffect(() => {
@@ -52,50 +80,59 @@ export default function AcceptedOrderDetails() {
 
   const statusMessage = getDeliveryStatusMessage(orderStatus)
 
-  // Order data matching the image exactly
+  // Build orderData from API order or fallback to defaults for display
+  const pricing = order?.pricing || {}
+  const subtotal = pricing.subtotal ?? 0
+  const discount = pricing.discount ?? 0
+  const deliveryFee = pricing.deliveryFee ?? 0
+  const tax = pricing.tax ?? 0
+  const platformFee = pricing.platformFee ?? 0
+  const total = pricing.total ?? subtotal - discount + deliveryFee + tax + platformFee
+  const items = order?.items || []
+  const customerName = order?.userId?.name || (typeof order?.userId === 'object' && order?.userId?.name) || 'Customer'
+  const customerAddress = order?.address?.formattedAddress || [order?.address?.street, order?.address?.city, order?.address?.state].filter(Boolean).join(', ') || '—'
+  const restaurantName = order?.restaurantId?.name || (typeof order?.restaurantId === 'object' && order?.restaurantId?.name) || 'Restaurant'
+  const restaurantAddress = order?.restaurantId?.address ? (typeof order.restaurantId.address === 'string' ? order.restaurantId.address : [order.restaurantId.address?.street, order.restaurantId.address?.city].filter(Boolean).join(', ')) : '—'
+  const paymentMethodDisplay = order?.paymentMethod === 'cash' || order?.payment?.method === 'cash' ? 'Cash' : 'Online'
+
   const orderData = {
-    id: orderId || "100102",
+    id: order?.orderId || orderId || "—",
     status: orderStatus,
     deliveryTime: "1 - 5 Min",
     customer: {
-      name: "Hshsgs Gsvsgs",
-      address: "R9HC+GHV, Dhaka 1216,",
-      image: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=100&h=100&fit=crop&q=80"
+      name: customerName,
+      address: customerAddress,
+      image: order?.userId?.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(customerName)}&background=random`
     },
     restaurant: {
-      name: "Hungry Puppets",
-      address: "House: 00, Road: 00, Tes..",
+      name: restaurantName,
+      address: restaurantAddress,
       rating: 3.3
     },
-    items: [
-      {
-        id: 1,
-        name: "Medu Vada",
-        price: 95.00,
-        variation: "Capacity (1 Person)",
-        quantity: 1,
-        type: "Non Veg",
-        image: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=100&h=100&fit=crop&q=80"
-      },
-      {
-        id: 2,
-        name: "grilled lemon herb mediterrane...",
-        price: 540.00,
-        variation: "Size (Small)",
-        quantity: 1,
-        type: "Non Veg",
-        image: "https://images.unsplash.com/photo-1544025162-d76694265947?w=100&h=100&fit=crop&q=80"
-      }
+    items: items.length > 0 ? items.map((it, i) => ({
+      id: it._id || it.itemId || i,
+      name: it.name || 'Item',
+      price: it.price ?? 0,
+      variation: it.selectedVariantName || it.variation || '—',
+      quantity: it.quantity ?? 1,
+      type: it.isVeg === false ? 'Non Veg' : 'Veg',
+      image: it.image || it.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100&h=100&fit=crop'
+    })) : [
+      { id: 1, name: "—", price: 0, variation: "—", quantity: 0, type: "—", image: "" }
     ],
-    cutlery: "No",
+    cutlery: order?.sendCutlery ? "Yes" : "No",
     paymentMethod: {
       status: paymentStatus,
-      method: "Cash"
+      method: paymentMethodDisplay
     },
     billing: {
-      subtotal: 697.35,
-      deliverymanTips: 0.00,
-      total: 697.35
+      subtotal,
+      discount,
+      deliveryFee,
+      tax,
+      platformFee,
+      deliverymanTips: 0,
+      total
     },
     statusMessage: statusMessage.message,
     statusDescription: statusMessage.description
@@ -283,23 +320,54 @@ export default function AcceptedOrderDetails() {
           </div>
         </div>
 
-        {/* Billing Info */}
+        {/* Billing Info - full price breakdown */}
         <div>
           <h3 className="text-gray-900 font-semibold mb-3">Billing Info</h3>
-          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">Subtotal</span>
-              <span className="text-gray-900 font-medium">₹ {orderData.billing.subtotal.toFixed(2)}</span>
+          {loadingOrder ? (
+            <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-center gap-2 text-gray-500">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Loading...</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">Deliveryman Tips</span>
-              <span className="text-gray-900 font-medium">(+) ₹ {orderData.billing.deliverymanTips.toFixed(2)}</span>
+          ) : (
+            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">Item Subtotal</span>
+                <span className="text-gray-900 font-medium">₹ {Number(orderData.billing.subtotal).toFixed(2)}</span>
+              </div>
+              {Number(orderData.billing.discount) > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Discount</span>
+                  <span className="text-green-600 font-medium">- ₹ {Number(orderData.billing.discount).toFixed(2)}</span>
+                </div>
+              )}
+              {Number(orderData.billing.deliveryFee) > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Delivery Charge</span>
+                  <span className="text-gray-900 font-medium">₹ {Number(orderData.billing.deliveryFee).toFixed(2)}</span>
+                </div>
+              )}
+              {Number(orderData.billing.tax) > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Tax</span>
+                  <span className="text-gray-900 font-medium">₹ {Number(orderData.billing.tax).toFixed(2)}</span>
+                </div>
+              )}
+              {Number(orderData.billing.platformFee) > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Platform Fee</span>
+                  <span className="text-gray-900 font-medium">₹ {Number(orderData.billing.platformFee).toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">Deliveryman Tips</span>
+                <span className="text-gray-900 font-medium">(+) ₹ {Number(orderData.billing.deliverymanTips || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between pt-3 border-t border-gray-300">
+                <span className="text-[#ff8100] font-semibold">Total Amount</span>
+                <span className="text-[#ff8100] font-bold text-lg">₹ {Number(orderData.billing.total).toFixed(2)}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between pt-3 border-t border-gray-300">
-              <span className="text-[#ff8100] font-semibold">Total Amount</span>
-              <span className="text-[#ff8100] font-bold text-lg">₹ {orderData.billing.total.toFixed(2)}</span>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

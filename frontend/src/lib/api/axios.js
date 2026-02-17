@@ -1,7 +1,7 @@
 import axios from "axios";
 import { toast } from "sonner";
 import { API_BASE_URL } from "./config.js";
-import { getRoleFromToken, clearModuleAuth } from "../utils/auth.js";
+import { getRoleFromToken, clearModuleAuth, getModuleToken } from "../utils/auth.js";
 
 // Network error tracking to prevent spam
 const networkErrorState = {
@@ -78,8 +78,8 @@ function getTokenForCurrentRoute() {
       !path.startsWith("/delivery") &&
       !path.startsWith("/hotel"))
   ) {
-    // User module includes /restaurants/* and /usermain/* paths
-    return localStorage.getItem("user_accessToken");
+    // User module: use getModuleToken so Remember Me uses sessionStorage vs localStorage
+    return getModuleToken("user") || localStorage.getItem("accessToken");
   }
 
   // Fallback to legacy token for backward compatibility

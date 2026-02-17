@@ -107,7 +107,7 @@ export default function Category() {
     try {
       setLoading(true)
       const params = {}
-      if (searchQuery) params.search = searchQuery
+      if (searchQuery) params.search = searchQuery.trim()
       
       const response = await adminAPI.getCategories(params)
       if (response.data.success) {
@@ -271,19 +271,19 @@ export default function Category() {
       })
       doc.text(`Generated on: ${date}`, 14, 28)
       
-      // Prepare table data
+      // Prepare table data - include name, status, created date, serial number
       const tableData = filteredCategories.map((category, index) => [
-        category.sl || index + 1,
+        index + 1,
         category.name || 'N/A',
-        category.type || 'N/A',
-        category.status ? 'Active' : 'Inactive',
-        category.id || 'N/A'
+        category.status === true || category.status === 'true' ? 'Active' : 'Inactive',
+        category.createdAt ? new Date(category.createdAt).toLocaleDateString() : 'N/A',
+        category._id || category.id || 'N/A'
       ])
       
       // Add table
       autoTable(doc, {
         startY: 35,
-        head: [['SL', 'Category Name', 'Type', 'Status', 'ID']],
+        head: [['S.No', 'Category Name', 'Status', 'Created Date', 'ID']],
         body: tableData,
         theme: 'striped',
         headStyles: {
@@ -305,10 +305,10 @@ export default function Category() {
           lineWidth: 0.5
         },
         columnStyles: {
-          0: { cellWidth: 20 }, // SL
-          1: { cellWidth: 70 }, // Category Name
-          2: { cellWidth: 50 }, // Type
-          3: { cellWidth: 40 }, // Status
+          0: { cellWidth: 20 }, // S.No
+          1: { cellWidth: 60 }, // Category Name
+          2: { cellWidth: 30 }, // Status
+          3: { cellWidth: 40 }, // Created Date
           4: { cellWidth: 50 }  // ID
         }
       })

@@ -1,4 +1,5 @@
 import Order from '../../order/models/Order.js';
+import Restaurant from '../models/Restaurant.js';
 import RestaurantCommission from '../../admin/models/RestaurantCommission.js';
 import WithdrawalRequest from '../models/WithdrawalRequest.js';
 import RestaurantWallet from '../models/RestaurantWallet.js';
@@ -496,6 +497,29 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     // Subtract all withdrawals (pending + approved) from estimatedPayout to show available balance
     // This ensures end-to-end withdrawal calculation works correctly
     const availablePayout = Math.max(0, Math.round((currentCyclePayout - totalWithdrawals) * 100) / 100);
+
+    // Get actual withdrawable balance from RestaurantWallet (used by withdrawal API for validation)
+    let withdrawableBalance = availablePayout;
+    try {
+      // Ensure we use ObjectId - req.restaurant._id may be ObjectId or string
+      let restaurantObjectId = restaurant._id;
+      if (!restaurantObjectId || !mongoose.Types.ObjectId.isValid(restaurantObjectId)) {
+        const doc = await Restaurant.findOne({
+          $or: [
+            { restaurantId: restaurantId },
+            { slug: restaurantId },
+          ],
+        }).select('_id').lean();
+        restaurantObjectId = doc?._id;
+      }
+      if (restaurantObjectId) {
+        const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurantObjectId);
+        withdrawableBalance = Number(wallet.totalBalance) || 0;
+        console.log('💰 Wallet balance:', { restaurantId: restaurantObjectId.toString(), withdrawableBalance });
+      }
+    } catch (walletErr) {
+      console.warn('⚠️ Could not fetch restaurant wallet:', walletErr.message);
+    }
     
     console.log('💰 Finance Calculation:', {
       currentCyclePayout,
@@ -512,7 +536,8 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
         totalOrders: currentCycleOrders.length,
         totalOrderValue: Math.round(currentCycleTotal * 100) / 100,
         totalCommission: Math.round(currentCycleCommission * 100) / 100,
-        estimatedPayout: availablePayout, // Show available balance after pending withdrawals
+        estimatedPayout: availablePayout, // Calculated from orders (for display)
+        withdrawableBalance, // Actual wallet balance - use this for withdrawal validation
         payoutDate: null, // Will be set when payout is processed
         orders: currentCycleOrdersData // Include orders array in response
       },

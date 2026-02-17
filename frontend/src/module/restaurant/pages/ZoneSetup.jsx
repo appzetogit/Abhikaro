@@ -13,9 +13,11 @@ export default function ZoneSetup() {
   const markerRef = useRef(null)
   const autocompleteInputRef = useRef(null)
   const autocompleteRef = useRef(null)
-  
+  const mapErrorCleanupRef = useRef(null) // { observer, timeouts } for unmount cleanup
+
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("")
   const [mapLoading, setMapLoading] = useState(true)
+  const [mapLoadError, setMapLoadError] = useState(false) // true when map fails (e.g. billing not enabled)
   const [saving, setSaving] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
   const [locationSearch, setLocationSearch] = useState("")
@@ -25,6 +27,23 @@ export default function ZoneSetup() {
   useEffect(() => {
     fetchRestaurantData()
     loadGoogleMaps()
+    return () => {
+      const cleanup = mapErrorCleanupRef.current
+      if (cleanup) {
+        if (cleanup.observer) cleanup.observer.disconnect()
+        if (cleanup.timeouts) cleanup.timeouts.forEach(clearTimeout)
+      }
+    }
+  }, [])
+
+  // When main.jsx reports Google Maps billing/API error, show our overlay immediately
+  useEffect(() => {
+    const onMapsError = () => {
+      setMapLoadError(true)
+      setMapLoading(false)
+    }
+    window.addEventListener("googleMapsLoadError", onMapsError)
+    return () => window.removeEventListener("googleMapsLoadError", onMapsError)
   }, [])
 
   // Initialize Places Autocomplete when map is loaded
@@ -181,9 +200,18 @@ export default function ZoneSetup() {
         alert("Google Maps API key not found. Please contact administrator.")
       }
     } catch (error) {
-      console.error("❌ Error loading Google Maps:", error)
+      const msg = error?.message || ""
+      const isBillingOrKey = msg.includes("BillingNotEnabled") || msg.includes("REQUEST_DENIED") || msg.includes("InvalidKey") || msg.includes("RefererNotAllowed")
+      if (isBillingOrKey) {
+        console.warn("Google Maps unavailable (billing or API key). Zone Setup map will show a message.")
+      } else {
+        console.error("❌ Error loading Google Maps:", error)
+      }
+      setMapLoadError(true)
       setMapLoading(false)
-      alert(`Failed to load Google Maps: ${error.message}. Please refresh the page or contact administrator.`)
+      if (!isBillingOrKey) {
+        alert(`Failed to load Google Maps: ${error.message}. Please refresh the page or contact administrator.`)
+      }
     }
   }
 
@@ -220,6 +248,40 @@ export default function ZoneSetup() {
       mapInstanceRef.current = map
       console.log("✅ Map initialized successfully")
 
+      // Detect billing/API errors immediately via map 'error' event (e.g. BillingNotEnabledMapError)
+      if (window.google.maps.event) {
+        window.google.maps.event.addListener(map, 'error', () => {
+          setMapLoadError(true)
+          setMapLoading(false)
+          console.warn("Google Maps reported an error (e.g. billing). Enable billing in Google Cloud Console for the map.")
+        })
+      }
+
+      // Watch for Google's "This page can't load Google Maps correctly" dialog (appears when billing not enabled)
+      const container = mapRef.current
+      if (container) {
+        const checkText = () => {
+          const text = (container.innerText || "").toLowerCase()
+          if (text.includes("can't load google maps correctly") || text.includes("do you own this website")) {
+            setMapLoadError(true)
+            setMapLoading(false)
+            return true
+          }
+          return false
+        }
+        const observer = new MutationObserver(() => {
+          if (checkText()) observer.disconnect()
+        })
+        observer.observe(container, { childList: true, subtree: true, characterData: true })
+        const t1 = setTimeout(() => { if (checkText()) observer.disconnect() }, 500)
+        const t2 = setTimeout(() => { if (checkText()) observer.disconnect() }, 1500)
+        const t3 = setTimeout(() => {
+          if (checkText()) observer.disconnect()
+          observer.disconnect()
+        }, 2500)
+        mapErrorCleanupRef.current = { observer, timeouts: [t1, t2, t3] }
+      }
+
       // Add click listener to place marker
       map.addListener('click', (event) => {
         const lat = event.latLng.lat()
@@ -249,6 +311,7 @@ export default function ZoneSetup() {
       console.log("✅ Map loading complete")
     } catch (error) {
       console.error("❌ Error in initializeMap:", error)
+      setMapLoadError(true)
       setMapLoading(false)
       alert("Failed to initialize map. Please refresh the page.")
     }
@@ -331,6 +394,23 @@ export default function ZoneSetup() {
     
     return parts.length > 0 ? parts.join(", ") : ""
   }
+
+  // When map fails, we can still offer to save existing restaurant location
+  const existingLocationForSave = (() => {
+    const loc = restaurantData?.location
+    if (!loc) return null
+    let lat = null, lng = null
+    if (loc.coordinates?.length >= 2) {
+      lng = loc.coordinates[0]
+      lat = loc.coordinates[1]
+    } else if (loc.latitude != null && loc.longitude != null) {
+      lat = parseFloat(loc.latitude)
+      lng = parseFloat(loc.longitude)
+    }
+    if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return null
+    const address = loc.formattedAddress || loc.address || formatAddress(loc) || `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+    return { lat, lng, address }
+  })()
 
   const handleSaveLocation = async () => {
     if (!selectedLocation) {
@@ -457,7 +537,6 @@ export default function ZoneSetup() {
 
         {/* Map Container */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden relative">
-          {/* Always render the map div, show loading overlay on top */}
           <div ref={mapRef} className="w-full h-[600px]" style={{ minHeight: '600px' }} />
           {mapLoading && (
             <div className="absolute inset-0 bg-white flex items-center justify-center z-10">
@@ -465,6 +544,66 @@ export default function ZoneSetup() {
                 <Loader2 className="w-8 h-8 animate-spin text-red-600 mx-auto mb-2" />
                 <p className="text-gray-600">Loading map...</p>
                 <p className="text-xs text-gray-400 mt-2">If this takes too long, please refresh the page</p>
+              </div>
+            </div>
+          )}
+          {/* When map fails (e.g. BillingNotEnabledMapError), show friendly message and option to save current address */}
+          {mapLoadError && !mapLoading && (
+            <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-[50] p-6">
+              <div className="text-center max-w-md">
+                <MapPin className="w-14 h-14 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Map could not be loaded</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Google Maps needs billing enabled for your API key. Ask your admin to enable billing in Google Cloud Console for the Maps JavaScript API, or to fix the API key.
+                </p>
+                <p className="text-xs text-gray-500 mb-4">
+                  You can still save your existing restaurant address as the location below.
+                </p>
+                {restaurantData?.location && (() => {
+                  const loc = restaurantData.location
+                  let lat = null, lng = null
+                  if (loc.coordinates?.length >= 2) {
+                    lng = loc.coordinates[0]
+                    lat = loc.coordinates[1]
+                  } else if (loc.latitude != null && loc.longitude != null) {
+                    lat = parseFloat(loc.latitude)
+                    lng = parseFloat(loc.longitude)
+                  }
+                  const address = loc.formattedAddress || loc.address || formatAddress(loc) || ""
+                  if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSaving(true)
+                          try {
+                            const response = await restaurantAPI.updateProfile({
+                              location: { ...(restaurantData?.location || {}), latitude: lat, longitude: lng, coordinates: [lng, lat], formattedAddress: address }
+                            })
+                            if (response?.data?.data?.restaurant) {
+                              setRestaurantData(response.data.data.restaurant)
+                              alert("Location saved successfully!")
+                              window.dispatchEvent(new Event("restaurantLocationSet"))
+                              window.dispatchEvent(new Event("restaurantProfileRefresh"))
+                              window.location.reload()
+                            } else throw new Error("Failed to save")
+                          } catch (e) {
+                            console.error(e)
+                            alert(e.response?.data?.message || "Failed to save location.")
+                          } finally {
+                            setSaving(false)
+                          }
+                        }}
+                        disabled={saving}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                        <span>{saving ? "Saving..." : "Save current address as location"}</span>
+                      </button>
+                    )
+                  }
+                  return null
+                })()}
               </div>
             </div>
           )}

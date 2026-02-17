@@ -19,7 +19,10 @@ import {
 import {
   updateSettlementOnStatusChange,
   calculateOrderSettlement,
+  getOrderSettlement,
 } from "../../order/services/orderSettlementService.js";
+import RestaurantWallet from "../models/RestaurantWallet.js";
+import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
 import mongoose from "mongoose";
 
 /**
@@ -234,6 +237,15 @@ export const getRestaurantOrderById = asyncHandler(async (req, res) => {
 
     if (!order) {
       return errorResponse(res, 404, "Order not found");
+    }
+
+    // Use Payment collection as source of truth for payment status (order.payment may be stale)
+    const paymentRecord = await Payment.findOne({ orderId: order._id }).select("status method").lean();
+    if (paymentRecord && String(paymentRecord.status).toLowerCase() === "completed") {
+      if (!order.payment) order.payment = {};
+      order.payment.status = "completed";
+    } else if (paymentRecord && order.payment) {
+      order.payment.status = paymentRecord.status || order.payment.status;
     }
 
     return successResponse(res, 200, "Order retrieved successfully", {
@@ -1172,7 +1184,7 @@ export const markOrderReady = asyncHandler(async (req, res) => {
 
     await order.save();
 
-    // Trigger settlement update if status changed to delivered
+    // Trigger settlement update and credit restaurant wallet if status changed to delivered
     if (order.status === "delivered") {
       try {
         await updateSettlementOnStatusChange(
@@ -1181,6 +1193,34 @@ export const markOrderReady = asyncHandler(async (req, res) => {
           previousStatus,
         );
         console.log(`✅ Settlement updated for hotel order ${order.orderId}`);
+
+        // Credit restaurant wallet (hotel orders skip delivery flow, so wallet is never credited there)
+        const settlement = await getOrderSettlement(order._id);
+        const netEarning = settlement?.restaurantEarning?.netEarning;
+        if (restaurant._id && netEarning != null && netEarning > 0) {
+          const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurant._id);
+          const orderIdStr = order._id?.toString?.() || order._id;
+          const existingTx = wallet.transactions?.find(
+            (t) => t.orderId?.toString() === orderIdStr && t.type === "payment"
+          );
+          if (!existingTx) {
+            const orderTotal = order.pricing?.subtotal || order.pricing?.total || 0;
+            const commissionResult = await RestaurantCommission.calculateCommissionForOrder(
+              restaurant._id,
+              orderTotal
+            );
+            const commission = commissionResult.commission || 0;
+            wallet.addTransaction({
+              amount: netEarning,
+              type: "payment",
+              status: "Completed",
+              description: `Order #${order.orderId} - Amount: ₹${orderTotal.toFixed(2)}, Commission: ₹${commission.toFixed(2)}`,
+              orderId: order._id,
+            });
+            await wallet.save();
+            console.log(`✅ Restaurant wallet credited ₹${netEarning.toFixed(2)} for hotel order ${order.orderId}`);
+          }
+        }
       } catch (settlementError) {
         console.error(
           `❌ Error updating settlement for hotel order ${order.orderId}:`,

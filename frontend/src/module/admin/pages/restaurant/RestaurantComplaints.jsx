@@ -67,7 +67,7 @@ export default function RestaurantComplaints() {
       }
       if (filters.status && filters.status !== 'all') params.status = filters.status
       if (filters.complaintType && filters.complaintType !== 'all') params.complaintType = filters.complaintType
-      if (filters.search) params.search = filters.search
+      if (filters.search?.trim()) params.search = filters.search.trim()
 
       const response = await adminAPI.getRestaurantComplaints(params)
       if (response?.data?.success) {
@@ -183,22 +183,50 @@ export default function RestaurantComplaints() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
                       <div>
                         <p className="text-xs text-gray-500">Order</p>
-                        <p className="font-medium">#{complaint.orderNumber}</p>
+                        <p className="font-medium">#{complaint.orderNumber || complaint.orderId?.orderNumber || "N/A"}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">Customer</p>
-                        <p className="font-medium">{complaint.customerName}</p>
+                        <p className="font-medium">{complaint.customerName || complaint.customerId?.name || "N/A"}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">Restaurant</p>
-                        <p className="font-medium">{complaint.restaurantName}</p>
+                        <p className="font-medium">{complaint.restaurantName || complaint.restaurantId?.name || "N/A"}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">Type</p>
-                        <p className="font-medium capitalize">{complaint.complaintType.replace('_', ' ')}</p>
+                        <p className="font-medium capitalize">{(complaint.complaintType || "").replace('_', ' ')}</p>
                       </div>
                     </div>
                   </div>
+                  <Select
+                    value={complaint.status}
+                    onValueChange={async (value) => {
+                      try {
+                        const response = await adminAPI.updateRestaurantComplaintStatus(complaint._id, value)
+                        if (response?.data?.success) {
+                          toast.success("Complaint status updated successfully")
+                          fetchComplaints()
+                        } else {
+                          toast.error("Failed to update status")
+                        }
+                      } catch (err) {
+                        console.error("Error updating complaint status:", err)
+                        toast.error(err?.response?.data?.message || "Failed to update status")
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Update status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.filter((o) => o.value !== "all").map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <p className="text-sm text-gray-700 mb-3">{complaint.description}</p>
                 {complaint.restaurantResponse && (

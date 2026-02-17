@@ -421,8 +421,9 @@ export default function PocketPage() {
     ?.filter(t => t.type === 'payment' && t.description?.toLowerCase().includes('tip'))
     .reduce((sum, t) => sum + (t.amount || 0), 0) || 0
 
-  // Payout data - calculate from completed withdrawals in previous week
+  // Payout data - calculate from completed withdrawals in previous week (use Number() so amount updates correctly)
   const calculatePayoutAmount = () => {
+    const txs = walletState?.transactions || []
     const now = new Date()
     const lastWeekStart = new Date(now)
     lastWeekStart.setDate(now.getDate() - now.getDay() - 7) // Previous week start
@@ -431,14 +432,16 @@ export default function PocketPage() {
     lastWeekEnd.setDate(lastWeekStart.getDate() + 6)
     lastWeekEnd.setHours(23, 59, 59, 999)
 
-    return walletState.transactions
-      ?.filter(t => {
-        if (t.type !== 'withdrawal' || t.status !== 'Completed') return false
+    return txs
+      .filter(t => {
+        const type = (t.type || '').toLowerCase()
+        const status = (t.status || '').toLowerCase()
+        if (type !== 'withdrawal' || status !== 'completed') return false
         const transactionDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null)
         if (!transactionDate) return false
         return transactionDate >= lastWeekStart && transactionDate <= lastWeekEnd
       })
-      .reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
   }
 
   const payoutAmount = calculatePayoutAmount()
@@ -1063,7 +1066,7 @@ export default function PocketPage() {
               onClick={() => navigate("/delivery/payout")}
             >
               <CardContent className="p-4 flex flex-col items-start text-start">
-                <div className="text-black text-2xl font-bold mb-2">₹{payoutAmount}</div>
+                <div className="text-black text-2xl font-bold mb-2">₹{Number(payoutAmount).toFixed(2)}</div>
                 <div className="text-black text-sm font-medium mb-1">Payout</div>
                 <div className="text-gray-600 text-xs">{payoutPeriod}</div>
               </CardContent>

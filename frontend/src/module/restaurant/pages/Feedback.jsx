@@ -147,6 +147,14 @@ export default function Feedback() {
     totalRatings: 0,
     totalReviews: 0
   })
+  const [refreshReviewsTrigger, setRefreshReviewsTrigger] = useState(0)
+
+  // Refetch reviews when window gains focus (e.g. user returns to tab) so count/data stay updated
+  useEffect(() => {
+    const onFocus = () => setRefreshReviewsTrigger(t => t + 1)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   // Fetch restaurant data
   useEffect(() => {
@@ -376,10 +384,10 @@ export default function Feedback() {
       }
     }
 
-    if (!isLoadingRestaurant) {
+    if (!isLoadingRestaurant && activeTab === 'reviews') {
       fetchReviews()
     }
-  }, [isLoadingRestaurant, restaurantData])
+  }, [isLoadingRestaurant, restaurantData, activeTab, refreshReviewsTrigger])
 
   // Persist reviews to localStorage whenever they change (removed - now done in fetchReviews)
 

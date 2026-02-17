@@ -356,6 +356,7 @@ export const API_ENDPOINTS = {
     SAFETY_EMERGENCY_CREATE: "/safety-emergency",
     ENV_VARIABLES: "/admin/env-variables",
     ORDERS: "/admin/orders",
+    ORDERS_APPROVE_OFFLINE_PAYMENT: "/admin/orders/:orderId/approve-offline-payment",
     ORDERS_SEARCHING_DELIVERYMAN: "/admin/orders/searching-deliveryman",
     ORDERS_ONGOING: "/admin/orders/ongoing",
     ORDERS_TRANSACTION_REPORT: "/admin/orders/transaction-report",
@@ -424,6 +425,7 @@ export const API_ENDPOINTS = {
     VERIFY_PAYMENT: "/order/verify-payment",
     CALCULATE: "/order/calculate",
     CANCEL: "/order/:id/cancel",
+    UPDATE_NOTE: "/order/:id/note",
   },
   // Payment endpoints
   PAYMENT: {

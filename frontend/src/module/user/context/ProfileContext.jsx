@@ -5,18 +5,17 @@ const ProfileContext = createContext(null)
 
 export function ProfileProvider({ children }) {
   const [userProfile, setUserProfile] = useState(() => {
-    // First, try to get from localStorage (user_user from auth)
-    const userStr = localStorage.getItem("user_user")
+    // Session first (when Remember Me is off), then localStorage
+    const userStr = sessionStorage.getItem("user_user") || localStorage.getItem("user_user")
     if (userStr) {
       try {
         return JSON.parse(userStr)
       } catch (e) {
-        console.error("Error parsing user_user from localStorage:", e)
+        console.error("Error parsing user_user:", e)
       }
     }
 
-    // Fallback to userProfile from localStorage
-    const saved = localStorage.getItem("userProfile")
+    const saved = sessionStorage.getItem("userProfile") || localStorage.getItem("userProfile")
     if (saved) {
       try {
         return JSON.parse(saved)
@@ -105,9 +104,9 @@ export function ProfileProvider({ children }) {
   // Fetch user profile and addresses from API on mount and when authentication changes
   useEffect(() => {
     const fetchUserProfile = async () => {
-      // Check if user is authenticated
-      const isAuthenticated = localStorage.getItem("user_authenticated") === "true" ||
-        localStorage.getItem("user_accessToken")
+      const token = sessionStorage.getItem("user_accessToken") || localStorage.getItem("user_accessToken")
+      const isAuthenticated = sessionStorage.getItem("user_authenticated") === "true" ||
+        localStorage.getItem("user_authenticated") === "true" || !!token
 
       if (!isAuthenticated) {
         setLoading(false)
@@ -123,9 +122,9 @@ export function ProfileProvider({ children }) {
 
         if (userData) {
           setUserProfile(userData)
-          // Update localStorage
-          localStorage.setItem("user_user", JSON.stringify(userData))
-          localStorage.setItem("userProfile", JSON.stringify(userData))
+          const storage = sessionStorage.getItem("user_accessToken") ? sessionStorage : localStorage
+          storage.setItem("user_user", JSON.stringify(userData))
+          storage.setItem("userProfile", JSON.stringify(userData))
         }
 
         // Fetch addresses
@@ -356,7 +355,7 @@ export function ProfileProvider({ children }) {
     setDishFavorites([])
     setVegMode(true)
 
-    // Clear localStorage
+    // Clear localStorage and sessionStorage (user may have used Remember Me or not)
     const keysToRemove = [
       "userProfile",
       "user_user",
@@ -366,7 +365,10 @@ export function ProfileProvider({ children }) {
       "userDishFavorites",
       "userVegMode"
     ]
-    keysToRemove.forEach(key => localStorage.removeItem(key))
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key)
+      sessionStorage.removeItem(key)
+    })
   }, [])
 
   // Memoize the context value to prevent unnecessary re-renders

@@ -51,8 +51,9 @@ import { isModuleAuthenticated } from "@/lib/utils/auth"
 export default function RestaurantDetails() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
+  const dishParam = searchParams.get('dish')
   const { addToCart, updateQuantity, removeFromCart, getCartItem, getCartItemId, cart } = useCart()
   const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite } = useProfile()
   const { location: userLocation } = useLocation() // Get user's current location
@@ -1264,6 +1265,41 @@ export default function RestaurantDetails() {
     restaurant?.offerText || "",
     ...(Array.isArray(restaurant?.offers) ? restaurant.offers.map((offer) => offer?.title || "") : []),
   ]
+
+  // Handle ?dish=id from Cart Edit - scroll to dish and open variant selector
+  useEffect(() => {
+    if (!dishParam || !restaurant?.menuSections) return
+    const findItemInSections = (sections) => {
+      for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+        const section = sections[sIdx]
+        if (section.items) {
+          const item = section.items.find(i => String(i?.id || i?._id) === String(dishParam))
+          if (item) return { item, sectionIndex: sIdx }
+        }
+        if (section.subsections) {
+          for (let subIdx = 0; subIdx < section.subsections.length; subIdx++) {
+            const sub = section.subsections[subIdx]
+            if (sub.items) {
+              const item = sub.items.find(i => String(i?.id || i?._id) === String(dishParam))
+              if (item) return { item, sectionIndex: sIdx }
+            }
+          }
+        }
+      }
+      return null
+    }
+    const found = findItemInSections(restaurant.menuSections)
+    if (found) {
+      setExpandedSections(prev => new Set([...prev, found.sectionIndex]))
+      setTimeout(() => {
+        const sectionEl = document.getElementById(`menu-section-${found.sectionIndex}`)
+        if (sectionEl) sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        setSelectedItem(found.item)
+        setShowItemDetail(true)
+      }, 400)
+      setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('dish'); return next }, { replace: true })
+    }
+  }, [dishParam, restaurant?.menuSections, setSearchParams])
 
   // Auto-rotate images every 3 seconds
   useEffect(() => {

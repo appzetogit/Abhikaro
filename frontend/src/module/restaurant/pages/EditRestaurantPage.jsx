@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import BottomNavbar from "../components/BottomNavbar"
 import MenuOverlay from "../components/MenuOverlay"
 import { getRestaurantData, updateRestaurantData } from "../utils/restaurantManagement"
+import { restaurantAPI } from "@/lib/api"
 
 export default function EditRestaurantPage() {
   const navigate = useNavigate()
@@ -131,19 +132,30 @@ export default function EditRestaurantPage() {
     }
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     
-    // Validate required fields
     if (!formData.restaurantName.english || !formData.address || !formData.phoneNumber) {
       alert("Please fill in all required fields (Restaurant Name, Address, Phone Number)")
       return
     }
 
-    // Save restaurant data to localStorage
+    try {
+      // Update backend profile so Hub and other modules see updated details
+      await restaurantAPI.updateProfile({
+        name: formData.restaurantName.english,
+        ownerPhone: formData.phoneNumber,
+        ...(formData.address && { location: { address: formData.address, formattedAddress: formData.address } }),
+      })
+    } catch (err) {
+      if (err.response?.status !== 401) {
+        console.error("Error updating restaurant profile:", err)
+        alert(err.response?.data?.message || "Error saving to server. Changes saved locally.")
+      }
+    }
+
     try {
       updateRestaurantData(formData)
-      // Navigate back to restaurant details page
       navigate("/restaurant/details")
     } catch (error) {
       console.error("Error saving restaurant data:", error)

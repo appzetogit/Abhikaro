@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Truck, Leaf, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, AlertCircle } from "lucide-react"
+import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Truck, Leaf, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, AlertCircle, Pencil } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import confetti from "canvas-confetti"
 
@@ -647,8 +647,9 @@ export default function Cart() {
   const total = pricing?.total || (totalBeforeDiscount - discount)
   const savings = pricing?.savings || (discount + (subtotal > 500 ? 32 : 0))
 
-  // Restaurant name from data or cart
+  // Restaurant name and slug from data or cart (slug for Edit navigation)
   const restaurantName = restaurantData?.name || cart[0]?.restaurant || "Restaurant"
+  const restaurantSlug = restaurantData?.slug || restaurantData?.name?.toLowerCase?.()?.replace(/\s+/g, "-") || cart[0]?.restaurant?.toLowerCase?.()?.replace(/\s+/g, "-") || ""
 
   // Handler to select address by label (Home, Office, Other)
   const handleSelectAddressByLabel = async (label) => {
@@ -819,8 +820,8 @@ export default function Cart() {
       console.log("💰 Applied coupon:", appliedCoupon?.code || "None")
       console.log("📍 Delivery address:", defaultAddress?.label || defaultAddress?.city)
 
-      // Ensure couponCode is included in pricing
-      const orderPricing = pricing || {
+      // Ensure couponCode is included in pricing; total must include delivery fee and other charges
+      const orderPricing = pricing ? { ...pricing } : {
         subtotal,
         deliveryFee,
         tax: gstCharges,
@@ -829,8 +830,12 @@ export default function Cart() {
         total,
         couponCode: appliedCoupon?.code || null
       };
+      if (orderPricing.deliveryFee == null) orderPricing.deliveryFee = deliveryFee;
+      const withDelivery = (orderPricing.subtotal || 0) - (orderPricing.discount || 0) + (orderPricing.deliveryFee || 0) + (orderPricing.platformFee ?? platformFee) + (orderPricing.tax ?? gstCharges);
+      if (typeof orderPricing.total !== 'number' || orderPricing.total < withDelivery - 0.5) {
+        orderPricing.total = Math.round(withDelivery);
+      }
 
-      // Add couponCode if not present but coupon is applied
       if (!orderPricing.couponCode && appliedCoupon?.code) {
         orderPricing.couponCode = appliedCoupon.code;
       }
@@ -1453,7 +1458,7 @@ export default function Cart() {
 
       {/* Scrollable Content Area */}
       <div
-        className="overflow-y-auto overflow-x-hidden pt-16 md:pt-20 pb-40 md:pb-48"
+        className="overflow-y-auto overflow-x-hidden pt-16 md:pt-20 pb-44 md:pb-56"
         style={{
           height: '100vh',
           WebkitOverflowScrolling: 'touch',
@@ -1522,6 +1527,18 @@ export default function Cart() {
                       </div>
 
                       <div className="flex items-center gap-3 md:gap-4">
+                        {/* Edit: go to restaurant menu to change variant/options */}
+                        {restaurantSlug && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/user/restaurants/${restaurantSlug}${(item.productId || (item.id && String(item.id).split("__")[0])) ? `?dish=${item.productId || String(item.id).split("__")[0]}` : ""}`)}
+                            className="p-1.5 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800 transition-colors"
+                            title="Edit item"
+                            aria-label="Edit item"
+                          >
+                            <Pencil className="h-4 w-4 md:h-4 md:w-4" />
+                          </button>
+                        )}
                         {/* Quantity controls */}
                         <div className="flex items-center border border-red-600 dark:border-red-500 rounded">
                           <button
@@ -1832,8 +1849,8 @@ export default function Cart() {
                 </Link>
               </div>
 
-              {/* Bill Details */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
+              {/* Bill Details - extra margin for spacing between total bill and footer */}
+              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl mb-8 md:mb-12 pb-4 md:pb-6">
                 <button
                   onClick={() => setShowBillDetails(!showBillDetails)}
                   className="flex items-center justify-between w-full"

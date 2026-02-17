@@ -498,7 +498,7 @@ export default function ProfileDetails() {
               type="text"
               value={bankDetails.accountNumber}
               onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '') // Only numbers
+                const value = e.target.value.replace(/\s/g, '').replace(/\D/g, '') // No spaces, only digits
                 setBankDetails(prev => ({ ...prev, accountNumber: value }))
                 setBankDetailsErrors(prev => ({ ...prev, accountNumber: "" }))
               }}
@@ -522,7 +522,7 @@ export default function ProfileDetails() {
               type="text"
               value={bankDetails.ifscCode}
               onChange={(e) => {
-                const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') // Only uppercase letters and numbers
+                const value = e.target.value.replace(/\s/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '') // No spaces, only uppercase letters and numbers
                 setBankDetails(prev => ({ ...prev, ifscCode: value }))
                 setBankDetailsErrors(prev => ({ ...prev, ifscCode: "" }))
               }}

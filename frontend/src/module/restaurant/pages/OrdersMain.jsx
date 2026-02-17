@@ -37,42 +37,19 @@ function CompletedOrders({ onSelectOrder }) {
 
     const fetchOrders = async () => {
       try {
-        const response = await restaurantAPI.getOrders()
+        // Fetch delivered orders specifically with higher limit (backend uses status filter)
+        const response = await restaurantAPI.getOrders({
+          status: 'delivered',
+          limit: 500,
+          page: 1
+        })
 
         if (!isMounted) return
 
         if (response.data?.success && response.data.data?.orders) {
-          const completedOrders = response.data.data.orders.filter(
-            order => {
-              // Only show orders that are actually delivered/completed
-              // Main status must be 'delivered' (not 'completed', 'accepted', 'out_for_delivery', etc.)
-              const isDelivered = order.status === 'delivered'
-              
-              // Exclude orders that are not delivered
-              if (!isDelivered) {
-                return false
-              }
-              
-              // Also check deliveryState to ensure order is actually completed
-              // This prevents orders that are just accepted or out_for_delivery from showing
-              const deliveryStateStatus = order.deliveryState?.status
-              const deliveryPhase = order.deliveryState?.currentPhase
-              
-              // If deliveryState exists, it must indicate completion
-              if (order.deliveryState) {
-                const isDeliveryCompleted = deliveryStateStatus === 'delivered' || 
-                                           deliveryPhase === 'completed'
-                if (!isDeliveryCompleted) {
-                  // Order status is 'delivered' but deliveryState shows it's not completed yet
-                  // This means order was just accepted or is out_for_delivery
-                  return false
-                }
-              }
-              
-              // Order is delivered and (deliveryState indicates completion OR deliveryState doesn't exist)
-              return true
-            }
-          )
+          // Backend already filters by status=delivered, so all returned orders are delivered
+          // Include all - no need for extra deliveryState filter (dine-in/hotel orders may not have deliveryState)
+          const completedOrders = response.data.data.orders
 
           const transformedOrders = completedOrders.map(order => ({
             orderId: order.orderId || order._id,
@@ -86,7 +63,9 @@ function CompletedOrders({ onSelectOrder }) {
             itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || 'Order',
-            amount: order.pricing?.total || order.total || 0
+            amount: order.pricing?.total || order.total || 0,
+            paymentMethod: order.paymentMethod ?? order.payment?.method,
+            paymentStatus: order.payment?.status
           }))
 
           transformedOrders.sort((a, b) => {
@@ -184,6 +163,8 @@ function CompletedOrders({ onSelectOrder }) {
                       tableOrToken: order.tableOrToken,
                       timePlaced: deliveredDate,
                       itemsSummary: order.itemsSummary,
+                      paymentMethod: order.paymentMethod,
+                      paymentStatus: order.paymentStatus,
                     })
                   }
                   className="w-full text-left flex gap-3 items-stretch"
@@ -291,7 +272,9 @@ function CancelledOrders({ onSelectOrder }) {
             itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || 'Order',
-            amount: order.pricing?.total || order.total || 0
+            amount: order.pricing?.total || order.total || 0,
+            paymentMethod: order.paymentMethod ?? order.payment?.method,
+            paymentStatus: order.payment?.status
           }))
 
           transformedOrders.sort((a, b) => {
@@ -395,6 +378,8 @@ function CancelledOrders({ onSelectOrder }) {
                       tableOrToken: order.tableOrToken,
                       timePlaced: cancelledDate,
                       itemsSummary: order.itemsSummary,
+                      paymentMethod: order.paymentMethod,
+                      paymentStatus: order.paymentStatus,
                     })
                   }
                   className="w-full text-left flex gap-3 items-stretch"
@@ -2041,7 +2026,20 @@ export default function OrdersMain() {
                 {selectedOrder.status !== 'ready' && selectedOrder.eta && (
                   <span>ETA: <span className="font-medium text-black">{selectedOrder.eta}</span></span>
                 )}
-                <span>Payment: <span className="font-medium text-black">Paid online</span></span>
+                <span>Payment: <span className="font-medium text-black">
+                  {(() => {
+                    const method = selectedOrder.paymentMethod ?? selectedOrder.payment?.method;
+                    const m = method != null ? String(method).toLowerCase().trim() : '';
+                    const isCod = m === 'cash' || m === 'cod';
+                    const status = (selectedOrder.paymentStatus || '').toLowerCase();
+                    if (isCod) return 'Cash on delivery';
+                    if (status === 'completed') return 'Paid online';
+                    if (status === 'failed') return 'Failed';
+                    if (status === 'refunded') return 'Refunded';
+                    if (status === 'processing') return 'Processing';
+                    return 'Pending';
+                  })()}
+                </span></span>
               </div>
 
               <button
@@ -2131,6 +2129,8 @@ function OrderCard({
   photoUrl,
   photoAlt,
   deliveryPartnerId,
+  paymentMethod,
+  paymentStatus,
   onSelect,
   onCancel,
 }) {
@@ -2163,6 +2163,8 @@ function OrderCard({
             timePlaced,
             eta,
             itemsSummary,
+            paymentMethod,
+            paymentStatus,
           })
         }
         className="w-full text-left flex gap-3 items-stretch cursor-pointer"
@@ -2308,7 +2310,9 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
               itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
               photoUrl: order.items?.[0]?.image || null,
               photoAlt: order.items?.[0]?.name || 'Order',
-              deliveryPartnerId: order.deliveryPartnerId || null // Track if delivery partner is assigned
+              deliveryPartnerId: order.deliveryPartnerId || null,
+              paymentMethod: order.paymentMethod ?? order.payment?.method,
+              paymentStatus: order.payment?.status
             }
           })
 
@@ -2498,6 +2502,8 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
                 photoUrl={order.photoUrl}
                 photoAlt={order.photoAlt}
                 deliveryPartnerId={order.deliveryPartnerId}
+                paymentMethod={order.paymentMethod}
+                paymentStatus={order.paymentStatus}
                 onSelect={onSelectOrder}
                 onCancel={onCancel}
               />
@@ -2539,10 +2545,12 @@ function ReadyOrders({ onSelectOrder }) {
             type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
             tableOrToken: null,
             timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-            eta: null, // Don't show ETA for ready orders
+            eta: null,
             itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
             photoUrl: order.items?.[0]?.image || null,
-            photoAlt: order.items?.[0]?.name || 'Order'
+            photoAlt: order.items?.[0]?.name || 'Order',
+            paymentMethod: order.paymentMethod ?? order.payment?.method,
+            paymentStatus: order.payment?.status
           }))
 
           if (isMounted) {
@@ -2659,7 +2667,9 @@ const OutForDeliveryOrders = ({ onSelectOrder }) => {
             eta: null,
             itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
             photoUrl: order.items?.[0]?.image || null,
-            photoAlt: order.items?.[0]?.name || 'Order'
+            photoAlt: order.items?.[0]?.name || 'Order',
+            paymentMethod: order.paymentMethod ?? order.payment?.method,
+            paymentStatus: order.payment?.status
           }))
 
           if (isMounted) {

@@ -27,6 +27,7 @@ import AnimatedPage from "../../components/AnimatedPage"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useProfile } from "../../context/ProfileContext"
+import { useCart } from "../../context/CartContext"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
 import OptimizedImage from "@/components/OptimizedImage"
@@ -43,6 +44,7 @@ import { clearModuleAuth } from "@/lib/utils/auth"
 
 export default function Profile() {
   const { userProfile, vegMode, setVegMode } = useProfile()
+  const cartContext = useCart()
   const navigate = useNavigate()
   const companyName = useCompanyName()
 
@@ -208,6 +210,9 @@ export default function Profile() {
       // Clear user module authentication data using utility function
       clearModuleAuth("user")
 
+      // Clear cart when logging out so new account starts with empty cart
+      if (cartContext?.clearCart) cartContext.clearCart()
+
       // Clear legacy token data for backward compatibility
       localStorage.removeItem("accessToken")
       localStorage.removeItem("user_authenticated")
@@ -225,6 +230,9 @@ export default function Profile() {
 
       // Clear local data anyway using utility function
       clearModuleAuth("user")
+
+      // Clear cart when logging out
+      if (cartContext?.clearCart) cartContext.clearCart()
 
       // Clear legacy token data for backward compatibility
       localStorage.removeItem("accessToken")

@@ -2478,6 +2478,12 @@ export default function DeliveryHome() {
                   const pickupDuration = directionsResult.routes[0]?.legs[0]?.duration?.value || 0; // in seconds
                   pickupRouteDistanceRef.current = pickupDistance;
                   pickupRouteTimeRef.current = pickupDuration;
+                  // Refresh displayed distance (pickup only until delivery route is set)
+                  const totalSoFar = pickupDistance + deliveryRouteDistanceRef.current;
+                  if (totalSoFar > 0) {
+                    setTripDistance(totalSoFar);
+                    setTripTime(pickupDuration + deliveryRouteTimeRef.current);
+                  }
                   console.log('📊 Pickup route stored:', { distance: pickupDistance, duration: pickupDuration });
                   
                   // Store directions result for rendering on main map
@@ -4294,6 +4300,10 @@ export default function DeliveryHome() {
 
       // Calculate pickup distance if not provided
       let pickupDistance = newOrder.pickupDistance;
+      if ((!pickupDistance || pickupDistance === '0 km') && newOrder.assignmentInfo?.distance != null) {
+        const d = Number(newOrder.assignmentInfo.distance);
+        pickupDistance = d > 100 ? `${(d / 1000).toFixed(2)} km` : `${d.toFixed(2)} km`;
+      }
       if (!pickupDistance || pickupDistance === '0 km') {
         // Try to calculate from driver's current location to restaurant
         const currentLocation = riderLocation || lastLocationRef.current;
@@ -4683,8 +4693,10 @@ export default function DeliveryHome() {
           
           // Calculate pickup distance if not provided
           let pickupDistance = null;
-          if (firstOrder.assignmentInfo?.distance) {
-            pickupDistance = `${firstOrder.assignmentInfo.distance.toFixed(2)} km`;
+          if (firstOrder.assignmentInfo?.distance != null) {
+            const d = Number(firstOrder.assignmentInfo.distance);
+            const km = d > 100 ? d / 1000 : d;
+            pickupDistance = `${km.toFixed(2)} km`;
           } else {
             // Try to calculate from driver's current location to restaurant
             const currentLocation = riderLocation || lastLocationRef.current;
@@ -7441,12 +7453,12 @@ export default function DeliveryHome() {
     const totalDistance = pickupRouteDistanceRef.current + deliveryRouteDistanceRef.current;
     const totalTime = pickupRouteTimeRef.current + deliveryRouteTimeRef.current;
     
-    // Only update if we have valid values (greater than 0) and current values are null
-    if (totalDistance > 0 && (tripDistance === null || tripDistance === 0)) {
+    // Always refresh trip distance/time from refs when popup shows so display is correct
+    if (totalDistance > 0) {
       setTripDistance(totalDistance);
       console.log('📊 Trip distance calculated on popup show:', totalDistance, 'meters');
     }
-    if (totalTime > 0 && (tripTime === null || tripTime === 0)) {
+    if (totalTime > 0) {
       setTripTime(totalTime);
       console.log('📊 Trip time calculated on popup show:', totalTime, 'seconds');
     }
@@ -10983,7 +10995,16 @@ export default function DeliveryHome() {
             <div className="px-6 py-6 pb-6 h-full flex flex-col justify-between">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">Payment Details</h3>
-                
+                {(() => {
+                  const m = (selectedRestaurant?.paymentMethod || '').toLowerCase();
+                  const isCod = m === 'cash' || m === 'cod';
+                  const methodLabel = isCod ? 'COD' : 'Online';
+                  return (
+                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-green-50 border border-green-200">
+                      <span className="text-sm font-semibold text-green-800">Paid · {methodLabel}</span>
+                    </div>
+                  );
+                })()}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center py-2 border-b border-gray-100">
                     <span className="text-gray-600">Trip pay</span>

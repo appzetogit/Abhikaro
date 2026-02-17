@@ -42,29 +42,44 @@ export default function ToHub() {
   const [restaurantData, setRestaurantData] = useState(null)
   const [loadingRestaurant, setLoadingRestaurant] = useState(true)
 
-  // Fetch restaurant data on mount
-  useEffect(() => {
-    const fetchRestaurantData = async () => {
-      try {
-        setLoadingRestaurant(true)
-        const response = await restaurantAPI.getCurrentRestaurant()
-        const data = response?.data?.data?.restaurant || response?.data?.restaurant
-        if (data) {
-          setRestaurantData(data)
-        }
-      } catch (error) {
-        // Only log error if it's not a network/timeout error (backend might be down/slow)
-        if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
-          console.error("Error fetching restaurant data:", error)
-        }
-        // Continue with default values if fetch fails
-      } finally {
-        setLoadingRestaurant(false)
+  // Fetch restaurant data on mount, when Hub details are updated, or when page regains focus
+  const fetchRestaurantData = useCallback(async () => {
+    try {
+      setLoadingRestaurant(true)
+      const response = await restaurantAPI.getCurrentRestaurant()
+      const data = response?.data?.data?.restaurant || response?.data?.restaurant
+      if (data) {
+        setRestaurantData(data)
       }
+    } catch (error) {
+      if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+        console.error("Error fetching restaurant data:", error)
+      }
+    } finally {
+      setLoadingRestaurant(false)
     }
-
-    fetchRestaurantData()
   }, [])
+
+  useEffect(() => {
+    fetchRestaurantData()
+  }, [fetchRestaurantData])
+
+  useEffect(() => {
+    const onUpdate = () => fetchRestaurantData()
+    window.addEventListener('restaurantDataUpdated', onUpdate)
+    window.addEventListener('focus', onUpdate)
+    return () => {
+      window.removeEventListener('restaurantDataUpdated', onUpdate)
+      window.removeEventListener('focus', onUpdate)
+    }
+  }, [fetchRestaurantData])
+
+  // Refetch when page becomes visible (tab switch) for dynamic data
+  useEffect(() => {
+    const handleVisibility = () => { if (document.visibilityState === 'visible') fetchRestaurantData() }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [fetchRestaurantData])
   const topTabBarRef = useRef(null)
   const contentContainerRef = useRef(null)
   const touchStartX = useRef(0)

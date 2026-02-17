@@ -149,7 +149,7 @@ export default function OrderDetails() {
               name: order.userId?.name || 'Customer',
               orderCount: 1,
               location: `${order.address?.city || ''}, ${order.address?.state || ''}`.trim(),
-              distance: 'N/A'
+              distance: order.distance ?? null
             },
             items: order.items?.map(item => ({
               name: item.name,
@@ -161,7 +161,20 @@ export default function OrderDetails() {
               itemSubtotal: order.pricing?.subtotal || 0,
               taxes: order.pricing?.tax || 0,
               total: order.pricing?.total || 0,
-              paymentStatus: order.payment?.status === 'completed' ? 'PAID' : 'PENDING'
+              paymentStatus: (() => {
+                const s = (order.payment?.status || '').toLowerCase();
+                const method = (order.payment?.method || '').toLowerCase();
+                const isDelivered = (order.status || '').toLowerCase() === 'delivered';
+                const isCod = method === 'cash' || method === 'cod';
+                // After delivery → always show Paid (online already paid or COD collected)
+                if (isDelivered) return 'PAID';
+                if (s === 'completed') return 'PAID';
+                if (s === 'failed') return 'FAILED';
+                if (s === 'refunded') return 'REFUNDED';
+                if (s === 'processing') return 'PROCESSING';
+                if (isCod) return 'COD';
+                return 'PENDING';
+              })()
             },
             reason: order.cancellationReason || '',
             note: order.note || '',
@@ -656,7 +669,9 @@ export default function OrderDetails() {
               <div className="flex-1">
                 <p className="text-sm text-gray-900">{orderData.customer.location}</p>
               </div>
-              <p className="text-sm text-gray-600">{orderData.customer.distance}</p>
+              {orderData.customer.distance && orderData.customer.distance !== 'N/A' && (
+                <p className="text-sm text-gray-600">{orderData.customer.distance}</p>
+              )}
             </div>
           </div>
 

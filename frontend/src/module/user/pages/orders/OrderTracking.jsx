@@ -226,6 +226,9 @@ export default function OrderTracking() {
   const [cancellationReason, setCancellationReason] = useState("")
   const [isHotelOrder, setIsHotelOrder] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [showInstructionsDialog, setShowInstructionsDialog] = useState(false)
+  const [instructionsText, setInstructionsText] = useState("")
+  const [isSavingInstructions, setIsSavingInstructions] = useState(false)
 
   const defaultAddress = getDefaultAddress()
 
@@ -485,7 +488,8 @@ export default function OrderTracking() {
             deliveryState: apiOrder.deliveryState || null,
             estimatedDeliveryTime: apiOrder.estimatedDeliveryTime || null,
             eta: apiOrder.eta || null,
-            createdAt: apiOrder.createdAt || null
+            createdAt: apiOrder.createdAt || null,
+            note: apiOrder.note || ''
           }
 
           if (apiOrder.hotelReference) {
@@ -874,7 +878,8 @@ export default function OrderTracking() {
           tracking: apiOrder.tracking || {},
           estimatedDeliveryTime: apiOrder.estimatedDeliveryTime || null,
           eta: apiOrder.eta || null,
-          createdAt: apiOrder.createdAt || null
+          createdAt: apiOrder.createdAt || null,
+          note: apiOrder.note || ''
         }
         setOrder(transformedOrder)
 
@@ -1257,7 +1262,13 @@ export default function OrderTracking() {
           <SectionItem
             icon={MessageSquare}
             title="Add delivery instructions"
-            subtitle=""
+            subtitle={order?.note ? order.note : "Leave a note for the delivery partner"}
+            onClick={() => {
+              if (order?.status === "delivered" || order?.status === "cancelled") return
+              setInstructionsText(order?.note || "")
+              setShowInstructionsDialog(true)
+            }}
+            showArrow={order?.status !== "delivered" && order?.status !== "cancelled"}
           />
           {order?.deliveryPartnerId && (
             <SectionItem
@@ -1384,6 +1395,76 @@ export default function OrderTracking() {
                   </>
                 ) : (
                   'Confirm Cancellation'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delivery Instructions Dialog */}
+      <Dialog open={showInstructionsDialog} onOpenChange={setShowInstructionsDialog}>
+        <DialogContent className="sm:max-w-xl w-[95%] max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-gray-900">
+              Delivery Instructions
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 py-6 px-2">
+            <p className="text-sm text-gray-600">
+              Add instructions for the delivery partner (e.g. &quot;Ring the bell&quot;, &quot;Leave at door&quot;, &quot;Call on arrival&quot;).
+            </p>
+            <div className="space-y-2 w-full">
+              <Textarea
+                value={instructionsText}
+                onChange={(e) => setInstructionsText(e.target.value)}
+                placeholder="e.g., Ring the bell twice, Leave at door, Call on arrival"
+                className="w-full min-h-[100px] resize-none border-2 border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:outline-none transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-200"
+                disabled={isSavingInstructions}
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowInstructionsDialog(false)
+                  setInstructionsText("")
+                }}
+                disabled={isSavingInstructions}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!orderId || isSavingInstructions) return
+                  setIsSavingInstructions(true)
+                  try {
+                    const response = await orderAPI.updateDeliveryInstructions(orderId, instructionsText)
+                    if (response.data?.success) {
+                      setOrder((prev) => prev ? { ...prev, note: instructionsText.trim() } : prev)
+                      setShowInstructionsDialog(false)
+                      setInstructionsText("")
+                      toast.success("Delivery instructions updated")
+                    } else {
+                      toast.error(response.data?.message || "Failed to update")
+                    }
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || err.message || "Failed to update")
+                  } finally {
+                    setIsSavingInstructions(false)
+                  }
+                }}
+                disabled={isSavingInstructions}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+              >
+                {isSavingInstructions ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save"
                 )}
               </Button>
             </div>

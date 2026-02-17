@@ -1,4 +1,5 @@
 import Order from '../../order/models/Order.js';
+import Payment from '../../payment/models/Payment.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import asyncHandler from '../../../shared/middleware/asyncHandler.js';
 import mongoose from 'mongoose';
@@ -48,20 +49,22 @@ export const getOrders = asyncHandler(async (req, res) => {
       const mappedStatus = statusMap[status] || status;
       query.status = mappedStatus;
       
-      // If restaurant-cancelled, filter by cancellation reason
+      // If restaurant-cancelled, filter by cancelledBy or cancellation reason (covers new and old orders)
       if (status === 'restaurant-cancelled') {
-        query.cancellationReason = { 
-          $regex: /rejected by restaurant|restaurant rejected|restaurant cancelled/i 
-        };
+        query.$or = [
+          { cancelledBy: 'restaurant' },
+          { cancellationReason: { $regex: /rejected by restaurant|restaurant rejected|restaurant cancelled|restaurant is too busy|item not available|outside delivery area|kitchen closing|technical issue/i } }
+        ];
       }
     }
     
     // Also handle cancelledBy query parameter (if passed separately)
-    if (cancelledBy === 'restaurant') {
+    if (cancelledBy === 'restaurant' && !query.$or) {
       query.status = 'cancelled';
-      query.cancellationReason = { 
-        $regex: /rejected by restaurant|restaurant rejected|restaurant cancelled/i 
-      };
+      query.$or = [
+        { cancelledBy: 'restaurant' },
+        { cancellationReason: { $regex: /rejected by restaurant|restaurant rejected|restaurant cancelled|restaurant is too busy|item not available|outside delivery area|kitchen closing|technical issue/i } }
+      ];
     }
 
     // Payment status filter
@@ -206,6 +209,19 @@ export const getOrders = asyncHandler(async (req, res) => {
       console.warn('Could not batch fetch settlements:', err.message);
     }
 
+    // Batch fetch Payment collection for payment status (source of truth - COD/Razorpay)
+    let paymentStatusMapById = new Map();
+    try {
+      const payments = await Payment.find({ orderId: { $in: orders.map(o => o._id) } })
+        .select('orderId status')
+        .lean();
+      payments.forEach(p => {
+        if (p.orderId) paymentStatusMapById.set(p.orderId.toString(), p.status);
+      });
+    } catch (err) {
+      console.warn('Could not batch fetch payment status:', err.message);
+    }
+
     // Transform orders to match frontend format
     const transformedOrders = orders.map((order, index) => {
       const orderDate = new Date(order.createdAt);
@@ -223,7 +239,7 @@ export const getOrders = asyncHandler(async (req, res) => {
       // Get customer phone (unmasked - show full number for admin)
       const customerPhone = order.userId?.phone || '';
 
-      // Map payment status
+      // Map payment status - use Payment collection as source of truth (like restaurant order controller)
       const paymentStatusMap = {
         'completed': 'Paid',
         'pending': 'Pending',
@@ -231,7 +247,10 @@ export const getOrders = asyncHandler(async (req, res) => {
         'refunded': 'Refunded',
         'processing': 'Processing'
       };
-      const paymentStatusDisplay = paymentStatusMap[order.payment?.status] || 'Pending';
+      const paymentRecordStatus = paymentStatusMapById.get(order._id.toString());
+      const orderPaymentStatus = order.payment?.status;
+      const effectivePaymentStatus = paymentRecordStatus || orderPaymentStatus;
+      const paymentStatusDisplay = paymentStatusMap[effectivePaymentStatus] || 'Pending';
 
       // Map order status for display
       // Check if cancelled and determine who cancelled it
@@ -358,6 +377,7 @@ export const getOrders = asyncHandler(async (req, res) => {
         tracking: order.tracking || {},
         deliveryState: order.deliveryState || {},
         billImageUrl: order.billImageUrl || null, // Bill image captured by delivery boy
+        note: order.note || null,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
         // Zone info from assignmentInfo
@@ -421,6 +441,58 @@ export const getOrderById = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error('Error fetching order:', error);
     return errorResponse(res, 500, 'Failed to fetch order');
+  }
+});
+
+/**
+ * Approve offline payment (COD/cash) - mark as paid when admin verifies payment received
+ * PUT /api/admin/orders/:orderId/approve-offline-payment
+ */
+export const approveOfflinePayment = asyncHandler(async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24) {
+      order = await Order.findById(orderId);
+    }
+    if (!order) {
+      order = await Order.findOne({ orderId });
+    }
+
+    if (!order) {
+      return errorResponse(res, 404, 'Order not found');
+    }
+
+    const paymentMethod = order.payment?.method || '';
+    const isOfflinePayment = paymentMethod === 'cash' || paymentMethod === 'cod';
+    if (!isOfflinePayment) {
+      return errorResponse(res, 400, 'Only offline (COD/cash) payments can be approved');
+    }
+
+    if (order.payment?.status === 'completed') {
+      return errorResponse(res, 400, 'Payment is already marked as completed');
+    }
+
+    // Update Order.payment.status
+    if (!order.payment) order.payment = {};
+    order.payment.status = 'completed';
+    await order.save();
+
+    // Update Payment collection as source of truth
+    const paymentRecord = await Payment.findOne({ orderId: order._id });
+    if (paymentRecord) {
+      paymentRecord.status = 'completed';
+      await paymentRecord.save();
+    }
+
+    return successResponse(res, 200, 'Offline payment approved successfully', {
+      orderId: order.orderId,
+      paymentStatus: 'completed'
+    });
+  } catch (error) {
+    console.error('Error approving offline payment:', error);
+    return errorResponse(res, 500, 'Failed to approve offline payment');
   }
 });
 
