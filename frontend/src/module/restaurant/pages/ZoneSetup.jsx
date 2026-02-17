@@ -187,8 +187,7 @@ export default function ZoneSetup() {
         console.log("📍 Google Maps not loaded from main.jsx, loading with Loader...")
         const loader = new Loader({
           apiKey: apiKey,
-          version: "weekly",
-          libraries: ["places"]
+          version: "weekly"
         })
 
         const google = await loader.load()

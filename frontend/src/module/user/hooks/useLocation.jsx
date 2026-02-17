@@ -1405,10 +1405,10 @@ export function useLocation() {
       // If no valid data, throw to trigger fallback
       throw new Error("No valid address data from OLA Maps")
     } catch (err) {
-      console.warn("⚠️ Google Maps failed, trying direct geocoding:", err.message)
-      // Fallback to direct reverse geocoding (no Google Maps dependency)
+      console.warn("⚠️ OLA Maps failed, falling back to direct reverse geocoding:", err.message)
+      // Fallback to direct reverse geocoding (BigDataCloud / backend only, no Google Maps)
       try {
-        return await reverseGeocodeWithGoogleMaps(latitude, longitude)
+        return await reverseGeocodeDirect(latitude, longitude)
       } catch (fallbackErr) {
         // If all fail, return minimal location data
         console.error("❌ All reverse geocoding failed:", fallbackErr)
@@ -1453,7 +1453,7 @@ export function useLocation() {
         }
 
         try {
-          const addr = await reverseGeocodeWithGoogleMaps(
+          const addr = await reverseGeocodeDirect(
             loc.latitude,
             loc.longitude
           )
@@ -1529,7 +1529,7 @@ export function useLocation() {
               // India: Latitude 6.5° to 37.1° N, Longitude 68.7° to 97.4° E
               const isInIndiaRange = latitude >= 6.5 && latitude <= 37.1 && longitude >= 68.7 && longitude <= 97.4 && longitude > 0
 
-              // Get address from Google Maps API
+              // Get address from reverse geocoding service (no Google Maps)
               let addr
               if (!isInIndiaRange || longitude < 0) {
                 // Coordinates are outside India - skip geocoding and use placeholder
@@ -1543,32 +1543,14 @@ export function useLocation() {
                   formattedAddress: "Select location",
                 }
               } else {
-                console.log("🔍 Calling reverse geocode with coordinates:", { latitude, longitude })
+                console.log("🔍 Calling reverse geocode with coordinates (no Google Maps):", { latitude, longitude })
                 try {
-                  // Try Google Maps first
-                  addr = await reverseGeocodeWithGoogleMaps(latitude, longitude)
-                  console.log("✅ Google Maps geocoding successful:", addr)
-                } catch (geocodeErr) {
-                  console.warn("⚠️ Google Maps geocoding failed, trying fallback:", geocodeErr.message)
-                  try {
-                    // Fallback to direct reverse geocode (BigDataCloud)
-                    addr = await reverseGeocodeDirect(latitude, longitude)
-                    console.log("✅ Fallback geocoding successful:", addr)
+                  addr = await reverseGeocodeDirect(latitude, longitude)
+                  console.log("✅ Reverse geocoding successful:", addr)
 
-                    // Validate fallback result - if it still has placeholder values, don't use it
-                    if (addr.city === "Current Location" || addr.address.includes(latitude.toFixed(4))) {
-                      console.warn("⚠️ Fallback geocoding returned placeholder, will not save")
-                      addr = {
-                        city: "Current Location",
-                        state: "",
-                        country: "",
-                        area: "",
-                        address: "Select location",
-                        formattedAddress: "Select location",
-                      }
-                    }
-                  } catch (fallbackErr) {
-                    console.error("❌ All geocoding methods failed:", fallbackErr.message)
+                  // Validate result - if it still has placeholder values, don't save
+                  if (addr.city === "Current Location" || addr.address.includes(latitude.toFixed(4))) {
+                    console.warn("⚠️ Reverse geocoding returned placeholder, will not save")
                     addr = {
                       city: "Current Location",
                       state: "",
@@ -1577,6 +1559,16 @@ export function useLocation() {
                       address: "Select location",
                       formattedAddress: "Select location",
                     }
+                  }
+                } catch (fallbackErr) {
+                  console.error("❌ Geocoding failed:", fallbackErr.message)
+                  addr = {
+                    city: "Current Location",
+                    state: "",
+                    country: "",
+                    area: "",
+                    address: "Select location",
+                    formattedAddress: "Select location",
                   }
                 }
               }
@@ -1824,7 +1816,7 @@ export function useLocation() {
             // India: Latitude 6.5° to 37.1° N, Longitude 68.7° to 97.4° E
             const isInIndiaRange = latitude >= 6.5 && latitude <= 37.1 && longitude >= 68.7 && longitude <= 97.4 && longitude > 0
 
-            // Get address from Google Maps API with error handling
+            // Get address from reverse geocoding service (no Google Maps) with error handling
             let addr
             if (!isInIndiaRange || longitude < 0) {
               // Coordinates are outside India - skip geocoding and use placeholder
@@ -1839,33 +1831,22 @@ export function useLocation() {
               }
             } else {
               try {
-                addr = await reverseGeocodeWithGoogleMaps(latitude, longitude)
+                addr = await reverseGeocodeDirect(latitude, longitude)
                 console.log("✅ Reverse geocoding successful:", {
                   city: addr.city,
                   area: addr.area,
                   formattedAddress: addr.formattedAddress
                 })
-              } catch (geocodeErr) {
-                console.error("❌ Google Maps reverse geocoding failed:", geocodeErr.message)
-                // Try fallback geocoding
-                try {
-                  console.log("🔄 Trying fallback geocoding...")
-                  addr = await reverseGeocodeDirect(latitude, longitude)
-                  console.log("✅ Fallback geocoding successful:", {
-                    city: addr.city,
-                    area: addr.area
-                  })
-                } catch (fallbackErr) {
-                  console.error("❌ Fallback geocoding also failed:", fallbackErr.message)
-                  // Don't use coordinates - use placeholder instead
-                  addr = {
-                    city: "Current Location",
-                    state: "",
-                    country: "",
-                    area: "",
-                    address: "Select location", // Don't show coordinates
-                    formattedAddress: "Select location", // Don't show coordinates
-                  }
+              } catch (fallbackErr) {
+                console.error("❌ Reverse geocoding failed:", fallbackErr.message)
+                // Don't use coordinates - use placeholder instead
+                addr = {
+                  city: "Current Location",
+                  state: "",
+                  country: "",
+                  area: "",
+                  address: "Select location", // Don't show coordinates
+                  formattedAddress: "Select location", // Don't show coordinates
                 }
               }
             }

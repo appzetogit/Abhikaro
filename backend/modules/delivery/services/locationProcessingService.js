@@ -190,8 +190,9 @@ export async function snapToRoad(points, riderId = null) {
 export async function generateRoutePolyline(start, waypoint, end) {
   try {
     const apiKey = await getGoogleMapsApiKey();
-    if (!apiKey) {
-      console.warn('⚠️ Google Maps API key not found, cannot generate route');
+    const enabled = process.env.ENABLE_GOOGLE_DIRECTIONS === 'true';
+    if (!apiKey || !enabled) {
+      console.warn('ℹ️ Google Directions API disabled or key missing, skipping route generation');
       return null;
     }
     

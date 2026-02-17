@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import Lenis from "lenis"
 import { ArrowLeft, ChevronDown } from "lucide-react"
 import BottomPopup from "@/module/delivery/components/BottomPopup"
-import { restaurantAPI } from "@/lib/api"
+import { restaurantAPI, locationAPI } from "@/lib/api"
 
 const ADDRESS_STORAGE_KEY = "restaurant_address"
 
@@ -151,28 +151,23 @@ export default function EditRestaurantAddress() {
         return
       } else {
         // Minor correction - update location coordinates
-        // Fetch live address from coordinates using Google Maps API
+        // Fetch live address from coordinates using backend location API
         try {
-          // Get Google Maps API key
-          const { getGoogleMapsApiKey } = await import('@/lib/utils/googleMapsApiKey.js')
-          const GOOGLE_MAPS_API_KEY = await getGoogleMapsApiKey()
-          
           let formattedAddress = location?.formattedAddress || ""
           
-          // Fetch formattedAddress from coordinates if API key available
-          if (GOOGLE_MAPS_API_KEY && lat && lng) {
+          // Fetch formattedAddress from coordinates via backend (OLA Maps / fallback)
+          if (lat && lng) {
             try {
-              const response = await fetch(
-                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}&language=en&region=in&result_type=street_address|premise|point_of_interest|establishment`
-              )
-              const data = await response.json()
-              
-              if (data.status === 'OK' && data.results && data.results.length > 0) {
-                formattedAddress = data.results[0].formatted_address
-                console.log("✅ Fetched formattedAddress from coordinates:", formattedAddress)
+              const response = await locationAPI.reverseGeocode(lat, lng)
+              const backendData = response?.data?.data
+              const result = backendData?.results?.[0] || backendData?.result?.[0] || null
+
+              if (result?.formatted_address || result?.formattedAddress) {
+                formattedAddress = result.formatted_address || result.formattedAddress
+                console.log("✅ Fetched formattedAddress from backend:", formattedAddress)
               }
             } catch (error) {
-              console.warn("⚠️ Failed to fetch formattedAddress, using existing:", error)
+              console.warn("⚠️ Failed to fetch formattedAddress from backend, using existing:", error)
             }
           }
           

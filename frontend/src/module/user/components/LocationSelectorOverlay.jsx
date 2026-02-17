@@ -205,20 +205,19 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     return location?.city || location?.area || "Detecting location..."
   })()
 
-  // Global error suppression for Ola Maps SDK errors (runs on component mount)
+  // Global error suppression for legacy map SDK errors (runs on component mount)
   useEffect(() => {
-    // Suppress console errors for non-critical Ola Maps SDK errors
+    // Suppress console errors for non-critical map SDK errors
     const originalConsoleError = console.error
     const errorSuppressor = (...args) => {
       const errorStr = args.join(' ')
-      // Suppress AbortError and sprite file errors from Ola Maps SDK
+      // Suppress AbortError and sprite file errors from old map SDK integrations
       if (errorStr.includes('AbortError') ||
         errorStr.includes('user aborted') ||
         errorStr.includes('sprite@2x.json') ||
         errorStr.includes('3d_model') ||
         (errorStr.includes('Source layer') && errorStr.includes('does not exist')) ||
-        (errorStr.includes('AJAXError') && errorStr.includes('sprite')) ||
-        (errorStr.includes('AJAXError') && errorStr.includes('olamaps.io'))) {
+        (errorStr.includes('AJAXError') && errorStr.includes('sprite'))) {
         // Silently ignore these non-critical errors
         return
       }
@@ -236,14 +235,13 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       const errorName = error?.name || ''
       const errorStack = error?.stack || ''
 
-      // Suppress non-critical errors from Ola Maps SDK
+      // Suppress non-critical errors from old map SDK integrations
       if (errorName === 'AbortError' ||
         errorMsg.includes('AbortError') ||
         errorMsg.includes('user aborted') ||
         errorMsg.includes('3d_model') ||
         (errorMsg.includes('Source layer') && errorMsg.includes('does not exist')) ||
-        (errorMsg.includes('AJAXError') && (errorMsg.includes('sprite') || errorMsg.includes('olamaps.io'))) ||
-        errorStack.includes('olamaps-web-sdk')) {
+        (errorMsg.includes('AJAXError') && errorMsg.includes('sprite'))) {
         event.preventDefault() // Prevent error from showing in console
         return
       }
@@ -400,7 +398,6 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         const loader = new Loader({
           apiKey: GOOGLE_MAPS_API_KEY,
           version: "weekly",
-          libraries: ["places", "geocoding"]
         })
 
         const google = await loader.load()
@@ -1512,7 +1509,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           lng: roundedLng.toFixed(8)
         })
 
-        // Use Google Maps Geocoding API + Places API for complete address details
+        // Use backend location API (OLA Maps / fallback) for complete address details
         let formattedAddress = ""
         let city = ""
         let state = ""
@@ -1523,200 +1520,8 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         let pointOfInterest = ""
         let premise = ""
 
-        if (GOOGLE_MAPS_API_KEY) {
-          try {
-            // Check cache first before making API calls
-            let cacheModule = null;
-            try {
-              cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
-            } catch (err) {
-              console.warn('Cache utility not available:', err);
-            }
-
-            // Step 1: Use Google Geocoding API for address components
-            // Get API key dynamically from backend
-            const { getGoogleMapsApiKey } = await import('@/lib/utils/googleMapsApiKey.js');
-            const apiKey = await getGoogleMapsApiKey() || GOOGLE_MAPS_API_KEY;
-            
-            // Check cache for geocoding result
-            let geocodeResponse = null;
-            if (cacheModule) {
-              const { getCached, setCached, shouldMakeApiCall } = cacheModule;
-              const cachedGeocode = getCached('geocoding', roundedLat, roundedLng);
-              if (cachedGeocode) {
-                console.log('✅ Using cached geocoding result');
-                geocodeResponse = cachedGeocode;
-              } else if (!shouldMakeApiCall('geocoding')) {
-                console.warn('⚠️ Geocoding API rate limit reached, using fallback');
-                // Use fallback - create basic address from coordinates
-                geocodeResponse = {
-                  status: "OK",
-                  results: [{
-                    formatted_address: `${roundedLat.toFixed(6)}, ${roundedLng.toFixed(6)}`,
-                    address_components: []
-                  }]
-                };
-              }
-            }
-            
-            // Make API call only if not cached and rate limit allows
-            if (!geocodeResponse) {
-              const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${roundedLat},${roundedLng}&key=${apiKey}&language=en&region=in&result_type=street_address|premise|point_of_interest|establishment`
-              geocodeResponse = await fetch(geocodeUrl).then(res => res.json())
-              
-              // Cache the result
-              if (cacheModule && geocodeResponse.status === "OK") {
-                const { setCached } = cacheModule;
-                setCached('geocoding', geocodeResponse, roundedLat, roundedLng);
-              }
-            }
-
-            if (geocodeResponse.status === "OK" && geocodeResponse.results && geocodeResponse.results.length > 0) {
-              // Find result with POI/premise for most accurate address
-              let bestResult = geocodeResponse.results[0]
-              for (const result of geocodeResponse.results.slice(0, 5)) {
-                const hasPOI = result.address_components?.some(c => c.types.includes("point_of_interest"))
-                const hasPremise = result.address_components?.some(c => c.types.includes("premise"))
-                if (hasPOI || hasPremise) {
-                  bestResult = result
-                  break
-                }
-              }
-
-              formattedAddress = bestResult.formatted_address || ""
-              const addressComponents = bestResult.address_components || []
-
-              // Extract all address components
-              for (const component of addressComponents) {
-                const types = component.types || []
-                if (types.includes("point_of_interest") && !pointOfInterest) {
-                  pointOfInterest = component.long_name
-                }
-                if (types.includes("premise") && !premise) {
-                  premise = component.long_name
-                }
-                if (types.includes("street_number") && !streetNumber) {
-                  streetNumber = component.long_name
-                }
-                if (types.includes("route") && !street) {
-                  street = component.long_name
-                }
-                if (types.includes("sublocality_level_1") && !area) {
-                  area = component.long_name
-                }
-                if (types.includes("locality") && !city) {
-                  city = component.long_name
-                }
-                if (types.includes("administrative_area_level_1") && !state) {
-                  state = component.long_name
-                }
-                if (types.includes("postal_code") && !postalCode) {
-                  postalCode = component.long_name
-                }
-              }
-
-              // Step 2: Use Places API for even more detailed information (only if needed)
-              try {
-                // Check cache for Places API
-                let nearbyResponse = null;
-                if (cacheModule) {
-                  const { getCached, setCached, shouldMakeApiCall } = cacheModule;
-                  const cachedPlaces = getCached('places', roundedLat, roundedLng, 50);
-                  if (cachedPlaces) {
-                    console.log('✅ Using cached Places API result');
-                    nearbyResponse = cachedPlaces;
-                  } else if (!shouldMakeApiCall('places')) {
-                    console.warn('⚠️ Places API rate limit reached, skipping Places API');
-                    nearbyResponse = { status: "RATE_LIMIT", results: [] };
-                    // Continue with geocoding result only - still usable, just less detailed
-                  }
-                }
-                
-                // Make API call only if not cached
-                if (!nearbyResponse) {
-                  const nearbyUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${roundedLat},${roundedLng}&radius=50&key=${apiKey}&language=en`
-                  nearbyResponse = await fetch(nearbyUrl).then(res => res.json())
-                  
-                  // Cache the result
-                  if (cacheModule && nearbyResponse.status === "OK") {
-                    const { setCached } = cacheModule;
-                    setCached('places', nearbyResponse, roundedLat, roundedLng, 50);
-                  }
-                }
-
-                // Only process Places API results if we got valid response (not rate limited)
-                if (nearbyResponse && nearbyResponse.status === "OK" && nearbyResponse.results && nearbyResponse.results.length > 0) {
-                  const placeId = nearbyResponse.results[0].place_id
-                  const placeName = nearbyResponse.results[0].name
-
-                  // Use place name if available (more accurate)
-                  if (placeName && !pointOfInterest) {
-                    pointOfInterest = placeName
-                  }
-
-                  // Get place details for complete address (only if really needed)
-                  // OPTIMIZATION: Skip place details API call if we already have good address from geocoding
-                  // This saves one API call per location
-                  if (placeId && (!formattedAddress || formattedAddress.split(',').length < 3)) {
-                    // Only call if address is incomplete
-                    try {
-                      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_address,address_components&key=${apiKey}&language=en`
-                      const detailsResponse = await fetch(detailsUrl).then(res => res.json())
-
-                      if (detailsResponse.status === "OK" && detailsResponse.result) {
-                        // Use Places API formatted address if it's more complete
-                        const placesAddress = detailsResponse.result.formatted_address || ""
-                        if (placesAddress && placesAddress.split(',').length > formattedAddress.split(',').length) {
-                          formattedAddress = placesAddress
-                        }
-                      }
-                    } catch (detailsError) {
-                      // If place details fails, continue with geocoding address (still usable)
-                      console.warn('⚠️ Place details API failed, using geocoding address:', detailsError);
-                    }
-                  }
-                } else if (nearbyResponse && nearbyResponse.status === "RATE_LIMIT") {
-                  // Rate limit hit - continue with geocoding result only (still usable)
-                  console.log('ℹ️ Using geocoding result only (Places API rate limited)');
-                }
-              } catch (placesError) {
-                console.warn("⚠️ Places API error (non-critical):", placesError.message)
-                // Continue with geocoding result - app still works
-              }
-
-              console.log("✅✅✅ Google Maps - Complete Address Details:", {
-                formattedAddress,
-                pointOfInterest,
-                premise,
-                street,
-                streetNumber,
-                area,
-                city,
-                state,
-                postalCode
-              })
-            }
-          } catch (googleError) {
-            console.warn("⚠️ Google Maps API error, trying backend fallback:", googleError.message)
-            // Fallback to backend API
-            try {
-              const response = await locationAPI.reverseGeocode(roundedLat, roundedLng)
-              const backendData = response?.data?.data
-              const result = backendData?.results?.[0] || backendData?.result?.[0] || null
-
-              if (result) {
-                formattedAddress = result.formatted_address || result.formattedAddress || ""
-                const addressComponents = result.address_components || {}
-                city = addressComponents.city || ""
-                state = addressComponents.state || ""
-                area = addressComponents.area || ""
-              }
-            } catch (backendError) {
-              console.error("❌ Backend fallback also failed:", backendError)
-            }
-          }
-        } else {
-          // No Google API key, use backend
+        try {
+          // Always use backend reverse geocode to avoid direct Google billing
           const response = await locationAPI.reverseGeocode(roundedLat, roundedLng)
           const backendData = response?.data?.data
           const result = backendData?.results?.[0] || backendData?.result?.[0] || null
@@ -1727,7 +1532,15 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             city = addressComponents.city || ""
             state = addressComponents.state || ""
             area = addressComponents.area || ""
+            // Optional extra fields if backend provides them
+            street = addressComponents.street || street
+            streetNumber = addressComponents.streetNumber || streetNumber
+            postalCode = addressComponents.postalCode || postalCode
+            pointOfInterest = addressComponents.pointOfInterest || pointOfInterest
+            premise = addressComponents.premise || premise
           }
+        } catch (backendError) {
+          console.error("❌ Backend reverse geocode failed:", backendError)
         }
 
         if (formattedAddress || city || state) {

@@ -205,8 +205,7 @@ export default function DeliveryBoyViewMap() {
       if (apiKey) {
         const loader = new Loader({
           apiKey: apiKey,
-          version: "weekly",
-          libraries: ["places", "drawing", "geometry"]
+          version: "weekly"
         })
 
         const google = await loader.load()

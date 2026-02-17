@@ -34,9 +34,10 @@ class GoogleMapsService {
    */
   async getTravelTime(origin, destination, mode = 'driving', trafficModel = 'best_guess') {
     const apiKey = await this.getApiKey();
-    if (!apiKey) {
-      // Fallback to haversine distance calculation if API key not available
-      console.warn('⚠️ Google Maps API key not available, using fallback calculation');
+    const enabled = process.env.ENABLE_GOOGLE_DISTANCE_MATRIX === 'true';
+    if (!apiKey || !enabled) {
+      // Fallback to haversine distance calculation if API key not available OR feature disabled
+      console.warn('ℹ️ Google Distance Matrix disabled or API key missing, using fallback calculation');
       return this.calculateHaversineDistance(origin, destination);
     }
 

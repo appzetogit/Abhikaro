@@ -5017,8 +5017,7 @@ export default function DeliveryHome() {
           if (apiKey) {
             const loader = new Loader({
               apiKey: apiKey,
-              version: "weekly",
-              libraries: ["places", "geometry", "drawing"]
+              version: "weekly"
             });
             await loader.load();
             console.log('✅ Google Maps loaded via Loader');
