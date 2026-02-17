@@ -92,13 +92,27 @@ export default function RestaurantsList() {
             name: restaurant.name || "N/A",
             ownerName: restaurant.ownerName || "N/A",
             ownerPhone: restaurant.ownerPhone || restaurant.phone || "N/A",
-            zone: restaurant.location?.area || restaurant.location?.city || restaurant.zone || "N/A",
-            cuisine: Array.isArray(restaurant.cuisines) && restaurant.cuisines.length > 0 
-              ? restaurant.cuisines[0] 
-              : (restaurant.cuisine || "N/A"),
+            ownerEmail:
+              restaurant.ownerEmail ||
+              restaurant.email ||
+              restaurant.contactEmail ||
+              "",
+            zone:
+              restaurant.location?.area ||
+              restaurant.location?.city ||
+              restaurant.zone ||
+              "N/A",
+            cuisine:
+              Array.isArray(restaurant.cuisines) &&
+              restaurant.cuisines.length > 0
+                ? restaurant.cuisines[0]
+                : restaurant.cuisine || "N/A",
             status: restaurant.isActive !== false, // Default to true if not set
             rating: restaurant.ratings?.average || restaurant.rating || 0,
-            logo: restaurant.profileImage?.url || restaurant.logo || "https://via.placeholder.com/40",
+            logo:
+              restaurant.profileImage?.url ||
+              restaurant.logo ||
+              "https://via.placeholder.com/40",
             // Preserve original restaurant data for details modal
             originalData: restaurant,
           }))
@@ -173,6 +187,39 @@ export default function RestaurantsList() {
       // Revert on error
       setRestaurants(restaurants)
     }
+  }
+
+  // Handle sending email to restaurant owner
+  const handleSendEmail = (restaurant) => {
+    const email =
+      restaurant.ownerEmail ||
+      restaurant.originalData?.ownerEmail ||
+      restaurant.originalData?.email ||
+      restaurant.email
+
+    if (!email) {
+      alert("Email address not available for this restaurant.")
+      return
+    }
+
+    const subject = "Regarding your restaurant listing on Abhikaro"
+    const greetingName = restaurant.ownerName || restaurant.originalData?.ownerName || ""
+    const bodyLines = [
+      greetingName ? `Hi ${greetingName},` : "Hi,",
+      "",
+      "We are contacting you regarding your restaurant listing on Abhikaro.",
+      "",
+      "Best regards,",
+      "Abhikaro Team",
+    ]
+
+    const body = bodyLines.join("\n")
+
+    const mailtoLink = `mailto:${encodeURIComponent(
+      email,
+    )}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+
+    window.location.href = mailtoLink
   }
 
   const totalRestaurants = restaurants.length
@@ -586,8 +633,23 @@ export default function RestaurantsList() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
-                            <span className="text-sm font-medium text-slate-900">{restaurant.ownerName}</span>
-                            <span className="text-xs text-slate-500">{formatPhone(restaurant.ownerPhone)}</span>
+                            <span className="text-sm font-medium text-slate-900">
+                              {restaurant.ownerName}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              {formatPhone(restaurant.ownerPhone)}
+                            </span>
+                            {restaurant.ownerEmail && (
+                              <button
+                                type="button"
+                                onClick={() => handleSendEmail(restaurant)}
+                                className="mt-1 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                                title="Send Email"
+                              >
+                                <Mail className="w-3 h-3" />
+                                <span>Send mail</span>
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -618,6 +680,14 @@ export default function RestaurantsList() {
                               title="View Details"
                             >
                               <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleSendEmail(restaurant)}
+                              className="p-1.5 rounded text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                              title="Send Email"
+                              disabled={!restaurant.ownerEmail}
+                            >
+                              <Mail className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleBanRestaurant(restaurant)}
