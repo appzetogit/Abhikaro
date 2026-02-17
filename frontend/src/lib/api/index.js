@@ -536,10 +536,10 @@ export const restaurantAPI = {
   getWalletStats: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.RESTAURANT.WALLET_STATS, { params });
   },
-  // Withdrawal
+  // Withdrawal (send amount as number for backend validation)
   createWithdrawalRequest: (amount) => {
     return apiClient.post(API_ENDPOINTS.RESTAURANT.WITHDRAWAL_REQUEST, {
-      amount,
+      amount: Number(amount),
     });
   },
   getWithdrawalRequests: (params = {}) => {
@@ -1524,6 +1524,13 @@ export const adminAPI = {
     return apiClient.get("/api/admin/refund-requests", { params });
   },
 
+  approveOfflinePayment: (orderId) => {
+    if (!orderId) return Promise.reject(new Error("Order ID is required"));
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.ORDERS_APPROVE_OFFLINE_PAYMENT.replace(":orderId", orderId),
+    );
+  },
+
   // Process refund (supports both old and new endpoints)
   processRefund: (orderId, data = {}) => {
     // Backend accepts either MongoDB ObjectId (24 chars) or orderId string
@@ -2021,6 +2028,13 @@ export const orderAPI = {
   cancelOrder: (orderId, reason) => {
     return apiClient.patch(API_ENDPOINTS.ORDER.CANCEL.replace(":id", orderId), {
       reason,
+    });
+  },
+
+  // Update delivery instructions
+  updateDeliveryInstructions: (orderId, note) => {
+    return apiClient.patch(API_ENDPOINTS.ORDER.UPDATE_NOTE.replace(":id", orderId), {
+      note,
     });
   },
 };

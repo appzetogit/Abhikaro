@@ -925,12 +925,12 @@ export const getUsers = asyncHandler(async (req, res) => {
       },
     ]);
 
-    // Create a map of userId -> stats
+    // Create a map of userId -> stats (ensure numbers for frontend)
     const statsMap = {};
     orderStats.forEach((stat) => {
       statsMap[stat._id.toString()] = {
-        totalOrder: stat.totalOrders || 0,
-        totalOrderAmount: stat.totalAmount || 0,
+        totalOrder: Number(stat.totalOrders) || 0,
+        totalOrderAmount: Number(stat.totalAmount) || 0,
       };
     });
 
@@ -950,13 +950,13 @@ export const getUsers = asyncHandler(async (req, res) => {
       });
 
       return {
-        sl: parseInt(offset) + index + 1,
+        sl: parseInt(offset, 10) + index + 1,
         id: user._id.toString(),
         name: user.name || "N/A",
         email: user.email || "N/A",
         phone: user.phone || "N/A",
-        totalOrder: stats.totalOrder,
-        totalOrderAmount: stats.totalOrderAmount,
+        totalOrder: Number(stats.totalOrder) || 0,
+        totalOrderAmount: Number(stats.totalOrderAmount) || 0,
         joiningDate: formattedDate,
         status: user.isActive !== false, // Default to true if not set
         createdAt: user.createdAt,
@@ -1208,6 +1208,40 @@ export const getRestaurants = asyncHandler(async (req, res) => {
       error: error.stack,
     });
     return errorResponse(res, 500, "Failed to fetch restaurants");
+  }
+});
+
+/**
+ * Get Restaurant by ID (full details for admin — includes inactive)
+ * GET /api/admin/restaurants/:id
+ */
+export const getRestaurantById = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return errorResponse(res, 400, "Restaurant ID is required");
+    }
+
+    const query = mongoose.Types.ObjectId.isValid(id) && id.length === 24
+      ? { $or: [{ _id: new mongoose.Types.ObjectId(id) }, { restaurantId: id }] }
+      : { restaurantId: id };
+
+    const restaurant = await Restaurant.findOne(query)
+      .select("-password")
+      .lean();
+
+    if (!restaurant) {
+      return errorResponse(res, 404, "Restaurant not found");
+    }
+
+    return successResponse(res, 200, "Restaurant retrieved successfully", {
+      restaurant,
+    });
+  } catch (error) {
+    logger.error(`Error fetching restaurant by ID: ${error.message}`, {
+      error: error.stack,
+    });
+    return errorResponse(res, 500, "Failed to fetch restaurant");
   }
 });
 

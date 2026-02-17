@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react"
+import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { Bell, Menu, ChevronDown, Calendar, Download, ArrowRight, FileText, Wallet, X } from "lucide-react"
@@ -27,30 +27,39 @@ export default function HubFinance() {
   const [withdrawalAmount, setWithdrawalAmount] = useState('')
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false)
 
+  const fetchFinanceData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const response = await restaurantAPI.getFinance()
+      if (response.data?.success && response.data?.data) {
+        setFinanceData(response.data.data)
+      }
+    } catch (error) {
+      if (error.response?.status !== 401) {
+        console.error('❌ Error fetching finance data:', error)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   // Fetch finance data on mount
   useEffect(() => {
-    const fetchFinanceData = async () => {
-      try {
-        setLoading(true)
-        const response = await restaurantAPI.getFinance()
-        if (response.data?.success && response.data?.data) {
-          setFinanceData(response.data.data)
-          console.log('✅ Finance data fetched:', response.data.data)
-          console.log('📦 Current cycle orders:', response.data.data?.currentCycle?.orders)
-          console.log('📊 Current cycle totalOrders:', response.data.data?.currentCycle?.totalOrders)
-        }
-      } catch (error) {
-        // Suppress 401 errors as they're handled by axios interceptor (token refresh/redirect)
-        if (error.response?.status !== 401) {
-          console.error('❌ Error fetching finance data:', error)
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchFinanceData()
-  }, [])
+  }, [fetchFinanceData])
+
+  // Refetch when switching to Invoices & Taxes tab so data is up to date
+  useEffect(() => {
+    if (activeTab === 'invoices') {
+      fetchFinanceData()
+    }
+  }, [activeTab, fetchFinanceData])
+
+  useEffect(() => {
+    const handleVisibility = () => { if (document.visibilityState === 'visible') fetchFinanceData() }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [fetchFinanceData])
 
   // Fetch restaurant data for header display
   useEffect(() => {
@@ -953,10 +962,41 @@ export default function HubFinance() {
         )}
 
         {activeTab === "invoices" && (
-          <div className=" rounded-lg p-4">
-            <p className="text-sm text-gray-600 text-center py-8">
-              Invoices & Taxes content will be displayed here
-            </p>
+          <div className="space-y-6">
+            <h2 className="text-base font-bold text-gray-900 mb-3">Invoices & Taxes</h2>
+            {loading ? (
+              <div className="bg-white rounded-lg p-6 text-center text-gray-500">Loading...</div>
+            ) : (
+              <div className="space-y-4">
+                {financeData?.currentCycle && (
+                  <div className="bg-white rounded-lg p-4">
+                    <p className="text-sm font-semibold text-gray-700 mb-1">Current cycle</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      ₹{(financeData.currentCycle.estimatedPayout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {financeData.currentCycle.totalOrders ?? 0} orders • Payout includes applicable deductions. Tax liability as per local laws.
+                    </p>
+                  </div>
+                )}
+                {pastCyclesData?.orders?.length > 0 && (
+                  <div className="bg-white rounded-lg p-4">
+                    <p className="text-sm font-semibold text-gray-700 mb-2">Selected period</p>
+                    <p className="text-lg font-bold text-gray-900">
+                      ₹{(pastCyclesData.orders || []).reduce((sum, o) => sum + (Number(o.payout) || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {pastCyclesData.orders?.length ?? 0} orders in selected range. Tax as per applicable laws.
+                    </p>
+                  </div>
+                )}
+                {!financeData?.currentCycle && !loading && (
+                  <div className="bg-white rounded-lg p-6 text-center text-gray-500">
+                    No invoice data available. Complete orders to see payouts and tax summary here.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -995,22 +1035,25 @@ export default function HubFinance() {
                 
                 <div className="mb-4">
                   <p className="text-sm text-gray-600 mb-2">
-                    Available Balance: <span className="font-semibold text-gray-900">₹{(financeData?.currentCycle?.estimatedPayout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    Available Balance: <span className="font-semibold text-gray-900">₹{(financeData?.currentCycle?.withdrawableBalance ?? financeData?.currentCycle?.estimatedPayout ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </p>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Enter Amount to Withdraw
                   </label>
                   <input
-                    type="number"
-                    min="0.01"
-                    max={financeData?.currentCycle?.estimatedPayout || 0}
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={withdrawalAmount}
-                    onChange={(e) => setWithdrawalAmount(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\s/g, '').replace(/[^0-9.]/g, '')
+                      const num = parseFloat(v)
+                      const valid = v === '' || v === '.' || v.endsWith('.') || (!Number.isNaN(num) && num >= 0 && num <= 999999)
+                      if (valid) setWithdrawalAmount(v)
+                    }}
                     placeholder="0.00"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
                   />
-                  {withdrawalAmount && parseFloat(withdrawalAmount) > (financeData?.currentCycle?.estimatedPayout || 0) && (
+                  {withdrawalAmount && parseFloat(withdrawalAmount) > (financeData?.currentCycle?.withdrawableBalance ?? financeData?.currentCycle?.estimatedPayout ?? 0) && (
                     <p className="text-sm text-red-600 mt-1">Amount cannot exceed available balance</p>
                   )}
                 </div>
@@ -1027,12 +1070,13 @@ export default function HubFinance() {
                   </button>
                   <button
                     onClick={async () => {
-                      const amount = parseFloat(withdrawalAmount)
-                      if (!amount || amount <= 0) {
+                      const amount = Number(withdrawalAmount?.replace?.(/,/g, '')) || parseFloat(withdrawalAmount)
+                      if (!Number.isFinite(amount) || amount <= 0) {
                         alert('Please enter a valid amount')
                         return
                       }
-                      if (amount > (financeData?.currentCycle?.estimatedPayout || 0)) {
+                      const maxAllowed = financeData?.currentCycle?.withdrawableBalance ?? financeData?.currentCycle?.estimatedPayout ?? 0
+                      if (amount > maxAllowed) {
                         alert('Amount cannot exceed available balance')
                         return
                       }
@@ -1044,22 +1088,19 @@ export default function HubFinance() {
                           alert('Withdrawal request submitted successfully!')
                           setShowWithdrawalModal(false)
                           setWithdrawalAmount('')
-                          // Refresh finance data
-                          const financeResponse = await restaurantAPI.getFinance()
-                          if (financeResponse.data?.success && financeResponse.data?.data) {
-                            setFinanceData(financeResponse.data.data)
-                          }
+                          await fetchFinanceData()
                         } else {
                           alert(response.data?.message || 'Failed to submit withdrawal request')
                         }
                       } catch (error) {
                         console.error('Error submitting withdrawal request:', error)
-                        alert(error.response?.data?.message || 'Failed to submit withdrawal request. Please try again.')
+                        const msg = error.response?.data?.message || error.message || 'Failed to submit withdrawal request. Please try again.'
+                        alert(msg)
                       } finally {
                         setSubmittingWithdrawal(false)
                       }
                     }}
-                    disabled={submittingWithdrawal || !withdrawalAmount || parseFloat(withdrawalAmount) <= 0 || parseFloat(withdrawalAmount) > (financeData?.currentCycle?.estimatedPayout || 0)}
+                    disabled={submittingWithdrawal || !withdrawalAmount || parseFloat(withdrawalAmount) <= 0 || parseFloat(withdrawalAmount) > (financeData?.currentCycle?.withdrawableBalance ?? financeData?.currentCycle?.estimatedPayout ?? 0)}
                     className="flex-1 px-4 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                   >
                     {submittingWithdrawal ? 'Submitting...' : 'Submit Request'}

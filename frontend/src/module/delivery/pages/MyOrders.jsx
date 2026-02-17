@@ -253,6 +253,7 @@ export default function MyOrders() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="flex-1 ml-3 outline-none text-gray-600 placeholder-gray-400"
+            autoComplete="off"
           />
           <Mic className="w-5 h-5 text-red-500 border-l pl-2 box-content border-gray-300" />
             </div>
@@ -350,7 +351,15 @@ export default function MyOrders() {
                     <div>
                       <p className="text-xs text-gray-400">Order placed on {orderDate}</p>
                       {!paymentFailed && isDelivered && (
-                        <p className="text-xs font-medium text-gray-500 mt-1">{orderStatus}</p>
+                        <>
+                          <p className="text-xs font-medium text-gray-500 mt-1">{orderStatus}</p>
+                          <p className="text-xs font-medium text-green-600 mt-0.5">
+                            Paid · {(() => {
+                              const m = (order.paymentMethod || order.payment?.method || '').toLowerCase();
+                              return (m === 'cash' || m === 'cod') ? 'COD' : 'Online';
+                            })()}
+                          </p>
+                        </>
                       )}
         </div>
                     <div className="flex items-center">

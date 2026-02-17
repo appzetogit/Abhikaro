@@ -7,7 +7,6 @@ import {
   FileText,
   UtensilsCrossed,
   User,
-  ArrowLeft,
   ArrowRight,
   Star,
   Briefcase,
@@ -15,7 +14,6 @@ import {
   Headphones,
   Ticket,
   Bell,
-  ChevronRight,
   IndianRupee,
   Sparkles,
   LogOut,
@@ -214,15 +212,7 @@ export default function ProfilePage() {
         {/* Back Button and Profile Section */}
         <div ref={profileRef} className="mb-0">
           <div className="bg-white p-4 w-full shadow-sm">
-            {/* Back Button */}
-            <button
-              onClick={() => navigate(-1)}
-              className="mb-6"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-
-            {/* Profile Information */}
+            {/* Profile Information - back arrow removed per UX */}
             <div
               onClick={() => navigate("/delivery/profile/details")}
               className="flex items-start justify-between"
@@ -232,7 +222,6 @@ export default function ProfilePage() {
                   <h2 className="text-2xl md:text-3xl font-bold">
                     {loading ? "Loading..." : profile?.name || "Delivery Partner"}
                   </h2>
-                  <ChevronRight className="w-5 h-5" />
                 </div>
                 <p className="text-gray-600 text-sm md:text-base mb-3">
                   {profile?.deliveryId || "N/A"}

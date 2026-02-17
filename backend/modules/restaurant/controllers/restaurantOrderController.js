@@ -19,7 +19,10 @@ import {
 import {
   updateSettlementOnStatusChange,
   calculateOrderSettlement,
+  getOrderSettlement,
 } from "../../order/services/orderSettlementService.js";
+import RestaurantWallet from "../models/RestaurantWallet.js";
+import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
 import mongoose from "mongoose";
 
 /**
@@ -234,6 +237,15 @@ export const getRestaurantOrderById = asyncHandler(async (req, res) => {
 
     if (!order) {
       return errorResponse(res, 404, "Order not found");
+    }
+
+    // Use Payment collection as source of truth for payment status (order.payment may be stale)
+    const paymentRecord = await Payment.findOne({ orderId: order._id }).select("status method").lean();
+    if (paymentRecord && String(paymentRecord.status).toLowerCase() === "completed") {
+      if (!order.payment) order.payment = {};
+      order.payment.status = "completed";
+    } else if (paymentRecord && order.payment) {
+      order.payment.status = paymentRecord.status || order.payment.status;
     }
 
     return successResponse(res, 200, "Order retrieved successfully", {
@@ -1172,7 +1184,7 @@ export const markOrderReady = asyncHandler(async (req, res) => {
 
     await order.save();
 
-    // Trigger settlement update if status changed to delivered
+    // Trigger settlement update and credit restaurant wallet if status changed to delivered
     if (order.status === "delivered") {
       try {
         await updateSettlementOnStatusChange(
@@ -1181,6 +1193,34 @@ export const markOrderReady = asyncHandler(async (req, res) => {
           previousStatus,
         );
         console.log(`✅ Settlement updated for hotel order ${order.orderId}`);
+
+        // Credit restaurant wallet (hotel orders skip delivery flow, so wallet is never credited there)
+        const settlement = await getOrderSettlement(order._id);
+        const netEarning = settlement?.restaurantEarning?.netEarning;
+        if (restaurant._id && netEarning != null && netEarning > 0) {
+          const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurant._id);
+          const orderIdStr = order._id?.toString?.() || order._id;
+          const existingTx = wallet.transactions?.find(
+            (t) => t.orderId?.toString() === orderIdStr && t.type === "payment"
+          );
+          if (!existingTx) {
+            const orderTotal = order.pricing?.subtotal || order.pricing?.total || 0;
+            const commissionResult = await RestaurantCommission.calculateCommissionForOrder(
+              restaurant._id,
+              orderTotal
+            );
+            const commission = commissionResult.commission || 0;
+            wallet.addTransaction({
+              amount: netEarning,
+              type: "payment",
+              status: "Completed",
+              description: `Order #${order.orderId} - Amount: ₹${orderTotal.toFixed(2)}, Commission: ₹${commission.toFixed(2)}`,
+              orderId: order._id,
+            });
+            await wallet.save();
+            console.log(`✅ Restaurant wallet credited ₹${netEarning.toFixed(2)} for hotel order ${order.orderId}`);
+          }
+        }
       } catch (settlementError) {
         console.error(
           `❌ Error updating settlement for hotel order ${order.orderId}:`,
@@ -1202,7 +1242,59 @@ export const markOrderReady = asyncHandler(async (req, res) => {
       console.error("Error sending restaurant notification:", notifError);
     }
 
-    // Notify delivery boy that order is ready for pickup
+    // FIXED: Assign delivery partner if not already assigned (order is now ready)
+    if (!populatedOrder.deliveryPartnerId && !isHotelOrder) {
+      try {
+        // Get restaurant location for assignment
+        const restaurantDoc = await Restaurant.findById(restaurantId).lean();
+        if (restaurantDoc?.location?.coordinates && restaurantDoc.location.coordinates.length >= 2) {
+          const restaurantLat = restaurantDoc.location.coordinates[1];
+          const restaurantLng = restaurantDoc.location.coordinates[0];
+          
+          console.log(`🔄 Order ${order.orderId} is ready but has no delivery partner. Attempting assignment...`);
+          const assignmentResult = await assignOrderToDeliveryBoy(
+            order,
+            restaurantLat,
+            restaurantLng,
+            restaurantId,
+          );
+          
+          if (assignmentResult && assignmentResult.deliveryPartnerId) {
+            console.log(`✅ Order ${order.orderId} assigned to delivery partner ${assignmentResult.deliveryPartnerId} after being marked ready`);
+            // Reload order to get updated delivery partner info
+            const updatedOrder = await Order.findById(order._id)
+              .populate("restaurantId", "name location address phone")
+              .populate("userId", "name phone")
+              .populate("deliveryPartnerId", "name phone")
+              .lean();
+            
+            // Notify the assigned delivery partner
+            try {
+              const { notifyDeliveryBoyOrderReady } =
+                await import("../../order/services/deliveryNotificationService.js");
+              await notifyDeliveryBoyOrderReady(updatedOrder, assignmentResult.deliveryPartnerId);
+              console.log(`✅ Order ready notification sent to newly assigned delivery partner ${assignmentResult.deliveryPartnerId}`);
+            } catch (notifError) {
+              console.error("Error notifying newly assigned delivery partner:", notifError);
+            }
+            
+            return successResponse(res, 200, "Order marked as ready and assigned to delivery partner", {
+              order: updatedOrder || populatedOrder || order,
+              assignment: assignmentResult,
+            });
+          } else {
+            console.warn(`⚠️ Order ${order.orderId} is ready but no delivery partners available for assignment`);
+          }
+        } else {
+          console.error(`❌ Restaurant ${restaurantId} location not found. Cannot assign delivery partner.`);
+        }
+      } catch (assignmentError) {
+        console.error(`❌ Error assigning delivery partner to ready order ${order.orderId}:`, assignmentError);
+        // Continue even if assignment fails - order is still marked as ready
+      }
+    }
+    
+    // Notify delivery boy that order is ready for pickup (if already assigned)
     if (populatedOrder.deliveryPartnerId) {
       try {
         const { notifyDeliveryBoyOrderReady } =

@@ -206,6 +206,23 @@ export const approveDeliveryPartner = asyncHandler(async (req, res) => {
     delivery.verifiedBy = adminId;
     delivery.isActive = true;
 
+    // When account is approved, mark all uploaded documents as verified (admin verified them by approving)
+    if (delivery.documents) {
+      if (delivery.documents.aadhar?.document) {
+        delivery.documents.aadhar.verified = true;
+      }
+      if (delivery.documents.pan?.document) {
+        delivery.documents.pan.verified = true;
+      }
+      if (delivery.documents.drivingLicense?.document) {
+        delivery.documents.drivingLicense.verified = true;
+      }
+      if (delivery.documents.vehicleRC?.document) {
+        delivery.documents.vehicleRC.verified = true;
+      }
+      delivery.markModified('documents');
+    }
+
     await delivery.save();
 
     logger.info(`Delivery partner approved: ${id}`, {
@@ -591,6 +608,15 @@ export const updateDeliveryPartnerStatus = asyncHandler(async (req, res) => {
         return errorResponse(res, 400, `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
       }
       delivery.status = status;
+
+      // When status is set to approved/active, mark all uploaded documents as verified
+      if ((status === 'approved' || status === 'active') && delivery.documents) {
+        if (delivery.documents.aadhar?.document) delivery.documents.aadhar.verified = true;
+        if (delivery.documents.pan?.document) delivery.documents.pan.verified = true;
+        if (delivery.documents.drivingLicense?.document) delivery.documents.drivingLicense.verified = true;
+        if (delivery.documents.vehicleRC?.document) delivery.documents.vehicleRC.verified = true;
+        delivery.markModified('documents');
+      }
     }
 
     // Update isActive if provided

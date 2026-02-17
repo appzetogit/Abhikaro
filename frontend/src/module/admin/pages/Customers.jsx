@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { Search, Download, ChevronDown, Calendar, Eye, FileDown, FileSpreadsheet, FileText, X, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { exportCustomersToCSV, exportCustomersToExcel, exportCustomersToPDF } from "../components/customers/customersExportUtils"
@@ -83,42 +83,49 @@ export default function Customers() {
     setFilters(prev => ({ ...prev, [field]: value }))
   }
 
-  // Fetch customers from API
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      try {
-        setLoading(true)
-        const params = {
-          limit: 1000, // Get all customers
-          offset: 0,
-          ...(searchQuery && { search: searchQuery }),
-          ...(filters.status && { status: filters.status }),
-          ...(filters.joiningDate && { joiningDate: filters.joiningDate }),
-          ...(filters.sortBy && { sortBy: filters.sortBy }),
-        }
+  const fetchCustomers = useCallback(async () => {
+    try {
+      setLoading(true)
+      const params = {
+        limit: 1000, // Get all customers
+        offset: 0,
+        ...(searchQuery && { search: searchQuery }),
+        ...(filters.status && { status: filters.status }),
+        ...(filters.joiningDate && { joiningDate: filters.joiningDate }),
+        ...(filters.sortBy && { sortBy: filters.sortBy }),
+      }
 
-        const response = await adminAPI.getUsers(params)
-        const data = response?.data?.data || response?.data
-        
-        if (data?.users) {
-          setCustomers(data.users)
-          setTotalCustomers(data.total || data.users.length)
-        } else {
-          setCustomers([])
-          setTotalCustomers(0)
-        }
-      } catch (error) {
-        console.error('Error fetching customers:', error)
-        toast.error('Failed to load customers')
+      const response = await adminAPI.getUsers(params)
+      const data = response?.data?.data || response?.data
+
+      if (data?.users) {
+        setCustomers(data.users)
+        setTotalCustomers(data.total ?? data.users.length)
+      } else {
         setCustomers([])
         setTotalCustomers(0)
-      } finally {
-        setLoading(false)
       }
+    } catch (error) {
+      console.error('Error fetching customers:', error)
+      toast.error('Failed to load customers')
+      setCustomers([])
+      setTotalCustomers(0)
+    } finally {
+      setLoading(false)
     }
-
-    fetchCustomers()
   }, [searchQuery, filters.status, filters.joiningDate, filters.sortBy])
+
+  // Fetch customers from API on mount and when filters change
+  useEffect(() => {
+    fetchCustomers()
+  }, [fetchCustomers])
+
+  // Refetch when page gains focus so order count/amount stay updated
+  useEffect(() => {
+    const onFocus = () => fetchCustomers()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [fetchCustomers])
 
   const handleToggleStatus = async (customerId) => {
     try {
@@ -393,10 +400,10 @@ export default function Customers() {
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((customer) => (
+                  filteredCustomers.map((customer, index) => (
                     <tr key={customer.id || customer.sl} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-slate-700">{customer.sl}</span>
+                        <span className="text-sm font-medium text-slate-700">{index + 1}</span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -416,7 +423,7 @@ export default function Customers() {
                         <span className="text-sm text-slate-700">{customer.totalOrder || 0}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-slate-900">$ {(customer.totalOrderAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="text-sm font-medium text-slate-900">₹{Number(customer.totalOrderAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-slate-700">{customer.joiningDate}</span>

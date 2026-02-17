@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { isModuleAuthenticated } from "@/lib/utils/auth";
+import RestaurantRedirectToOrders from "@/module/restaurant/components/RestaurantRedirectToOrders";
 
 /**
  * Role-based Protected Route Component
@@ -38,6 +39,11 @@ export default function ProtectedRoute({ children, requiredRole, loginPath }) {
 
     const redirectPath = roleLoginPaths[requiredRole] || '/';
     return <Navigate to={redirectPath} replace />;
+  }
+
+  // Restaurant: after refresh, redirect to orders screen (/restaurant) unless already there or on onboarding
+  if (requiredRole === "restaurant") {
+    return <RestaurantRedirectToOrders>{children}</RestaurantRedirectToOrders>;
   }
 
   return children;

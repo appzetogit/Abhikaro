@@ -7,10 +7,12 @@ import { useState } from "react"
 import { authAPI } from "@/lib/api"
 import { firebaseAuth } from "@/lib/firebase"
 import { useProfile } from "../../context/ProfileContext"
+import { useCart } from "../../context/CartContext"
 
 export default function Logout() {
   const navigate = useNavigate()
   const { clearProfile } = useProfile()
+  const cartContext = useCart()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [error, setError] = useState("")
 
@@ -49,6 +51,9 @@ export default function Logout() {
 
       // Clear profile state and specific localStorage keys
       clearProfile()
+
+      // Clear cart when logging out so new account starts with empty cart
+      if (cartContext?.clearCart) cartContext.clearCart()
 
       // Clear all authentication data from localStorage
       localStorage.removeItem("accessToken")

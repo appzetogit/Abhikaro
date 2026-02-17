@@ -339,15 +339,16 @@ export default function TripHistory() {
                   <div className="flex-1">
                     <p className="text-base font-semibold text-black">{trip.orderId}</p>
                     <p className="text-sm text-gray-600 mt-1">{trip.restaurant || trip.restaurantName || 'Unknown Restaurant'}</p>
-                    {/* Payment Method Badge */}
+                    {/* Payment: Paid with method (all trips here are delivered) */}
                     {(() => {
                       const paymentMethod = trip.paymentMethod || trip.payment?.method || 'razorpay';
                       const isCOD = paymentMethod === 'cash' || paymentMethod === 'cod';
+                      const methodLabel = isCOD ? 'COD' : 'Online';
                       return (
                         <span className={`inline-block mt-2 text-xs font-medium px-2 py-1 rounded-full ${
                           isCOD ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
                         }`}>
-                          {isCOD ? 'COD' : 'Online'}
+                          Paid · {methodLabel}
                         </span>
                       );
                     })()}

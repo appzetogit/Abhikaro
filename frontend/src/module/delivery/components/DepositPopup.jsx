@@ -13,7 +13,7 @@ export default function DepositPopup({ onSuccess, cashInHand = 0 }) {
   const cashInHandNum = Number(cashInHand) || 0
 
   const handleAmountChange = (e) => {
-    const v = e.target.value.replace(/[^0-9.]/g, "")
+    const v = e.target.value.replace(/\s/g, "").replace(/[^0-9.]/g, "") // No spaces, only digits and decimal
     if (v === "" || (parseFloat(v) >= 0 && parseFloat(v) <= 500000)) setAmount(v)
   }
 

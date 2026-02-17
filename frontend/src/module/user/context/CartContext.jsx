@@ -60,6 +60,20 @@ export function CartProvider({ children }) {
     }
   }, [cart])
 
+  // Clear cart on login/logout so each user session has isolated cart (no previous user's cart)
+  useEffect(() => {
+    const handleAuthChange = () => {
+      setCart([])
+      try {
+        localStorage.removeItem("cart")
+      } catch {
+        // ignore
+      }
+    }
+    window.addEventListener("userAuthChanged", handleAuthChange)
+    return () => window.removeEventListener("userAuthChanged", handleAuthChange)
+  }, [])
+
   // Generate cart item ID: productId for no variant, productId__variantId for variants
   const getCartItemId = (productId, selectedVariantId) => {
     const pid = productId ?? '';

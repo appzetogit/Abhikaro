@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { 
   ArrowLeft, 
@@ -21,6 +21,7 @@ import { toast } from "sonner"
 export default function MenuAdd() {
   const navigate = useNavigate()
   const [restaurants, setRestaurants] = useState([])
+  const [adminCategories, setAdminCategories] = useState([])
   const [selectedRestaurant, setSelectedRestaurant] = useState(null)
   const [menu, setMenu] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -34,6 +35,7 @@ export default function MenuAdd() {
   const [creatingCategory, setCreatingCategory] = useState(false)
   const [editingDish, setEditingDish] = useState(null) // { dish, section }
   const [deletingDish, setDeletingDish] = useState(false)
+  const menuListRef = useRef(null)
 
   // Preparation time options
   const preparationTimeOptions = [
@@ -62,9 +64,10 @@ export default function MenuAdd() {
     variants: [], // Array of variants: [{ id, name, price, stock }]
   })
 
-  // Fetch restaurants
+  // Fetch restaurants and admin categories (categories added by admin)
   useEffect(() => {
     fetchRestaurants()
+    fetchAdminCategories()
   }, [])
 
   // Fetch menu when restaurant is selected
@@ -87,6 +90,20 @@ export default function MenuAdd() {
       toast.error("Failed to load restaurants")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchAdminCategories = async () => {
+    try {
+      const response = await adminAPI.getCategories({})
+      if (response.data?.success && response.data?.data?.categories) {
+        const active = (response.data.data.categories || []).filter(
+          (c) => c.status === true || c.status === "true"
+        )
+        setAdminCategories(active)
+      }
+    } catch (error) {
+      console.error("Error fetching admin categories:", error)
     }
   }
 
@@ -119,6 +136,9 @@ export default function MenuAdd() {
   const handleRestaurantSelect = (restaurant) => {
     setSelectedRestaurant(restaurant)
     setMenu(null)
+    setTimeout(() => {
+      menuListRef.current?.scrollIntoView({ behavior: "smooth" })
+    }, 100)
   }
 
   const toggleSection = (sectionId) => {
@@ -296,6 +316,7 @@ export default function MenuAdd() {
         setFormData({ ...formData, category: newCategoryName.trim() })
         setShowNewCategoryInput(false)
         setNewCategoryName("")
+        fetchAdminCategories()
         fetchMenu() // Refresh menu to get new section
       } else {
         toast.error("Failed to create category")
@@ -529,10 +550,14 @@ export default function MenuAdd() {
     }
   }
 
-  const filteredRestaurants = restaurants.filter(restaurant =>
-    restaurant.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    restaurant.ownerName?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredRestaurants = restaurants.filter((restaurant) => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return true
+    return (
+      restaurant.name?.toLowerCase().includes(q) ||
+      restaurant.ownerName?.toLowerCase().includes(q)
+    )
+  })
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -603,7 +628,7 @@ export default function MenuAdd() {
 
         {/* Menu Sections */}
         {selectedRestaurant && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div id="menuList" ref={menuListRef} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">
                 Menu for {selectedRestaurant.name}
@@ -817,7 +842,14 @@ export default function MenuAdd() {
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select Category</option>
-                      {menu?.sections?.map((section) => (
+                      {adminCategories.map((cat) => (
+                        <option key={cat._id || cat.id} value={cat.name}>
+                          {cat.name}
+                        </option>
+                      ))}
+                      {menu?.sections?.filter(
+                        (s) => !adminCategories.some((c) => (c.name || "").toLowerCase() === (s.name || "").toLowerCase())
+                      ).map((section) => (
                         <option key={section.id} value={section.name}>
                           {section.name}
                         </option>

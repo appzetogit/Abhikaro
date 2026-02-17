@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useState, useEffect, useRef } from "react"
+import { useNavigate, useLocation } from "react-router-dom"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { deliveryAPI } from "@/lib/api"
 import { toast } from "sonner"
@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 
 export default function CreateSupportTicket() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const descriptionRef = useRef(null)
   const [creating, setCreating] = useState(false)
   const [formData, setFormData] = useState({
     subject: "",
@@ -16,6 +18,27 @@ export default function CreateSupportTicket() {
     priority: "medium"
   })
   const [errors, setErrors] = useState({})
+  
+  // Auto-focus description field on mount
+  useEffect(() => {
+    // Small delay to ensure component is fully rendered
+    const timer = setTimeout(() => {
+      if (descriptionRef.current) {
+        descriptionRef.current.focus()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [])
+  
+  // Pre-fill description if reopening ticket (from location state)
+  useEffect(() => {
+    if (location.state?.ticketDescription) {
+      setFormData(prev => ({
+        ...prev,
+        description: location.state.ticketDescription
+      }))
+    }
+  }, [location.state])
 
   const validateForm = () => {
     const newErrors = {}
@@ -139,7 +162,10 @@ export default function CreateSupportTicket() {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="flex items-center gap-4 px-4 py-4">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => {
+              // Navigate back to profile/help tickets screen, clearing any state
+              navigate("/delivery/help/tickets", { replace: true })
+            }}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-gray-700" />
@@ -180,12 +206,14 @@ export default function CreateSupportTicket() {
               Describe your issue in detail (minimum 10 characters)
             </p>
             <Textarea
+              ref={descriptionRef}
               value={formData.description}
               onChange={(e) => handleInputChange("description", e.target.value)}
               placeholder="Describe your issue in detail (minimum 10 characters)"
               rows={8}
               maxLength={2000}
               className={`w-full resize-none ${errors.description ? "border-red-500" : ""}`}
+              autoFocus
             />
             {errors.description && (
               <p className="text-xs text-red-500 mt-1">{errors.description}</p>
@@ -248,7 +276,10 @@ export default function CreateSupportTicket() {
               )}
             </button>
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                // Navigate back to profile/help tickets screen, clearing any state
+                navigate("/delivery/help/tickets", { replace: true })
+              }}
               className="w-full sm:w-auto px-6 py-3 bg-white text-gray-700 border border-gray-300 font-medium rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancel

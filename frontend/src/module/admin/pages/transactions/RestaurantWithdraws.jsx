@@ -7,7 +7,11 @@ import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 
 export default function RestaurantWithdraws() {
-  const [activeTab, setActiveTab] = useState("Pending")
+  const [activeTab, setActiveTab] = useState("All")
+
+  useEffect(() => {
+    setActiveTab("All")
+  }, [])
   const [searchQuery, setSearchQuery] = useState("")
   const [withdraws, setWithdraws] = useState([])
   const [loading, setLoading] = useState(true)

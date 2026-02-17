@@ -7,7 +7,6 @@ import {
   FileText,
   UtensilsCrossed,
   User,
-  ArrowRight,
   Lightbulb,
   HelpCircle,
   Wallet,
@@ -205,7 +204,7 @@ export default function PocketPage() {
       // Count payment transactions (completed orders)
       if (t.type !== 'payment' || t.status !== 'Completed') return false
       const transactionDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null)
-      if (!transactionDate) return false
+      if (!transactionDate || isNaN(transactionDate.getTime())) return false
       return transactionDate >= startOfWeek && transactionDate <= now
     }).length
   }
@@ -257,10 +256,16 @@ export default function PocketPage() {
     // Fetch immediately on mount
     fetchActiveEarningAddons()
 
-    // Refresh every 5 seconds to get latest offers
+    // Refresh when wallet updates (e.g. after delivery complete) so Earnings Guarantee updates
+    const handleAddonRefresh = () => {
+      fetchActiveEarningAddons()
+    }
+    window.addEventListener('deliveryEarningAddonRefresh', handleAddonRefresh)
+
+    // Refresh every 3 seconds to get latest offers
     const refreshInterval = setInterval(() => {
       fetchActiveEarningAddons()
-    }, 3000) // Refresh every 3 seconds - FAST REFRESH
+    }, 3000)
 
     // Refresh when page becomes visible
     const handleVisibilityChange = () => {
@@ -278,6 +283,7 @@ export default function PocketPage() {
 
     return () => {
       clearInterval(refreshInterval)
+      window.removeEventListener('deliveryEarningAddonRefresh', handleAddonRefresh)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
     }
@@ -317,20 +323,21 @@ export default function PocketPage() {
       .reduce((sum, t) => sum + (t.amount || 0), 0)
   }
 
-  // Earnings Guarantee - Use active earning addon if available, otherwise show 0
-  // When no offer is active, show 0 of 0 and ₹0
+  // Earnings Guarantee - When no active addon, show weekly orders/earnings so the circles always reflect real activity
   const earningsGuaranteeTarget = activeEarningAddon?.earningAmount || 0
   const earningsGuaranteeOrdersTarget = activeEarningAddon?.requiredOrders || 0
-  // Only show current orders/earnings if there's an active offer
-  const earningsGuaranteeCurrentOrders = activeEarningAddon ? (activeEarningAddon.currentOrders ?? weeklyOrders) : 0
-  // Show only bonus earnings from the offer, not total weekly earnings
-  const earningsGuaranteeCurrentEarnings = activeEarningAddon ? calculateBonusEarnings() : 0
-  const ordersProgress = earningsGuaranteeOrdersTarget > 0 
-    ? Math.min(earningsGuaranteeCurrentOrders / earningsGuaranteeOrdersTarget, 1) 
-    : 0
-  const earningsProgress = earningsGuaranteeTarget > 0 
-    ? Math.min(earningsGuaranteeCurrentEarnings / earningsGuaranteeTarget, 1) 
-    : 0
+  const earningsGuaranteeCurrentOrders = activeEarningAddon ? (activeEarningAddon.currentOrders ?? weeklyOrders) : weeklyOrders
+  const earningsGuaranteeCurrentEarnings = activeEarningAddon ? calculateBonusEarnings() : weeklyEarnings
+  // Display values for circles: when no addon, show weekly data; when addon, show offer progress
+  const ordersDisplay = activeEarningAddon ? earningsGuaranteeCurrentOrders : weeklyOrders
+  const ordersTargetDisplay = activeEarningAddon ? earningsGuaranteeOrdersTarget : weeklyOrders
+  const earningsDisplay = activeEarningAddon ? earningsGuaranteeCurrentEarnings : weeklyEarnings
+  const ordersProgress = activeEarningAddon && earningsGuaranteeOrdersTarget > 0
+    ? Math.min(earningsGuaranteeCurrentOrders / earningsGuaranteeOrdersTarget, 1)
+    : (weeklyOrders > 0 ? 1 : 0)
+  const earningsProgress = activeEarningAddon && earningsGuaranteeTarget > 0
+    ? Math.min(earningsGuaranteeCurrentEarnings / earningsGuaranteeTarget, 1)
+    : (weeklyEarnings > 0 ? 1 : 0)
 
   // Get week end date for valid till - use offer end date if available
   const getWeekEndDate = () => {
@@ -414,8 +421,9 @@ export default function PocketPage() {
     ?.filter(t => t.type === 'payment' && t.description?.toLowerCase().includes('tip'))
     .reduce((sum, t) => sum + (t.amount || 0), 0) || 0
 
-  // Payout data - calculate from completed withdrawals in previous week
+  // Payout data - calculate from completed withdrawals in previous week (use Number() so amount updates correctly)
   const calculatePayoutAmount = () => {
+    const txs = walletState?.transactions || []
     const now = new Date()
     const lastWeekStart = new Date(now)
     lastWeekStart.setDate(now.getDate() - now.getDay() - 7) // Previous week start
@@ -424,14 +432,16 @@ export default function PocketPage() {
     lastWeekEnd.setDate(lastWeekStart.getDate() + 6)
     lastWeekEnd.setHours(23, 59, 59, 999)
 
-    return walletState.transactions
-      ?.filter(t => {
-        if (t.type !== 'withdrawal' || t.status !== 'Completed') return false
+    return txs
+      .filter(t => {
+        const type = (t.type || '').toLowerCase()
+        const status = (t.status || '').toLowerCase()
+        if (type !== 'withdrawal' || status !== 'completed') return false
         const transactionDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null)
         if (!transactionDate) return false
         return transactionDate >= lastWeekStart && transactionDate <= lastWeekEnd
       })
-      .reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
   }
 
   const payoutAmount = calculatePayoutAmount()
@@ -547,9 +557,11 @@ export default function PocketPage() {
     }
     window.addEventListener('focus', handleFocus)
 
-    // Listen for custom wallet update events
+    // Listen for custom wallet update events (e.g. after delivery complete - socket wallet_updated)
     const handleWalletUpdate = () => {
       fetchWalletData()
+      // Refetch active earning addons so Earnings Guarantee order count and earnings update
+      window.dispatchEvent(new Event('deliveryEarningAddonRefresh'))
     }
     window.addEventListener('deliveryWalletStateUpdated', handleWalletUpdate)
     window.addEventListener('storage', handleWalletUpdate)
@@ -889,10 +901,10 @@ export default function PocketPage() {
                   )}
                 </div>
               </div>
-              {/* Summary Box */}
+              {/* Summary Box - when no addon show weekly earnings/orders */}
               <div className="bg-black text-white px-4 py-3 rounded-lg text-center min-w-[80px]">
-                <div className="text-2xl font-bold">₹{earningsGuaranteeTarget.toFixed(0)}</div>
-                <div className="text-xs text-white/80 mt-1">{earningsGuaranteeOrdersTarget} orders</div>
+                <div className="text-2xl font-bold">₹{(activeEarningAddon ? earningsGuaranteeTarget : weeklyEarnings).toFixed(0)}</div>
+                <div className="text-xs text-white/80 mt-1">{activeEarningAddon ? earningsGuaranteeOrdersTarget : weeklyOrders} orders</div>
               </div>
             </div>
           </div>
@@ -933,7 +945,7 @@ export default function PocketPage() {
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-xl font-bold text-gray-900">{earningsGuaranteeCurrentOrders} of {earningsGuaranteeOrdersTarget || 0}</span>
+                    <span className="text-xl font-bold text-gray-900">{ordersDisplay} of {ordersTargetDisplay}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-3">
@@ -977,7 +989,7 @@ export default function PocketPage() {
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-lg font-bold text-gray-900">₹{earningsGuaranteeCurrentEarnings.toFixed(2)}</span>
+                    <span className="text-lg font-bold text-gray-900">₹{earningsDisplay.toFixed(2)}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-3">
@@ -1000,24 +1012,18 @@ export default function PocketPage() {
 
           <Card className="py-0  bg-white border-0 shadow-none" >
             <CardContent className="p-4 space-y-4">
-              {/* Pocket Balance */}
+              {/* Pocket Balance - no arrow for cleaner UI */}
               <div onClick={() => navigate("/delivery/pocket-balance")} className="flex items-center justify-between">
                 <span className="text-black text-sm">Pocket balance</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-black text-sm font-medium">₹{pocketBalance.toFixed(2)}</span>
-                  <ArrowRight className="w-4 h-4 text-gray-600" />
-                </div>
+                <span className="text-black text-sm font-medium">₹{pocketBalance.toFixed(2)}</span>
               </div>
 
               <hr />
 
-              {/* Available Cash Limit */}
+              {/* Available Cash Limit - no arrow for cleaner UI */}
               <div onClick={()=> setShowCashLimitPopup(true)} className="flex items-center justify-between">
                 <span className="text-black text-sm">Available cash limit</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-black text-sm font-medium">₹{availableCashLimit.toFixed(2)}</span>
-                  <ArrowRight className="w-4 h-4 text-gray-600" />
-                </div>
+                <span className="text-black text-sm font-medium">₹{availableCashLimit.toFixed(2)}</span>
               </div>
 
               {/* Warning Message */}
@@ -1060,7 +1066,7 @@ export default function PocketPage() {
               onClick={() => navigate("/delivery/payout")}
             >
               <CardContent className="p-4 flex flex-col items-start text-start">
-                <div className="text-black text-2xl font-bold mb-2">₹{payoutAmount}</div>
+                <div className="text-black text-2xl font-bold mb-2">₹{Number(payoutAmount).toFixed(2)}</div>
                 <div className="text-black text-sm font-medium mb-1">Payout</div>
                 <div className="text-gray-600 text-xs">{payoutPeriod}</div>
               </CardContent>
@@ -1113,10 +1119,14 @@ export default function PocketPage() {
       <BottomPopup
         isOpen={showCashLimitPopup}
         onClose={() => setShowCashLimitPopup(false)}
-        title="Available Cash Limit?"
-        showCloseButton={true}
+        title="Available Cash Limit"
+        showCloseButton={false}
+        showArrow={false}
+        showHandle={true}
         closeOnBackdropClick={true}
-        maxHeight="60vh"
+        maxHeight="auto"
+        allowSwipeDown={true}
+        preventScroll={true}
       >
      <AvailableCashLimit
           onClose={() => setShowCashLimitPopup(false)}

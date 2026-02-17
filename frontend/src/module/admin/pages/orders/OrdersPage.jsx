@@ -37,39 +37,40 @@ export default function OrdersPage({ statusKey = "all" }) {
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState(null)
   
   // Fetch orders from backend API
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        setIsLoading(true)
-        const params = {
-          page: 1,
-          limit: 1000, // Fetch all orders for now (can be optimized with pagination later)
-          status: statusKey === "all" ? undefined : 
-                 statusKey === "restaurant-cancelled" ? "cancelled" : statusKey,
-          cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined
-        }
-        
-        const response = await adminAPI.getOrders(params)
-        
-        if (response.data?.success && response.data?.data?.orders) {
-          setOrders(response.data.data.orders)
-          setTotalCount(response.data.data.pagination?.total || response.data.data.orders.length)
-        } else {
-          console.error("Failed to fetch orders:", response.data)
-          toast.error("Failed to fetch orders")
-          setOrders([])
-        }
-      } catch (error) {
-        console.error("Error fetching orders:", error)
-        toast.error(error.response?.data?.message || "Failed to fetch orders")
-        setOrders([])
-      } finally {
-        setIsLoading(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const fetchOrders = async () => {
+    try {
+      setIsLoading(true)
+      const params = {
+        page: 1,
+        limit: 1000, // Fetch all orders for now (can be optimized with pagination later)
+        status: statusKey === "all" ? undefined : 
+               statusKey === "restaurant-cancelled" ? "cancelled" : statusKey,
+        cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined
       }
+      
+      const response = await adminAPI.getOrders(params)
+      
+      if (response.data?.success && response.data?.data?.orders) {
+        setOrders(response.data.data.orders)
+        setTotalCount(response.data.data.pagination?.total || response.data.data.orders.length)
+      } else {
+        console.error("Failed to fetch orders:", response.data)
+        toast.error("Failed to fetch orders")
+        setOrders([])
+      }
+    } catch (error) {
+      console.error("Error fetching orders:", error)
+      toast.error(error.response?.data?.message || "Failed to fetch orders")
+      setOrders([])
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchOrders()
-  }, [statusKey])
+  }, [statusKey, refreshTrigger])
 
   // Handle refund button click - show modal for wallet payments, confirm dialog for others
   const handleRefund = (order) => {
@@ -290,6 +291,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         isOpen={isViewOrderOpen}
         onOpenChange={setIsViewOrderOpen}
         order={selectedOrder}
+        onPaymentApproved={() => setRefreshTrigger((t) => t + 1)}
       />
       <RefundModal
         isOpen={refundModalOpen}

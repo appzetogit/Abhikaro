@@ -18,9 +18,11 @@ export default function PushNotification() {
     zone: "All",
     sendTo: "Customer",
     description: "",
+    bannerImage: null,
   })
   const [searchQuery, setSearchQuery] = useState("")
   const [notifications, setNotifications] = useState(pushNotificationsDummy)
+  const [bannerPreview, setBannerPreview] = useState(null)
 
   const filteredNotifications = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -50,7 +52,25 @@ export default function PushNotification() {
       zone: "All",
       sendTo: "Customer",
       description: "",
+      bannerImage: null,
     })
+    setBannerPreview(null)
+  }
+
+  const handleBannerChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (!/^image\/(jpeg|jpg|png|gif|webp)$/i.test(file.type)) {
+        alert("Please upload an image (jpg, png, gif, webp)")
+        return
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        alert("Image size must be under 2 MB")
+        return
+      }
+      setFormData(prev => ({ ...prev, bannerImage: file }))
+      setBannerPreview(URL.createObjectURL(file))
+    }
   }
 
   const handleToggleStatus = (sl) => {
@@ -126,11 +146,26 @@ export default function PushNotification() {
               <label className="block text-sm font-semibold text-slate-700 mb-3">
                 Notification banner
               </label>
-              <div className="border-2 border-dashed border-slate-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer">
-                <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                <p className="text-sm font-medium text-blue-600 mb-1">Upload Image</p>
-                <p className="text-xs text-slate-500">Image format - jpg png jpeg gif webp Image Size -maximum size 2 MB Image Ratio - 3:1</p>
-              </div>
+              <label className="block border-2 border-dashed border-slate-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                  onChange={handleBannerChange}
+                  className="hidden"
+                />
+                {bannerPreview ? (
+                  <div className="space-y-2">
+                    <img src={bannerPreview} alt="Banner preview" className="max-h-32 mx-auto rounded object-contain" />
+                    <p className="text-sm text-green-600">Banner uploaded. Click to change.</p>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-blue-600 mb-1">Upload Image</p>
+                    <p className="text-xs text-slate-500">Image format - jpg png jpeg gif webp Image Size -maximum size 2 MB Image Ratio - 3:1</p>
+                  </>
+                )}
+              </label>
             </div>
 
             {/* Description */}

@@ -392,7 +392,7 @@ export default function SignIn() {
       // Call backend to send OTP
       await authAPI.sendOTP(fullPhone, purpose, email)
 
-      // Store auth data in sessionStorage for OTP page
+      // Store auth data in sessionStorage for OTP page (include rememberMe for token persistence)
       const authData = {
         method: authMethod,
         phone: fullPhone,
@@ -400,6 +400,7 @@ export default function SignIn() {
         name: isSignUp ? formData.name.trim() : null,
         isSignUp,
         module: "user",
+        rememberMe: !!formData.rememberMe,
       }
       sessionStorage.setItem("userAuthData", JSON.stringify(authData))
 

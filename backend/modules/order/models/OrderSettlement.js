@@ -225,11 +225,23 @@ orderSettlementSchema.statics.findOrCreateByOrderId = async function (orderId) {
       throw new Error("Order not found");
     }
 
+    // Resolve restaurantId: Order stores string (e.g. "REST005320"), schema expects ObjectId
+    let restaurantObjectId = order.restaurantId;
+    if (!mongoose.Types.ObjectId.isValid(order.restaurantId) || order.restaurantId.length !== 24) {
+      const Restaurant = mongoose.model("Restaurant");
+      const restaurant = await Restaurant.findOne({
+        $or: [{ restaurantId: order.restaurantId }, { slug: order.restaurantId }],
+      })
+        .select("_id")
+        .lean();
+      restaurantObjectId = restaurant?._id;
+    }
+
     settlement = await this.create({
       orderId,
       orderNumber: order.orderId,
       userId: order.userId,
-      restaurantId: order.restaurantId,
+      restaurantId: restaurantObjectId || order.restaurantId,
       restaurantName: order.restaurantName,
     });
   }

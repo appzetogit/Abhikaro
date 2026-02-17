@@ -68,8 +68,12 @@ export const fetchDeliveryWallet = async () => {
         pendingWithdrawals: walletData.pendingWithdrawals || 0,
         joiningBonusClaimed: walletData.joiningBonusClaimed || false,
         joiningBonusAmount: walletData.joiningBonusAmount || 0,
-        // Use 'transactions' field (all transactions) for weekly calculations, fallback to recentTransactions for backward compatibility
-        transactions: walletData.transactions || walletData.recentTransactions || [],
+        // Use 'transactions' field; normalize amount/date so payout and balances update correctly
+        transactions: (walletData.transactions || walletData.recentTransactions || []).map(t => ({
+          ...t,
+          amount: Number(t.amount) || 0,
+          date: t.date || t.createdAt
+        })),
         totalTransactions: walletData.totalTransactions || 0
       }
       

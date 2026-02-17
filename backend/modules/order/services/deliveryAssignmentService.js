@@ -343,6 +343,13 @@ export async function assignOrderToDeliveryBoy(order, restaurantLat, restaurantL
       return null;
     }
     
+    // FIXED: Only assign orders that are in 'ready' status (Ready to Pickup)
+    // Delivery partners should NOT be assigned to orders that are still being prepared
+    if (order.status !== 'ready') {
+      console.log(`⚠️ Order ${order.orderId} is not ready for pickup (status: ${order.status}). Cannot assign to delivery partner. Order must be marked as 'ready' by restaurant first.`);
+      return null;
+    }
+    
     // Check if order already has a delivery partner assigned
     if (order.deliveryPartnerId) {
       console.log(`⚠️ Order ${order.orderId} already has delivery partner assigned`);

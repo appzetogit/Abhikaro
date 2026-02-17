@@ -77,6 +77,14 @@ export default function ProfileDetails() {
     return vehiclePattern.test(formatted)
   }
 
+  // When account is approved/active, show documents as Verified if they exist (backend now sets verified on approve; this covers legacy data)
+  const getDocumentStatus = (doc) => {
+    if (!doc?.document) return "Not uploaded"
+    const accountApproved = profile?.status === "approved" || profile?.status === "active"
+    if (doc.verified || accountApproved) return "Verified"
+    return "Not verified"
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -170,7 +178,7 @@ export default function ProfileDetails() {
               <div className="flex-1">
                 <p className="text-base font-medium text-gray-900">Aadhar Card</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {profile?.documents?.aadhar?.verified ? "Verified" : profile?.documents?.aadhar?.document ? "Not verified" : "Not uploaded"}
+                  {getDocumentStatus(profile?.documents?.aadhar)}
                 </p>
               </div>
               {profile?.documents?.aadhar?.document && (
@@ -194,7 +202,7 @@ export default function ProfileDetails() {
               <div className="flex-1">
                 <p className="text-base font-medium text-gray-900">PAN Card</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {profile?.documents?.pan?.verified ? "Verified" : profile?.documents?.pan?.document ? "Not verified" : "Not uploaded"}
+                  {getDocumentStatus(profile?.documents?.pan)}
                 </p>
               </div>
               {profile?.documents?.pan?.document && (
@@ -218,7 +226,7 @@ export default function ProfileDetails() {
               <div className="flex-1">
                 <p className="text-base font-medium text-gray-900">Driving License</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {profile?.documents?.drivingLicense?.verified ? "Verified" : profile?.documents?.drivingLicense?.document ? "Not verified" : "Not uploaded"}
+                  {getDocumentStatus(profile?.documents?.drivingLicense)}
                 </p>
               </div>
               {profile?.documents?.drivingLicense?.document && (
@@ -490,7 +498,7 @@ export default function ProfileDetails() {
               type="text"
               value={bankDetails.accountNumber}
               onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '') // Only numbers
+                const value = e.target.value.replace(/\s/g, '').replace(/\D/g, '') // No spaces, only digits
                 setBankDetails(prev => ({ ...prev, accountNumber: value }))
                 setBankDetailsErrors(prev => ({ ...prev, accountNumber: "" }))
               }}
@@ -514,7 +522,7 @@ export default function ProfileDetails() {
               type="text"
               value={bankDetails.ifscCode}
               onChange={(e) => {
-                const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') // Only uppercase letters and numbers
+                const value = e.target.value.replace(/\s/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '') // No spaces, only uppercase letters and numbers
                 setBankDetails(prev => ({ ...prev, ifscCode: value }))
                 setBankDetailsErrors(prev => ({ ...prev, ifscCode: "" }))
               }}

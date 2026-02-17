@@ -188,6 +188,15 @@ console.error = (...args) => {
     return
   }
 
+  // Google Maps billing/API errors: UI shows friendly message (e.g. ZoneSetup). Log as warning and notify pages.
+  if (errorStr.includes('BillingNotEnabledMapError') || errorStr.includes('Google Maps JavaScript API error')) {
+    console.warn('Google Maps reported an error (e.g. billing not enabled). Enable billing in Google Cloud Console for the Maps JavaScript API.')
+    try {
+      window.dispatchEvent(new Event('googleMapsLoadError'))
+    } catch (_) {}
+    return
+  }
+
   originalError.apply(console, args)
 }
 

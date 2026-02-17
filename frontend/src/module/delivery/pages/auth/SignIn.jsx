@@ -48,6 +48,7 @@ export default function DeliverySignIn() {
   const [formData, setFormData] = useState({
     phone: "",
     countryCode: "+91",
+    rememberMe: false,
   })
   const [error, setError] = useState("")
   const [isSending, setIsSending] = useState(false)
@@ -135,6 +136,7 @@ export default function DeliverySignIn() {
         phone: fullPhone,
         isSignUp: false,
         module: "delivery",
+        rememberMe: !!formData.rememberMe,
       }
       sessionStorage.setItem("deliveryAuthData", JSON.stringify(authData))
 
@@ -262,6 +264,20 @@ export default function DeliverySignIn() {
             <p className="text-sm text-gray-500">
               Enter a valid 10 digit mobile number
             </p>
+
+            {/* Remember Me Checkbox */}
+            <div className="flex items-center gap-2 mt-3">
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={formData.rememberMe}
+                onChange={(e) => setFormData(prev => ({ ...prev, rememberMe: e.target.checked }))}
+                className="w-4 h-4 border-2 border-gray-300 rounded accent-black"
+              />
+              <label htmlFor="rememberMe" className="text-sm text-gray-700 cursor-pointer">
+                Remember my login for faster sign-in
+              </label>
+            </div>
 
             {error && (
               <p className="text-sm text-red-500">

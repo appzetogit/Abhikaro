@@ -1281,6 +1281,14 @@ export default function HubMenu() {
                                   )}
                                 </div>
                                 <p className="text-sm font-medium text-gray-700 mb-3">₹{item.price}</p>
+                                
+                                {/* Show rejection reason for rejected dishes */}
+                                {item.approvalStatus === 'rejected' && item.rejectionReason && (
+                                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                                    <p className="text-xs font-semibold text-red-800 mb-1">Rejection Reason:</p>
+                                    <p className="text-xs text-red-700">{item.rejectionReason}</p>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Right: Image */}
@@ -1301,13 +1309,23 @@ export default function HubMenu() {
 
                             {/* Action buttons - below image */}
                             <div className="flex items-center justify-center gap-3 mt-4">
-                              <button
-                                onClick={() => navigate(`/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId: group.id } })}
-                                className="flex items-center gap-1.5 bg-transparent text-gray-700 text-sm font-medium"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                                <span>Edit</span>
-                              </button>
+                              {item.approvalStatus === 'rejected' ? (
+                                <button
+                                  onClick={() => navigate(`/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId: group.id, isResubmit: true } })}
+                                  className="flex items-center gap-1.5 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                  <span>Edit & Resubmit</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => navigate(`/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId: group.id } })}
+                                  className="flex items-center gap-1.5 bg-transparent text-gray-700 text-sm font-medium"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                  <span>Edit</span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}

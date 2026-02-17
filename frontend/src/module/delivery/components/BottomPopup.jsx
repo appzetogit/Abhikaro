@@ -14,9 +14,12 @@ import { X, ChevronDown } from "lucide-react"
  * @param {boolean} closeOnBackdropClick - Close when backdrop is clicked (default: true)
  * @param {string} maxHeight - Maximum height of popup (default: "90vh")
  * @param {boolean} showHandle - Show drag handle (default: true)
+ * @param {boolean} showArrow - Show arrow icon in handle (default: true)
  * @param {boolean} disableSwipeToClose - Disable swipe-to-close functionality (default: false)
  * @param {boolean} showBackdrop - Show backdrop overlay (default: true)
  * @param {boolean} backdropBlocksInteraction - Whether backdrop blocks pointer events (default: true)
+ * @param {boolean} preventScroll - Prevent content scrolling (default: false)
+ * @param {boolean} allowSwipeDown - Allow swipe down to close (default: true)
  */
 export default function BottomPopup({
   isOpen,
@@ -27,10 +30,13 @@ export default function BottomPopup({
   closeOnBackdropClick = true,
   maxHeight = "90vh",
   showHandle = true,
+  showArrow = true,
   disableSwipeToClose = false,
   collapsedContent = null, // Content to show when collapsed (e.g., Reached pickup button)
   showBackdrop = true, // Show backdrop overlay
-  backdropBlocksInteraction = true // Whether backdrop blocks pointer events
+  backdropBlocksInteraction = true, // Whether backdrop blocks pointer events
+  preventScroll = false, // Prevent content scrolling
+  allowSwipeDown = true // Allow swipe down to close
 }) {
   const popupRef = useRef(null)
   const handleRef = useRef(null)
@@ -65,10 +71,13 @@ export default function BottomPopup({
 
   // Handle touch start for swipe detection
   const handleTouchStart = (e) => {
+    // Don't allow swipe if disabled
+    if (!allowSwipeDown || disableSwipeToClose) return
+    
     const target = e.target
     const isHandle = handleRef.current?.contains(target)
     
-    // If clicking on handle, don't start swipe - handle will toggle collapse
+    // If clicking on handle, don't start swipe - handle will toggle collapse or close
     if (isHandle) {
       return
     }
@@ -134,7 +143,7 @@ export default function BottomPopup({
   // Handle mouse events for desktop drag support
   const handleMouseDown = (e) => {
     // Don't allow swipe if disabled
-    if (disableSwipeToClose) return
+    if (!allowSwipeDown || disableSwipeToClose) return
     
     const target = e.target
     const isHandle = handleRef.current?.contains(target)
@@ -295,21 +304,30 @@ export default function BottomPopup({
                 type="button"
                 className="flex flex-col items-center pt-3 pb-2 cursor-pointer select-none bg-white sticky top-0 z-10 w-full border-0 outline-none p-0"
                 onClick={(e) => {
-                  console.log('🖱️ Handle clicked, current collapsed:', isCollapsed)
-                  e.stopPropagation()
-                  e.preventDefault()
-                  handleCollapseToggle(e)
+                  if (allowSwipeDown) {
+                    console.log('🖱️ Handle clicked, current collapsed:', isCollapsed)
+                    e.stopPropagation()
+                    e.preventDefault()
+                    handleCollapseToggle(e)
+                  } else {
+                    // If swipe down is disabled, close on handle click
+                    handleClose()
+                  }
                 }}
                 onTouchStart={(e) => {
                   // Store touch start for click detection
                   e.stopPropagation()
                 }}
                 onTouchEnd={(e) => {
-                  // Handle touch end for mobile collapse toggle
-                  console.log('👆 Handle touched, current collapsed:', isCollapsed)
-                  e.stopPropagation()
-                  e.preventDefault()
-                  handleCollapseToggle(e)
+                  // Handle touch end for mobile collapse toggle or close
+                  if (allowSwipeDown) {
+                    console.log('👆 Handle touched, current collapsed:', isCollapsed)
+                    e.stopPropagation()
+                    e.preventDefault()
+                    handleCollapseToggle(e)
+                  } else {
+                    handleClose()
+                  }
                 }}
                 onMouseDown={(e) => {
                   // Prevent drag when clicking handle
@@ -323,9 +341,11 @@ export default function BottomPopup({
                   background: 'transparent'
                 }}
               >
-                <ChevronDown 
-                  className="w-6 h-6 text-gray-400 mb-1 pointer-events-none"
-                />
+                {showArrow && (
+                  <ChevronDown 
+                    className="w-6 h-6 text-gray-400 mb-1 pointer-events-none"
+                  />
+                )}
                 <div 
                   className="w-12 h-1.5 bg-gray-300 rounded-full pointer-events-none"
                 />
@@ -354,7 +374,7 @@ export default function BottomPopup({
 
             {/* Content */}
             {!isCollapsed ? (
-              <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div className={`flex-1 px-4 py-4 ${preventScroll ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                 {children}
               </div>
             ) : (

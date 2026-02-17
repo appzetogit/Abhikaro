@@ -78,12 +78,13 @@ export function hasModuleAccess(role, module) {
 }
 
 /**
- * Get module-specific access token
+ * Get module-specific access token (checks sessionStorage first, then localStorage for "Remember Me")
  * @param {string} module - Module name (admin, restaurant, delivery, user)
  * @returns {string|null} - Access token or null
  */
 export function getModuleToken(module) {
-  return localStorage.getItem(`${module}_accessToken`);
+  const key = `${module}_accessToken`;
+  return sessionStorage.getItem(key) || localStorage.getItem(key);
 }
 
 /**
@@ -137,14 +138,15 @@ export function isModuleAuthenticated(module) {
 }
 
 /**
- * Clear authentication data for a specific module
+ * Clear authentication data for a specific module (both session and local storage)
  * @param {string} module - Module name (admin, restaurant, delivery, user)
  */
 export function clearModuleAuth(module) {
-  localStorage.removeItem(`${module}_accessToken`);
-  localStorage.removeItem(`${module}_authenticated`);
-  localStorage.removeItem(`${module}_user`);
-  // Also clear any sessionStorage data
+  const prefix = `${module}_`;
+  ['accessToken', 'authenticated', 'user'].forEach(suffix => {
+    localStorage.removeItem(prefix + suffix);
+    sessionStorage.removeItem(prefix + suffix);
+  });
   sessionStorage.removeItem(`${module}AuthData`);
 }
 
@@ -166,84 +168,55 @@ export function clearAuthData() {
  * @param {string} module - Module name (admin, restaurant, delivery, user)
  * @param {string} token - Access token
  * @param {Object} user - User data
- * @throws {Error} If localStorage is not available or quota exceeded
+ * @param {Object} options - { persistent: true } use localStorage (Remember Me); false use sessionStorage
+ * @throws {Error} If storage is not available or quota exceeded
  */
-export function setAuthData(module, token, user) {
+export function setAuthData(module, token, user, options = {}) {
+  const persistent = options.persistent !== false;
+  const storage = persistent ? localStorage : sessionStorage;
+
   try {
-    // Check if localStorage is available
-    if (typeof Storage === 'undefined' || !localStorage) {
-      throw new Error('localStorage is not available');
+    if (typeof Storage === 'undefined' || !storage) {
+      throw new Error('Storage is not available');
     }
 
-    // Validate inputs
     if (!module || !token) {
       throw new Error(`Invalid parameters: module=${module}, token=${!!token}`);
     }
 
-    console.log(`[setAuthData] Storing auth for module: ${module}`, {
-      hasToken: !!token,
-      tokenLength: token?.length,
-      hasUser: !!user
-    });
-
-    // Store module-specific token (don't clear other modules)
     const tokenKey = `${module}_accessToken`;
     const authKey = `${module}_authenticated`;
     const userKey = `${module}_user`;
 
-    localStorage.setItem(tokenKey, token);
-    localStorage.setItem(authKey, 'true');
-    
+    // Clear the other storage so a single source of truth (session vs local)
+    const other = persistent ? sessionStorage : localStorage;
+    other.removeItem(tokenKey);
+    other.removeItem(authKey);
+    other.removeItem(userKey);
+
+    storage.setItem(tokenKey, token);
+    storage.setItem(authKey, 'true');
     if (user) {
       try {
-        localStorage.setItem(userKey, JSON.stringify(user));
+        storage.setItem(userKey, JSON.stringify(user));
       } catch (userError) {
         console.warn('Failed to store user data, but token was stored:', userError);
-        // Don't throw - token storage is more important
       }
     }
 
-    // Verify the token was stored correctly
-    const storedToken = localStorage.getItem(tokenKey);
-    const storedAuth = localStorage.getItem(authKey);
-    
-    if (storedToken !== token) {
-      console.error(`[setAuthData] Token mismatch:`, {
-        expected: token?.substring(0, 20) + '...',
-        stored: storedToken?.substring(0, 20) + '...'
-      });
+    const storedToken = storage.getItem(tokenKey);
+    const storedAuth = storage.getItem(authKey);
+    if (storedToken !== token || storedAuth !== 'true') {
       throw new Error(`Token storage verification failed for module: ${module}`);
     }
-
-    if (storedAuth !== 'true') {
-      console.error(`[setAuthData] Auth flag mismatch:`, {
-        expected: 'true',
-        stored: storedAuth
-      });
-      throw new Error(`Authentication flag storage failed for module: ${module}`);
-    }
-
-    console.log(`[setAuthData] Successfully stored auth data for ${module}`);
   } catch (error) {
-    // If quota exceeded, try to clear some space
     if (error.name === 'QuotaExceededError' || error.code === 22) {
-      console.warn('localStorage quota exceeded. Attempting to clear old data...');
-      // Clear legacy tokens
       try {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('user');
-        // Retry storing
-        localStorage.setItem(`${module}_accessToken`, token);
-        localStorage.setItem(`${module}_authenticated`, 'true');
-        if (user) {
-          localStorage.setItem(`${module}_user`, JSON.stringify(user));
-        }
-        
-        // Verify again after retry
-        const storedToken = localStorage.getItem(`${module}_accessToken`);
-        if (storedToken !== token) {
-          throw new Error('Token storage failed even after clearing space');
-        }
+        storage.setItem(`${module}_accessToken`, token);
+        storage.setItem(`${module}_authenticated`, 'true');
+        if (user) storage.setItem(`${module}_user`, JSON.stringify(user));
       } catch (retryError) {
         console.error('Failed to store auth data after clearing space:', retryError);
         throw new Error('Unable to store authentication data. Please clear browser storage and try again.');

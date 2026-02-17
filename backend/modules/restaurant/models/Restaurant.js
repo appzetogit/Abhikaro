@@ -45,7 +45,7 @@ const restaurantSchema = new mongoose.Schema(
       },
       lowercase: true,
       trim: true,
-      sparse: true, // Allow multiple null values in unique index
+      // unique+sparse index defined via schema.index() below to avoid duplicate index warning
     },
     phone: {
       type: String,

@@ -9,8 +9,8 @@ export default function AvailableCashLimit({ onClose, walletData = {} }) {
   const availableCashLimit = Math.max(0, totalCashLimit - cashInHand - deductions)
 
   return (
-    <div className="min-h-screen bg-white text-black flex flex-col">
-      <div className="">
+    <div className="bg-white text-black flex flex-col">
+      <div className="px-4">
         <div className="py-3 flex justify-between border-b border-gray-200 items-start">
           <div>
             <div className="text-sm font-medium">Total cash limit</div>
@@ -32,7 +32,7 @@ export default function AvailableCashLimit({ onClose, walletData = {} }) {
         </div>
       </div>
 
-      <div onClick={onClose} className="mt-6">
+      <div onClick={onClose} className="mt-6 px-4 pb-4">
         <button className="w-full bg-black text-white py-3 rounded-lg text-sm font-medium">
           Okay
         </button>
@@ -43,7 +43,7 @@ export default function AvailableCashLimit({ onClose, walletData = {} }) {
 
 function DetailRow({ label, value }) {
   return (
-    <div className="py-3 flex justify-between items-center border-b border-gray-200">
+    <div className="py-3 px-4 flex justify-between items-center border-b border-gray-200">
       <div className="text-sm font-medium">{label}</div>
       <div className="text-sm font-semibold">{value}</div>
     </div>

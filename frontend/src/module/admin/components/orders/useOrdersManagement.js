@@ -53,7 +53,11 @@ export function useOrdersManagement(orders, statusKey, title) {
 
     // Apply filters
     if (filters.paymentStatus) {
-      result = result.filter(order => order.paymentStatus === filters.paymentStatus)
+      result = result.filter(order => {
+        const orderStatus = order.paymentStatus
+        const filterStatus = filters.paymentStatus
+        return orderStatus === filterStatus || (filterStatus === 'Unpaid' && orderStatus === 'Pending')
+      })
     }
 
     if (filters.deliveryType) {
@@ -161,7 +165,12 @@ export function useOrdersManagement(orders, statusKey, title) {
       // Dynamic import of jsPDF and autoTable for instant PDF download
       const { default: jsPDF } = await import('jspdf')
       const { default: autoTable } = await import('jspdf-autotable')
-      
+
+      // Ensure a value is a single string for jsPDF (avoids array/object causing garbled output)
+      const str = (v) => (v == null || v === '') ? '' : String(v)
+      const num = (v) => (v != null && !Number.isNaN(Number(v))) ? Number(v) : 0
+      const money = (v) => `Rs. ${num(v).toFixed(2)}`
+
       const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -172,22 +181,22 @@ export function useOrdersManagement(orders, statusKey, title) {
       doc.setFontSize(18)
       doc.setTextColor(30, 30, 30)
       doc.text('Order Invoice', 105, 20, { align: 'center' })
-      
+
       // Order ID
       doc.setFontSize(12)
       doc.setTextColor(100, 100, 100)
-      const orderId = order.orderId || order.id || order.subscriptionId || 'N/A'
-      doc.text(`Order ID: ${orderId}`, 105, 28, { align: 'center' })
-      
+      const orderId = str(order.orderId || order.id || order.subscriptionId || 'N/A')
+      doc.text(str('Order ID: ' + orderId), 105, 28, { align: 'center' })
+
       // Date
       doc.setFontSize(10)
-      const orderDate = order.date && order.time ? `${order.date}, ${order.time}` : (order.date || new Date().toLocaleDateString())
-      doc.text(`Date: ${orderDate}`, 105, 34, { align: 'center' })
+      const orderDate = order.date && order.time ? order.date + ', ' + order.time : str(order.date || new Date().toLocaleDateString())
+      doc.text(str('Date: ' + orderDate), 105, 34, { align: 'center' })
       
       let startY = 45
       
       // Customer Information
-      if (order.customerName || order.customerPhone) {
+      if (order.customerName || order.customerPhone || order.customerEmail) {
         doc.setFontSize(12)
         doc.setTextColor(30, 30, 30)
         doc.text('Customer Information', 14, startY)
@@ -196,13 +205,44 @@ export function useOrdersManagement(orders, statusKey, title) {
         doc.setFontSize(10)
         doc.setTextColor(60, 60, 60)
         if (order.customerName) {
-          doc.text(`Name: ${order.customerName}`, 14, startY)
+          doc.text(str('Name: ' + order.customerName), 14, startY)
           startY += 6
         }
         if (order.customerPhone) {
-          doc.text(`Phone: ${order.customerPhone}`, 14, startY)
+          doc.text(str('Phone: ' + order.customerPhone), 14, startY)
           startY += 6
         }
+        if (order.customerEmail) {
+          doc.text(str('Email: ' + order.customerEmail), 14, startY)
+          startY += 6
+        }
+        startY += 5
+      }
+
+      // Delivery Address
+      const addr = order.address || {}
+      const hasAddress = addr.street || addr.formattedAddress || addr.city || addr.address
+      if (hasAddress) {
+        doc.setFontSize(12)
+        doc.setTextColor(30, 30, 30)
+        doc.text('Delivery Address', 14, startY)
+        startY += 8
+        doc.setFontSize(10)
+        doc.setTextColor(60, 60, 60)
+        const addrParts = [
+          addr.label,
+          addr.street,
+          addr.additionalDetails,
+          addr.formattedAddress,
+          addr.address,
+          [addr.city, addr.state, addr.zipCode].filter(Boolean).join(', ')
+        ].filter(Boolean)
+        const addrStr = addrParts.join(', ') || 'N/A'
+        const addrLines = doc.splitTextToSize(addrStr, 170)
+        addrLines.forEach((line) => {
+          doc.text(str(line), 14, startY)
+          startY += 5
+        })
         startY += 5
       }
       
@@ -215,26 +255,32 @@ export function useOrdersManagement(orders, statusKey, title) {
         
         doc.setFontSize(10)
         doc.setTextColor(60, 60, 60)
-        doc.text(order.restaurant, 14, startY)
+        doc.text(str(order.restaurant), 14, startY)
         startY += 10
       }
-      
+
       // Delivery Type
       if (order.deliveryType) {
         doc.setFontSize(10)
-        doc.text(`Delivery Type: ${order.deliveryType}`, 14, startY)
+        doc.text(str('Delivery Type: ' + order.deliveryType), 14, startY)
         startY += 8
       }
       
-      // Order Items Table
+      // Order Items Table (all cell values as strings to avoid garbled PDF output)
       if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-        const tableData = order.items.map((item) => [
-          item.quantity || 1,
-          item.name || 'Unknown Item',
-          `₹${(item.price || 0).toFixed(2)}`,
-          `₹${((item.quantity || 1) * (item.price || 0)).toFixed(2)}`
-        ])
-        
+        const tableData = order.items.map((item) => {
+          const qty = num(item.quantity) || 1
+          const price = num(item.price)
+          const rowTotal = qty * price
+          const itemName = item.name || item.productName || item.itemName || 'Unknown Item'
+          return [
+            str(qty),
+            str(itemName),
+            money(price),
+            money(rowTotal)
+          ]
+        })
+
         autoTable(doc, {
           startY: startY,
           head: [['Qty', 'Item Name', 'Price', 'Total']],
@@ -269,30 +315,75 @@ export function useOrdersManagement(orders, statusKey, title) {
         
         startY = doc.lastAutoTable.finalY + 10
       }
-      
+
+      // Bill breakdown (subtotal, discount, tax, delivery, total) - use str() so doc.text never gets an array
+      doc.setFontSize(10)
+      doc.setTextColor(60, 60, 60)
+      if (order.totalItemAmount != null) {
+        doc.text(str('Item Subtotal: ' + money(order.totalItemAmount)), 14, startY)
+        startY += 6
+      }
+      if (order.itemDiscount != null && num(order.itemDiscount) > 0) {
+        doc.text(str('Discount: -' + money(order.itemDiscount)), 14, startY)
+        startY += 6
+      }
+      if (order.vatTax != null && num(order.vatTax) > 0) {
+        doc.text(str('Taxes: ' + money(order.vatTax)), 14, startY)
+        startY += 6
+      }
+      if (order.deliveryCharge != null && num(order.deliveryCharge) > 0) {
+        doc.text(str('Delivery Charge: ' + money(order.deliveryCharge)), 14, startY)
+        startY += 6
+      }
+      if (order.platformFee != null && num(order.platformFee) > 0) {
+        doc.text(str('Platform Fee: ' + money(order.platformFee)), 14, startY)
+        startY += 6
+      }
+      startY += 4
+
       // Total Amount
-      if (order.totalAmount) {
+      if (order.totalAmount != null) {
         doc.setFontSize(14)
         doc.setTextColor(30, 30, 30)
         doc.setFont(undefined, 'bold')
-        const totalAmount = typeof order.totalAmount === 'number' ? order.totalAmount.toFixed(2) : order.totalAmount
-        doc.text(`Total Amount: ₹${totalAmount}`, 14, startY)
+        doc.text(str('Total Amount: ' + money(order.totalAmount)), 14, startY)
         startY += 8
       }
-      
-      // Payment Status
-      if (order.paymentStatus) {
+
+      // Payment Type & Status
+      if (order.paymentType) {
         doc.setFontSize(10)
         doc.setTextColor(100, 100, 100)
         doc.setFont(undefined, 'normal')
-        doc.text(`Payment Status: ${order.paymentStatus}`, 14, startY)
+        doc.text(str('Payment Type: ' + order.paymentType), 14, startY)
         startY += 6
       }
-      
+      if (order.paymentStatus) {
+        doc.text(str('Payment Status: ' + order.paymentStatus), 14, startY)
+        startY += 6
+      }
+
       // Order Status
       if (order.orderStatus) {
-        doc.setFontSize(10)
-        doc.text(`Order Status: ${order.orderStatus}`, 14, startY)
+        doc.text(str('Order Status: ' + order.orderStatus), 14, startY)
+        startY += 6
+      }
+
+      // Order Note
+      if (order.note && String(order.note).trim()) {
+        doc.text(str('Order Note: ' + order.note), 14, startY)
+        startY += 6
+      }
+
+      // Cancellation details (if cancelled)
+      if (order.cancellationReason && String(order.cancellationReason).trim()) {
+        doc.text(str('Cancellation Reason: ' + order.cancellationReason), 14, startY)
+        startY += 6
+      }
+
+      // Delivery Partner (if assigned)
+      if (order.deliveryPartnerName || order.deliveryPartnerPhone) {
+        doc.text(str('Delivery Partner: ' + (order.deliveryPartnerName || 'N/A') + (order.deliveryPartnerPhone ? ' | ' + order.deliveryPartnerPhone : '')), 14, startY)
       }
       
       // Save the PDF instantly

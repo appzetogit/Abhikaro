@@ -1,4 +1,7 @@
-import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, X, Receipt } from "lucide-react"
+import { useState } from "react"
+import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, X, Receipt, CheckCircle, Loader2 } from "lucide-react"
+import { adminAPI } from "@/lib/api"
+import { toast } from "sonner"
 import {
   Dialog,
   DialogContent,
@@ -33,8 +36,34 @@ const getPaymentStatusColor = (paymentStatus) => {
   return "text-slate-600"
 }
 
-export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
+export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPaymentApproved }) {
+  const [approvingPayment, setApprovingPayment] = useState(false)
   if (!order) return null
+
+  const isOfflinePayment = order.paymentType === "Cash on Delivery" || order.payment?.method === "cash" || order.payment?.method === "cod"
+  const paymentPending = order.paymentStatus === "Pending" || order.paymentStatus === "Unpaid" || order.paymentCollectionStatus === "Not Collected"
+  const showMarkAsPaid = isOfflinePayment && paymentPending && order.orderStatus !== "Canceled" && order.orderStatus !== "Cancelled by Restaurant" && order.orderStatus !== "Cancelled by User"
+
+  const handleMarkAsPaid = async () => {
+    if (!order?.id && !order?.orderId) return
+    try {
+      setApprovingPayment(true)
+      const orderIdToUse = order.id || order._id || order.orderId
+      const response = await adminAPI.approveOfflinePayment(orderIdToUse)
+      if (response?.data?.success) {
+        toast.success("Payment marked as paid successfully")
+        onPaymentApproved?.()
+        onOpenChange(false)
+      } else {
+        toast.error(response?.data?.message || "Failed to mark payment as paid")
+      }
+    } catch (err) {
+      console.error("Error approving offline payment:", err)
+      toast.error(err?.response?.data?.message || "Failed to mark payment as paid")
+    } finally {
+      setApprovingPayment(false)
+    }
+  }
 
   // Debug: Log order data to check billImageUrl
   if (order.billImageUrl) {
@@ -168,15 +197,27 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                     <CreditCard className="w-4 h-4" />
                     Payment Status
                   </p>
-                  <p className={`text-sm font-medium ${getPaymentStatusColor(
-                    order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
-                      ? (order.paymentCollectionStatus ?? (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
-                      : order.paymentStatus
-                  )}`}>
-                    {order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
-                      ? (order.paymentCollectionStatus ?? (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
-                      : order.paymentStatus}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className={`text-sm font-medium ${getPaymentStatusColor(
+                      order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
+                        ? (order.paymentCollectionStatus ?? (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
+                        : order.paymentStatus
+                    )}`}>
+                      {order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
+                        ? (order.paymentCollectionStatus ?? (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
+                        : order.paymentStatus}
+                    </p>
+                    {showMarkAsPaid && (
+                      <button
+                        onClick={handleMarkAsPaid}
+                        disabled={approvingPayment}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {approvingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                        {approvingPayment ? "Processing..." : "Mark as Paid"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {order.deliveryType && (

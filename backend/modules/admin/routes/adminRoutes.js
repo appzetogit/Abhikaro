@@ -18,6 +18,7 @@ import {
   getUserById,
   updateUserStatus,
   getRestaurants,
+  getRestaurantById,
   createRestaurant,
   updateRestaurantStatus,
   getRestaurantJoinRequests,
@@ -215,6 +216,7 @@ import {
   getSearchingDeliverymanOrders,
   getRefundRequests,
   processRefund,
+  approveOfflinePayment,
   getOngoingOrders,
   getTransactionReport,
   getRestaurantReport,
@@ -300,8 +302,9 @@ router.get("/customer-wallet-report", getCustomerWalletReport);
 
 // Restaurant Management
 router.get("/restaurants", getRestaurants);
-router.post("/restaurants", createRestaurant);
 router.get("/restaurants/requests", getRestaurantJoinRequests);
+router.get("/restaurants/:id", getRestaurantById);
+router.post("/restaurants", createRestaurant);
 router.get("/restaurant-analytics/:restaurantId", getRestaurantAnalytics);
 router.post("/restaurants/:id/approve", approveRestaurant);
 router.post("/restaurants/:id/reject", rejectRestaurant);
@@ -507,6 +510,8 @@ router.post("/orders/refund/:orderId", async (req, res, next) => {
 console.log(
   "✅ [ROUTE REGISTRATION] POST /orders/refund/:orderId route registered",
 );
+
+router.put("/orders/:orderId/approve-offline-payment", approveOfflinePayment);
 
 // Refund Requests - MUST be registered before any catch-all routes
 // Register POST route FIRST (more specific) before GET route

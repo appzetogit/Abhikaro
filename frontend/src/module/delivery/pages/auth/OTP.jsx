@@ -5,7 +5,7 @@ import AnimatedPage from "../../../user/components/AnimatedPage"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { deliveryAPI } from "@/lib/api"
-import { setAuthData as storeAuthData, isModuleAuthenticated } from "@/lib/utils/auth"
+import { setAuthData as storeAuthData, isModuleAuthenticated, getModuleToken } from "@/lib/utils/auth"
 
 export default function DeliveryOTP() {
   const navigate = useNavigate()
@@ -139,7 +139,7 @@ export default function DeliveryOTP() {
         // Store auth data using utility function
         try {
           console.log("Storing auth data for signup flow:", { hasToken: !!accessToken, hasUser: !!user })
-          storeAuthData("delivery", accessToken, user)
+          storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
           console.log("Auth data stored successfully for signup")
         } catch (storageError) {
           console.error("Failed to store authentication data:", storageError)
@@ -174,7 +174,7 @@ export default function DeliveryOTP() {
       // The setAuthData function includes error handling and verification
       try {
         console.log("Storing auth data for delivery:", { hasToken: !!accessToken, hasUser: !!user })
-        storeAuthData("delivery", accessToken, user)
+        storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
         console.log("Auth data stored successfully")
       } catch (storageError) {
         console.error("Failed to store authentication data:", storageError)
@@ -193,12 +193,11 @@ export default function DeliveryOTP() {
       let retryCount = 0
       const maxRetries = 10
       const verifyAndNavigate = () => {
-        const storedToken = localStorage.getItem("delivery_accessToken")
-        const storedAuth = localStorage.getItem("delivery_authenticated")
+        const storedToken = getModuleToken("delivery")
 
-        console.log("Verifying token storage:", { hasToken: !!storedToken, authenticated: storedAuth, retryCount })
+        console.log("Verifying token storage:", { hasToken: !!storedToken, retryCount })
 
-        if (storedToken && storedAuth === "true") {
+        if (storedToken) {
           // Token is stored, navigate to delivery home
           console.log("Token verified, navigating to /delivery")
           navigate("/delivery", { replace: true })
@@ -269,7 +268,7 @@ export default function DeliveryOTP() {
       // The setAuthData function includes error handling and verification
       try {
         console.log("Storing auth data for delivery (with name):", { hasToken: !!accessToken, hasUser: !!user })
-        storeAuthData("delivery", accessToken, user)
+        storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
         console.log("Auth data stored successfully")
       } catch (storageError) {
         console.error("Failed to store authentication data:", storageError)
@@ -288,12 +287,11 @@ export default function DeliveryOTP() {
       let retryCount = 0
       const maxRetries = 10
       const verifyAndNavigate = () => {
-        const storedToken = localStorage.getItem("delivery_accessToken")
-        const storedAuth = localStorage.getItem("delivery_authenticated")
+        const storedToken = getModuleToken("delivery")
 
-        console.log("Verifying token storage (with name):", { hasToken: !!storedToken, authenticated: storedAuth, retryCount })
+        console.log("Verifying token storage (with name):", { hasToken: !!storedToken, retryCount })
 
-        if (storedToken && storedAuth === "true") {
+        if (storedToken) {
           // Token is stored, navigate to delivery home
           console.log("Token verified, navigating to /delivery")
           navigate("/delivery", { replace: true })
