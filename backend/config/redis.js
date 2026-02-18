@@ -16,31 +16,60 @@ let connectionAttempted = false;
 let connectionErrorLogged = false;
 
 export const connectRedis = async () => {
-  // Only attempt connection if Redis is explicitly enabled
-  if (process.env.REDIS_ENABLED !== 'true' && process.env.REDIS_ENABLED !== '1') {
+  // In production, Redis should be enabled for caching and rate limiting
+  // Only skip if explicitly disabled
+  if (process.env.REDIS_ENABLED === 'false' || process.env.REDIS_ENABLED === '0') {
     if (!connectionAttempted) {
-      logger.info('Redis is disabled. Set REDIS_ENABLED=true in .env to enable.');
+      logger.warn('⚠️ Redis is disabled. Caching and Redis-based rate limiting will not work.');
+      logger.warn('⚠️ For production, set REDIS_ENABLED=true in .env to enable.');
       connectionAttempted = true;
     }
     return null;
   }
 
   // Prevent multiple connection attempts
-  if (connectionAttempted) {
+  if (connectionAttempted && redisClient) {
     return redisClient;
   }
 
   connectionAttempted = true;
 
   try {
-    redisClient = createClient({
-      socket: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: process.env.REDIS_PORT || 6379,
-        reconnectStrategy: false, // Disable automatic reconnection to prevent error spam
-      },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
+    const redisUrl = process.env.REDIS_URL;
+    
+    // Support both REDIS_URL and individual host/port config
+    if (redisUrl) {
+      redisClient = createClient({
+        url: redisUrl,
+        socket: {
+          reconnectStrategy: (retries) => {
+            if (retries > 10) {
+              logger.error('Redis reconnection failed after 10 attempts');
+              return new Error('Redis reconnection limit exceeded');
+            }
+            // Exponential backoff: 50ms, 100ms, 200ms, 400ms, etc.
+            return Math.min(retries * 50, 3000);
+          },
+          connectTimeout: 10000, // 10 seconds
+        },
+      });
+    } else {
+      redisClient = createClient({
+        socket: {
+          host: process.env.REDIS_HOST || 'localhost',
+          port: parseInt(process.env.REDIS_PORT) || 6379,
+          reconnectStrategy: (retries) => {
+            if (retries > 10) {
+              logger.error('Redis reconnection failed after 10 attempts');
+              return new Error('Redis reconnection limit exceeded');
+            }
+            return Math.min(retries * 50, 3000);
+          },
+          connectTimeout: 10000,
+        },
+        password: process.env.REDIS_PASSWORD || undefined,
+      });
+    }
 
     // Only log errors once to prevent spam
     redisClient.on('error', (err) => {

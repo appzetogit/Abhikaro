@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { ChevronDown, ShoppingCart, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useLocation } from "../hooks/useLocation"
@@ -29,25 +29,33 @@ export default function PageNavbar({
       requestLocation &&
       (location.formattedAddress === "Select location" ||
         location.city === "Current Location")) {
-      console.log("🔄 Auto-triggering location fetch due to placeholder values")
+      if (process.env.NODE_ENV === 'development') {
+        console.log("🔄 Auto-triggering location fetch due to placeholder values")
+      }
       // Wait a bit to avoid multiple rapid calls, and only trigger once
       const timeoutId = setTimeout(() => {
         requestLocation().then((fetchedLocation) => {
           if (fetchedLocation &&
             fetchedLocation.formattedAddress !== "Select location" &&
             fetchedLocation.city !== "Current Location") {
-            console.log("✅ Location fetched successfully:", fetchedLocation)
+            if (process.env.NODE_ENV === 'development') {
+              console.log("✅ Location fetched successfully:", fetchedLocation)
+            }
           } else {
-            console.warn("⚠️ Location fetch returned placeholder, user may need to select manually")
+            if (process.env.NODE_ENV === 'development') {
+              console.warn("⚠️ Location fetch returned placeholder, user may need to select manually")
+            }
           }
         }).catch(err => {
-          console.warn("Location fetch failed:", err)
+          if (process.env.NODE_ENV === 'development') {
+            console.warn("Location fetch failed:", err)
+          }
         })
       }, 2000) // Wait 2 seconds before triggering
 
       return () => clearTimeout(timeoutId)
     }
-  }, []) // Only run once on mount
+  }, [location, loading, requestLocation]) // Include dependencies to prevent stale closures
 
   // Load business settings logo
   useEffect(() => {
@@ -158,19 +166,21 @@ export default function PageNavbar({
   // Get display location parts
   // Priority: formattedAddress (complete) > address > area/city
   // IMPORTANT: Sub location ALWAYS uses city and state from location object, never from address parts
-  const locationDisplay = (() => {
+  const locationDisplay = useMemo(() => {
     let mainLocation = ""
     let subLocation = ""
 
-    // Debug: Log the entire location object
-    console.log("🔍 PageNavbar - Full Location Object:", {
-      location,
-      address: location?.address,
-      formattedAddress: location?.formattedAddress,
-      area: location?.area,
-      city: location?.city,
-      state: location?.state
-    })
+    // Debug: Log the entire location object (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔍 PageNavbar - Full Location Object:", {
+        location,
+        address: location?.address,
+        formattedAddress: location?.formattedAddress,
+        area: location?.area,
+        city: location?.city,
+        state: location?.state
+      })
+    }
 
     // Get main location - prioritize area name over coordinates
     // Check if address/formattedAddress contains coordinates pattern (e.g., "22.7282, 75.8843")
@@ -192,7 +202,9 @@ export default function PageNavbar({
         location.area.toLowerCase() !== location?.city?.toLowerCase()) {
         mainLocation = `${location.mainTitle}, ${location.area}`;
       }
-      console.log("✅✅✅ ZOMATO-STYLE: Using mainTitle for display:", mainLocation);
+      if (process.env.NODE_ENV === 'development') {
+        console.log("✅✅✅ ZOMATO-STYLE: Using mainTitle for display:", mainLocation);
+      }
     }
 
     // Priority 1: Use formattedAddress if it contains complete detailed address (has multiple parts)
@@ -858,19 +870,21 @@ export default function PageNavbar({
       }
     }
 
-    // Debug log
-    console.log("📍 PageNavbar Location Display:", {
-      location: location,
-      city: location?.city,
-      state: location?.state,
-      hasCity,
-      hasState,
-      mainLocation,
-      subLocation,
-      formattedAddress: location?.formattedAddress,
-      address: location?.address,
-      finalSubLocation: subLocation || "EMPTY"
-    })
+    // Debug log (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log("📍 PageNavbar Location Display:", {
+        location: location,
+        city: location?.city,
+        state: location?.state,
+        hasCity,
+        hasState,
+        mainLocation,
+        subLocation,
+        formattedAddress: location?.formattedAddress,
+        address: location?.address,
+        finalSubLocation: subLocation || "EMPTY"
+      })
+    }
 
     // CRITICAL: Ensure subLocation is NEVER from address parts[1] and parts[2]
     // If subLocation looks like "G-2, Princess Center 6/3", it's wrong - force extraction
@@ -900,7 +914,7 @@ export default function PageNavbar({
       main: mainLocation,
       sub: subLocation
     }
-  })()
+  }, [location])
 
   const mainLocationName = locationDisplay.main
   const subLocationName = locationDisplay.sub

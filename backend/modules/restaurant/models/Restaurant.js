@@ -5,10 +5,33 @@ import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
 const locationSchema = new mongoose.Schema({
   latitude: Number,
   longitude: Number,
-  // GeoJSON coordinates [longitude, latitude] for spatial queries
+  // GeoJSON coordinates [longitude, latitude] for spatial queries (legacy - kept for backward compatibility)
   coordinates: {
     type: [Number],
     default: undefined,
+  },
+  // GeoJSON Point for MongoDB geospatial queries - CRITICAL for $near queries
+  // Format: { type: "Point", coordinates: [longitude, latitude] }
+  geoLocation: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point',
+    },
+    coordinates: {
+      type: [Number],
+      default: undefined,
+      // Validate: must be [longitude, latitude] array with 2 elements
+      validate: {
+        validator: function(v) {
+          return !v || (Array.isArray(v) && v.length === 2 && 
+                 typeof v[0] === 'number' && typeof v[1] === 'number' &&
+                 v[0] >= -180 && v[0] <= 180 && // longitude range
+                 v[1] >= -90 && v[1] <= 90); // latitude range
+        },
+        message: 'geoLocation.coordinates must be [longitude, latitude] array with valid ranges'
+      }
+    }
   },
   // Live address from Google Maps reverse geocoding
   formattedAddress: String,
@@ -300,6 +323,10 @@ restaurantSchema.index({ email: 1 }, { unique: true, sparse: true });
 restaurantSchema.index({ phone: 1 }, { unique: true, sparse: true });
 restaurantSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 
+// CRITICAL: 2dsphere index for geospatial queries (replaces Google Places API)
+// This index enables $near and $geoWithin queries for finding nearby restaurants
+restaurantSchema.index({ 'location.geoLocation': '2dsphere' });
+
 // Hash password before saving
 restaurantSchema.pre("save", async function (next) {
   // Generate restaurantId FIRST (before any validation)
@@ -378,6 +405,32 @@ restaurantSchema.pre("save", async function (next) {
   // Set ownerEmail from email if email exists and ownerEmail not set
   if (this.email && !this.ownerEmail) {
     this.ownerEmail = this.email;
+  }
+
+  // CRITICAL: Auto-populate geoLocation from latitude/longitude if not set
+  // This ensures geoLocation is always in sync with latitude/longitude
+  if (this.location && (this.isModified('location.latitude') || this.isModified('location.longitude'))) {
+    if (this.location.latitude != null && this.location.longitude != null) {
+      // Ensure geoLocation is set in GeoJSON Point format: [longitude, latitude]
+      if (!this.location.geoLocation || !this.location.geoLocation.coordinates) {
+        this.location.geoLocation = {
+          type: 'Point',
+          coordinates: [this.location.longitude, this.location.latitude]
+        };
+      } else {
+        // Update coordinates if they've changed
+        this.location.geoLocation.coordinates = [this.location.longitude, this.location.latitude];
+      }
+    }
+  }
+
+  // Also sync legacy coordinates array for backward compatibility
+  if (this.location && this.location.geoLocation && this.location.geoLocation.coordinates) {
+    if (!this.location.coordinates || 
+        this.location.coordinates[0] !== this.location.geoLocation.coordinates[0] ||
+        this.location.coordinates[1] !== this.location.geoLocation.coordinates[1]) {
+      this.location.coordinates = [...this.location.geoLocation.coordinates];
+    }
   }
 
   next();

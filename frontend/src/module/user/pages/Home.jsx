@@ -678,9 +678,20 @@ export default function Home() {
       if (zoneId) {
         params.zoneId = zoneId
       }
+      
+      // CRITICAL: Add user coordinates for MongoDB geospatial queries (replaces Google Places API)
+      // This enables $near queries to find nearby restaurants without calling Google Places API
+      if (location?.latitude && location?.longitude) {
+        params.latitude = location.latitude
+        params.longitude = location.longitude
+        // Default maxDistance is 5km (can be overridden by filters)
+        if (!params.maxDistance) {
+          params.maxDistance = 5
+        }
+      }
       // Note: We show all restaurants regardless of zone, but apply grayscale styling if user is out of service
 
-      console.log('Fetching restaurants with params:', params)
+      console.log('✅ Fetching restaurants with params (using MongoDB geospatial query, NO Google Places API):', params)
       const response = await restaurantAPI.getRestaurants(params)
       console.log('Restaurants API response:', response.data)
 

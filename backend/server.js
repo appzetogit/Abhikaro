@@ -5,8 +5,10 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mongoSanitize from 'express-mongo-sanitize';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import cron from 'node-cron';
 import mongoose from 'mongoose';
 
@@ -15,7 +17,9 @@ dotenv.config();
 
 // Import configurations
 import { connectDB } from './config/database.js';
-import { connectRedis } from './config/redis.js';
+import { connectRedis, getRedisClient } from './config/redis.js';
+// Import Redis rate limiting
+import { userRateLimit, ipRateLimit, strictRateLimit } from './shared/middleware/redisRateLimit.js';
 
 // Import middleware
 import { errorHandler } from './shared/middleware/errorHandler.js';
@@ -306,9 +310,25 @@ connectDB().then(() => {
 });
 
 // Redis connection is optional - only connects if REDIS_ENABLED=true
-connectRedis().catch(() => {
+connectRedis().then(async (redisClient) => {
+  if (redisClient && redisClient.isOpen) {
+    // Enable Socket.IO Redis adapter for multi-server scaling
+    try {
+      const pubClient = redisClient;
+      const subClient = redisClient.duplicate();
+      await subClient.connect();
+      
+      io.adapter(createAdapter(pubClient, subClient));
+      console.log('✅ Socket.IO Redis adapter enabled - Multi-server scaling ready');
+    } catch (error) {
+      console.warn('⚠️ Socket.IO Redis adapter failed:', error.message);
+      console.warn('⚠️ Socket.IO will work in single-server mode only');
+    }
+  }
+}).catch(() => {
   // Silently handle Redis connection failures
   // The app works without Redis
+  console.log('⚠️ Redis not available - Socket.IO will work in single-server mode');
 });
 
 // Security middleware - configure CSP to allow Firebase scripts
@@ -394,6 +414,18 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
+// Response compression - Reduces bandwidth by 50%
+app.use(compression({
+  level: 6, // Compression level (1-9, 6 is good balance)
+  filter: (req, res) => {
+    // Compress all responses except if explicitly disabled
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+}));
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -402,19 +434,34 @@ app.use(cookieParser());
 // Data sanitization
 app.use(mongoSanitize());
 
-// Rate limiting (disabled in development mode)
+// Rate limiting - Use Redis-based rate limiting if available, fallback to express-rate-limit
+// Redis-based is more effective (per-user) and works across multiple servers
 if (process.env.NODE_ENV === 'production') {
-  const limiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-    message: 'Too many requests from this IP, please try again later.'
-  });
-
-  app.use('/api/', limiter);
-  console.log('Rate limiting enabled (production mode)');
+  // Try Redis-based rate limiting first (per-user)
+  const redisClient = getRedisClient();
+  if (redisClient && redisClient.isOpen) {
+    // Use Redis-based rate limiting (more effective)
+    app.use('/api/', userRateLimit); // Per-user rate limiting
+    console.log('✅ Redis-based rate limiting enabled (per-user, production mode)');
+  } else {
+    // Fallback to express-rate-limit (IP-based)
+    const limiter = rateLimit({
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+      message: 'Too many requests from this IP, please try again later.'
+    });
+    app.use('/api/', limiter);
+    console.log('⚠️ IP-based rate limiting enabled (Redis not available, production mode)');
+  }
 } else {
   console.log('Rate limiting disabled (development mode)');
 }
+
+// Strict rate limiting for sensitive endpoints (OTP, login, etc.)
+app.use('/api/auth/send-otp', strictRateLimit);
+app.use('/api/auth/verify-otp', strictRateLimit);
+app.use('/api/auth/login', strictRateLimit);
+app.use('/api/auth/register', strictRateLimit);
 
 // Health check route
 app.get('/health', (req, res) => {

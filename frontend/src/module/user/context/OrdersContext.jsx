@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react"
 
 const OrdersContext = createContext(null)
 
@@ -21,7 +21,7 @@ export function OrdersProvider({ children }) {
     }
   }, [orders])
 
-  const createOrder = (orderData) => {
+  const createOrder = useCallback((orderData) => {
     const newOrder = {
       id: `ORD-${Date.now()}`,
       ...orderData,
@@ -34,20 +34,20 @@ export function OrdersProvider({ children }) {
         delivered: { status: false, timestamp: null }
       }
     }
-    setOrders([newOrder, ...orders])
+    setOrders((prev) => [newOrder, ...prev])
     return newOrder.id
-  }
+  }, [])
 
-  const getOrderById = (orderId) => {
+  const getOrderById = useCallback((orderId) => {
     return orders.find(order => order.id === orderId)
-  }
+  }, [orders])
 
-  const getAllOrders = () => {
+  const getAllOrders = useCallback(() => {
     return orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-  }
+  }, [orders])
 
-  const updateOrderStatus = (orderId, status) => {
-    setOrders(orders.map(order => {
+  const updateOrderStatus = useCallback((orderId, status) => {
+    setOrders((prev) => prev.map(order => {
       if (order.id === orderId) {
         const updatedTracking = { ...order.tracking }
         if (status === "preparing") {
@@ -65,15 +65,15 @@ export function OrdersProvider({ children }) {
       }
       return order
     }))
-  }
+  }, [])
 
-  const value = {
+  const value = useMemo(() => ({
     orders,
     createOrder,
     getOrderById,
     getAllOrders,
     updateOrderStatus
-  }
+  }), [orders, createOrder, getOrderById, getAllOrders, updateOrderStatus])
 
   return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>
 }

@@ -7,6 +7,8 @@ import User from "../../auth/models/User.js";
 import { uploadToCloudinary } from "../../../shared/utils/cloudinaryService.js";
 import axios from "axios";
 import winston from "winston";
+// Import caching utilities
+import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from "../../../shared/utils/cache.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -21,18 +23,31 @@ const logger = winston.createLogger({
 /**
  * Get user profile
  * GET /api/user/profile
+ * Cached for 15 minutes to reduce database load
  */
 export const getUserProfile = asyncHandler(async (req, res) => {
   try {
+    const userId = req.user._id.toString();
+    const cacheKey = generateCacheKey('user:profile', userId);
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, "User profile retrieved successfully (cached)", cached);
+    }
+
     const user = await User.findById(req.user._id).select("-password").lean();
 
     if (!user) {
       return errorResponse(res, 404, "User profile not found");
     }
 
-    return successResponse(res, 200, "User profile retrieved successfully", {
-      user,
-    });
+    const responseData = { user };
+
+    // Cache the response (15 minutes TTL for user profiles)
+    await setCache(cacheKey, responseData, CACHE_TTL.USER_PROFILE);
+
+    return successResponse(res, 200, "User profile retrieved successfully", responseData);
   } catch (error) {
     logger.error(`Error fetching user profile: ${error.message}`);
     return errorResponse(res, 500, "Failed to fetch user profile");
@@ -114,6 +129,10 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
 
     // Save to database
     await user.save();
+
+    // Invalidate user profile cache
+    const userId = user._id.toString();
+    await invalidateCachePattern(`user:profile:${userId}*`);
 
     // Remove password from response
     const userResponse = user.toObject();

@@ -1,5 +1,5 @@
 import { Outlet, useLocation } from "react-router-dom"
-import { useEffect, useState, createContext, useContext, lazy, Suspense } from "react"
+import { useEffect, useState, createContext, useContext, lazy, Suspense, useMemo, useCallback } from "react"
 import { ProfileProvider } from "../context/ProfileContext"
 import LocationPrompt from "./LocationPrompt"
 import { CartProvider } from "../context/CartContext"
@@ -33,17 +33,25 @@ function SearchOverlayProvider({ children }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [searchValue, setSearchValue] = useState("")
 
-  const openSearch = () => {
+  const openSearch = useCallback(() => {
     setIsSearchOpen(true)
-  }
+  }, [])
 
-  const closeSearch = () => {
+  const closeSearch = useCallback(() => {
     setIsSearchOpen(false)
     setSearchValue("")
-  }
+  }, [])
+
+  const value = useMemo(() => ({
+    isSearchOpen,
+    searchValue,
+    setSearchValue,
+    openSearch,
+    closeSearch
+  }), [isSearchOpen, searchValue, openSearch, closeSearch])
 
   return (
-    <SearchOverlayContext.Provider value={{ isSearchOpen, searchValue, setSearchValue, openSearch, closeSearch }}>
+    <SearchOverlayContext.Provider value={value}>
       {children}
       <Suspense fallback={null}>
         {isSearchOpen && (
@@ -79,19 +87,19 @@ export function useLocationSelector() {
 function LocationSelectorProvider({ children }) {
   const [isLocationSelectorOpen, setIsLocationSelectorOpen] = useState(false)
 
-  const openLocationSelector = () => {
+  const openLocationSelector = useCallback(() => {
     setIsLocationSelectorOpen(true)
-  }
+  }, [])
 
-  const closeLocationSelector = () => {
+  const closeLocationSelector = useCallback(() => {
     setIsLocationSelectorOpen(false)
-  }
+  }, [])
 
-  const value = {
+  const value = useMemo(() => ({
     isLocationSelectorOpen,
     openLocationSelector,
     closeLocationSelector
-  }
+  }), [isLocationSelectorOpen, openLocationSelector, closeLocationSelector])
 
   return (
     <LocationSelectorContext.Provider value={value}>
@@ -120,7 +128,8 @@ export default function UserLayout() {
   // UserLayout should not interfere with authentication redirects
 
   // Show bottom navigation only on home page, dining page, under-250 page, profile page, and restaurant pages
-  const showBottomNav = location.pathname === "/" ||
+  const showBottomNav = useMemo(() => 
+    location.pathname === "/" ||
     location.pathname === "/user" ||
     location.pathname === "/dining" ||
     location.pathname === "/user/dining" ||
@@ -129,7 +138,9 @@ export default function UserLayout() {
     location.pathname === "/profile" ||
     location.pathname === "/user/profile" ||
     location.pathname.startsWith("/user/profile") ||
-    location.pathname.startsWith("/restaurants/")
+    location.pathname.startsWith("/restaurants/"),
+    [location.pathname]
+  )
 
   // Hide navigation components for hotel orders (QR redirect flow)
   const isHotelOrder = sessionStorage.getItem('isHotelOrder') === 'true'

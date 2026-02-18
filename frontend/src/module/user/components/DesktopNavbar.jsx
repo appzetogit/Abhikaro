@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useMemo, useCallback } from "react"
 import { ChevronDown, ShoppingCart, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useLocation as useLocationHook } from "../hooks/useLocation"
@@ -14,22 +14,23 @@ export default function DesktopNavbar() {
   const { getCartCount } = useCart()
   const { openLocationSelector } = useLocationSelector()
   const cartCount = getCartCount()
-  const [isVisible, setIsVisible] = useState(true)
-  const lastScrollY = useRef(0)
   const [logoUrl, setLogoUrl] = useState(null)
   const [companyName, setCompanyName] = useState(null)
 
   // Show area if available, otherwise show city
   // Priority: area > city > "Select"
-  const areaName = userLocation?.area && userLocation?.area.trim() ? userLocation.area.trim() : null
-  const cityName = userLocation?.city || null
-  const stateName = userLocation?.state || null
-  // Main location name: Show area if available, otherwise show city, otherwise "Select"
-  const mainLocationName = areaName || cityName || "Select"
-  // Secondary location: Show only city when area is available (as per design image)
-  const secondaryLocation = areaName
-    ? (cityName || "")  // Show only city when area is available
-    : (cityName && stateName ? `${cityName}, ${stateName}` : cityName || stateName || "")
+  const { mainLocationName, secondaryLocation } = useMemo(() => {
+    const areaName = userLocation?.area && userLocation?.area.trim() ? userLocation.area.trim() : null
+    const cityName = userLocation?.city || null
+    const stateName = userLocation?.state || null
+    // Main location name: Show area if available, otherwise show city, otherwise "Select"
+    const main = areaName || cityName || "Select"
+    // Secondary location: Show only city when area is available (as per design image)
+    const secondary = areaName
+      ? (cityName || "")  // Show only city when area is available
+      : (cityName && stateName ? `${cityName}, ${stateName}` : cityName || stateName || "")
+    return { mainLocationName: main, secondaryLocation: secondary }
+  }, [userLocation?.area, userLocation?.city, userLocation?.state])
 
   // Load business settings logo/company name for desktop header
   useEffect(() => {
@@ -62,60 +63,23 @@ export default function DesktopNavbar() {
     loadLogo()
   }, [])
 
-  const handleLocationClick = () => {
+  const handleLocationClick = useCallback(() => {
     // Open location selector overlay
     openLocationSelector()
-  }
+  }, [openLocationSelector])
 
   // Check active routes - support both /user/* and /* paths
-  const isDining = location.pathname === "/dining" || location.pathname === "/user/dining"
-  const isUnder250 = location.pathname === "/under-250" || location.pathname === "/user/under-250"
-  const isProfile = location.pathname.startsWith("/profile") || location.pathname.startsWith("/user/profile")
-  const isDelivery = !isDining && !isUnder250 && !isProfile && (location.pathname === "/" || location.pathname === "/user" || (location.pathname.startsWith("/") && !location.pathname.startsWith("/restaurant") && !location.pathname.startsWith("/delivery") && !location.pathname.startsWith("/admin") && !location.pathname.startsWith("/usermain")))
-
-  // Reset visibility and scroll position when route changes
-  useEffect(() => {
-    setIsVisible(true)
-    lastScrollY.current = window.scrollY
-  }, [location.pathname])
-
-  useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY
-      const scrollDifference = Math.abs(currentScrollY - lastScrollY.current)
-
-      // Show navigation when at the top
-      if (currentScrollY < 10) {
-        setIsVisible(true)
-        lastScrollY.current = currentScrollY
-        return
-      }
-
-      // Only update if scroll difference is significant (avoid flickering on tiny movements)
-      if (scrollDifference < 5) {
-        return
-      }
-
-      // Show when scrolling up, hide when scrolling down
-      if (currentScrollY < lastScrollY.current) {
-        // Scrolling up - show navigation
-        setIsVisible(true)
-      } else if (currentScrollY > lastScrollY.current) {
-        // Scrolling down - hide navigation
-        setIsVisible(false)
-      }
-
-      lastScrollY.current = currentScrollY
-    }
-
-    window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
+  const { isDining, isUnder250, isProfile, isDelivery } = useMemo(() => {
+    const dining = location.pathname === "/dining" || location.pathname === "/user/dining"
+    const under250 = location.pathname === "/under-250" || location.pathname === "/user/under-250"
+    const profile = location.pathname.startsWith("/profile") || location.pathname.startsWith("/user/profile")
+    const delivery = !dining && !under250 && !profile && (location.pathname === "/" || location.pathname === "/user" || (location.pathname.startsWith("/") && !location.pathname.startsWith("/restaurant") && !location.pathname.startsWith("/delivery") && !location.pathname.startsWith("/admin") && !location.pathname.startsWith("/usermain")))
+    return { isDining: dining, isUnder250: under250, isProfile: profile, isDelivery: delivery }
   }, [location.pathname])
 
   return (
     <nav
-      className={`hidden md:block fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ease-in-out ${isVisible ? "translate-y-0" : "-translate-y-full"
-        }`}
+      className="hidden md:block fixed top-0 left-0 right-0 z-50"
     >
       {/* Background */}
       <div className="absolute inset-0 bg-white/98 dark:bg-[#1a1a1a]/98 border-b border-gray-200/50 dark:border-gray-800/50 shadow-sm" />
