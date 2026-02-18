@@ -6,8 +6,6 @@ import { uploadToCloudinary, deleteFromCloudinary } from '../../../shared/utils/
 import { initializeCloudinary } from '../../../config/cloudinary.js';
 import asyncHandler from '../../../shared/middleware/asyncHandler.js';
 import mongoose from 'mongoose';
-// Import caching utilities
-import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from '../../../shared/utils/cache.js';
 
 /**
  * Check if a point is within a zone polygon using ray casting algorithm
@@ -116,7 +114,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 // Get all restaurants (for user module) - REFACTORED to use MongoDB geospatial queries
 // This replaces Google Places API Nearby Search, cutting API costs by 99%
-// Now with Redis caching to reduce database load by 60-70%
 export const getRestaurants = async (req, res) => {
   try {
     const { 
@@ -133,19 +130,6 @@ export const getRestaurants = async (req, res) => {
       latitude, // User's latitude - CRITICAL for geospatial queries
       longitude // User's longitude - CRITICAL for geospatial queries
     } = req.query;
-
-    // Generate cache key based on query parameters
-    const cacheKey = generateCacheKey(
-      'restaurants:list',
-      { limit, offset, sortBy, cuisine, minRating, maxDeliveryTime, maxDistance, maxPrice, hasOffers, zoneId, latitude, longitude }
-    );
-
-    // Try to get from cache first
-    const cached = await getCache(cacheKey);
-    if (cached) {
-      console.log('✅ Restaurant list served from cache');
-      return successResponse(res, 200, 'Restaurants retrieved successfully (cached)', cached);
-    }
     
     // Optional: Zone-based filtering - if zoneId is provided, validate and filter by zone
     let userZone = null;
@@ -335,7 +319,7 @@ export const getRestaurants = async (req, res) => {
       userCoordinates: useGeospatialQuery ? `(${userLat}, ${userLng})` : 'not provided'
     });
 
-    const responseData = {
+    return successResponse(res, 200, 'Restaurants retrieved successfully', {
       restaurants,
       total: restaurants.length,
       filters: {
@@ -350,12 +334,7 @@ export const getRestaurants = async (req, res) => {
       // Include metadata about query type
       queryType: useGeospatialQuery ? 'geospatial' : 'regular',
       userCoordinates: useGeospatialQuery ? { latitude: userLat, longitude: userLng } : null
-    };
-
-    // Cache the response (5 minutes TTL for restaurant list)
-    await setCache(cacheKey, responseData, CACHE_TTL.RESTAURANT_LIST);
-
-    return successResponse(res, 200, 'Restaurants retrieved successfully', responseData);
+    });
   } catch (error) {
     console.error('Error fetching restaurants:', error);
     return errorResponse(res, 500, 'Failed to fetch restaurants');

@@ -5,13 +5,8 @@
 
 // Get API base URL from environment variable or use default
 // IMPORTANT: Backend runs on port 5000, frontend on port 5173
-// Production: https://api.foods.abhikaro.in/api
-// Development: http://localhost:5000/api
 let rawApiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL || 
-  (import.meta.env.MODE === 'production' 
-    ? "https://api.foods.abhikaro.in/api" 
-    : "http://localhost:5000/api");
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 // Normalize URL - fix common issues like double slashes, missing protocols
 if (rawApiBaseUrl && typeof rawApiBaseUrl === "string") {

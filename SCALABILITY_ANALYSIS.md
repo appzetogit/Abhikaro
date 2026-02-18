@@ -5,7 +5,7 @@
 **Current Estimated Capacity:**
 - **Concurrent Users**: 500-1,000 (single server)
 - **Daily Active Users**: 5,000-10,000
-- **Peak Requests/Second**: 50-100 RPSd
+- **Peak Requests/Second**: 50-100 RPS
 - **Database Queries/Second**: 200-500 QPS
 
 **With Optimizations:**
