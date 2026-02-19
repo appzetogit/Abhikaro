@@ -44,6 +44,7 @@ import { getAllDeliveryOrders } from "../utils/deliveryOrderStatus"
 import { getUnreadDeliveryNotificationCount } from "../utils/deliveryNotifications"
 import { deliveryAPI, restaurantAPI, uploadAPI } from "@/lib/api"
 import { useDeliveryNotificationsContext } from "../context/DeliveryNotificationsContext"
+import { useFirebaseLocationUpdate } from "../hooks/useFirebaseLocationUpdate"
 import { getGoogleMapsApiKey } from "@/lib/utils/googleMapsApiKey"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
 import { Loader } from "@googlemaps/js-api-loader"
@@ -392,8 +393,8 @@ export default function DeliveryHome() {
   
   // Delivery notifications from shared socket (provided by DeliveryLayout)
   const notifications = useDeliveryNotificationsContext()
-  const { newOrder, clearNewOrder, orderReady, clearOrderReady, isConnected } = notifications || {}
-  
+  const { newOrder, clearNewOrder, markOrderRejected, orderReady, clearOrderReady, isConnected } = notifications || {}
+
   // Default location - will be set from saved location or GPS, not hardcoded
   const [riderLocation, setRiderLocation] = useState(null) // Will be set from GPS or saved location
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false)
@@ -401,6 +402,23 @@ export default function DeliveryHome() {
   const [deliveryStatus, setDeliveryStatus] = useState(null) // Store delivery partner status
   const [rejectionReason, setRejectionReason] = useState(null) // Store rejection reason
   const [isReverifying, setIsReverifying] = useState(false) // Loading state for reverify
+
+  // Firebase live location update: always enabled so long as we have a location and delivery partner is online
+  const deliveryBoyId = notifications?.deliveryPartnerId || null
+  const riderLat = riderLocation?.lat ?? null
+  const riderLng = riderLocation?.lng ?? null
+  const activeOrderId =
+    activeOrder?.orderId ||
+    activeOrder?._id ||
+    null
+
+  useFirebaseLocationUpdate(
+    deliveryBoyId,
+    riderLat,
+    riderLng,
+    activeOrderId,
+    true // enabled: always push to Firebase when we have coords
+  )
   
   // Map refs and state (Ola Maps removed)
   const mapContainerRef = useRef(null)
@@ -440,6 +458,7 @@ export default function DeliveryHome() {
   const [zones, setZones] = useState([]) // Store nearby zones
   const [mapLoading, setMapLoading] = useState(false)
   const [directionsMapLoading, setDirectionsMapLoading] = useState(false)
+  const [mapError, setMapError] = useState(null) // Store map loading error
   const isInitializingMapRef = useRef(false)
 
   // Safety timeout: hide "Loading map..." overlay after max 2 seconds
@@ -1466,6 +1485,20 @@ export default function DeliveryHome() {
     setNewOrderDragY(0) // Reset drag position
     setRejectReason("")
     setCountdownSeconds(300)
+
+    // Mark this order as rejected on the client so we don't show it again
+    try {
+      const orderId =
+        newOrder?.orderId?.toString?.() ||
+        newOrder?._id?.toString?.() ||
+        newOrder?.orderMongoId?.toString?.();
+      if (orderId && typeof markOrderRejected === 'function') {
+        markOrderRejected(orderId)
+      }
+    } catch (e) {
+      // Ignore errors – worst case, order may reappear, but app won't crash
+    }
+
     // Here you would typically send the rejection to your backend
     console.log("Order rejected with reason:", rejectReason)
   }
@@ -1972,8 +2005,19 @@ export default function DeliveryHome() {
           setRiderLocation(smoothedLocation)
           lastLocationRef.current = smoothedLocation
           
-          // Note: Bike marker will be updated from Firebase listener, not directly from GPS
-          // This reduces Google Maps API calls
+          // CRITICAL: Update bike marker directly from GPS updates to ensure it's always visible
+          // Don't rely only on Firebase listener - update marker immediately when GPS data arrives
+          if (window.deliveryMapInstance && smoothedLocation && smoothedLocation.length === 2) {
+            const [smoothedLat, smoothedLng] = smoothedLocation
+            // Calculate heading for smooth marker rotation
+            let calculatedHeading = heading
+            if (!calculatedHeading && smoothedLocationRef.current) {
+              const [prevLat, prevLng] = smoothedLocationRef.current
+              calculatedHeading = calculateHeading(prevLat, prevLng, smoothedLat, smoothedLng)
+            }
+            // Update bike marker position immediately
+            createOrUpdateBikeMarker(smoothedLat, smoothedLng, calculatedHeading, false)
+          }
           
           // Update route polyline
           updateRoutePolyline()
@@ -5047,11 +5091,20 @@ export default function DeliveryHome() {
         console.log('📍 Google Maps not loaded, using Loader as fallback...');
         window.__googleMapsLoading = true;
         try {
-          const apiKey = await getGoogleMapsApiKey();
-          if (apiKey) {
+          // Force refresh API key to ensure we get latest from backend
+          const apiKey = await getGoogleMapsApiKey(true); // Force refresh
+          console.log('🔑 API Key check:', {
+            hasKey: !!apiKey,
+            keyLength: apiKey?.length || 0,
+            keyPreview: apiKey ? `${apiKey.substring(0, 10)}...` : 'empty'
+          });
+          
+          if (apiKey && apiKey.trim().length > 0) {
+            console.log('✅ API key found, loading Google Maps...');
             const loader = new Loader({
-              apiKey: apiKey,
-              version: "weekly"
+              apiKey: apiKey.trim(),
+              version: "weekly",
+              libraries: ["places", "geometry", "drawing", "routes"]
             });
             await loader.load();
             console.log('✅ Google Maps loaded via Loader');
@@ -5059,15 +5112,32 @@ export default function DeliveryHome() {
             window.__googleMapsLoading = false;
             await initializeGoogleMap();
           } else {
-            console.error('❌ No Google Maps API key found');
+            const errorMsg = 'Google Maps API key not found. Please set it in Admin → System → ENV Setup';
+            console.error('❌ No Google Maps API key found or key is empty');
+            console.error('❌ Please check:');
+            console.error('   1. Admin → System → ENV Setup → Google Maps API Key is set');
+            console.error('   2. Backend server is running');
+            console.error('   3. Backend /api/env/public endpoint returns the key');
             window.__googleMapsLoading = false;
             setMapLoading(false);
+            setMapError(errorMsg);
             return;
           }
         } catch (error) {
+          const errorMsg = error.message?.includes('InvalidKey') 
+            ? 'Invalid Google Maps API Key. Please check Admin → System → ENV Setup'
+            : error.message?.includes('Billing') || error.message?.includes('billing')
+            ? 'Google Maps billing not enabled. Please enable billing in Google Cloud Console'
+            : `Failed to load Google Maps: ${error.message || 'Unknown error'}`;
           console.error('❌ Error loading Google Maps:', error);
+          console.error('❌ Error details:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack
+          });
           window.__googleMapsLoading = false;
           setMapLoading(false);
+          setMapError(errorMsg);
           return;
         }
       } else {
@@ -5187,13 +5257,11 @@ export default function DeliveryHome() {
         
         console.log('📍 Map center:', initialCenter);
         
-        // Check if MapTypeId is available, use string fallback if not
-        // Use TERRAIN map type for delivery boy app
-        const mapTypeId = (window.google?.maps?.MapTypeId?.TERRAIN !== undefined) 
-          ? window.google.maps.MapTypeId.TERRAIN 
-          : 'terrain';
+        // Prefer standard ROADMAP type for maximum clarity (streets, labels)
+        const mapTypeId = (window.google?.maps?.MapTypeId?.ROADMAP !== undefined) 
+          ? window.google.maps.MapTypeId.ROADMAP 
+          : 'roadmap';
         
-        console.log('📍 MapTypeId:', mapTypeId);
         console.log('📍 Google Maps API check:', {
           google: !!window.google,
           maps: !!window.google?.maps,
@@ -5204,7 +5272,31 @@ export default function DeliveryHome() {
         // Wrap map initialization in try-catch to handle any Google Maps internal errors
         let map;
         try {
-          map = new window.google.maps.Map(mapContainerRef.current, {
+          // Handle both legacy and new importLibrary-based Maps API
+          let MapConstructor = null;
+          if (window.google?.maps?.importLibrary) {
+            console.log('📦 Using google.maps.importLibrary(\"maps\") API');
+            const { Map } = await window.google.maps.importLibrary('maps');
+            MapConstructor = Map;
+          } else if (window.google?.maps?.Map) {
+            console.log('📦 Using legacy google.maps.Map constructor');
+            MapConstructor = window.google.maps.Map;
+          } else {
+            throw new Error('Google Maps Map constructor not available on window.google.maps');
+          }
+
+          // Guard against invalid constructor type
+          if (typeof MapConstructor !== 'function') {
+            console.error('❌ Invalid Map constructor type:', {
+              type: typeof MapConstructor,
+              value: MapConstructor
+            });
+            setMapError('Google Maps script loaded incorrectly. Please check that the Maps JavaScript API (not Places SDK only) is enabled for your API key.');
+            setMapLoading(false);
+            return;
+          }
+
+          map = new MapConstructor(mapContainerRef.current, {
             center: initialCenter,
             zoom: 18,
             minZoom: 10, // Minimum zoom level (city/area view)
@@ -5231,6 +5323,7 @@ export default function DeliveryHome() {
             name: mapError.name,
             stack: mapError.stack
           });
+          setMapError(mapError.message || 'Failed to create Google Map instance');
           setMapLoading(false);
           return;
         }
@@ -5239,34 +5332,14 @@ export default function DeliveryHome() {
         window.deliveryMapInstance = map;
         console.log('✅ Map instance created and stored');
         
-        // Explicitly set terrain map type to ensure it's applied
-        try {
-          if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
-            map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
-            console.log('✅ Terrain map type explicitly set');
-          } else {
-            map.setMapTypeId('terrain');
-            console.log('✅ Terrain map type set using string');
-          }
-        } catch (mapTypeError) {
-          console.warn('⚠️ Could not set terrain map type:', mapTypeError);
-        }
+        // Clear any previous error state
+        setMapError(null);
         
         // Add error listener for map errors (if available)
         try {
           if (window.google.maps.event) {
             window.google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
               console.log('✅ Map tiles loaded successfully');
-              // Ensure terrain map is still set after tiles load
-              try {
-                if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
-                  map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
-                } else {
-                  map.setMapTypeId('terrain');
-                }
-              } catch (e) {
-                console.warn('⚠️ Could not set terrain map after tiles loaded:', e);
-              }
             });
           }
         } catch (eventError) {
@@ -5276,16 +5349,6 @@ export default function DeliveryHome() {
         // Add error listener for map errors
         window.google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
           console.log('✅ Map tiles loaded successfully');
-          // Ensure terrain map is still set after tiles load
-          try {
-            if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
-              map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
-            } else {
-              map.setMapTypeId('terrain');
-            }
-          } catch (e) {
-            console.warn('⚠️ Could not set terrain map after tiles loaded:', e);
-          }
         });
         
         // Handle map errors
@@ -5333,8 +5396,8 @@ export default function DeliveryHome() {
             console.log('📍 Restored map center and zoom after navigation');
           }
           
-          // Re-create bike marker if it existed before navigation
-          if (preservedState.bikeMarkerPosition && isOnlineRef.current) {
+          // Re-create bike marker if it existed before navigation (always, not just when online)
+          if (preservedState.bikeMarkerPosition) {
             console.log('📍 Re-creating bike marker after navigation:', preservedState.bikeMarkerPosition);
             createOrUpdateBikeMarker(
               preservedState.bikeMarkerPosition.lat, 
@@ -5342,6 +5405,10 @@ export default function DeliveryHome() {
               preservedState.bikeMarkerHeading,
               false // Don't center when restoring from navigation
             );
+          } else if (riderLocation && riderLocation.length === 2) {
+            // If no preserved marker but we have current location, create marker
+            console.log('📍 Creating bike marker from riderLocation after navigation');
+            createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, false);
           }
           
           // Don't re-attach route polyline on refresh - only show if there's an active order
@@ -5376,9 +5443,17 @@ export default function DeliveryHome() {
             }];
             lastLocationRef.current = riderLocation;
             
-            // Don't create marker directly - Firebase listener will handle it
-            // Only center map on location
-            map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
+            // Create bike marker immediately when map initializes with location
+            if (!bikeMarkerRef.current) {
+              console.log('📍 Creating bike marker during map initialization:', { lat: riderLocation[0], lng: riderLocation[1] });
+              createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, true);
+            } else {
+              // Ensure marker is on map
+              if (bikeMarkerRef.current.getMap() === null) {
+                bikeMarkerRef.current.setMap(map);
+              }
+              map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
+            }
           }
         }
 
@@ -5386,8 +5461,15 @@ export default function DeliveryHome() {
           setMapLoading(false);
           // Ensure bike marker is visible after tiles load (always show, both online and offline)
           if (riderLocation && riderLocation.length === 2) {
-            // Firebase listener will handle marker creation/update
-            // No need to manually create marker here
+            const [lat, lng] = riderLocation;
+            if (!bikeMarkerRef.current) {
+              console.log('📍 Creating bike marker from riderLocation after tiles loaded:', { lat, lng });
+              createOrUpdateBikeMarker(lat, lng, null, false);
+            } else if (bikeMarkerRef.current.getMap() === null) {
+              // Marker exists but is detached from map (after navigation) – reattach it
+              console.log('📍 Re-attaching existing bike marker to map after tiles loaded');
+              bikeMarkerRef.current.setMap(map);
+            }
           } else {
             // Try to get location from localStorage if current location not available
             const savedLocation = localStorage.getItem('deliveryBoyLastLocation');
@@ -5395,16 +5477,21 @@ export default function DeliveryHome() {
               try {
                 const parsed = JSON.parse(savedLocation);
                 if (parsed && Array.isArray(parsed) && parsed.length === 2) {
-                  console.log('📍 Creating bike marker from saved location after tiles loaded');
-                  // Firebase listener will handle marker creation
-                  // No need to manually create marker here
+                  const [lat, lng] = parsed;
+                  if (!bikeMarkerRef.current) {
+                    console.log('📍 Creating bike marker from saved location after tiles loaded:', { lat, lng });
+                    createOrUpdateBikeMarker(lat, lng, null, false);
+                  } else if (bikeMarkerRef.current.getMap() === null) {
+                    console.log('📍 Re-attaching existing bike marker from saved location after tiles loaded');
+                    bikeMarkerRef.current.setMap(map);
+                  }
                 }
               } catch (e) {
                 console.warn('⚠️ Error using saved location:', e);
               }
             }
           }
-          
+
           // Ensure restaurant marker is visible if we have a selected restaurant
           if (selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
             setTimeout(() => {
@@ -5483,13 +5570,29 @@ export default function DeliveryHome() {
         console.log('📍 Initializing map with rider location:', initialCenter)
         
         if (!window.google || !window.google.maps) return
-        
-        const map = new window.google.maps.Map(mapContainerRef.current, {
+
+        // Use same constructor handling as main map initialization
+        let MapConstructor = null
+        if (window.google?.maps?.importLibrary) {
+          const { Map } = await window.google.maps.importLibrary('maps')
+          MapConstructor = Map
+        } else if (window.google?.maps?.Map) {
+          MapConstructor = window.google.maps.Map
+        } else {
+          console.error('❌ Google Maps Map constructor not available for riderLocation init')
+          return
+        }
+        if (typeof MapConstructor !== 'function') {
+          console.error('❌ Invalid Map constructor in riderLocation init:', MapConstructor)
+          return
+        }
+
+        const map = new MapConstructor(mapContainerRef.current, {
           center: initialCenter,
           zoom: 18,
           minZoom: 10,
           maxZoom: 21,
-          mapTypeId: window.google.maps.MapTypeId?.TERRAIN || 'terrain',
+          mapTypeId: window.google.maps.MapTypeId?.ROADMAP || 'roadmap',
           tilt: 45,
           heading: 0,
           disableDefaultUI: true, // Hide all default UI controls
@@ -5659,10 +5762,27 @@ export default function DeliveryHome() {
         heading = calculateHeading(prevLat, prevLng, riderLocation[0], riderLocation[1]);
       }
 
-      console.log('✅ User went ONLINE - Firebase listener will update marker position');
+      console.log('✅ User went ONLINE - ensuring bike marker is visible at current location', {
+        riderLocation,
+        hasMarker: !!bikeMarkerRef.current,
+        markerOnMap: bikeMarkerRef.current ? bikeMarkerRef.current.getMap() !== null : false
+      });
 
-      // Don't update marker directly - Firebase listener will handle it
-      // Only center map on current location
+      // ALWAYS ensure marker exists and is attached to map - create/update it
+      if (!bikeMarkerRef.current) {
+        console.log('📍 Creating bike marker from riderLocation in online effect');
+        createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], heading, false);
+      } else if (bikeMarkerRef.current.getMap() === null || bikeMarkerRef.current.getMap() !== window.deliveryMapInstance) {
+        console.log('📍 Re-attaching bike marker to map in online effect');
+        bikeMarkerRef.current.setMap(window.deliveryMapInstance);
+        bikeMarkerRef.current.setPosition({ lat: riderLocation[0], lng: riderLocation[1] });
+      } else {
+        // Marker exists and is on map - just update position
+        console.log('📍 Updating bike marker position in online effect');
+        createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], heading, false);
+      }
+
+      // Center map on current location
       window.deliveryMapInstance.panTo({
         lat: riderLocation[0],
         lng: riderLocation[1]
@@ -5695,11 +5815,11 @@ export default function DeliveryHome() {
         }
       }
 
-      // Marker will be updated by Firebase listener, not directly
+      // Marker will be updated by Firebase listener as new GPS data arrives
     } else {
       // Try to get location from localStorage if current location not available
       const savedLocation = localStorage.getItem('deliveryBoyLastLocation')
-      if (savedLocation) {
+      if (savedLocation && !bikeMarkerRef.current) {
         try {
           const parsed = JSON.parse(savedLocation)
           if (parsed && Array.isArray(parsed) && parsed.length === 2) {
@@ -5709,13 +5829,15 @@ export default function DeliveryHome() {
             if (typeof lat === 'number' && typeof lng === 'number' &&
                 lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
               const mightBeSwapped = (lat >= 68 && lat <= 98 && lng >= 8 && lng <= 38)
-              
-              // Firebase listener will handle marker creation/update
-              // No need to manually create marker from saved location
-              console.log('📍 Saved location found - Firebase listener will create marker:', {
-                location: mightBeSwapped ? [lng, lat] : parsed,
+              const finalLat = mightBeSwapped ? lng : lat
+              const finalLng = mightBeSwapped ? lat : lng
+
+              console.log('📍 Creating bike marker from saved location (online status effect):', {
+                location: [finalLat, finalLng],
                 format: "[lat, lng]"
               })
+
+              createOrUpdateBikeMarker(finalLat, finalLng, null, false)
             } else {
               console.warn('⚠️ Invalid saved coordinates:', parsed)
             }
@@ -5723,8 +5845,8 @@ export default function DeliveryHome() {
         } catch (e) {
           console.warn('⚠️ Error using saved location:', e)
         }
-      } else {
-        console.warn('⚠️ Cannot create bike marker - invalid rider location:', riderLocation);
+      } else if (!savedLocation) {
+        console.warn('⚠️ Cannot create bike marker - invalid rider location and no saved location');
       }
     }
   }, [isOnline, riderLocation, showHomeSections])
@@ -5736,9 +5858,36 @@ export default function DeliveryHome() {
 
     // Check every 2 seconds if markers are still on map
     const checkInterval = setInterval(() => {
-      // Check bike marker
-        // Firebase listener will handle marker creation/update
-        // No need to manually check or create marker here
+      // Check bike marker - ensure it's always visible
+      if (riderLocation && riderLocation.length === 2) {
+        const [lat, lng] = riderLocation;
+        if (!bikeMarkerRef.current) {
+          console.log('📍 Safeguard: Creating missing bike marker');
+          createOrUpdateBikeMarker(lat, lng, null, false);
+        } else if (bikeMarkerRef.current.getMap() === null || bikeMarkerRef.current.getMap() !== window.deliveryMapInstance) {
+          console.log('📍 Safeguard: Re-attaching bike marker to map');
+          bikeMarkerRef.current.setMap(window.deliveryMapInstance);
+          bikeMarkerRef.current.setPosition({ lat, lng });
+        }
+      } else {
+        // Try saved location if current location not available
+        const savedLocation = localStorage.getItem('deliveryBoyLastLocation');
+        if (savedLocation && !bikeMarkerRef.current) {
+          try {
+            const parsed = JSON.parse(savedLocation);
+            if (parsed && Array.isArray(parsed) && parsed.length === 2) {
+              const [lat, lng] = parsed;
+              if (typeof lat === 'number' && typeof lng === 'number' &&
+                  lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                console.log('📍 Safeguard: Creating bike marker from saved location');
+                createOrUpdateBikeMarker(lat, lng, null, false);
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
       
       // Check restaurant marker
       if (selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
@@ -6189,13 +6338,30 @@ export default function DeliveryHome() {
         console.log('📍 Origin (Delivery Boy LIVE Location):', currentLocation);
         console.log('📍 Destination:', destinationName, destinationLocation);
 
-        // Create map instance
-        const map = new window.google.maps.Map(directionsMapContainerRef.current, {
+        // Create map instance (reuse constructor handling)
+        let MapConstructor = null
+        if (window.google?.maps?.importLibrary) {
+          const { Map } = await window.google.maps.importLibrary('maps')
+          MapConstructor = Map
+        } else if (window.google?.maps?.Map) {
+          MapConstructor = window.google.maps.Map
+        } else {
+          console.error('❌ Google Maps Map constructor not available for directions map')
+          setDirectionsMapLoading(false)
+          return
+        }
+        if (typeof MapConstructor !== 'function') {
+          console.error('❌ Invalid Map constructor in directions map:', MapConstructor)
+          setDirectionsMapLoading(false)
+          return
+        }
+
+        const map = new MapConstructor(directionsMapContainerRef.current, {
           center: { lat: currentLocation[0], lng: currentLocation[1] },
           zoom: 18,
           minZoom: 10, // Minimum zoom level (city/area view)
           maxZoom: 21, // Maximum zoom level - allow full zoom
-          mapTypeId: window.google.maps.MapTypeId.TERRAIN || 'terrain',
+          mapTypeId: window.google.maps.MapTypeId.ROADMAP || 'roadmap',
           disableDefaultUI: true, // Hide all default UI controls
           zoomControl: false,
           mapTypeControl: false,
@@ -8863,14 +9029,14 @@ export default function DeliveryHome() {
             style={{ 
               height: '100%', 
               width: '100%', 
-              backgroundColor: '#e5e7eb', // Light gray background while loading
+              backgroundColor: 'transparent', // Let real map tiles be fully visible
               position: 'absolute',
               top: 0,
               left: 0,
               right: 0,
               bottom: 0,
               pointerEvents: 'auto',
-              zIndex: 0
+              zIndex: 1 // Ensure map sits above background and below overlays
             }}
           />
           
@@ -8880,6 +9046,39 @@ export default function DeliveryHome() {
               <div className="flex flex-col items-center gap-2">
                 <div className="text-gray-600 font-medium">Loading map...</div>
                 <div className="text-xs text-gray-500">Please wait</div>
+              </div>
+            </div>
+          )}
+
+          {/* Map Error Message */}
+          {mapError && !mapLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/95 z-10">
+              <div className="max-w-md mx-4 p-6 bg-red-50 border-2 border-red-200 rounded-xl shadow-lg">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0">
+                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-red-900 mb-2">Map Loading Failed</h3>
+                    <p className="text-sm text-red-800 mb-4">{mapError}</p>
+                    <button
+                      onClick={async () => {
+                        setMapError(null);
+                        setMapLoading(true);
+                        // Clear cache and retry
+                        const { clearGoogleMapsApiKeyCache } = await import('@/lib/utils/googleMapsApiKey.js');
+                        clearGoogleMapsApiKeyCache();
+                        // Force page reload to retry map initialization
+                        window.location.reload();
+                      }}
+                      className="w-full px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+                    >
+                      Retry Loading Map
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -9862,38 +10061,32 @@ export default function DeliveryHome() {
                     <p className="text-gray-500 text-sm mb-1">Estimated earnings</p>
                     <p className="text-4xl font-bold text-gray-900 mb-2">
                       ₹{(() => {
+                        // Prefer real commission data coming from admin's Delivery Boy Commission rules
                         const earnings = newOrder?.estimatedEarnings || selectedRestaurant?.estimatedEarnings || 0;
-                        const fallback = newOrder?.deliveryFee ?? selectedRestaurant?.deliveryFee ?? selectedRestaurant?.amount ?? 0;
                         let value = 0;
-                        
-                        console.log('💰 Display earnings calculation:', {
+
+                        console.log('💰 Display earnings (base payout focus):', {
                           earnings,
                           earningsType: typeof earnings,
                           newOrderEarnings: newOrder?.estimatedEarnings,
-                          selectedRestaurantEarnings: selectedRestaurant?.estimatedEarnings,
-                          fallback
+                          selectedRestaurantEarnings: selectedRestaurant?.estimatedEarnings
                         });
-                        
+
                         if (earnings) {
                           if (typeof earnings === 'object') {
-                            // Handle earnings object
-                            if (earnings.totalEarning != null) {
-                              value = Number(earnings.totalEarning) || 0;
-                            } else if (earnings.basePayout != null) {
-                              // If only basePayout is available, use it
+                            // IMPORTANT: Always prioritise basePayout configured from Admin panel
+                            if (earnings.basePayout != null) {
                               value = Number(earnings.basePayout) || 0;
+                            } else if (earnings.totalEarning != null) {
+                              // Fallback to totalEarning when basePayout is not explicitly present
+                              value = Number(earnings.totalEarning) || 0;
                             }
                           } else if (typeof earnings === 'number') {
-                            value = earnings > 0 ? earnings : 0;
+                            value = earnings > 0 ? Number(earnings) : 0;
                           }
                         }
-                        
-                        // If value is still 0, try fallback
-                        if (value <= 0 && fallback > 0) {
-                          value = Number(fallback);
-                        }
-                        
-                        console.log('💰 Final earnings value to display:', value);
+
+                        console.log('💰 Final base payout value to display:', value);
                         return value > 0 ? value.toFixed(2) : '0.00';
                       })()}
                     </p>
@@ -9905,7 +10098,7 @@ export default function DeliveryHome() {
                           <div className="bg-green-50 rounded-lg p-3 mb-2">
                             <p className="text-green-800 text-xs font-medium mb-1">Earnings Breakdown:</p>
                             <p className="text-green-700 text-xs">
-                              Base: ₹{earnings.basePayout?.toFixed(0) || '0'}
+                              Base payout (Admin): ₹{earnings.basePayout?.toFixed(0) || '0'}
                               {earnings.distanceCommission > 0 && (
                                 <> + Distance ({earnings.distance?.toFixed(1)} km × ₹{earnings.commissionPerKm?.toFixed(0)}/km) = ₹{earnings.distanceCommission?.toFixed(0)}</>
                               )}
@@ -10164,10 +10357,13 @@ export default function DeliveryHome() {
         )}
       </AnimatePresence>
 
-      {/* Reached Pickup Popup - shown when order is ready (from order_ready socket) or when rider is within 500m */}
-      {/* Don't show if Order ID confirmation popup is showing */}
+      {/* Reached Pickup Popup */}
       <BottomPopup
-        isOpen={showreachedPickupPopup && !showOrderIdConfirmationPopup}
+        // Show only when:
+        // - Reached Pickup popup flag is true
+        // - Order ID confirmation popup is NOT open
+        // - New order popup is NOT open (prevent double-popup overlap)
+        isOpen={showreachedPickupPopup && !showOrderIdConfirmationPopup && !showNewOrderPopup}
         onClose={() => setShowreachedPickupPopup(false)}
         showCloseButton={false}
         closeOnBackdropClick={false}

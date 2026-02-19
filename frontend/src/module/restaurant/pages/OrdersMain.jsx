@@ -1661,6 +1661,41 @@ export default function OrdersMain() {
                     </AnimatePresence>
                   </div>
 
+                  {/* Delivery Address */}
+                  {(popupOrder || newOrder)?.customerAddress && (
+                    <div className="mb-4">
+                      <p className="text-xs font-medium text-gray-700 mb-1">
+                        Delivery address
+                      </p>
+                      <p className="text-xs text-gray-600 leading-snug whitespace-pre-line">
+                        {(() => {
+                          const addr = (popupOrder || newOrder).customerAddress
+                          if (typeof addr === 'string') return addr
+
+                          // Prefer formattedAddress if available, but always include additionalDetails (flat no., landmark, etc.)
+                          const extra = addr.additionalDetails || addr.landmark || addr.area
+
+                          if (addr.formattedAddress) {
+                            if (extra) {
+                              return `${extra}\n${addr.formattedAddress}`
+                            }
+                            return addr.formattedAddress
+                          }
+
+                          const parts = [
+                            extra,
+                            addr.street,
+                            addr.city,
+                            addr.state,
+                            addr.pincode || addr.postalCode || addr.zipCode,
+                          ].filter(Boolean)
+
+                          return parts.join(', ')
+                        })()}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Customer note */}
                   {((popupOrder || newOrder)?.note) && (
                     <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
@@ -2233,8 +2268,8 @@ function OrderCard({
                 {type}
                 {tableOrToken ? ` • ${tableOrToken}` : ""}
               </p>
-              {/* Delivery Assignment Status & actions - Only show for preparing orders */}
-              {status === 'preparing' && (
+              {/* Delivery Assignment Status & actions - show for preparing + ready (when still unassigned) */}
+              {(status === 'preparing' || status === 'ready') && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${deliveryPartnerId
                     ? 'bg-green-100 text-green-700 border border-green-300'
@@ -2556,6 +2591,12 @@ function ReadyOrders({ onSelectOrder }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // Resend delivery notification for ready orders that are still unassigned
+  const handleResendForReady = ({ orderId, mongoId }) => {
+    // Just delegate to shared button; it will call the API and refresh
+    // We don't need extra logic here yet.
+  }
+
   useEffect(() => {
     let isMounted = true
     let intervalId = null
@@ -2662,6 +2703,9 @@ function ReadyOrders({ onSelectOrder }) {
               key={order.orderId || order.mongoId}
               {...order}
               onSelect={onSelectOrder}
+              onMarkReady={undefined}
+              // Show resend button on ready tab as well
+              // (OrderCard will render it via ResendNotificationButton)
             />
           ))}
         </div>

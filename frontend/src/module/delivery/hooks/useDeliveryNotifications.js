@@ -19,9 +19,11 @@ export const useDeliveryNotifications = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [deliveryPartnerId, setDeliveryPartnerId] = useState(null);
 
-  // Step 3: All callbacks before effects (unconditional)
+  // Step 3: All callbacks/refs before effects (unconditional)
   // Track user interaction for autoplay policy
   const userInteractedRef = useRef(false);
+  // Track orders that this delivery partner has explicitly rejected (to avoid re-notifying)
+  const rejectedOrderIdsRef = useRef(new Set());
   
   const playNotificationSound = useCallback(() => {
     try {
@@ -150,6 +152,22 @@ export const useDeliveryNotifications = () => {
       }
     };
     fetchDeliveryPartnerId();
+  }, []);
+
+  // Load rejected order IDs from localStorage once on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('deliveryRejectedOrders');
+      if (stored) {
+        const arr = JSON.parse(stored);
+        if (Array.isArray(arr)) {
+          rejectedOrderIdsRef.current = new Set(arr.map(id => id.toString()));
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors – we can safely start with an empty set
+      rejectedOrderIdsRef.current = new Set();
+    }
   }, []);
 
   // Socket connection effect
@@ -314,6 +332,17 @@ export const useDeliveryNotifications = () => {
 
     socketRef.current.on('new_order', (orderData) => {
       console.log('📦 New order received via socket:', orderData);
+
+      const orderId =
+        orderData?.orderId?.toString?.() ||
+        orderData?._id?.toString?.() ||
+        orderData?.orderMongoId?.toString?.();
+
+      if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
+        console.log('🚫 Skipping new_order notification for rejected order:', orderId);
+        return;
+      }
+
       setNewOrder(orderData);
       playNotificationSound();
     });
@@ -322,6 +351,17 @@ export const useDeliveryNotifications = () => {
     socketRef.current.on('new_order_available', (orderData) => {
       console.log('📦 New order available (priority notification):', orderData);
       console.log('📦 Notification phase:', orderData.phase || 'unknown');
+
+      const orderId =
+        orderData?.orderId?.toString?.() ||
+        orderData?._id?.toString?.() ||
+        orderData?.orderMongoId?.toString?.();
+
+      if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
+        console.log('🚫 Skipping new_order_available for rejected order:', orderId);
+        return;
+      }
+
       // Treat it the same as new_order for now - delivery boy can accept it
       setNewOrder(orderData);
       playNotificationSound();
@@ -360,6 +400,31 @@ export const useDeliveryNotifications = () => {
     setNewOrder(null);
   };
 
+  // Mark an order as explicitly rejected by this delivery partner (client-side)
+  const markOrderRejected = (orderId) => {
+    if (!orderId) return;
+
+    const idStr = orderId.toString();
+    rejectedOrderIdsRef.current.add(idStr);
+
+    try {
+      const arr = Array.from(rejectedOrderIdsRef.current);
+      localStorage.setItem('deliveryRejectedOrders', JSON.stringify(arr));
+    } catch (e) {
+      // Ignore storage errors
+    }
+
+    // If the currently visible newOrder matches this order, clear it
+    if (
+      newOrder &&
+      (newOrder.orderId?.toString?.() === idStr ||
+        newOrder._id?.toString?.() === idStr ||
+        newOrder.orderMongoId?.toString?.() === idStr)
+    ) {
+      setNewOrder(null);
+    }
+  };
+
   const clearOrderReady = () => {
     setOrderReady(null);
   };
@@ -367,6 +432,7 @@ export const useDeliveryNotifications = () => {
   return {
     newOrder,
     clearNewOrder,
+    markOrderRejected,
     orderReady,
     clearOrderReady,
     isConnected,
