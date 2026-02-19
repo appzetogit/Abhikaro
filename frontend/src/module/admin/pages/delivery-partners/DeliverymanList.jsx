@@ -4,6 +4,7 @@ import { adminAPI } from "@/lib/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { exportDeliverymenToExcel, exportDeliverymenToPDF } from "../../components/deliveryman/deliverymanExportUtils"
+import { toast } from "sonner"
 
 export default function DeliverymanList() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -25,6 +26,11 @@ export default function DeliverymanList() {
     availabilityStatus: true,
     actions: true,
   })
+  const [isZoneAssignOpen, setIsZoneAssignOpen] = useState(false)
+  const [selectedDeliverymanForZone, setSelectedDeliverymanForZone] = useState(null)
+  const [zones, setZones] = useState([])
+  const [selectedZoneId, setSelectedZoneId] = useState(null)
+  const [assigningZone, setAssigningZone] = useState(false)
 
   // Fetch delivery partners from API
   const fetchDeliverymen = async () => {
@@ -75,9 +81,23 @@ export default function DeliverymanList() {
     }
   }
 
+  // Fetch zones
+  const fetchZones = async () => {
+    try {
+      const response = await adminAPI.getZones({ limit: 1000, isActive: true })
+      if (response.data?.success && response.data.data?.zones) {
+        setZones(response.data.data.zones)
+      }
+    } catch (error) {
+      console.error("Error fetching zones:", error)
+      toast.error("Failed to fetch zones")
+    }
+  }
+
   // Fetch on mount
   useEffect(() => {
     fetchDeliverymen()
+    fetchZones()
   }, [])
 
   // Debounced search effect
@@ -117,6 +137,48 @@ export default function DeliverymanList() {
   const handleDelete = (deliveryman) => {
     setSelectedDeliveryman(deliveryman)
     setIsDeleteOpen(true)
+  }
+
+  const handleAssignZone = (deliveryman) => {
+    setSelectedDeliverymanForZone(deliveryman)
+    // Get current zone if exists
+    const currentZone = zones.find(z => 
+      deliveryman.fullData?.availability?.zones?.some(zoneId => zoneId.toString() === z._id.toString())
+    )
+    setSelectedZoneId(currentZone?._id || null)
+    setIsZoneAssignOpen(true)
+  }
+
+  const confirmAssignZone = async () => {
+    if (!selectedDeliverymanForZone || !selectedZoneId) {
+      toast.error("Please select a zone")
+      return
+    }
+
+    try {
+      setAssigningZone(true)
+      // Update delivery partner with zone
+      const zone = zones.find(z => z._id === selectedZoneId)
+      
+      // Call API to update delivery partner zone
+      const response = await adminAPI.updateDeliveryPartnerZone(selectedDeliverymanForZone._id, selectedZoneId)
+      
+      if (response.data?.success) {
+        toast.success(`Zone assigned successfully to ${selectedDeliverymanForZone.name}`)
+        setIsZoneAssignOpen(false)
+        setSelectedDeliverymanForZone(null)
+        setSelectedZoneId(null)
+        // Refresh the list
+        await fetchDeliverymen()
+      } else {
+        toast.error(response.data?.message || "Failed to assign zone")
+      }
+    } catch (error) {
+      console.error("Error assigning zone:", error)
+      toast.error(error.response?.data?.message || "Failed to assign zone")
+    } finally {
+      setAssigningZone(false)
+    }
   }
 
   const confirmDelete = async () => {
@@ -394,6 +456,13 @@ export default function DeliverymanList() {
                                 title="View Details"
                               >
                                 <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleAssignZone(dm)}
+                                className="p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                                title="Assign Zone"
+                              >
+                                <MapPin className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleDelete(dm)}
@@ -792,6 +861,64 @@ export default function DeliverymanList() {
               className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all"
             >
               Close
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Zone Assignment Dialog */}
+      <Dialog open={isZoneAssignOpen} onOpenChange={setIsZoneAssignOpen}>
+        <DialogContent className="max-w-md bg-white p-0">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5" />
+              Assign Zone to Delivery Partner
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-6 space-y-4">
+            <div>
+              <p className="text-sm text-slate-600 mb-4">
+                Assigning zone to: <span className="font-semibold text-slate-900">{selectedDeliverymanForZone?.name}</span>
+              </p>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Select Zone
+              </label>
+              <select
+                value={selectedZoneId || ""}
+                onChange={(e) => setSelectedZoneId(e.target.value)}
+                className="w-full px-4 py-2.5 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select a zone...</option>
+                {zones.map((zone) => (
+                  <option key={zone._id} value={zone._id}>
+                    {zone.name || zone.zoneName} {zone.serviceLocation ? `- ${zone.serviceLocation}` : ""}
+                  </option>
+                ))}
+              </select>
+              {zones.length === 0 && (
+                <p className="text-xs text-slate-500 mt-2">No zones available. Please create zones first.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="px-6 pb-6">
+            <button
+              onClick={() => {
+                setIsZoneAssignOpen(false)
+                setSelectedDeliverymanForZone(null)
+                setSelectedZoneId(null)
+              }}
+              disabled={assigningZone}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmAssignZone}
+              disabled={assigningZone || !selectedZoneId}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+            >
+              {assigningZone && <Loader2 className="w-4 h-4 animate-spin" />}
+              Assign Zone
             </button>
           </DialogFooter>
         </DialogContent>

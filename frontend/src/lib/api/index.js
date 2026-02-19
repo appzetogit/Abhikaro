@@ -1479,6 +1479,20 @@ export const adminAPI = {
     );
   },
 
+  updateDeliveryPartner: (id, data) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.DELIVERY_PARTNER_BY_ID.replace(":id", id),
+      data,
+    );
+  },
+
+  updateDeliveryPartnerZone: (id, zoneId) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.DELIVERY_PARTNER_ZONE.replace(":id", id),
+      { zoneId },
+    );
+  },
+
   // Delete delivery partner
   deleteDeliveryPartner: (id) => {
     return apiClient.delete(
@@ -1506,6 +1520,21 @@ export const adminAPI = {
   // Get orders
   getOrders: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.ADMIN.ORDERS, { params });
+  },
+
+  // Assign order to delivery partner manually
+  assignOrderToDeliveryPartner: (orderId, deliveryPartnerId) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.ORDER_ASSIGN_DELIVERY_PARTNER.replace(":id", orderId),
+      { deliveryPartnerId }
+    );
+  },
+
+  // Get delivery partner wallet info
+  getDeliveryPartnerWallet: (deliveryPartnerId) => {
+    return apiClient.get(
+      API_ENDPOINTS.ADMIN.DELIVERY_PARTNER_WALLET.replace(":id", deliveryPartnerId)
+    );
   },
 
   // Get orders searching for deliveryman

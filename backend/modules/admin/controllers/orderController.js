@@ -1902,3 +1902,197 @@ export const processRefund = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Manually assign order to delivery partner
+ * POST /api/admin/orders/:id/assign-delivery-partner
+ * Body: { deliveryPartnerId: string }
+ */
+export const assignOrderToDeliveryPartner = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { deliveryPartnerId } = req.body;
+
+    if (!deliveryPartnerId) {
+      return errorResponse(res, 400, 'Delivery partner ID is required');
+    }
+
+    // Find order by _id or orderId
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      order = await Order.findById(id);
+    }
+    if (!order) {
+      order = await Order.findOne({ orderId: id });
+    }
+
+    if (!order) {
+      return errorResponse(res, 404, 'Order not found');
+    }
+
+    // Validate order status
+    if (order.status === 'cancelled') {
+      return errorResponse(res, 400, 'Cannot assign cancelled order');
+    }
+
+    if (order.status === 'delivered') {
+      return errorResponse(res, 400, 'Cannot assign already delivered order');
+    }
+
+    if (order.status !== 'ready') {
+      return errorResponse(res, 400, `Order must be in 'ready' status. Current status: ${order.status}`);
+    }
+
+    // Check if order already has delivery partner
+    if (order.deliveryPartnerId) {
+      return errorResponse(res, 400, 'Order already has a delivery partner assigned');
+    }
+
+    // Verify delivery partner exists and is active
+    const Delivery = (await import('../../delivery/models/Delivery.js')).default;
+    const deliveryPartner = await Delivery.findById(deliveryPartnerId)
+      .select('name phone status isActive availability')
+      .lean();
+
+    if (!deliveryPartner) {
+      return errorResponse(res, 404, 'Delivery partner not found');
+    }
+
+    if (deliveryPartner.status !== 'approved' && deliveryPartner.status !== 'active') {
+      return errorResponse(res, 400, 'Delivery partner is not approved or active');
+    }
+
+    if (!deliveryPartner.isActive) {
+      return errorResponse(res, 400, 'Delivery partner is not active');
+    }
+
+    // For manual assignment, we don't assign directly
+    // Instead, we send a notification/request to the selected delivery boy
+    // They can then accept the order, which will assign it to them
+    
+    // Store the selected delivery partner ID in assignmentInfo for tracking
+    // This allows the delivery boy to accept the order when they receive the notification
+    if (!order.assignmentInfo) {
+      order.assignmentInfo = {};
+    }
+    
+    // Store in priorityDeliveryPartnerIds so delivery boy can accept it
+    if (!order.assignmentInfo.priorityDeliveryPartnerIds) {
+      order.assignmentInfo.priorityDeliveryPartnerIds = [];
+    }
+    
+    // Add this delivery partner to the priority list (for manual assignment)
+    const deliveryPartnerIdStr = deliveryPartnerId.toString();
+    if (!order.assignmentInfo.priorityDeliveryPartnerIds.includes(deliveryPartnerIdStr)) {
+      order.assignmentInfo.priorityDeliveryPartnerIds.push(deliveryPartnerIdStr);
+    }
+    
+    // Mark as manual assignment
+    order.assignmentInfo.assignedBy = 'manual';
+    order.assignmentInfo.manualAssignmentRequestedAt = new Date();
+    
+    await order.save();
+
+    // Send notification/request to the selected delivery partner
+    // They will receive 'new_order_available' event and can accept it
+    try {
+      const { notifyMultipleDeliveryBoys } = await import('../../order/services/deliveryNotificationService.js');
+      const populatedOrder = await Order.findById(order._id)
+        .populate('userId', 'name phone')
+        .populate('restaurantId', 'name address location phone')
+        .lean();
+      
+      // Send notification to the selected delivery partner
+      const notificationResult = await notifyMultipleDeliveryBoys(
+        populatedOrder,
+        [deliveryPartnerId],
+        'priority' // Mark as priority since it's manually selected by admin
+      );
+      
+      console.log(`✅ Sent order request to delivery partner ${deliveryPartnerId} for order ${order.orderId}`);
+      console.log(`📤 Notification result:`, notificationResult);
+    } catch (notifError) {
+      console.error('Error sending notification to delivery partner:', notifError);
+      // Continue even if notification fails - order is still marked for manual assignment
+    }
+
+    // Reload order with populated data
+    const updatedOrder = await Order.findById(order._id)
+      .populate('userId', 'name phone')
+      .populate('restaurantId', 'name address location')
+      .lean();
+
+    return successResponse(res, 200, 'Order request sent to delivery partner successfully. They can accept it to get assigned.', {
+      order: updatedOrder,
+      message: 'Delivery partner will receive a notification and can accept the order'
+    });
+  } catch (error) {
+    console.error('Error assigning order to delivery partner:', error);
+    return errorResponse(res, 500, error.message || 'Failed to assign order');
+  }
+});
+
+/**
+ * Get delivery partner wallet info (for admin)
+ * GET /api/admin/delivery-partners/:id/wallet
+ */
+export const getDeliveryPartnerWallet = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const Delivery = (await import('../../delivery/models/Delivery.js')).default;
+    const DeliveryWallet = (await import('../../delivery/models/DeliveryWallet.js')).default;
+    const BusinessSettings = (await import('../models/BusinessSettings.js')).default;
+
+    const deliveryPartner = await Delivery.findById(id).lean();
+    if (!deliveryPartner) {
+      return errorResponse(res, 404, 'Delivery partner not found');
+    }
+
+    // Get or create wallet
+    let wallet = await DeliveryWallet.findOne({ deliveryId: id });
+    if (!wallet) {
+      wallet = await DeliveryWallet.create({
+        deliveryId: id,
+        totalBalance: 0,
+        cashInHand: 0,
+        totalWithdrawn: 0,
+        totalEarned: 0
+      });
+    }
+
+    // Get cash limit from settings
+    const settings = await BusinessSettings.getSettings();
+    const totalCashLimit = Number(settings?.deliveryCashLimit) || 0;
+
+    // Calculate COD cash collected
+    const Order = (await import('../../order/models/Order.js')).default;
+    const codOrders = await Order.find({
+      deliveryPartnerId: id,
+      'payment.method': { $in: ['COD', 'cod', 'cash_on_delivery'] },
+      status: { $in: ['out_for_delivery', 'delivered'] }
+    }).lean();
+
+    let codCollectedTotal = 0;
+    for (const order of codOrders) {
+      const orderTotal = Number(order.totalAmount) || 0;
+      codCollectedTotal += orderTotal;
+    }
+
+    const cashInHand = codCollectedTotal;
+    const availableCashLimit = Math.max(0, totalCashLimit - cashInHand);
+
+    return successResponse(res, 200, 'Delivery partner wallet retrieved successfully', {
+      deliveryPartnerId: id,
+      deliveryPartnerName: deliveryPartner.name,
+      totalCashLimit,
+      cashInHand,
+      availableCashLimit,
+      totalBalance: wallet.totalBalance || 0,
+      totalEarned: wallet.totalEarned || 0,
+      totalWithdrawn: wallet.totalWithdrawn || 0
+    });
+  } catch (error) {
+    console.error('Error fetching delivery partner wallet:', error);
+    return errorResponse(res, 500, error.message || 'Failed to fetch wallet info');
+  }
+});

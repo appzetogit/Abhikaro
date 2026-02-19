@@ -302,9 +302,25 @@ app.set('io', io);
 
 // Connect to databases
 import { initializeCloudinary } from './config/cloudinary.js';
+import { initializeFirebaseRealtime } from './config/firebaseRealtime.js';
 
 // Connect to databases
-connectDB().then(() => {
+connectDB().then(async () => {
+  // Initialize Firebase Realtime Database after DB connection (credentials are in DB)
+  try {
+    console.log('🔥 Initializing Firebase Realtime Database...');
+    const db = await initializeFirebaseRealtime();
+    if (db) {
+      console.log('✅ Firebase Realtime Database initialized successfully');
+    } else {
+      console.warn('⚠️ Firebase Realtime Database initialization returned null - check credentials in Admin Panel');
+    }
+  } catch (error) {
+    console.error('❌ CRITICAL: Firebase Realtime Database initialization failed:', error);
+    console.error('⚠️ Server will continue but Firebase features may not work');
+    console.error('💡 Make sure Firebase credentials are set in Admin Panel → System → Environment Variables');
+  }
+  
   // Initialize Cloudinary after DB connection
   initializeCloudinary().catch(err => console.error('Failed to initialize Cloudinary:', err));
 });
@@ -369,6 +385,7 @@ app.use(helmet({
         "https://firebase.googleapis.com",
         "https://fcm.googleapis.com",
         "https://*.googleapis.com",
+        "https://api.bigdatacloud.net", // For reverse geocoding
         "ws://localhost:*",
         "http://localhost:*",
       ],

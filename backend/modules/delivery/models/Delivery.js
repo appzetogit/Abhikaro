@@ -82,6 +82,19 @@ const availabilitySchema = new mongoose.Schema({
       default: [0, 0]
     }
   },
+  // Explicit lat/lng for easy access (from Firebase or live location)
+  latitude: {
+    type: Number,
+    default: null,
+  },
+  longitude: {
+    type: Number,
+    default: null,
+  },
+  heading: {
+    type: Number,
+    default: null, // Direction in degrees (0-360)
+  },
   lastLocationUpdate: Date,
   zones: [{
     type: mongoose.Schema.Types.ObjectId,

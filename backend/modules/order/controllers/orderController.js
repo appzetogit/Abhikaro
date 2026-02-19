@@ -576,6 +576,35 @@ export const createOrder = async (req, res) => {
     }
     // --- Dynamic Commission Calculation End ---
 
+    // Extract user location from address (live location from Firebase or address)
+    // Note: restaurantLat and restaurantLng already declared above (line 201-204)
+    const userLat = address?.location?.coordinates?.[1] || address?.latitude || null;
+    const userLng = address?.location?.coordinates?.[0] || address?.longitude || null;
+    
+    // restaurantLat and restaurantLng are already available from validation above
+
+    // Prepare address with explicit lat/lng
+    const addressWithLocation = {
+      ...address,
+      latitude: userLat,
+      longitude: userLng,
+    };
+
+    // Prepare restaurant location object
+    const restaurantLocationData = restaurantLat && restaurantLng ? {
+      latitude: restaurantLat,
+      longitude: restaurantLng,
+      location: {
+        type: "Point",
+        coordinates: [restaurantLng, restaurantLat], // [longitude, latitude]
+      },
+    } : null;
+
+    logger.info("📍 Saving locations in order:", {
+      userLocation: userLat && userLng ? { lat: userLat, lng: userLng } : "missing",
+      restaurantLocation: restaurantLat && restaurantLng ? { lat: restaurantLat, lng: restaurantLng } : "missing",
+    });
+
     // Create order in database with pending status
     const order = new Order({
       orderId: generatedOrderId,
@@ -583,7 +612,8 @@ export const createOrder = async (req, res) => {
       restaurantId: assignedRestaurantId,
       restaurantName: assignedRestaurantName,
       items,
-      address,
+      address: addressWithLocation,
+      restaurantLocation: restaurantLocationData,
       pricing: {
         ...pricing,
         couponCode: pricing.couponCode || null,
@@ -1758,12 +1788,16 @@ export const calculateOrder = async (req, res) => {
     }
 
     // Calculate pricing
+    // Get userId from authenticated user to fetch location from Firebase
+    const userId = req.user?.id || req.user?._id?.toString() || null;
+
     const pricing = await calculateOrderPricing({
       items,
       restaurantId,
       deliveryAddress,
       couponCode,
       deliveryFleet: deliveryFleet || "standard",
+      userId // Pass userId to fetch location from Firebase (reduces Google Maps API calls)
     });
 
     res.json({

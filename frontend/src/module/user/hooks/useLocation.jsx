@@ -10,31 +10,49 @@ export function useLocation() {
   const watchIdRef = useRef(null)
   const updateTimerRef = useRef(null)
   const prevLocationCoordsRef = useRef({ latitude: null, longitude: null })
+  const retryCountRef = useRef(0) // Track retry attempts for reverse geocoding
+  const isFetchingLocationRef = useRef(false) // Prevent multiple simultaneous location fetches
+  const hasInitializedRef = useRef(false) // Prevent multiple initializations
+
+  // Helper to check if user is authenticated (used to decide live watch / DB updates)
+  const isUserAuthenticated = () => {
+    const userToken = localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken')
+    return !!userToken && userToken !== 'null' && userToken !== 'undefined'
+  }
 
   /* ===================== DB UPDATE (LIVE LOCATION TRACKING) ===================== */
   const updateLocationInDB = async (locationData) => {
     try {
-      // Check if location has placeholder values - don't save placeholders
-      const hasPlaceholder =
+      // CRITICAL: Always save coordinates to Firebase even if address is placeholder
+      // Coordinates are valid and useful for order calculations, even without address
+      // Address can be retried later without losing coordinates
+      if (!locationData?.latitude || !locationData?.longitude) {
+        console.log("⚠️ Skipping DB update - missing coordinates:", locationData);
+        return;
+      }
+
+      // Check if address has placeholder values (for logging only)
+      const hasPlaceholderAddress =
         locationData?.city === "Current Location" ||
         locationData?.address === "Select location" ||
         locationData?.formattedAddress === "Select location" ||
         (!locationData?.city && !locationData?.address && !locationData?.formattedAddress);
 
-      if (hasPlaceholder) {
-        console.log("⚠️ Skipping DB update - location contains placeholder values:", {
+      if (hasPlaceholderAddress) {
+        console.log("⚠️ Address is placeholder, but saving coordinates to Firebase:", {
+          coordinates: `${locationData.latitude}, ${locationData.longitude}`,
           city: locationData?.city,
-          address: locationData?.address,
-          formattedAddress: locationData?.formattedAddress
+          address: locationData?.address
         });
-        return;
+        // Continue to save coordinates even if address is placeholder
       }
 
       // Check if user is authenticated before trying to update DB
-      const userToken = localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken')
-      if (!userToken || userToken === 'null' || userToken === 'undefined') {
-        // User not logged in - skip DB update, just use localStorage
-        console.log("ℹ️ User not authenticated, skipping DB update (using localStorage only)")
+      if (!isUserAuthenticated()) {
+        // User not logged in - skip DB update, just use localStorage (log only in dev)
+        if (process.env.NODE_ENV === 'development') {
+          console.log("ℹ️ User not authenticated, skipping DB update (using localStorage only)")
+        }
         return
       }
 
@@ -71,9 +89,45 @@ export function useLocation() {
         accuracy: locationPayload.accuracy
       })
 
-      await userAPI.updateLocation(locationPayload)
+      // Get user ID from token (userToken already declared above)
+      let userId = null
+      if (userToken) {
+        try {
+          // Try to decode JWT to get user ID (simple base64 decode)
+          const payload = JSON.parse(atob(userToken.split('.')[1]))
+          userId = payload._id || payload.id || payload.userId
+        } catch (e) {
+          console.warn("⚠️ Could not extract userId from token:", e)
+        }
+      }
 
-      console.log("✅ Live location successfully stored in database")
+      // Save to Firebase directly as backup (even if backend API fails)
+      if (userId) {
+        try {
+          const { updateUserLocationInFirebase } = await import('@/lib/firebaseRealtime.js')
+          await updateUserLocationInFirebase(userId, locationPayload.latitude, locationPayload.longitude, {
+            address: locationPayload.address,
+            city: locationPayload.city,
+            state: locationPayload.state,
+            area: locationPayload.area,
+            formattedAddress: locationPayload.formattedAddress,
+            postalCode: locationPayload.postalCode,
+            accuracy: locationPayload.accuracy
+          })
+          console.log("✅ Location saved directly to Firebase as backup")
+        } catch (firebaseErr) {
+          console.warn("⚠️ Failed to save to Firebase directly:", firebaseErr)
+        }
+      }
+
+      // Save to backend (which also saves to Firebase)
+      const response = await userAPI.updateLocation(locationPayload)
+      
+      console.log("✅ Live location successfully stored in database and Firebase:", {
+        response: response?.data,
+        message: response?.data?.message || "Location updated",
+        userId: userId || "unknown"
+      })
     } catch (err) {
       // Only log non-network and non-auth errors
       if (err.code !== "ERR_NETWORK" && err.response?.status !== 404 && err.response?.status !== 401) {
@@ -91,33 +145,113 @@ export function useLocation() {
   /* ===================== DIRECT REVERSE GEOCODE ===================== */
   const reverseGeocodeDirect = async (latitude, longitude) => {
     try {
-      const controller = new AbortController()
-      setTimeout(() => controller.abort(), 3000) // Faster timeout
-
-      const res = await fetch(
-        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
-        { signal: controller.signal }
-      )
-
-      const data = await res.json()
-
-      return {
-        city: data.city || data.locality || "",
-        state: data.principalSubdivision || "",
-        country: data.countryName || "",
-        area: data.subLocality || "",
-        address:
-          data.formattedAddress ||
-          `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-        formattedAddress:
-          data.formattedAddress ||
-          `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+      // FIRST: Try backend API (more reliable, handles errors better)
+      try {
+        console.log("🔍 Trying backend reverse geocoding API:", { latitude, longitude })
+        const backendResponse = await locationAPI.reverseGeocode(latitude, longitude)
+        
+        if (backendResponse?.data?.success && backendResponse?.data?.data?.results?.[0]) {
+          const result = backendResponse.data.data.results[0]
+          const addressComponents = result.address_components || {}
+          
+          const city = addressComponents.city || ""
+          const state = addressComponents.state || ""
+          const country = addressComponents.country || ""
+          const area = addressComponents.area || ""
+          const formattedAddress = result.formatted_address || ""
+          
+          // Check if we got valid data (not just coordinates)
+          if (formattedAddress && !formattedAddress.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/)) {
+            console.log("✅ Backend reverse geocoding successful:", {
+              city,
+              area,
+              formattedAddress
+            })
+            
+            return {
+              city: city || "Current Location",
+              state: state || "",
+              country: country || "",
+              area: area || "",
+              address: area || city || formattedAddress || "Current Location",
+              formattedAddress: formattedAddress || `${area ? area + ', ' : ''}${city || 'Current Location'}`,
+            }
+          }
+        }
+      } catch (backendError) {
+        console.warn("⚠️ Backend reverse geocoding failed, trying direct BigDataCloud:", backendError.message)
       }
-    } catch {
+
+      // FALLBACK: Try BigDataCloud directly if backend fails
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+
+      try {
+        const res = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
+          { 
+            signal: controller.signal,
+            headers: {
+              'Accept': 'application/json',
+            }
+          }
+        )
+
+        clearTimeout(timeoutId) // Clear timeout if request succeeds
+
+        if (!res.ok) {
+          throw new Error(`BigDataCloud API error: ${res.status}`)
+        }
+
+        const data = await res.json()
+
+        // Check if we got valid data (not empty)
+        const city = data.city || data.locality || ""
+        const formattedAddress = data.formattedAddress || ""
+        
+        // If we don't have city or formattedAddress, treat as placeholder
+        if (!city && !formattedAddress) {
+          console.warn("⚠️ BigDataCloud returned empty response:", data)
+          return {
+            city: "Current Location",
+            state: "",
+            country: "",
+            area: "",
+            address: "Select location",
+            formattedAddress: "Select location",
+          }
+        }
+
+        return {
+          city: city,
+          state: data.principalSubdivision || "",
+          country: data.countryName || "",
+          area: data.subLocality || "",
+          address: formattedAddress || city || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+          formattedAddress: formattedAddress || city || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId) // Clear timeout on error
+        throw fetchError
+      }
+    } catch (error) {
+      // Suppress network errors - they're expected if API is down or network is unavailable
+      // Only log if it's not a network/abort error
+      if (error.name !== 'AbortError' && error.message !== 'Failed to fetch') {
+        console.warn("⚠️ Reverse geocoding failed:", error.message)
+      } else {
+        // Network error - silently return placeholder (coordinates will still be saved)
+        console.log("ℹ️ Reverse geocoding unavailable (network error) - using coordinates only")
+      }
+      
+      // Return placeholder location - coordinates will still be saved to Firebase
       return {
         city: "Current Location",
-        address: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-        formattedAddress: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+        state: "",
+        country: "",
+        area: "",
+        address: "Select location",
+        formattedAddress: "Select location",
       }
     }
   }
@@ -1267,19 +1401,41 @@ export function useLocation() {
 
   /* ===================== MAIN LOCATION ===================== */
   const getLocation = async (updateDB = true, forceFresh = false, showLoading = false) => {
-    // If not forcing fresh, try DB first (faster)
-    let dbLocation = !forceFresh ? await fetchLocationFromDB() : null
-    if (dbLocation && !forceFresh) {
-      setLocation(dbLocation)
-      if (showLoading) setLoading(false)
-      return dbLocation
+    // Prevent multiple simultaneous calls (even with forceFresh to avoid duplicate API calls)
+    if (isFetchingLocationRef.current) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log("⏸️ Location fetch already in progress, skipping duplicate call", { forceFresh })
+      }
+      // Wait a bit and return current location - don't start another fetch
+      return location || (() => {
+        try {
+          const stored = localStorage.getItem("userLocation")
+          return stored ? JSON.parse(stored) : null
+        } catch {
+          return null
+        }
+      })()
     }
 
-    if (!navigator.geolocation) {
-      setError("Geolocation not supported")
-      if (showLoading) setLoading(false)
-      return dbLocation
-    }
+    // Mark as fetching
+    isFetchingLocationRef.current = true
+
+    try {
+      // If not forcing fresh, try DB first (faster)
+      let dbLocation = !forceFresh ? await fetchLocationFromDB() : null
+      if (dbLocation && !forceFresh) {
+        setLocation(dbLocation)
+        if (showLoading) setLoading(false)
+        isFetchingLocationRef.current = false
+        return dbLocation
+      }
+
+      if (!navigator.geolocation) {
+        setError("Geolocation not supported")
+        if (showLoading) setLoading(false)
+        isFetchingLocationRef.current = false // Reset flag
+        return dbLocation
+      }
 
     // Helper function to get position with retry mechanism
     const getPositionWithRetry = (options, retryCount = 0) => {
@@ -1383,31 +1539,24 @@ export function useLocation() {
                 formattedAddress: completeFormattedAddress || addr.formattedAddress || displayAddress // Complete detailed address
               }
 
-              // Check if location has placeholder values - don't save placeholders
-              const hasPlaceholder =
+              // Check if address has placeholder values (but still save coordinates)
+              const hasPlaceholderAddress =
                 finalLoc.city === "Current Location" ||
                 finalLoc.address === "Select location" ||
                 finalLoc.formattedAddress === "Select location" ||
                 (!finalLoc.city && !finalLoc.address && !finalLoc.formattedAddress && !finalLoc.area);
 
-              if (hasPlaceholder) {
-                console.warn("⚠️ Skipping save - location contains placeholder values:", finalLoc)
-                // Don't save placeholder values to localStorage or DB
-                // Just set in state for display but don't persist
-                const coordOnlyLoc = {
-                  latitude,
-                  longitude,
-                  accuracy: accuracy || null,
-                  city: finalLoc.city,
-                  address: finalLoc.address,
-                  formattedAddress: finalLoc.formattedAddress
-                }
-                setLocation(coordOnlyLoc)
-                setPermissionGranted(true)
-                if (showLoading) setLoading(false)
-                setError(null)
-                resolve(coordOnlyLoc)
-                return
+              // CRITICAL: Always save coordinates to Firebase even if address is placeholder
+              // Coordinates are valid and useful for order calculations
+              if (hasPlaceholderAddress) {
+                console.warn("⚠️ Address is placeholder, but saving coordinates to Firebase:", {
+                  coordinates: `${latitude}, ${longitude}`,
+                  address: finalLoc.address
+                })
+                
+                // Even if address is placeholder, DON'T show coordinates - keep trying to get address
+              // Coordinates will be saved to Firebase but UI should show "Current Location" or retry
+              // We'll retry reverse geocoding in background to get proper address
               }
 
               console.log("💾 Saving location:", finalLoc)
@@ -1417,11 +1566,20 @@ export function useLocation() {
               if (showLoading) setLoading(false)
               setError(null)
 
+              // CRITICAL: Always save coordinates to Firebase immediately, even if address is placeholder
+              // Don't wait for debounce - save immediately when location is first fetched
               if (updateDB) {
-                await updateLocationInDB(finalLoc).catch(err => {
-                  console.warn("Failed to update location in DB:", err)
+                console.log("🔥 Saving location to database and Firebase immediately:", {
+                  coordinates: `${finalLoc.latitude}, ${finalLoc.longitude}`,
+                  hasAddress: !!finalLoc.address && finalLoc.address !== "Select location"
                 })
+                await updateLocationInDB(finalLoc).catch(err => {
+                  console.error("❌ Failed to update location in DB:", err)
+                })
+              } else {
+                console.warn("⚠️ updateDB is false, skipping database update")
               }
+              isFetchingLocationRef.current = false // Reset flag on success
               resolve(finalLoc)
             } catch (err) {
               console.error("❌ Error processing location:", err)
@@ -1451,6 +1609,7 @@ export function useLocation() {
                   if (showLoading) setLoading(false)
                   setError(null)
                   if (updateDB) await updateLocationInDB(lastResortLoc).catch(() => { })
+                  isFetchingLocationRef.current = false // Reset flag on success
                   resolve(lastResortLoc)
                   return
                 } else {
@@ -1477,6 +1636,7 @@ export function useLocation() {
               setPermissionGranted(true)
               if (showLoading) setLoading(false)
               // Don't try to update DB with placeholder
+              isFetchingLocationRef.current = false // Reset flag on fallback
               resolve(fallbackLoc)
             }
           },
@@ -1529,6 +1689,7 @@ export function useLocation() {
                 }
                 setPermissionGranted(true) // Still grant permission if we have location
                 if (showLoading) setLoading(false)
+                isFetchingLocationRef.current = false // Reset flag on fallback success
                 resolve(fallback)
               } else {
                 // No fallback available - set a default location so UI doesn't hang
@@ -1542,6 +1703,7 @@ export function useLocation() {
                 setError(err.code === 3 ? "Location request timed out. Please try again." : err.message)
                 setPermissionGranted(false)
                 if (showLoading) setLoading(false)
+                isFetchingLocationRef.current = false // Reset flag on default location
                 resolve(defaultLocation) // Always resolve with something
               }
             } catch (fallbackErr) {
@@ -1550,6 +1712,7 @@ export function useLocation() {
               setError(err.code === 3 ? "Location request timed out. Please try again." : err.message)
               setPermissionGranted(false)
               if (showLoading) setLoading(false)
+              isFetchingLocationRef.current = false // Reset flag on error
               resolve(null)
             }
           },
@@ -1558,14 +1721,22 @@ export function useLocation() {
       })
     }
 
-    // Try with high accuracy first
-    // If forceFresh is true, don't use cached location (maximumAge: 0)
-    // Otherwise, allow cached location for faster response
-    return getPositionWithRetry({
-      enableHighAccuracy: true,  // Use GPS for exact location (highest accuracy)
-      timeout: 15000,            // 15 seconds timeout (gives GPS more time to get accurate fix)
-      maximumAge: forceFresh ? 0 : 60000  // If forceFresh, get fresh location. Otherwise allow 1 minute cache
-    })
+      // Try with high accuracy first
+      // If forceFresh is true, don't use cached location (maximumAge: 0)
+      // Otherwise, allow cached location for faster response
+      return getPositionWithRetry({
+        enableHighAccuracy: true,  // Use GPS for exact location (highest accuracy)
+        timeout: 15000,            // 15 seconds timeout (gives GPS more time to get accurate fix)
+        maximumAge: forceFresh ? 0 : 60000  // If forceFresh, get fresh location. Otherwise allow 1 minute cache
+      })
+    } catch (err) {
+      // Handle any unexpected errors
+      console.error("❌ Unexpected error in getLocation:", err)
+      isFetchingLocationRef.current = false // Reset flag on error
+      setError(err.message)
+      if (showLoading) setLoading(false)
+      return null
+    }
   }
 
   /* ===================== WATCH LOCATION ===================== */
@@ -1575,13 +1746,23 @@ export function useLocation() {
       return
     }
 
+    // If user is not authenticated, don't start live watch to avoid unnecessary updates
+    if (!isUserAuthenticated()) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log("ℹ️ User not authenticated - live location watch disabled (using one-time location only)")
+      }
+      return
+    }
+
     // Clear any existing watch
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current)
       watchIdRef.current = null
     }
 
-    console.log("👀 Starting to watch location for live updates...")
+    if (process.env.NODE_ENV === 'development') {
+      console.log("👀 Starting to watch location for live updates...")
+    }
 
     let retryCount = 0
     const maxRetries = 2
@@ -1591,7 +1772,9 @@ export function useLocation() {
         async (pos) => {
           try {
             const { latitude, longitude, accuracy } = pos.coords
-            console.log("🔄 Location updated:", { latitude, longitude, accuracy: `${accuracy}m` })
+            if (process.env.NODE_ENV === 'development') {
+              console.log("🔄 Location updated:", { latitude, longitude, accuracy: `${accuracy}m` })
+            }
 
             // Reset retry count on success
             retryCount = 0
@@ -1618,20 +1801,23 @@ export function useLocation() {
               accuracy: accuracy || null
             }
 
-            // If no existing address, use placeholder (don't call geocoding API)
-            if (!loc.address || loc.address === "Select location") {
-              loc.address = currentLoc?.address || "Current Location"
-              loc.formattedAddress = currentLoc?.formattedAddress || "Current Location"
+            // If no existing address, use coordinates as display (don't call geocoding API)
+            if (!loc.address || loc.address === "Select location" || loc.address === "Current Location") {
+              // Show coordinates in a user-friendly way when address is not available
+              loc.address = `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+              loc.formattedAddress = `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
               loc.city = currentLoc?.city || "Current Location"
             }
 
-            console.log("🔄 Live location updated (coordinates only, NO reverse geocoding):", {
-              latitude,
-              longitude,
-              accuracy: `${accuracy}m`,
-              address: loc.address,
-              city: loc.city
-            })
+            if (process.env.NODE_ENV === 'development') {
+              console.log("🔄 Live location updated (coordinates only, NO reverse geocoding):", {
+                latitude,
+                longitude,
+                accuracy: `${accuracy}m`,
+                address: loc.address,
+                city: loc.city
+              })
+            }
 
             // STABILITY: Only update if coordinates changed significantly (>10m)
             // Don't check address improvement since we're not calling geocoding
@@ -1644,11 +1830,15 @@ export function useLocation() {
 
               // Only update if moved >10 meters
               if (distanceMeters <= 10) {
-                console.log(`📍 Location unchanged (${distanceMeters.toFixed(1)}m change), skipping update`)
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`📍 Location unchanged (${distanceMeters.toFixed(1)}m change), skipping update`)
+                }
                 return // Don't update - coordinates haven't changed significantly
               }
 
-              console.log(`📍 Location updated: ${distanceMeters.toFixed(1)}m change (coordinates only)`)
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`📍 Location updated: ${distanceMeters.toFixed(1)}m change (coordinates only)`)
+              }
             }
 
             // Check if coordinates have changed significantly (threshold: ~10 meters)
@@ -1662,7 +1852,9 @@ export function useLocation() {
             // Only update location state if coordinates changed significantly
             if (coordsChanged) {
               prevLocationCoordsRef.current = { latitude: loc.latitude, longitude: loc.longitude }
-              console.log("💾 Updating live location:", loc)
+              if (process.env.NODE_ENV === 'development') {
+                console.log("💾 Updating live location:", loc)
+              }
               localStorage.setItem("userLocation", JSON.stringify(loc))
               setLocation(loc)
               setPermissionGranted(true)
@@ -1673,13 +1865,22 @@ export function useLocation() {
               localStorage.setItem("userLocation", JSON.stringify(loc))
             }
 
-            // Debounce DB updates - only update every 5 seconds
-            clearTimeout(updateTimerRef.current)
-            updateTimerRef.current = setTimeout(() => {
-              updateLocationInDB(loc).catch(err => {
-                console.warn("Failed to update location in DB:", err)
-              })
-            }, 5000)
+            // Debounce DB updates - only update every 5 seconds to avoid too many API calls
+            // Only schedule debounced updates if user is authenticated
+            if (isUserAuthenticated()) {
+              clearTimeout(updateTimerRef.current)
+              updateTimerRef.current = setTimeout(() => {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log("🔄 Debounced location update - saving to database and Firebase:", {
+                    coordinates: `${loc.latitude}, ${loc.longitude}`,
+                    hasAddress: !!loc.address && loc.address !== "Select location"
+                  })
+                }
+                updateLocationInDB(loc).catch(err => {
+                  console.error("❌ Failed to update location in DB (debounced):", err)
+                })
+              }, 5000)
+            }
           } catch (err) {
             console.error("❌ Error processing live location update:", err)
             // On error, preserve existing location (don't update with placeholder)
@@ -1769,16 +1970,46 @@ export function useLocation() {
 
         // Show cached location immediately (even if incomplete) - better UX
         // We'll refresh in background but user sees something right away
-        // BUT: Skip if it's just placeholder values ("Select location" or "Current Location")
-        if (parsedLocation &&
-          (parsedLocation.latitude || parsedLocation.city) &&
-          parsedLocation.formattedAddress !== "Select location" &&
-          parsedLocation.city !== "Current Location") {
+        // Show location even if address is placeholder, as long as we have coordinates
+        if (parsedLocation && parsedLocation.latitude && parsedLocation.longitude) {
+          // CRITICAL: Remove coordinates from address if they were added before
+          // Don't show coordinates in UI - show "Current Location" instead
+          if (parsedLocation.address && (
+              parsedLocation.address.includes('Location (') ||
+              parsedLocation.address.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/)
+            )) {
+            parsedLocation.address = "Current Location"
+          }
+          if (parsedLocation.formattedAddress && (
+              parsedLocation.formattedAddress.includes('Location (') ||
+              parsedLocation.formattedAddress.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/)
+            )) {
+            parsedLocation.formattedAddress = "Current Location"
+          }
+          
+          // Update localStorage with cleaned address (without coordinates)
+          const originalAddress = parsedLocation.address
+          const originalFormattedAddress = parsedLocation.formattedAddress
+          if (originalAddress !== parsedLocation.address || 
+              originalFormattedAddress !== parsedLocation.formattedAddress) {
+            localStorage.setItem("userLocation", JSON.stringify(parsedLocation))
+          }
+          
           setLocation(parsedLocation)
           setPermissionGranted(true)
           setLoading(false) // Set loading to false immediately
           hasInitialLocation = true
           console.log("📂 Loaded stored location instantly:", parsedLocation)
+          
+          // If address is placeholder, trigger reverse geocoding retry in background
+          if (parsedLocation.formattedAddress === "Select location" || 
+              parsedLocation.formattedAddress === "Current Location" ||
+              parsedLocation.city === "Current Location" ||
+              !parsedLocation.formattedAddress ||
+              parsedLocation.address === "Current Location") {
+            console.log("🔄 Address is placeholder, will retry reverse geocoding in background")
+            shouldForceRefresh = true
+          }
 
           // Check if we should refresh in background for better address
           const hasCompleteAddress = parsedLocation?.formattedAddress &&
@@ -1864,6 +2095,16 @@ export function useLocation() {
     // CRITICAL FIX: Only auto-request if permission is ALREADY granted
     // This prevents "Requests geolocation permission on page load" warning
     const checkPermissionAndStart = async () => {
+      // Prevent multiple simultaneous calls
+      if (hasInitializedRef.current) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log("⏸️ Location initialization already in progress, skipping duplicate call")
+        }
+        return
+      }
+      
+      hasInitializedRef.current = true
+      
       try {
         let permissionGranted = false;
 
@@ -1893,6 +2134,7 @@ export function useLocation() {
           // In either case, we avoid the PROMPT.
           // Ensure loading is false so UI doesn't hang
           setLoading(false);
+          hasInitializedRef.current = false // Reset flag if permission not granted
           return;
         }
 
@@ -1925,26 +2167,76 @@ export function useLocation() {
                 // CRITICAL: Update state with fresh location so PageNavbar displays it
                 setLocation(location)
                 setPermissionGranted(true)
+                
+                // CRITICAL: Save location to database and Firebase immediately
+                if (location.latitude && location.longitude) {
+                  console.log("🔥 Saving valid location to database and Firebase immediately:", {
+                    coordinates: `${location.latitude}, ${location.longitude}`,
+                    address: location.formattedAddress
+                  })
+                  updateLocationInDB(location).catch(err => {
+                    console.error("❌ Failed to save location to DB:", err)
+                  })
+                }
+                
                 // Start watching for live updates
                 startWatchingLocation()
               } else {
-                console.warn("⚠️ Location fetch returned placeholder, retrying...")
-                // Retry after 2 seconds if we got placeholder
-                setTimeout(() => {
-                  getLocation(true, true)
-                    .then((retryLocation) => {
-                      if (retryLocation &&
-                        retryLocation.formattedAddress !== "Select location" &&
-                        retryLocation.city !== "Current Location") {
-                        setLocation(retryLocation)
-                        setPermissionGranted(true)
+                // Address is placeholder, but coordinates are valid - save them and retry reverse geocoding
+                console.warn("⚠️ Address is placeholder, but coordinates are valid. Retrying reverse geocoding to get place name:", {
+                  coordinates: `${location.latitude}, ${location.longitude}`,
+                  retryCount: retryCountRef.current
+                })
+                
+                // Save coordinates to Firebase even if address is placeholder
+                setLocation(location)
+                setPermissionGranted(true)
+                
+                // Save coordinates to Firebase
+                if (location.latitude && location.longitude) {
+                  updateLocationInDB(location).catch(err => {
+                    console.warn("Failed to save coordinates to Firebase:", err)
+                  })
+                }
+                
+                // Retry reverse geocoding with backend API (more reliable)
+                // Retry up to 3 times with increasing delays
+                if (retryCountRef.current < 3) {
+                  retryCountRef.current += 1
+                  const retryDelay = retryCountRef.current * 2000 // 2s, 4s, 6s
+                  console.log(`🔄 Retrying reverse geocoding via backend API (attempt ${retryCountRef.current}/3) in ${retryDelay}ms...`)
+                  
+                  setTimeout(() => {
+                    // Force fresh reverse geocoding
+                    getLocation(true, true)
+                      .then((retryLocation) => {
+                        if (retryLocation &&
+                          retryLocation.formattedAddress !== "Select location" &&
+                          retryLocation.city !== "Current Location" &&
+                          !retryLocation.formattedAddress.includes('Location (')) {
+                          retryCountRef.current = 0 // Reset on success
+                          console.log("✅ Reverse geocoding succeeded on retry:", retryLocation.formattedAddress)
+                          setLocation(retryLocation)
+                          setPermissionGranted(true)
+                          updateLocationInDB(retryLocation).catch(() => {})
+                        } else {
+                          // Still placeholder, will retry again if under limit
+                          console.warn("⚠️ Reverse geocoding still returned placeholder, will retry again")
+                        }
+                        // Start watching regardless of retry result
                         startWatchingLocation()
-                      }
-                    })
-                    .catch(() => {
-                      startWatchingLocation()
-                    })
-                }, 2000)
+                      })
+                      .catch(() => {
+                        // On error, still start watching
+                        startWatchingLocation()
+                      })
+                  }, retryDelay)
+                } else {
+                  // Max retries reached, start watching - address will show "Current Location"
+                  console.log("⚠️ Max retries reached. Address will show 'Current Location' until reverse geocoding succeeds")
+                  retryCountRef.current = 0 // Reset for next time
+                  startWatchingLocation()
+                }
               }
             })
             .catch((err) => {
@@ -1959,6 +2251,12 @@ export function useLocation() {
       } catch (err) {
         console.error("Error in checkPermissionAndStart:", err);
         setLoading(false);
+        hasInitializedRef.current = false // Reset flag on error
+      } finally {
+        // Reset flag after a delay to allow for retries if needed
+        setTimeout(() => {
+          hasInitializedRef.current = false
+        }, 1000)
       }
     };
 

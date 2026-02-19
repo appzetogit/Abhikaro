@@ -122,6 +122,37 @@ const orderSchema = new mongoose.Schema(
           default: [0, 0],
         },
       },
+      // Explicit lat/lng for easy access (from Firebase or live location)
+      latitude: {
+        type: Number,
+        default: null,
+      },
+      longitude: {
+        type: Number,
+        default: null,
+      },
+    },
+    // Restaurant location saved at order creation time (from zone setup)
+    restaurantLocation: {
+      latitude: {
+        type: Number,
+        default: null,
+      },
+      longitude: {
+        type: Number,
+        default: null,
+      },
+      location: {
+        type: {
+          type: String,
+          enum: ["Point"],
+          default: "Point",
+        },
+        coordinates: {
+          type: [Number], // [longitude, latitude]
+          default: [0, 0],
+        },
+      },
     },
     pricing: {
       subtotal: {

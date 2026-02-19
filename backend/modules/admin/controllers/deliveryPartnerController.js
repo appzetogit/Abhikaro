@@ -646,3 +646,65 @@ export const updateDeliveryPartnerStatus = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Update Delivery Partner Zone
+ * PUT /api/admin/delivery-partners/:id/zone
+ */
+export const updateDeliveryPartnerZone = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { zoneId, zoneName } = req.body;
+
+    const delivery = await Delivery.findById(id);
+
+    if (!delivery) {
+      return errorResponse(res, 404, 'Delivery partner not found');
+    }
+
+    // Validate zoneId if provided
+    if (zoneId) {
+      const Zone = (await import('../models/Zone.js')).default;
+      const zone = await Zone.findById(zoneId);
+      
+      if (!zone) {
+        return errorResponse(res, 404, 'Zone not found');
+      }
+
+      // Update availability.zones array (replace with single zone)
+      if (!delivery.availability) {
+        delivery.availability = {
+          isOnline: false,
+          currentLocation: {
+            type: 'Point',
+            coordinates: [0, 0]
+          },
+          zones: []
+        };
+      }
+
+      // Replace zones array with the new zone
+      delivery.availability.zones = [new mongoose.Types.ObjectId(zoneId)];
+      delivery.markModified('availability.zones');
+
+      logger.info(`Delivery partner zone updated: ${id}`, {
+        zoneId: zoneId,
+        zoneName: zone.name || zone.zoneName,
+        updatedBy: req.user?._id
+      });
+    }
+
+    await delivery.save();
+
+    return successResponse(res, 200, 'Delivery partner zone updated successfully', {
+      delivery: {
+        _id: delivery._id.toString(),
+        name: delivery.name,
+        zoneId: zoneId,
+        zones: delivery.availability?.zones || []
+      }
+    });
+  } catch (error) {
+    logger.error(`Error updating delivery partner zone: ${error.message}`, { error: error.stack });
+    return errorResponse(res, 500, 'Failed to update delivery partner zone');
+  }
+});

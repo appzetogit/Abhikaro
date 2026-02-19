@@ -36,6 +36,13 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
   try {
     console.log(`🔍 Searching for priority delivery partners within ${priorityDistance}km of restaurant: ${restaurantLat}, ${restaurantLng}`);
     
+    // Check delivery assignment mode
+    const BusinessSettings = (await import('../../admin/models/BusinessSettings.js')).default;
+    const businessSettings = await BusinessSettings.getSettings();
+    const assignmentMode = businessSettings?.deliveryAssignmentMode || 'automatic';
+    
+    console.log(`📋 Delivery assignment mode: ${assignmentMode}`);
+    
     // Use the same logic as findNearestDeliveryBoy but return all within priority distance
     let zone = null;
     let deliveryQuery = {
@@ -57,7 +64,7 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
         }).lean();
 
         if (zone) {
-          console.log(`✅ Found zone: ${zone.name} for restaurant ${restaurantId}`);
+          console.log(`✅ Found zone: ${zone.name} (${zone._id}) for restaurant ${restaurantId}`);
         }
       } catch (zoneError) {
         console.warn(`⚠️ Error finding zone:`, zoneError.message);
@@ -65,7 +72,7 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
     }
 
     const deliveryPartners = await Delivery.find(deliveryQuery)
-      .select('_id name phone availability.currentLocation availability.lastLocationUpdate status isActive zoneId')
+      .select('_id name phone availability.currentLocation availability.lastLocationUpdate availability.zones status isActive zoneId')
       .lean();
 
     console.log(`📊 Found ${deliveryPartners?.length || 0} online delivery partners`);
@@ -87,24 +94,44 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
           return null;
         }
 
-        // Zone filtering (same as findNearestDeliveryBoy)
-        if (zone) {
-          if (partner.zoneId && partner.zoneId.toString() !== zone._id.toString()) {
+        // Zone filtering based on assignment mode
+        if (assignmentMode === 'manual') {
+          // In manual mode: Only show orders to delivery partners assigned to this zone
+          if (!zone) {
+            console.log(`⚠️ No zone found for restaurant, skipping delivery partner ${partner._id} in manual mode`);
             return null;
           }
-          if (!partner.zoneId && zone.coordinates && zone.coordinates.length >= 3) {
-            const zoneCoords = zone.coordinates;
-            let inside = false;
-            for (let i = 0, j = zoneCoords.length - 1; i < zoneCoords.length; j = i++) {
-              const xi = zoneCoords[i].longitude;
-              const yi = zoneCoords[i].latitude;
-              const xj = zoneCoords[j].longitude;
-              const yj = zoneCoords[j].latitude;
-              const intersect = ((yi > lat) !== (yj > lat)) &&
-                (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
-              if (intersect) inside = !inside;
+          
+          // Check if delivery partner has this zone assigned
+          const partnerZones = partner.availability?.zones || [];
+          const hasZone = partnerZones.some(z => z.toString() === zone._id.toString());
+          
+          if (!hasZone) {
+            console.log(`🚫 Delivery partner ${partner._id} (${partner.name}) not assigned to zone ${zone.name}, skipping in manual mode`);
+            return null;
+          }
+          
+          console.log(`✅ Delivery partner ${partner._id} (${partner.name}) is assigned to zone ${zone.name}`);
+        } else {
+          // In automatic mode: Use existing zone filtering logic (restaurant zone matching)
+          if (zone) {
+            if (partner.zoneId && partner.zoneId.toString() !== zone._id.toString()) {
+              return null;
             }
-            if (!inside) return null;
+            if (!partner.zoneId && zone.coordinates && zone.coordinates.length >= 3) {
+              const zoneCoords = zone.coordinates;
+              let inside = false;
+              for (let i = 0, j = zoneCoords.length - 1; i < zoneCoords.length; j = i++) {
+                const xi = zoneCoords[i].longitude;
+                const yi = zoneCoords[i].latitude;
+                const xj = zoneCoords[j].longitude;
+                const yj = zoneCoords[j].latitude;
+                const intersect = ((yi > lat) !== (yj > lat)) &&
+                  (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+              }
+              if (!inside) return null;
+            }
           }
         }
 
@@ -149,6 +176,13 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
 export async function findNearestDeliveryBoy(restaurantLat, restaurantLng, restaurantId = null, maxDistance = 50, excludeIds = []) {
   try {
     console.log(`🔍 Searching for nearest delivery partner near restaurant: ${restaurantLat}, ${restaurantLng} (Restaurant ID: ${restaurantId})`);
+    
+    // Check delivery assignment mode
+    const BusinessSettings = (await import('../../admin/models/BusinessSettings.js')).default;
+    const businessSettings = await BusinessSettings.getSettings();
+    const assignmentMode = businessSettings?.deliveryAssignmentMode || 'automatic';
+    
+    console.log(`📋 Delivery assignment mode: ${assignmentMode}`);
     
     // Step 1: Find zone for restaurant (if restaurantId provided)
     let zone = null;
@@ -207,7 +241,7 @@ export async function findNearestDeliveryBoy(restaurantLat, restaurantLng, resta
 
     // Find all online delivery partners (with zone filter if applicable)
     const deliveryPartners = await Delivery.find(deliveryQuery)
-      .select('_id name phone availability.currentLocation availability.lastLocationUpdate status isActive zoneId')
+      .select('_id name phone availability.currentLocation availability.lastLocationUpdate availability.zones status isActive zoneId')
       .lean();
 
     console.log(`📊 Found ${deliveryPartners?.length || 0} online delivery partners in database`);
@@ -244,36 +278,56 @@ export async function findNearestDeliveryBoy(restaurantLat, restaurantLng, resta
           return null;
         }
 
-        // Filter by zone if zone exists
-        if (zone) {
-          // Option A: Check zoneId match (when zoneId is added to Delivery model)
-          if (partner.zoneId && partner.zoneId.toString() !== zone._id.toString()) {
-            console.log(`⚠️ Delivery partner ${partner._id} not in zone ${zone.name} (partner zone: ${partner.zoneId}, required zone: ${zone._id})`);
-            return null; // Skip delivery partners not in the restaurant's zone
+        // Zone filtering based on assignment mode
+        if (assignmentMode === 'manual') {
+          // In manual mode: Only show orders to delivery partners assigned to this zone
+          if (!zone) {
+            console.log(`⚠️ No zone found for restaurant, skipping delivery partner ${partner._id} in manual mode`);
+            return null;
           }
-
-          // Option B: Geo-spatial check (point-in-polygon) if zoneId not available
-          // Simple point-in-polygon using ray casting algorithm
-          if (!partner.zoneId && zone.coordinates && zone.coordinates.length >= 3) {
-            // Zone coordinates: [{ latitude, longitude }, ...]
-            const zoneCoords = zone.coordinates;
-            let inside = false;
-            
-            for (let i = 0, j = zoneCoords.length - 1; i < zoneCoords.length; j = i++) {
-              const xi = zoneCoords[i].longitude;
-              const yi = zoneCoords[i].latitude;
-              const xj = zoneCoords[j].longitude;
-              const yj = zoneCoords[j].latitude;
-              
-              const intersect = ((yi > lat) !== (yj > lat)) &&
-                (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
-              
-              if (intersect) inside = !inside;
+          
+          // Check if delivery partner has this zone assigned
+          const partnerZones = partner.availability?.zones || [];
+          const hasZone = partnerZones.some(z => z.toString() === zone._id.toString());
+          
+          if (!hasZone) {
+            console.log(`🚫 Delivery partner ${partner._id} (${partner.name}) not assigned to zone ${zone.name}, skipping in manual mode`);
+            return null;
+          }
+          
+          console.log(`✅ Delivery partner ${partner._id} (${partner.name}) is assigned to zone ${zone.name}`);
+        } else {
+          // In automatic mode: Use existing zone filtering logic (restaurant zone matching)
+          if (zone) {
+            // Option A: Check zoneId match (when zoneId is added to Delivery model)
+            if (partner.zoneId && partner.zoneId.toString() !== zone._id.toString()) {
+              console.log(`⚠️ Delivery partner ${partner._id} not in zone ${zone.name} (partner zone: ${partner.zoneId}, required zone: ${zone._id})`);
+              return null; // Skip delivery partners not in the restaurant's zone
             }
-            
-            if (!inside) {
-              console.log(`⚠️ Delivery partner ${partner._id} location (${lat}, ${lng}) not within zone ${zone.name} boundary`);
-              return null;
+
+            // Option B: Geo-spatial check (point-in-polygon) if zoneId not available
+            // Simple point-in-polygon using ray casting algorithm
+            if (!partner.zoneId && zone.coordinates && zone.coordinates.length >= 3) {
+              // Zone coordinates: [{ latitude, longitude }, ...]
+              const zoneCoords = zone.coordinates;
+              let inside = false;
+              
+              for (let i = 0, j = zoneCoords.length - 1; i < zoneCoords.length; j = i++) {
+                const xi = zoneCoords[i].longitude;
+                const yi = zoneCoords[i].latitude;
+                const xj = zoneCoords[j].longitude;
+                const yj = zoneCoords[j].latitude;
+                
+                const intersect = ((yi > lat) !== (yj > lat)) &&
+                  (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+                
+                if (intersect) inside = !inside;
+              }
+              
+              if (!inside) {
+                console.log(`⚠️ Delivery partner ${partner._id} location (${lat}, ${lng}) not within zone ${zone.name} boundary`);
+                return null;
+              }
             }
           }
         }
@@ -383,6 +437,80 @@ export async function assignOrderToDeliveryBoy(order, restaurantLat, restaurantL
     // };
     
     await order.save();
+
+    // Save order tracking to Firebase Realtime Database (with polyline)
+    try {
+      const { saveOrderTrackingToFirebase } = await import('./firebaseTrackingService.js');
+      
+      // Get restaurant and customer locations from saved order data (no API calls needed)
+      let restaurantLocation = null;
+      let dropLocation = null;
+
+      // Priority 1: Use saved locations from order document (saved at order creation)
+      if (order.restaurantLocation?.latitude && order.restaurantLocation?.longitude) {
+        restaurantLocation = {
+          lat: order.restaurantLocation.latitude,
+          lng: order.restaurantLocation.longitude,
+        };
+        console.log('✅ Using saved restaurant location from order document');
+      } else if (order.restaurantLocation?.location?.coordinates) {
+        const [lng, lat] = order.restaurantLocation.location.coordinates;
+        restaurantLocation = { lat, lng };
+        console.log('✅ Using saved restaurant location from order coordinates');
+      }
+
+      // Priority 1: Use saved user location from order document
+      if (order.address?.latitude && order.address?.longitude) {
+        dropLocation = {
+          lat: order.address.latitude,
+          lng: order.address.longitude,
+        };
+        console.log('✅ Using saved user location from order document');
+      } else if (order.address?.location?.coordinates) {
+        const [lng, lat] = order.address.location.coordinates;
+        dropLocation = { lat, lng };
+        console.log('✅ Using saved user location from order coordinates');
+      }
+
+      // Fallback: Get from restaurant document (only if not saved in order)
+      if (!restaurantLocation && order.restaurantId) {
+        const Restaurant = (await import('../../restaurant/models/Restaurant.js')).default;
+        const restaurant = await Restaurant.findById(order.restaurantId).select('location').lean();
+        if (restaurant?.location?.coordinates) {
+          const [lng, lat] = restaurant.location.coordinates;
+          restaurantLocation = { lat, lng };
+          console.log('⚠️ Using restaurant location from restaurant document (fallback)');
+        }
+      }
+
+      // Fallback: Use provided coordinates
+      if (!restaurantLocation) {
+        restaurantLocation = { lat: restaurantLat, lng: restaurantLng };
+        console.log('⚠️ Using provided restaurant coordinates (fallback)');
+      }
+
+      if (restaurantLocation && dropLocation) {
+        await saveOrderTrackingToFirebase(
+          order.orderId || order._id.toString(),
+          nearestDeliveryBoy.deliveryPartnerId,
+          restaurantLocation,
+          dropLocation
+        );
+        console.log(`✅ Order tracking saved to Firebase for order ${order.orderId}`, {
+          restaurantLocation,
+          dropLocation,
+          source: 'saved_in_order_document',
+        });
+      } else {
+        console.warn('⚠️ Cannot save to Firebase: Missing location coordinates', {
+          hasRestaurantLocation: !!restaurantLocation,
+          hasDropLocation: !!dropLocation,
+        });
+      }
+    } catch (firebaseError) {
+      console.error('❌ Error saving to Firebase (non-critical):', firebaseError);
+      // Continue even if Firebase save fails
+    }
 
     // Trigger ETA recalculation for rider assigned event
     try {

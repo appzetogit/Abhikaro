@@ -227,11 +227,12 @@ export default function DeliveryBoyViewMap() {
     const map = new google.maps.Map(mapRef.current, {
       center: initialLocation,
       zoom: 5,
+      mapTypeId: google.maps.MapTypeId.TERRAIN, // Default to terrain map
       mapTypeControl: true,
       mapTypeControlOptions: {
         style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
         position: google.maps.ControlPosition.TOP_RIGHT,
-        mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
       },
       zoomControl: true,
       streetViewControl: false,

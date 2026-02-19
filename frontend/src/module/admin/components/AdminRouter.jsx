@@ -13,6 +13,8 @@ const NewRefundRequests = lazy(() => import("../pages/refunds/NewRefundRequests"
 const FoodApproval = lazy(() => import("../pages/restaurant/FoodApproval"));
 const OrdersPage = lazy(() => import("../pages/orders/OrdersPage"));
 const OrderDetectDelivery = lazy(() => import("../pages/OrderDetectDelivery"));
+const OrderSetting = lazy(() => import("../pages/orders/OrderSetting"));
+const ManualAssignment = lazy(() => import("../pages/orders/ManualAssignment"));
 const Category = lazy(() => import("../pages/categories/Category"));
 const FeeSettings = lazy(() => import("../pages/fee-settings/FeeSettings"));
 // Restaurant Management
@@ -168,6 +170,8 @@ export default function AdminRouter() {
           <Route path="orders/refunded" element={<OrdersPage statusKey="refunded" />} />
           <Route path="orders/offline-payments" element={<OrdersPage statusKey="offline-payments" />} />
           <Route path="order-detect-delivery" element={<OrderDetectDelivery />} />
+          <Route path="order-setting" element={<OrderSetting />} />
+          <Route path="manual-assignment" element={<ManualAssignment />} />
           {/* Order Refunds */}
           <Route path="order-refunds/new" element={<NewRefundRequests />} />
 

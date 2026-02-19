@@ -77,6 +77,7 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       pincode,
       region,
       maintenanceMode,
+      deliveryAssignmentMode,
     } = req.body;
 
     // Get existing settings
@@ -113,6 +114,11 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       }
       if (maintenanceMode.endDate) {
         settings.maintenanceMode.endDate = new Date(maintenanceMode.endDate);
+      }
+    }
+    if (deliveryAssignmentMode !== undefined) {
+      if (["automatic", "manual"].includes(deliveryAssignmentMode)) {
+        settings.deliveryAssignmentMode = deliveryAssignmentMode;
       }
     }
 

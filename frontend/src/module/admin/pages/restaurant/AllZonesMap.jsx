@@ -4,6 +4,7 @@ import { MapPin, ArrowLeft, Search } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { getGoogleMapsApiKey } from "@/lib/utils/googleMapsApiKey"
 import { Loader } from "@googlemaps/js-api-loader"
+import bikeLogo from "../../../../assets/bikelogo.png"
 
 export default function AllZonesMap() {
   const navigate = useNavigate()
@@ -12,11 +13,14 @@ export default function AllZonesMap() {
   const zonesPolygonsRef = useRef([])
   const infoWindowsRef = useRef([])
   const restaurantMarkersRef = useRef([])
+  const deliveryBoyMarkersRef = useRef([])
+  const rotatedIconCacheRef = useRef(new Map()) // Cache for rotated bike icons
   
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("")
   const [mapLoading, setMapLoading] = useState(true)
   const [zones, setZones] = useState([])
   const [restaurants, setRestaurants] = useState([])
+  const [deliveryBoys, setDeliveryBoys] = useState([])
   const [loading, setLoading] = useState(true)
   const [locationSearch, setLocationSearch] = useState("")
   const autocompleteInputRef = useRef(null)
@@ -25,7 +29,15 @@ export default function AllZonesMap() {
   useEffect(() => {
     fetchZones()
     fetchRestaurants()
+    fetchOnlineDeliveryBoys()
     loadGoogleMaps()
+    
+    // Refresh delivery boys location every 10 seconds
+    const interval = setInterval(() => {
+      fetchOnlineDeliveryBoys()
+    }, 10000)
+    
+    return () => clearInterval(interval)
   }, [])
 
   // Initialize Places Autocomplete when map is loaded
@@ -52,17 +64,23 @@ export default function AllZonesMap() {
     }
   }, [mapLoading])
 
-  // Draw zones and restaurant markers when map and data are ready
+  // Draw zones, restaurant markers, and delivery boy markers when map and data are ready
   useEffect(() => {
     if (!mapLoading && mapInstanceRef.current && window.google) {
-      if (zones.length > 0 && restaurants.length > 0) {
+      if (zones.length > 0) {
         drawAllZonesOnMap(window.google, mapInstanceRef.current)
       }
       if (restaurants.length > 0) {
         drawRestaurantMarkers(window.google, mapInstanceRef.current)
       }
+      if (deliveryBoys.length > 0) {
+        // drawDeliveryBoyMarkers is async, so handle it properly
+        drawDeliveryBoyMarkers(window.google, mapInstanceRef.current).catch(error => {
+          console.error("Error drawing delivery boy markers:", error)
+        })
+      }
     }
-  }, [zones, mapLoading, restaurants])
+  }, [zones, mapLoading, restaurants, deliveryBoys])
 
   const fetchZones = async () => {
     try {
@@ -87,6 +105,77 @@ export default function AllZonesMap() {
       }
     } catch (error) {
       console.error("Error fetching restaurants:", error)
+    }
+  }
+
+  const fetchOnlineDeliveryBoys = async () => {
+    try {
+      // Fetch delivery partners - we need availability data included
+      const response = await adminAPI.getDeliveryPartners({ 
+        limit: 1000,
+        status: 'approved',
+        isActive: true,
+        includeAvailability: true // Request availability data
+      })
+      
+      if (response.data?.success && response.data.data?.deliveryPartners) {
+        // Filter only online delivery boys with valid location
+        const onlineBoys = response.data.data.deliveryPartners.filter(boy => {
+          // Try multiple sources for availability data
+          const availability = boy.availability || boy.fullData?.availability || (boy.fullData && boy.fullData.availability)
+          
+          if (!availability) {
+            return false
+          }
+          
+          const isOnline = availability.isOnline === true
+          
+          // Check for location in different possible formats
+          const currentLocation = availability.currentLocation
+          const coordinates = currentLocation?.coordinates
+          
+          const hasLocation = coordinates && 
+                            Array.isArray(coordinates) &&
+                            coordinates.length >= 2 &&
+                            coordinates[0] !== 0 && 
+                            coordinates[1] !== 0
+          
+          return isOnline && hasLocation
+        })
+        
+        // Remove duplicates based on delivery boy ID
+        const uniqueBoysMap = new Map()
+        onlineBoys.forEach(boy => {
+          // Get unique ID from multiple possible sources
+          const boyId = boy._id || boy.id || boy.deliveryId || boy.fullData?._id || boy.fullData?.id || boy.fullData?.deliveryId
+          
+          if (boyId) {
+            const idString = boyId.toString()
+            // Only keep the first occurrence (or the one with better data)
+            if (!uniqueBoysMap.has(idString)) {
+              uniqueBoysMap.set(idString, boy)
+            } else {
+              // If duplicate found, keep the one with more complete data
+              const existing = uniqueBoysMap.get(idString)
+              const existingHasFullData = existing.fullData || existing.availability
+              const newHasFullData = boy.fullData || boy.availability
+              
+              // Prefer the one with more complete data
+              if (newHasFullData && !existingHasFullData) {
+                uniqueBoysMap.set(idString, boy)
+              }
+            }
+          }
+        })
+        
+        const uniqueBoys = Array.from(uniqueBoysMap.values())
+        setDeliveryBoys(uniqueBoys)
+      } else {
+        setDeliveryBoys([])
+      }
+    } catch (error) {
+      console.error("Error fetching delivery boys:", error)
+      setDeliveryBoys([])
     }
   }
 
@@ -138,11 +227,12 @@ export default function AllZonesMap() {
     const map = new google.maps.Map(mapRef.current, {
       center: initialLocation,
       zoom: 5,
+      mapTypeId: google.maps.MapTypeId.TERRAIN, // Default to terrain map
       mapTypeControl: true,
       mapTypeControlOptions: {
         style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
         position: google.maps.ControlPosition.TOP_RIGHT,
-        mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
       },
       zoomControl: true,
       streetViewControl: false,
@@ -364,6 +454,192 @@ export default function AllZonesMap() {
     })
   }
 
+  // Function to get rotated bike icon (similar to delivery app)
+  const getRotatedBikeIcon = (heading = 0) => {
+    // Round heading to nearest 5 degrees for caching
+    const roundedHeading = Math.round(heading / 5) * 5
+    const cacheKey = `${roundedHeading}`
+    
+    // Check cache first
+    if (rotatedIconCacheRef.current.has(cacheKey)) {
+      return Promise.resolve(rotatedIconCacheRef.current.get(cacheKey))
+    }
+
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          const size = 50 // Icon size
+          canvas.width = size
+          canvas.height = size
+          const ctx = canvas.getContext('2d')
+          
+          // Clear canvas
+          ctx.clearRect(0, 0, size, size)
+          
+          // Move to center, rotate, then draw image
+          ctx.save()
+          ctx.translate(size / 2, size / 2)
+          ctx.rotate((roundedHeading * Math.PI) / 180) // Convert degrees to radians
+          ctx.drawImage(img, -size / 2, -size / 2, size, size)
+          ctx.restore()
+          
+          // Get data URL and cache it
+          const dataUrl = canvas.toDataURL()
+          rotatedIconCacheRef.current.set(cacheKey, dataUrl)
+          resolve(dataUrl)
+        } catch (error) {
+          console.warn('⚠️ Error rotating bike icon:', error)
+          // Fallback to original image if rotation fails
+          resolve(bikeLogo)
+        }
+      }
+      img.onerror = () => {
+        // Fallback to original image if loading fails
+        resolve(bikeLogo)
+      }
+      img.src = bikeLogo
+    })
+  }
+
+  // Draw delivery boy markers (bikes) on the map
+  const drawDeliveryBoyMarkers = async (google, map) => {
+    if (!deliveryBoys || deliveryBoys.length === 0) {
+      // Clear previous markers
+      deliveryBoyMarkersRef.current.forEach(marker => {
+        if (marker) marker.setMap(null)
+      })
+      deliveryBoyMarkersRef.current = []
+      return
+    }
+
+    // Clear previous markers
+    deliveryBoyMarkersRef.current.forEach(marker => {
+      if (marker) marker.setMap(null)
+    })
+    deliveryBoyMarkersRef.current = []
+
+    // Track processed delivery boy IDs to prevent duplicates
+    const processedIds = new Set()
+
+    // Process all delivery boys and create markers
+    for (const boy of deliveryBoys) {
+      // Get unique ID to prevent duplicate markers
+      const fullData = boy.fullData || boy
+      const boyId = boy._id || boy.id || boy.deliveryId || fullData?._id || fullData?.id || fullData?.deliveryId
+      
+      if (!boyId) {
+        continue
+      }
+      
+      const idString = boyId.toString()
+      
+      // Skip if we've already processed this delivery boy
+      if (processedIds.has(idString)) {
+        continue
+      }
+      
+      processedIds.add(idString)
+      
+      // Try multiple sources for availability
+      const availability = boy.availability || fullData?.availability || (fullData && fullData.availability)
+      const currentLocation = availability?.currentLocation
+      
+      if (!currentLocation?.coordinates) {
+        continue
+      }
+
+      const coords = currentLocation.coordinates
+      // Handle both [lng, lat] and [lat, lng] formats
+      let lat, lng
+      if (Array.isArray(coords) && coords.length >= 2) {
+        // Try [lng, lat] format first (GeoJSON standard)
+        if (coords[0] > -180 && coords[0] < 180 && coords[1] > -90 && coords[1] < 90) {
+          lng = coords[0]
+          lat = coords[1]
+        } else {
+          // Try [lat, lng] format
+          lat = coords[0]
+          lng = coords[1]
+        }
+      } else {
+        continue
+      }
+
+      if (!lat || !lng || isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
+        continue
+      }
+
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        continue
+      }
+
+      // Get heading if available
+      const heading = currentLocation.heading || 0
+      
+      // Get name and phone from fullData
+      const boyName = fullData.name || "Delivery Boy"
+      const boyPhone = fullData.phone || "N/A"
+      
+      // Get rotated bike icon
+      const rotatedIconUrl = await getRotatedBikeIcon(heading)
+
+      // Create bike icon using rotated bike logo image
+      const bikeIcon = {
+        url: rotatedIconUrl,
+        scaledSize: new google.maps.Size(50, 50), // Size of bike icon
+        anchor: new google.maps.Point(25, 25) // Center point
+      }
+      const lastUpdate = availability?.lastLocationUpdate || currentLocation?.lastUpdate
+
+      // Create marker
+      const marker = new google.maps.Marker({
+        position: { lat, lng },
+        map: map,
+        icon: bikeIcon,
+        title: boyName,
+        zIndex: 1000, // Show above zones
+      })
+
+      // Create info window
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="padding: 12px; min-width: 200px;">
+            <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e293b;">
+              ${boyName}
+            </h3>
+            <div style="font-size: 13px; color: #64748b; line-height: 1.6;">
+              <div style="margin-bottom: 4px;">
+                <strong>Phone:</strong> ${boyPhone}
+              </div>
+              <div style="margin-bottom: 4px;">
+                <strong>Status:</strong> 
+                <span style="color: #10b981; font-weight: 600;">Online</span>
+              </div>
+              ${lastUpdate ? `
+                <div style="margin-top: 8px; font-size: 12px; color: #94a3b8;">
+                  Last updated: ${new Date(lastUpdate).toLocaleTimeString()}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `
+      })
+
+      // Add click listener to show info window
+      marker.addListener('click', () => {
+        infoWindowsRef.current.forEach(iw => {
+          if (iw && iw !== infoWindow) iw.close()
+        })
+        infoWindow.open(map, marker)
+        infoWindowsRef.current.push(infoWindow)
+      })
+
+      deliveryBoyMarkersRef.current.push(marker)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="p-4 lg:p-6">
@@ -381,7 +657,7 @@ export default function AllZonesMap() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900">All Zones Map</h1>
-              <p className="text-sm text-slate-600">View all restaurant delivery zones on map</p>
+              <p className="text-sm text-slate-600">View zones, restaurants, and delivery boys on map</p>
             </div>
           </div>
         </div>
@@ -433,11 +709,11 @@ export default function AllZonesMap() {
               </div>
             )}
 
-            {!loading && !mapLoading && zones.length === 0 && (
+            {!loading && !mapLoading && zones.length === 0 && restaurants.length === 0 && deliveryBoys.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-lg">
                 <div className="text-center p-6">
                   <MapPin className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-                  <p className="text-sm text-slate-600">No zones found</p>
+                  <p className="text-sm text-slate-600">No zones, restaurants, or delivery boys found</p>
                 </div>
               </div>
             )}
@@ -456,6 +732,16 @@ export default function AllZonesMap() {
                 {restaurants.length > 0 && (
                   <p>
                     Click on any <span className="font-semibold text-red-600">red marker</span> to view restaurant name and details. Total restaurants: <strong>{restaurants.length}</strong>
+                  </p>
+                )}
+                {deliveryBoys.length > 0 && (
+                  <p>
+                    Click on any <span className="font-semibold text-green-600">bike icon</span> to view delivery boy details. Online delivery boys: <strong>{deliveryBoys.length}</strong>
+                  </p>
+                )}
+                {deliveryBoys.length === 0 && (
+                  <p className="text-amber-600">
+                    No online delivery boys found. Delivery boys will appear when they go online.
                   </p>
                 )}
               </div>

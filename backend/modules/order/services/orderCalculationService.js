@@ -206,7 +206,8 @@ export const calculateOrderPricing = async ({
   restaurantId,
   deliveryAddress = null,
   couponCode = null,
-  deliveryFleet = 'standard'
+  deliveryFleet = 'standard',
+  userId = null // Add userId to fetch location from Firebase
 }) => {
   try {
     // Calculate subtotal from items
@@ -216,6 +217,61 @@ export const calculateOrderPricing = async ({
     
     if (subtotal <= 0) {
       throw new Error('Order subtotal must be greater than 0');
+    }
+    
+    // Try to get user location from Firebase first (to avoid Google Maps API calls)
+    let userLocationFromFirebase = null;
+    if (userId) {
+      try {
+        // Convert userId to string if needed
+        const userIdStr = userId?.toString ? userId.toString() : String(userId);
+        console.log(`🔍 Attempting to fetch user location from Firebase for user: ${userIdStr}`);
+        
+        const { getUserLocationFromFirebase } = await import('./firebaseTrackingService.js');
+        userLocationFromFirebase = await getUserLocationFromFirebase(userIdStr);
+        
+        if (userLocationFromFirebase) {
+          console.log('✅ User location fetched from Firebase successfully:', {
+            lat: userLocationFromFirebase.lat,
+            lng: userLocationFromFirebase.lng,
+            city: userLocationFromFirebase.city
+          });
+        } else {
+          console.log('ℹ️ User location not available in Firebase, will use deliveryAddress');
+        }
+      } catch (firebaseError) {
+        // Continue with deliveryAddress if Firebase fails
+        console.warn('⚠️ Failed to get user location from Firebase:', firebaseError.message);
+        console.warn('Stack trace:', firebaseError.stack);
+      }
+    } else {
+      console.log('ℹ️ No userId provided, skipping Firebase location fetch');
+    }
+
+    // Use Firebase location if available (priority), otherwise use deliveryAddress
+    let effectiveDeliveryAddress = deliveryAddress;
+    if (userLocationFromFirebase) {
+      // Create effective delivery address from Firebase location (Firebase has priority)
+      console.log('📍 Using Firebase location for order calculation');
+      effectiveDeliveryAddress = {
+        ...(deliveryAddress || {}), // Keep other deliveryAddress fields if present
+        location: {
+          type: 'Point',
+          coordinates: [userLocationFromFirebase.lng, userLocationFromFirebase.lat]
+        },
+        latitude: userLocationFromFirebase.lat,
+        longitude: userLocationFromFirebase.lng,
+        address: userLocationFromFirebase.address || deliveryAddress?.address || null,
+        city: userLocationFromFirebase.city || deliveryAddress?.city || null,
+        state: userLocationFromFirebase.state || deliveryAddress?.state || null,
+        area: userLocationFromFirebase.area || deliveryAddress?.area || null,
+        formattedAddress: userLocationFromFirebase.formattedAddress || deliveryAddress?.formattedAddress || null,
+        postalCode: userLocationFromFirebase.postalCode || deliveryAddress?.postalCode || null
+      };
+    } else if (deliveryAddress) {
+      console.log('📍 Using deliveryAddress from request for order calculation');
+    } else {
+      console.warn('⚠️ No location available (neither Firebase nor deliveryAddress)');
     }
     
     // Get restaurant details
@@ -311,25 +367,25 @@ export const calculateOrderPricing = async ({
       }
     }
     
-    // Calculate delivery fee
+    // Calculate delivery fee (use effective delivery address)
     const deliveryFee = await calculateDeliveryFee(
       subtotal,
       restaurant,
-      deliveryAddress
+      effectiveDeliveryAddress
     );
     
     // Apply free delivery from coupon
     const finalDeliveryFee = appliedCoupon?.freeDelivery ? 0 : deliveryFee;
     
-    // Calculate distance for platform fee
+    // Calculate distance for platform fee (use effective delivery address)
     let distanceInKm = null;
-    if (deliveryAddress?.location?.coordinates && restaurant?.location?.coordinates) {
+    if (effectiveDeliveryAddress?.location?.coordinates && restaurant?.location?.coordinates) {
       // Calculate distance from restaurant to delivery address (user location)
       distanceInKm = calculateDistance(
         restaurant.location.coordinates,
-        deliveryAddress.location.coordinates
+        effectiveDeliveryAddress.location.coordinates
       );
-    } else if (deliveryAddress?.latitude && deliveryAddress?.longitude && 
+    } else if (effectiveDeliveryAddress?.latitude && effectiveDeliveryAddress?.longitude && 
                restaurant?.location?.latitude && restaurant?.location?.longitude) {
       // Alternative: if coordinates are in latitude/longitude format
       const restaurantCoords = [
@@ -337,8 +393,8 @@ export const calculateOrderPricing = async ({
         restaurant.location.latitude || restaurant.location.coordinates?.[1]
       ];
       const deliveryCoords = [
-        deliveryAddress.longitude || deliveryAddress.coordinates?.[0],
-        deliveryAddress.latitude || deliveryAddress.coordinates?.[1]
+        effectiveDeliveryAddress.longitude || effectiveDeliveryAddress.coordinates?.[0],
+        effectiveDeliveryAddress.latitude || effectiveDeliveryAddress.coordinates?.[1]
       ];
       if (restaurantCoords[0] && restaurantCoords[1] && deliveryCoords[0] && deliveryCoords[1]) {
         distanceInKm = calculateDistance(restaurantCoords, deliveryCoords);

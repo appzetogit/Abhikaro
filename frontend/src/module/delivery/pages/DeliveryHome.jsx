@@ -872,77 +872,120 @@ export default function DeliveryHome() {
   // State for active earning addon
   const [activeEarningAddon, setActiveEarningAddon] = useState(null)
 
-  // Fetch active earning addon offers
+  // Fetch active earning addon offers using Firebase Realtime Database
   useEffect(() => {
-    const fetchActiveEarningAddons = async () => {
+    let unsubscribe = null;
+    let fallbackTimeout = null;
+
+    // Try Firebase first for real-time updates
+    const setupFirebaseListener = async () => {
       try {
-        const response = await deliveryAPI.getActiveEarningAddons()
-        console.log('Active earning addons response:', response?.data)
+        const { getFirebaseRealtimeDB } = await import('@/lib/firebaseRealtime.js');
+        const database = await getFirebaseRealtimeDB();
+        
+        if (!database) {
+          console.warn('⚠️ Firebase not available, using API fallback');
+          fetchFromAPI();
+          return;
+        }
+
+        const { ref, onValue } = await import('firebase/database');
+        // Listen to global active earning addons (same for all delivery partners)
+        // Backend will update this path when addons are created/updated
+        const earningAddonsRef = ref(database, `active_earning_addons/global`);
+        
+        unsubscribe = onValue(earningAddonsRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            const offers = Array.isArray(data.offers) ? data.offers : (data.offers ? Object.values(data.offers) : []);
+            
+            console.log('✅ Active earning addons from Firebase:', offers);
+            
+            // Get the first valid active offer
+            const activeOffer = offers.find(offer => offer.isValid) || 
+                               offers.find(offer => offer.isUpcoming) ||
+                               offers.find(offer => offer.status === 'active') || 
+                               offers[0] || 
+                               null;
+            
+            console.log('Selected active offer from Firebase:', activeOffer);
+            setActiveEarningAddon(activeOffer);
+          } else {
+            console.log('No active offers in Firebase');
+            setActiveEarningAddon(null);
+            // Fallback to API if Firebase has no data
+            if (!fallbackTimeout) {
+              fallbackTimeout = setTimeout(fetchFromAPI, 2000);
+            }
+          }
+        }, (error) => {
+          console.error('❌ Firebase listener error:', error);
+          // Fallback to API on error
+          fetchFromAPI();
+        });
+
+        console.log('✅ Firebase listener set up for active earning addons');
+      } catch (firebaseError) {
+        console.warn('⚠️ Firebase setup failed, using API fallback:', firebaseError);
+        fetchFromAPI();
+      }
+    };
+
+    // Fallback: Fetch from API (only when Firebase is not available)
+    const fetchFromAPI = async () => {
+      try {
+        const response = await deliveryAPI.getActiveEarningAddons();
         
         if (response?.data?.success && response?.data?.data?.activeOffers) {
-          const offers = response.data.data.activeOffers
-          console.log('Active offers found:', offers)
+          const offers = response.data.data.activeOffers;
           
-          // Get the first valid active offer (prioritize isValid, then isUpcoming, then any active status)
+          // Get the first valid active offer
           const activeOffer = offers.find(offer => offer.isValid) || 
                              offers.find(offer => offer.isUpcoming) ||
                              offers.find(offer => offer.status === 'active') || 
                              offers[0] || 
-                             null
+                             null;
           
-          console.log('Selected active offer:', activeOffer)
-          setActiveEarningAddon(activeOffer)
+          setActiveEarningAddon(activeOffer);
         } else {
-          console.log('No active offers found in response')
-          setActiveEarningAddon(null)
+          setActiveEarningAddon(null);
         }
       } catch (error) {
-        // Suppress network errors - backend might be down or endpoint not available
-        if (error.code === 'ERR_NETWORK') {
-          // Silently handle network errors - backend might not be running
-          setActiveEarningAddon(null)
-          return
+        // Suppress network errors
+        if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') {
+          setActiveEarningAddon(null);
+          return;
         }
         
-        // Skip logging timeout errors (handled by axios interceptor)
-        if (error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
-          // Only log non-network errors
-          if (error.response) {
-            console.error('Error fetching active earning addons:', error.response?.data || error.message)
-          }
+        if (error.response) {
+          console.error('Error fetching active earning addons:', error.response?.data || error.message);
         }
-        setActiveEarningAddon(null)
+        setActiveEarningAddon(null);
       }
-    }
+    };
 
-    // Fetch immediately on mount
-    fetchActiveEarningAddons()
+    // Try Firebase first, fallback to API
+    setupFirebaseListener();
 
-    // Refresh every 5 seconds to get latest offers
-    const refreshInterval = setInterval(() => {
-      fetchActiveEarningAddons()
-    }, 5000)
-
-    // Refresh when page becomes visible
+    // Refresh from API only when page becomes visible (as fallback)
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchActiveEarningAddons()
+      if (!document.hidden && !unsubscribe) {
+        // Only fetch from API if Firebase listener is not active
+        fetchFromAPI();
       }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    // Also listen for focus events for instant refresh
-    const handleFocus = () => {
-      fetchActiveEarningAddons()
-    }
-    window.addEventListener('focus', handleFocus)
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      clearInterval(refreshInterval)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('focus', handleFocus)
-    }
-  }, [])
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      if (fallbackTimeout) {
+        clearTimeout(fallbackTimeout);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []) // Empty dependency - Firebase listener handles real-time updates
 
   // Calculate bonus earnings from earning_addon transactions (only for active offer)
   const calculateBonusEarnings = () => {
@@ -1636,10 +1679,10 @@ export default function DeliveryHome() {
             console.log('📍 Map not initialized yet, will initialize with GPS location')
             // Map will be initialized in the map initialization useEffect with this location
           } else if (window.deliveryMapInstance) {
-            // Map already initialized - recenter and update marker
+            // Map already initialized - recenter map (marker will be updated from Firebase listener)
             window.deliveryMapInstance.setCenter({ lat: smoothedLocation[0], lng: smoothedLocation[1] })
             window.deliveryMapInstance.setZoom(18)
-            createOrUpdateBikeMarker(smoothedLocation[0], smoothedLocation[1], heading, !isUserPanningRef.current)
+            // Note: Marker position will be updated from Firebase listener, not directly from GPS
             updateRoutePolyline()
             console.log('📍 Map recentered to GPS location')
           }
@@ -1929,17 +1972,8 @@ export default function DeliveryHome() {
           setRiderLocation(smoothedLocation)
           lastLocationRef.current = smoothedLocation
           
-          // Always update bike marker with latest smoothed location
-          if (window.deliveryMapInstance) {
-            if (bikeMarkerRef.current) {
-              // Marker exists - animate smoothly to new position
-              animateMarkerSmoothly(bikeMarkerRef.current, newSmoothedLocation, 1500, markerAnimationRef)
-            } else {
-              // Marker doesn't exist yet, create it immediately with correct location
-              console.log('📍 Creating bike marker with smoothed location:', { lat: smoothedLat, lng: smoothedLng })
-              createOrUpdateBikeMarker(smoothedLat, smoothedLng, heading, !isUserPanningRef.current)
-            }
-          }
+          // Note: Bike marker will be updated from Firebase listener, not directly from GPS
+          // This reduces Google Maps API calls
           
           // Update route polyline
           updateRoutePolyline()
@@ -5154,17 +5188,17 @@ export default function DeliveryHome() {
         console.log('📍 Map center:', initialCenter);
         
         // Check if MapTypeId is available, use string fallback if not
-        // Always use string 'roadmap' to avoid MapTypeId enum issues
-        const mapTypeId = (window.google?.maps?.MapTypeId?.ROADMAP !== undefined) 
-          ? window.google.maps.MapTypeId.ROADMAP 
-          : 'roadmap';
+        // Use TERRAIN map type for delivery boy app
+        const mapTypeId = (window.google?.maps?.MapTypeId?.TERRAIN !== undefined) 
+          ? window.google.maps.MapTypeId.TERRAIN 
+          : 'terrain';
         
         console.log('📍 MapTypeId:', mapTypeId);
         console.log('📍 Google Maps API check:', {
           google: !!window.google,
           maps: !!window.google?.maps,
           MapTypeId: !!window.google?.maps?.MapTypeId,
-          ROADMAP: window.google?.maps?.MapTypeId?.ROADMAP !== undefined
+          TERRAIN: window.google?.maps?.MapTypeId?.TERRAIN !== undefined
         });
         
         // Wrap map initialization in try-catch to handle any Google Maps internal errors
@@ -5205,11 +5239,34 @@ export default function DeliveryHome() {
         window.deliveryMapInstance = map;
         console.log('✅ Map instance created and stored');
         
+        // Explicitly set terrain map type to ensure it's applied
+        try {
+          if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
+            map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
+            console.log('✅ Terrain map type explicitly set');
+          } else {
+            map.setMapTypeId('terrain');
+            console.log('✅ Terrain map type set using string');
+          }
+        } catch (mapTypeError) {
+          console.warn('⚠️ Could not set terrain map type:', mapTypeError);
+        }
+        
         // Add error listener for map errors (if available)
         try {
           if (window.google.maps.event) {
             window.google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
               console.log('✅ Map tiles loaded successfully');
+              // Ensure terrain map is still set after tiles load
+              try {
+                if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
+                  map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
+                } else {
+                  map.setMapTypeId('terrain');
+                }
+              } catch (e) {
+                console.warn('⚠️ Could not set terrain map after tiles loaded:', e);
+              }
             });
           }
         } catch (eventError) {
@@ -5219,6 +5276,16 @@ export default function DeliveryHome() {
         // Add error listener for map errors
         window.google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
           console.log('✅ Map tiles loaded successfully');
+          // Ensure terrain map is still set after tiles load
+          try {
+            if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
+              map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
+            } else {
+              map.setMapTypeId('terrain');
+            }
+          } catch (e) {
+            console.warn('⚠️ Could not set terrain map after tiles loaded:', e);
+          }
         });
         
         // Handle map errors
@@ -5309,9 +5376,9 @@ export default function DeliveryHome() {
             }];
             lastLocationRef.current = riderLocation;
             
-            // Always add bike marker if location is available (both online and offline)
-            console.log('📍 Creating bike marker on map init');
-            createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, true);
+            // Don't create marker directly - Firebase listener will handle it
+            // Only center map on location
+            map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
           }
         }
 
@@ -5319,12 +5386,8 @@ export default function DeliveryHome() {
           setMapLoading(false);
           // Ensure bike marker is visible after tiles load (always show, both online and offline)
           if (riderLocation && riderLocation.length === 2) {
-            setTimeout(() => {
-              if (!bikeMarkerRef.current || bikeMarkerRef.current.getMap() === null) {
-                console.log('📍 Re-adding bike marker after tiles loaded');
-                createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null);
-              }
-            }, 500);
+            // Firebase listener will handle marker creation/update
+            // No need to manually create marker here
           } else {
             // Try to get location from localStorage if current location not available
             const savedLocation = localStorage.getItem('deliveryBoyLastLocation');
@@ -5333,9 +5396,8 @@ export default function DeliveryHome() {
                 const parsed = JSON.parse(savedLocation);
                 if (parsed && Array.isArray(parsed) && parsed.length === 2) {
                   console.log('📍 Creating bike marker from saved location after tiles loaded');
-                  setTimeout(() => {
-                    createOrUpdateBikeMarker(parsed[0], parsed[1], null);
-                  }, 500);
+                  // Firebase listener will handle marker creation
+                  // No need to manually create marker here
                 }
               } catch (e) {
                 console.warn('⚠️ Error using saved location:', e);
@@ -5427,7 +5489,7 @@ export default function DeliveryHome() {
           zoom: 18,
           minZoom: 10,
           maxZoom: 21,
-          mapTypeId: window.google.maps.MapTypeId?.ROADMAP || 'roadmap',
+          mapTypeId: window.google.maps.MapTypeId?.TERRAIN || 'terrain',
           tilt: 45,
           heading: 0,
           disableDefaultUI: true, // Hide all default UI controls
@@ -5446,8 +5508,21 @@ export default function DeliveryHome() {
         window.deliveryMapInstance = map
         console.log('✅ Map initialized with rider location')
         
-        // Create bike marker
-        createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, true)
+        // Explicitly set terrain map type
+        try {
+          if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
+            map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
+            console.log('✅ Terrain map type set for rider location map');
+          } else {
+            map.setMapTypeId('terrain');
+          }
+        } catch (e) {
+          console.warn('⚠️ Could not set terrain map type:', e);
+        }
+        
+        // Don't create marker directly - Firebase listener will handle it
+        // Only center map on location
+        map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
         setMapLoading(false)
       } catch (error) {
         console.error('❌ Error initializing map with rider location:', error)
@@ -5457,6 +5532,109 @@ export default function DeliveryHome() {
     
     initializeMap()
   }, [riderLocation, showHomeSections]) // Initialize when location is available
+
+  // Firebase listener for delivery boy location updates (reduces Google Maps API calls)
+  useEffect(() => {
+    let unsubscribe = null;
+
+    const setupFirebaseListener = async () => {
+      try {
+        // Get delivery boy ID from localStorage
+        let deliveryBoyId = null;
+        try {
+          const deliveryData = localStorage.getItem('delivery');
+          if (deliveryData) {
+            const parsed = JSON.parse(deliveryData);
+            deliveryBoyId = parsed?.id || parsed?._id || parsed?.deliveryPartnerId;
+          }
+        } catch (e) {
+          console.warn('⚠️ Could not get delivery ID from localStorage:', e);
+        }
+
+        if (!deliveryBoyId || !window.deliveryMapInstance) {
+          return;
+        }
+
+        const { getFirebaseRealtimeDB } = await import('@/lib/firebaseRealtime.js');
+        const database = await getFirebaseRealtimeDB();
+        
+        if (!database) {
+          console.warn('⚠️ Firebase not available for marker updates');
+          return;
+        }
+
+        const { ref, onValue } = await import('firebase/database');
+        const deliveryBoyRef = ref(database, `delivery_boys/${deliveryBoyId}`);
+        
+        unsubscribe = onValue(deliveryBoyRef, (snapshot) => {
+          if (snapshot.exists() && window.deliveryMapInstance) {
+            // Update marker for both online and offline states
+            const data = snapshot.val();
+            const lat = data.lat;
+            const lng = data.lng;
+            const heading = data.heading || null;
+            
+            if (typeof lat === 'number' && typeof lng === 'number' && 
+                !isNaN(lat) && !isNaN(lng) &&
+                lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+              
+              // Update marker position from Firebase (no Google Maps API calls)
+              if (bikeMarkerRef.current) {
+                // Use object literal instead of deprecated LatLng constructor
+                const position = { lat, lng };
+                bikeMarkerRef.current.setPosition(position);
+                
+                // Update heading if available
+                if (heading !== null && heading !== undefined) {
+                  getRotatedBikeIcon(heading).then(rotatedIconUrl => {
+                    if (bikeMarkerRef.current) {
+                      bikeMarkerRef.current.setIcon({
+                        url: rotatedIconUrl,
+                        scaledSize: new window.google.maps.Size(60, 60),
+                        anchor: new window.google.maps.Point(30, 30)
+                      });
+                    }
+                  });
+                }
+                
+                // Auto-center map if user hasn't manually panned
+                if (!isUserPanningRef.current) {
+                  window.deliveryMapInstance.panTo(position);
+                }
+                
+                // Update state for consistency
+                setRiderLocation([lat, lng]);
+                lastLocationRef.current = [lat, lng];
+                
+                // Log Firebase update (not GPS direct update)
+                console.log('✅ Bike marker position updated from Firebase:', { lat, lng, heading });
+              } else {
+                // Create marker if it doesn't exist (only once, then Firebase will update)
+                console.log('📍 Creating bike marker from Firebase (initial):', { lat, lng, heading });
+                createOrUpdateBikeMarker(lat, lng, heading, !isUserPanningRef.current);
+              }
+            }
+          }
+        }, (error) => {
+          console.error('❌ Firebase listener error for delivery boy location:', error);
+        });
+
+        console.log('✅ Firebase listener set up for delivery boy location updates');
+      } catch (firebaseError) {
+        console.warn('⚠️ Firebase setup failed for marker updates:', firebaseError);
+      }
+    };
+
+    // Setup Firebase listener (works for both online and offline)
+    // For offline, it will use last known location from Firebase
+    setupFirebaseListener();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [isOnline]); // Re-setup when online status changes
 
   // Update bike marker when going online - ensure bike appears immediately
   useEffect(() => {
@@ -5481,12 +5659,10 @@ export default function DeliveryHome() {
         heading = calculateHeading(prevLat, prevLng, riderLocation[0], riderLocation[1]);
       }
 
-      console.log('✅ User went ONLINE - creating/updating bike marker immediately at:', riderLocation);
+      console.log('✅ User went ONLINE - Firebase listener will update marker position');
 
-      // Create or update bike marker IMMEDIATELY (blue dot की जगह bike icon)
-      createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], heading, true);
-      
-      // Center map on bike location smoothly
+      // Don't update marker directly - Firebase listener will handle it
+      // Only center map on current location
       window.deliveryMapInstance.panTo({
         lat: riderLocation[0],
         lng: riderLocation[1]
@@ -5519,7 +5695,7 @@ export default function DeliveryHome() {
         }
       }
 
-      console.log('✅ Bike marker created/updated when going online:', riderLocation);
+      // Marker will be updated by Firebase listener, not directly
     } else {
       // Try to get location from localStorage if current location not available
       const savedLocation = localStorage.getItem('deliveryBoyLastLocation')
@@ -5534,19 +5710,12 @@ export default function DeliveryHome() {
                 lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
               const mightBeSwapped = (lat >= 68 && lat <= 98 && lng >= 8 && lng <= 38)
               
-              if (mightBeSwapped) {
-                console.warn('⚠️ Saved coordinates might be swapped - correcting:', {
-                  original: [lat, lng],
-                  corrected: [lng, lat]
-                })
-                createOrUpdateBikeMarker(lng, lat, null, true)
-              } else {
-                console.log('📍 Using saved location from localStorage:', {
-                  location: parsed,
-                  format: "[lat, lng]"
-                })
-                createOrUpdateBikeMarker(parsed[0], parsed[1], null, true)
-              }
+              // Firebase listener will handle marker creation/update
+              // No need to manually create marker from saved location
+              console.log('📍 Saved location found - Firebase listener will create marker:', {
+                location: mightBeSwapped ? [lng, lat] : parsed,
+                format: "[lat, lng]"
+              })
             } else {
               console.warn('⚠️ Invalid saved coordinates:', parsed)
             }
@@ -5568,19 +5737,8 @@ export default function DeliveryHome() {
     // Check every 2 seconds if markers are still on map
     const checkInterval = setInterval(() => {
       // Check bike marker
-      if (riderLocation && riderLocation.length === 2) {
-        if (bikeMarkerRef.current) {
-          const markerMap = bikeMarkerRef.current.getMap();
-          if (markerMap === null) {
-            console.warn('⚠️ Bike marker lost map reference, re-adding...');
-            createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, false);
-          }
-        } else {
-          // Marker doesn't exist, create it
-          console.warn('⚠️ Bike marker missing, creating...');
-          createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, false);
-        }
-      }
+        // Firebase listener will handle marker creation/update
+        // No need to manually check or create marker here
       
       // Check restaurant marker
       if (selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
@@ -5843,10 +6001,11 @@ export default function DeliveryHome() {
 
       // IMPORTANT: Start polyline from bike's actual position, not from nearest point on route
       // This ensures the polyline always starts at the bike's current location
+      // Use object literals instead of deprecated LatLng constructor
       const path = [
-        new window.google.maps.LatLng(riderPos.lat, riderPos.lng), // Start from bike position
+        { lat: riderPos.lat, lng: riderPos.lng }, // Start from bike position
         ...trimmedPolyline.map(point => 
-          new window.google.maps.LatLng(point.lat, point.lng)
+          ({ lat: point.lat, lng: point.lng })
         )
       ];
 
@@ -6036,7 +6195,7 @@ export default function DeliveryHome() {
           zoom: 18,
           minZoom: 10, // Minimum zoom level (city/area view)
           maxZoom: 21, // Maximum zoom level - allow full zoom
-          mapTypeId: window.google.maps.MapTypeId.ROADMAP || 'roadmap',
+          mapTypeId: window.google.maps.MapTypeId.TERRAIN || 'terrain',
           disableDefaultUI: true, // Hide all default UI controls
           zoomControl: false,
           mapTypeControl: false,
@@ -6051,6 +6210,18 @@ export default function DeliveryHome() {
         });
 
         directionsMapInstanceRef.current = map;
+
+        // Explicitly set terrain map type for directions map
+        try {
+          if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
+            map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
+            console.log('✅ Terrain map type set for directions map');
+          } else {
+            map.setMapTypeId('terrain');
+          }
+        } catch (e) {
+          console.warn('⚠️ Could not set terrain map type for directions map:', e);
+        }
 
         // Initialize Directions Service
         if (!directionsServiceRef.current) {
@@ -7899,7 +8070,8 @@ export default function DeliveryHome() {
       return;
     }
 
-    const position = new window.google.maps.LatLng(latitude, longitude);
+    // Use object literal instead of deprecated LatLng constructor
+    const position = { lat: latitude, lng: longitude };
     const map = window.deliveryMapInstance;
 
     // Get rotated icon URL
@@ -8039,10 +8211,11 @@ export default function DeliveryHome() {
     const coordsToUse = coordinates || routePolyline;
 
     if (coordsToUse && coordsToUse.length > 0) {
-      // Convert coordinates to Google Maps LatLng format
+      // Convert coordinates to object literal format (deprecated LatLng constructor replaced)
       const path = coordsToUse.map(coord => {
         if (Array.isArray(coord) && coord.length >= 2) {
-          return new window.google.maps.LatLng(coord[0], coord[1]);
+          // Note: coord[0] is latitude, coord[1] is longitude (GeoJSON format)
+          return { lat: coord[1], lng: coord[0] }; // Convert to {lat, lng}
         }
         return null;
       }).filter(coord => coord !== null);
@@ -8550,7 +8723,8 @@ export default function DeliveryHome() {
         const lat = typeof coord === 'object' ? (coord.latitude || coord.lat) : null
         const lng = typeof coord === 'object' ? (coord.longitude || coord.lng) : null
         if (lat === null || lng === null) return null
-        return new window.google.maps.LatLng(lat, lng)
+        // Use object literal instead of deprecated LatLng constructor
+        return { lat, lng }
       }).filter(Boolean)
 
       if (path.length < 3) return

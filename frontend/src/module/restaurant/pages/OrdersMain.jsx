@@ -2133,8 +2133,9 @@ function OrderCard({
   paymentStatus,
   onSelect,
   onCancel,
+  onMarkReady,
 }) {
-  const isReady = status === "Ready"
+  const isReady = String(status).toLowerCase() === "ready"
 
   return (
     <div className="w-full bg-white rounded-2xl p-4 mb-3 border border-gray-200 hover:border-gray-400 transition-colors relative">
@@ -2232,7 +2233,7 @@ function OrderCard({
                 {type}
                 {tableOrToken ? ` • ${tableOrToken}` : ""}
               </p>
-              {/* Delivery Assignment Status - Only show for preparing orders */}
+              {/* Delivery Assignment Status & actions - Only show for preparing orders */}
               {status === 'preparing' && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${deliveryPartnerId
@@ -2245,6 +2246,18 @@ function OrderCard({
                   </span>
                   {!deliveryPartnerId && (
                     <ResendNotificationButton orderId={orderId} mongoId={mongoId} onSuccess={onSelect} />
+                  )}
+                  {onMarkReady && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onMarkReady({ orderId, mongoId, customerName });
+                      }}
+                      className="ml-1 px-3 py-1 rounded-full text-[10px] font-semibold bg-[#ff8100] text-white hover:bg-[#e67100] transition-colors"
+                    >
+                      Mark as Ready
+                    </button>
                   )}
                 </div>
               )}
@@ -2270,6 +2283,28 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentTime, setCurrentTime] = useState(new Date())
+
+  // Manually mark an order as ready from the card action
+  const handleMarkReady = async ({ orderId, mongoId }) => {
+    const id = mongoId || orderId
+    if (!id) return
+
+    try {
+      await restaurantAPI.markOrderReady(id)
+      // Optimistically remove the order from the preparing list
+      setOrders((prev) =>
+        prev.filter((o) => (o.mongoId || o.orderId) !== id)
+      )
+    } catch (error) {
+      // Log detailed backend error information to help debugging
+      const status = error?.response?.status
+      const backendMessage = error?.response?.data?.message
+      console.error(
+        `Failed to mark order ${orderId} as ready (status ${status}):`,
+        backendMessage || error
+      )
+    }
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -2506,6 +2541,7 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
                 paymentStatus={order.paymentStatus}
                 onSelect={onSelectOrder}
                 onCancel={onCancel}
+                onMarkReady={handleMarkReady}
               />
             )
           })}

@@ -393,11 +393,25 @@ export const acceptOrder = asyncHandler(async (req, res) => {
 
     // Priority-based order notification: First notify nearest delivery boys, then expand after 30 seconds
     // Skip for hotel orders as they are served by hotel staff
+    // Only proceed if delivery assignment mode is 'automatic'
     if (!order.deliveryPartnerId && !order.hotelReference) {
       try {
-        console.log(
-          `🔄 Starting priority-based order notification for order ${order.orderId}...`,
-        );
+        // Check delivery assignment mode from business settings
+        const BusinessSettings = (await import("../../admin/models/BusinessSettings.js")).default;
+        const businessSettings = await BusinessSettings.getSettings();
+        const assignmentMode = businessSettings?.deliveryAssignmentMode || "automatic";
+        
+        if (assignmentMode === "manual") {
+          console.log(
+            `📋 Delivery assignment mode is MANUAL. Order ${order.orderId} will be available for manual assignment in admin panel.`,
+          );
+          // In manual mode, we don't automatically notify delivery boys
+          // The order will be available in the manual assignment page
+        } else {
+          // Automatic mode - proceed with automatic notification
+          console.log(
+            `🔄 Starting priority-based order notification for order ${order.orderId}...`,
+          );
 
         // Get restaurant location
         let restaurantDoc = null;
@@ -601,6 +615,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
             }
           }
         }
+        } // End of automatic mode block
       } catch (assignmentError) {
         console.error(
           "❌ Error in priority-based order notification:",

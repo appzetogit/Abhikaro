@@ -268,6 +268,51 @@ export const updateUserLocation = asyncHandler(async (req, res) => {
     // Save to database
     await user.save();
 
+    // Also save to Firebase Realtime Database for real-time access and order calculations
+    try {
+      const { updateUserLocationInFirebase } = await import('../../order/services/firebaseTrackingService.js');
+      const userIdStr = user._id.toString();
+      
+      logger.info(`🔥 Attempting to save user location to Firebase: ${userIdStr}`, {
+        lat: latNum,
+        lng: lngNum,
+        city: locationUpdate.city,
+        address: locationUpdate.address
+      });
+      
+      await updateUserLocationInFirebase(
+        userIdStr,
+        latNum,
+        lngNum,
+        {
+          address: locationUpdate.address,
+          city: locationUpdate.city,
+          state: locationUpdate.state,
+          area: locationUpdate.area,
+          formattedAddress: locationUpdate.formattedAddress,
+          postalCode: locationUpdate.postalCode,
+          accuracy: locationUpdate.accuracy
+        }
+      );
+      
+      logger.info(`✅ User location saved to Firebase successfully: ${userIdStr}`, {
+        lat: latNum,
+        lng: lngNum,
+        city: locationUpdate.city,
+        timestamp: new Date().toISOString()
+      });
+    } catch (firebaseError) {
+      // Don't fail the request if Firebase update fails, but log detailed error
+      logger.error(`❌ Failed to save user location to Firebase: ${firebaseError.message}`, {
+        error: firebaseError.stack,
+        userId: user._id.toString(),
+        lat: latNum,
+        lng: lngNum,
+        errorName: firebaseError.name,
+        errorCode: firebaseError.code
+      });
+    }
+
     logger.info(`User live location updated: ${user._id}`, {
       latitude: latNum,
       longitude: lngNum,
@@ -283,7 +328,7 @@ export const updateUserLocation = asyncHandler(async (req, res) => {
 
     return successResponse(res, 200, "Location updated successfully", {
       location: user.currentLocation,
-      message: "Live location stored in database",
+      message: "Live location stored in database and Firebase",
     });
   } catch (error) {
     logger.error(`Error updating user location: ${error.message}`, {

@@ -635,6 +635,7 @@ export default function GoogleMapsTracking({
         zoom={13}
         onLoad={onLoad}
         options={{
+          mapTypeId: window.google?.maps?.MapTypeId?.TERRAIN || 'terrain', // Use terrain map for delivery boy
           zoomControl: false,
           streetViewControl: false,
           mapTypeControl: false,

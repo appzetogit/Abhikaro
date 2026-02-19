@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { ChevronDown, ShoppingCart, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useLocation } from "../hooks/useLocation"
@@ -23,33 +23,43 @@ export default function PageNavbar({
   const [companyName, setCompanyName] = useState(null)
 
   // Auto-trigger location fetch if we have placeholder values (only once on mount)
+  const hasTriggeredRef = useRef(false)
   useEffect(() => {
+    // Only trigger once, and only if address contains coordinates or is placeholder
     if (location &&
       !loading &&
       requestLocation &&
+      !hasTriggeredRef.current &&
       (location.formattedAddress === "Select location" ||
-        location.city === "Current Location")) {
+        location.city === "Current Location" ||
+        (location.address && location.address.includes('Location (')) ||
+        (location.formattedAddress && location.formattedAddress.includes('Location (')))) {
+      hasTriggeredRef.current = true // Prevent multiple triggers
       if (process.env.NODE_ENV === 'development') {
-        console.log("🔄 Auto-triggering location fetch due to placeholder values")
+        console.log("🔄 Auto-triggering location fetch due to placeholder/coordinates in address")
       }
       // Wait a bit to avoid multiple rapid calls, and only trigger once
       const timeoutId = setTimeout(() => {
         requestLocation().then((fetchedLocation) => {
           if (fetchedLocation &&
             fetchedLocation.formattedAddress !== "Select location" &&
-            fetchedLocation.city !== "Current Location") {
+            fetchedLocation.city !== "Current Location" &&
+            !fetchedLocation.formattedAddress.includes('Location (')) {
             if (process.env.NODE_ENV === 'development') {
               console.log("✅ Location fetched successfully:", fetchedLocation)
             }
+            hasTriggeredRef.current = false // Reset on success so it can retry if needed
           } else {
             if (process.env.NODE_ENV === 'development') {
               console.warn("⚠️ Location fetch returned placeholder, user may need to select manually")
             }
+            hasTriggeredRef.current = false // Reset so it can retry later
           }
         }).catch(err => {
           if (process.env.NODE_ENV === 'development') {
             console.warn("Location fetch failed:", err)
           }
+          hasTriggeredRef.current = false // Reset on error
         })
       }, 2000) // Wait 2 seconds before triggering
 

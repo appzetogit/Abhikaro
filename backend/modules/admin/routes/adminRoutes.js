@@ -64,6 +64,7 @@ import {
   rejectDeliveryPartner,
   getDeliveryPartners,
   updateDeliveryPartnerStatus,
+  updateDeliveryPartnerZone,
   deleteDeliveryPartner,
   reverifyDeliveryPartner,
 } from "../controllers/deliveryPartnerController.js";
@@ -222,6 +223,8 @@ import {
   getOngoingOrders,
   getTransactionReport,
   getRestaurantReport,
+  assignOrderToDeliveryPartner,
+  getDeliveryPartnerWallet,
 } from "../controllers/orderController.js";
 import {
   getAllReviews,
@@ -353,6 +356,7 @@ router.post("/delivery-partners/:id/approve", approveDeliveryPartner);
 router.post("/delivery-partners/:id/reject", rejectDeliveryPartner);
 router.post("/delivery-partners/:id/reverify", reverifyDeliveryPartner);
 router.patch("/delivery-partners/:id/status", updateDeliveryPartnerStatus);
+router.put("/delivery-partners/:id/zone", updateDeliveryPartnerZone);
 router.delete("/delivery-partners/:id", deleteDeliveryPartner);
 
 // Delivery Partner Bonus Management
@@ -573,6 +577,8 @@ router.get("/reviews/restaurant/:restaurantId", getReviewsByRestaurant);
 
 // Get order by ID (must be last to avoid matching other routes)
 router.get("/orders/:id", getOrderById);
+router.post("/orders/:id/assign-delivery-partner", assignOrderToDeliveryPartner);
+router.get("/delivery-partners/:id/wallet", getDeliveryPartnerWallet);
 
 // Business Settings Management
 router.get("/business-settings", getBusinessSettings);

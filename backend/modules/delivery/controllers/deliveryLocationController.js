@@ -24,13 +24,14 @@ const logger = winston.createLogger({
 const updateLocationSchema = Joi.object({
   latitude: Joi.number().min(-90).max(90).optional(),
   longitude: Joi.number().min(-180).max(180).optional(),
+  heading: Joi.number().min(0).max(360).optional(), // Direction in degrees (0-360)
   isOnline: Joi.boolean().optional()
 }).min(1); // At least one field must be provided
 
 export const updateLocation = asyncHandler(async (req, res) => {
   try {
     const delivery = req.delivery;
-    const { latitude, longitude, isOnline } = req.body;
+    const { latitude, longitude, heading, isOnline } = req.body;
 
     // Manual validation: at least one field must be provided
     const hasLatitude = latitude !== undefined && latitude !== null;
@@ -70,7 +71,15 @@ export const updateLocation = asyncHandler(async (req, res) => {
         type: 'Point',
         coordinates: [longitude, latitude] // MongoDB uses [longitude, latitude]
       };
+      // Also save explicit lat/lng for easy access
+      updateData['availability.latitude'] = latitude;
+      updateData['availability.longitude'] = longitude;
       updateData['availability.lastLocationUpdate'] = new Date();
+      
+      // Save heading if provided (for marker rotation)
+      if (heading !== undefined && heading !== null && typeof heading === 'number') {
+        updateData['availability.heading'] = heading;
+      }
     }
 
     // Update online status if provided
@@ -94,6 +103,50 @@ export const updateLocation = asyncHandler(async (req, res) => {
     }
 
     const currentLocation = updatedDelivery.availability?.currentLocation;
+
+    // Update Firebase Realtime Database with delivery boy location
+    if (typeof latitude === 'number' && typeof longitude === 'number') {
+      try {
+        const { updateDeliveryBoyLocation } = await import('../../order/services/firebaseTrackingService.js');
+        
+        // Find active order for this delivery partner
+        const Order = (await import('../../order/models/Order.js')).default;
+        const activeOrder = await Order.findOne({
+          deliveryPartnerId: delivery._id,
+          status: { $nin: ['delivered', 'cancelled'] },
+          'deliveryState.currentPhase': { $ne: 'completed' }
+        })
+          .select('orderId _id')
+          .lean();
+
+        const orderId = activeOrder ? (activeOrder.orderId || activeOrder._id.toString()) : null;
+        
+        // Get heading if available
+        const heading = req.body.heading || updatedDelivery.availability?.heading || null;
+        
+        // Update Firebase (non-blocking) with heading
+        updateDeliveryBoyLocation(
+          delivery._id.toString(),
+          latitude,
+          longitude,
+          orderId,
+          heading
+        ).catch(err => {
+          logger.warn(`Failed to update Firebase location: ${err.message}`);
+        });
+        
+        logger.info(`✅ Delivery boy location saved to database and Firebase:`, {
+          deliveryBoyId: delivery._id.toString(),
+          lat: latitude,
+          lng: longitude,
+          heading: heading || 'N/A',
+          orderId: orderId || 'none',
+        });
+      } catch (firebaseError) {
+        // Log but don't fail the request if Firebase update fails
+        logger.warn(`Failed to update Firebase location: ${firebaseError.message}`);
+      }
+    }
 
     // Broadcast location update to all active orders for this delivery partner via socket
     if (typeof latitude === 'number' && typeof longitude === 'number' && currentLocation) {

@@ -33,12 +33,47 @@ class GoogleMapsService {
    * @returns {Promise<Object>} - { distance (km), duration (minutes), trafficLevel }
    */
   async getTravelTime(origin, destination, mode = 'driving', trafficModel = 'best_guess') {
+    // Check Firebase cache first (to avoid API calls)
+    try {
+      const { getCachedDistanceFromFirebase, cacheDistanceInFirebase } = await import('./firebaseTrackingService.js');
+      const cached = await getCachedDistanceFromFirebase(
+        { lat: origin.latitude, lng: origin.longitude },
+        { lat: destination.latitude, lng: destination.longitude }
+      );
+      
+      if (cached) {
+        console.log('✅ Using cached distance from Firebase');
+        return {
+          distance: cached.distance,
+          duration: cached.duration,
+          trafficLevel: 'low', // Cached data doesn't have traffic info
+          cached: true
+        };
+      }
+    } catch (firebaseError) {
+      // Continue to API call if Firebase fails
+      console.warn('⚠️ Firebase cache check failed, using API:', firebaseError.message);
+    }
+
     const apiKey = await this.getApiKey();
     const enabled = process.env.ENABLE_GOOGLE_DISTANCE_MATRIX === 'true';
     if (!apiKey || !enabled) {
       // Fallback to haversine distance calculation if API key not available OR feature disabled
       console.warn('ℹ️ Google Distance Matrix disabled or API key missing, using fallback calculation');
-      return this.calculateHaversineDistance(origin, destination);
+      const result = this.calculateHaversineDistance(origin, destination);
+      
+      // Cache haversine result in Firebase
+      try {
+        const { cacheDistanceInFirebase } = await import('./firebaseTrackingService.js');
+        await cacheDistanceInFirebase(
+          { lat: origin.latitude, lng: origin.longitude },
+          { lat: destination.latitude, lng: destination.longitude },
+          result.distance,
+          result.duration
+        );
+      } catch (e) { /* ignore */ }
+      
+      return result;
     }
 
     try {
@@ -95,7 +130,7 @@ class GoogleMapsService {
         duration = trafficDuration; // Use traffic-aware duration
       }
 
-      return {
+      const result = {
         distance: parseFloat(distance.toFixed(2)),
         duration: Math.ceil(duration), // Round up to nearest minute
         trafficLevel,
@@ -105,6 +140,22 @@ class GoogleMapsService {
           durationInTraffic: element.duration_in_traffic
         }
       };
+
+      // Cache result in Firebase for future use
+      try {
+        const { cacheDistanceInFirebase } = await import('./firebaseTrackingService.js');
+        await cacheDistanceInFirebase(
+          { lat: origin.latitude, lng: origin.longitude },
+          { lat: destination.latitude, lng: destination.longitude },
+          result.distance,
+          result.duration
+        );
+      } catch (cacheError) {
+        // Don't fail if caching fails
+        console.warn('⚠️ Failed to cache distance in Firebase:', cacheError.message);
+      }
+
+      return result;
     } catch (error) {
       console.error('❌ Error calling Google Maps API:', error.message);
       // Fallback to haversine calculation

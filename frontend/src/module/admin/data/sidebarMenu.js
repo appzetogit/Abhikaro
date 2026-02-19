@@ -108,6 +108,18 @@ export const sidebarMenuData = [
         path: "/admin/order-detect-delivery",
         icon: "Truck",
       },
+      {
+        type: "link",
+        label: "Order Setting",
+        path: "/admin/order-setting",
+        icon: "Settings",
+      },
+      {
+        type: "link",
+        label: "Manual Assignment",
+        path: "/admin/manual-assignment",
+        icon: "UserCheck",
+      },
     ],
   },
   {

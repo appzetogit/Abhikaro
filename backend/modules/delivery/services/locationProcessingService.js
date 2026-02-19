@@ -189,6 +189,26 @@ export async function snapToRoad(points, riderId = null) {
  */
 export async function generateRoutePolyline(start, waypoint, end) {
   try {
+    // Check Firebase cache first (persistent cache across server restarts)
+    try {
+      const { getCachedRouteFromFirebase, cacheRouteInFirebase } = await import('../../order/services/firebaseTrackingService.js');
+      const cached = await getCachedRouteFromFirebase(start, end);
+      
+      if (cached && cached.polyline) {
+        console.log('✅ Using cached route polyline from Firebase');
+        // Decode polyline to get points
+        const points = decodePolyline(cached.polyline);
+        return {
+          points,
+          totalDistance: cached.distance || 0,
+          polyline: cached.polyline,
+          duration: cached.duration || 0
+        };
+      }
+    } catch (firebaseError) {
+      console.warn('⚠️ Firebase cache check failed, using local cache:', firebaseError.message);
+    }
+
     const apiKey = await getGoogleMapsApiKey();
     const enabled = process.env.ENABLE_GOOGLE_DIRECTIONS === 'true';
     if (!apiKey || !enabled) {
@@ -206,10 +226,10 @@ export async function generateRoutePolyline(start, waypoint, end) {
     // Create cache key
     const cacheKey = `${origin}|${destination}|${waypoints}`;
     
-    // Check cache first
+    // Check local cache (in-memory)
     const cached = directionsCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < DIRECTIONS_CACHE_TTL_MS) {
-      console.log('✅ Using cached route polyline');
+      console.log('✅ Using cached route polyline (local cache)');
       return cached.route;
     }
     
@@ -241,18 +261,28 @@ export async function generateRoutePolyline(start, waypoint, end) {
         totalDistance += calculateDistance(points[i-1], points[i]);
       }
       
+      const duration = route.legs.reduce((sum, leg) => sum + leg.duration.value, 0) / 60; // Convert to minutes
+      
       const routeData = {
         points,
         totalDistance,
         polyline,
-        duration: route.legs.reduce((sum, leg) => sum + leg.duration.value, 0)
+        duration
       };
       
-      // Cache the result
+      // Cache in local memory (in-memory cache)
       directionsCache.set(cacheKey, {
         route: routeData,
         timestamp: Date.now()
       });
+      
+      // Cache in Firebase (persistent cache)
+      try {
+        const { cacheRouteInFirebase } = await import('../../order/services/firebaseTrackingService.js');
+        await cacheRouteInFirebase(start, end, polyline, totalDistance, duration);
+      } catch (firebaseError) {
+        console.warn('⚠️ Failed to cache route in Firebase:', firebaseError.message);
+      }
       
       // Clean old cache entries (older than cache TTL)
       const now = Date.now();

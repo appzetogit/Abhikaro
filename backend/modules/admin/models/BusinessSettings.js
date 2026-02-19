@@ -96,6 +96,14 @@ const businessSettingsSchema = new mongoose.Schema(
       default: 100,
       min: 0,
     },
+    // Delivery assignment mode: 'automatic' or 'manual'
+    // automatic: When restaurant accepts order, automatically send request to nearby delivery boys
+    // manual: When restaurant accepts order, show in admin panel for manual assignment
+    deliveryAssignmentMode: {
+      type: String,
+      enum: ["automatic", "manual"],
+      default: "automatic",
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
@@ -125,6 +133,7 @@ businessSettingsSchema.statics.getSettings = async function () {
         },
         deliveryCashLimit: 750,
         deliveryWithdrawalLimit: 100,
+        deliveryAssignmentMode: "automatic",
       });
     }
     return settings;
@@ -144,6 +153,7 @@ businessSettingsSchema.statics.getSettings = async function () {
         },
         deliveryCashLimit: 750,
         deliveryWithdrawalLimit: 100,
+        deliveryAssignmentMode: "automatic",
       });
       await settings.save();
     }
