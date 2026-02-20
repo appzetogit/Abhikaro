@@ -2667,8 +2667,112 @@ export default function DeliveryHome() {
             }
             clearNewOrder();
             
+            // CRITICAL: Ensure map is visible after accepting order (fix blue screen issue)
+            // Set showHomeSections to false FIRST to ensure map container is rendered
+            setShowHomeSections(false);
+            setSwipeBarPosition(0);
+            console.log('✅ Map view ensured after order acceptance');
+            
             // Ensure route path is visible
             setShowRoutePath(true);
+            
+            // Force map initialization/visibility after order acceptance
+            // Use setTimeout to ensure DOM has updated
+            setTimeout(() => {
+              // Ensure map container is visible and has proper dimensions
+              if (mapContainerRef.current) {
+                const container = mapContainerRef.current;
+                container.style.display = 'block';
+                container.style.visibility = 'visible';
+                container.style.opacity = '1';
+                container.style.height = '100%';
+                container.style.width = '100%';
+                console.log('✅ Map container visibility and dimensions ensured');
+                
+                // Check container dimensions
+                const rect = container.getBoundingClientRect();
+                console.log('📍 Map container dimensions:', { width: rect.width, height: rect.height });
+                
+                if (rect.width === 0 || rect.height === 0) {
+                  console.warn('⚠️ Map container has zero dimensions!');
+                }
+              }
+              
+              // Trigger map initialization retry if map is not initialized
+              if (!window.deliveryMapInstance) {
+                console.log('📍 Map not initialized, triggering initialization retry');
+                setMapInitRetry(prev => prev + 1);
+              }
+            }, 100);
+            
+            setTimeout(() => {
+              if (window.deliveryMapInstance) {
+                try {
+                  // Check if map is attached to correct container
+                  const mapDiv = window.deliveryMapInstance.getDiv();
+                  if (mapDiv && mapContainerRef.current && mapDiv !== mapContainerRef.current) {
+                    console.log('📍 Map attached to wrong container, re-attaching...');
+                    // Store map state
+                    const center = window.deliveryMapInstance.getCenter();
+                    const zoom = window.deliveryMapInstance.getZoom();
+                    // Remove from old container
+                    window.deliveryMapInstance.setMap(null);
+                    // Attach to new container
+                    window.deliveryMapInstance.setMap(mapContainerRef.current);
+                    // Restore state
+                    if (center) window.deliveryMapInstance.setCenter(center);
+                    if (zoom) window.deliveryMapInstance.setZoom(zoom);
+                    console.log('✅ Map re-attached to correct container');
+                  }
+                  
+                  // Trigger resize to ensure map renders properly after becoming visible
+                  if (window.google && window.google.maps) {
+                    window.google.maps.event.trigger(window.deliveryMapInstance, 'resize');
+                    console.log('✅ Map resize triggered after order acceptance');
+                    
+                    // Force map to redraw by triggering idle event
+                    window.google.maps.event.addListenerOnce(window.deliveryMapInstance, 'idle', () => {
+                      console.log('✅ Map idle event fired - map should be fully rendered');
+                    });
+                  }
+                  
+                  // Force map to redraw
+                  if (mapContainerRef.current) {
+                    const map = window.deliveryMapInstance;
+                    const currentCenter = map.getCenter();
+                    const currentZoom = map.getZoom();
+                    // Trigger a small pan to force redraw
+                    if (currentCenter) {
+                      map.setCenter(currentCenter);
+                      map.setZoom(currentZoom || 18);
+                    }
+                  }
+                } catch (error) {
+                  console.error('❌ Error ensuring map visibility:', error);
+                }
+              } else if (mapContainerRef.current && window.google && window.google.maps) {
+                // Map not initialized yet - trigger map initialization retry again
+                console.log('📍 Map still not initialized, triggering another initialization retry');
+                setMapInitRetry(prev => prev + 1);
+              }
+            }, 300);
+            
+            // Final check and force initialization if needed
+            setTimeout(() => {
+              if (!window.deliveryMapInstance && mapContainerRef.current && window.google && window.google.maps) {
+                console.log('📍 Force initializing map after order acceptance - final attempt');
+                setMapInitRetry(prev => prev + 1);
+              } else if (window.deliveryMapInstance) {
+                // Map is initialized - ensure it's visible
+                const mapDiv = window.deliveryMapInstance.getDiv();
+                if (mapDiv) {
+                  mapDiv.style.display = 'block';
+                  mapDiv.style.visibility = 'visible';
+                  mapDiv.style.opacity = '1';
+                  console.log('✅ Map div visibility ensured');
+                }
+              }
+            }, 500);
             
             // Show Reached Pickup popup immediately after order acceptance (no distance check)
             // But only if order is not already past pickup phase or reached pickup confirmed
@@ -2686,6 +2790,42 @@ export default function DeliveryHome() {
               
               if (!isAlreadyPastPickup) {
                 console.log('✅ Order accepted - showing Reached Pickup popup immediately');
+                
+                // CRITICAL: Ensure map stays visible when popup shows
+                setShowHomeSections(false);
+                setSwipeBarPosition(0);
+                
+                // Ensure map container is visible
+                setTimeout(() => {
+                  if (mapContainerRef.current) {
+                    mapContainerRef.current.style.display = 'block';
+                    mapContainerRef.current.style.visibility = 'visible';
+                    mapContainerRef.current.style.opacity = '1';
+                    mapContainerRef.current.style.zIndex = '1';
+                    console.log('✅ Map container visibility ensured before showing Reached Pickup popup');
+                  }
+                  
+                  // Ensure map is initialized and visible
+                  if (window.deliveryMapInstance) {
+                    try {
+                      const mapDiv = window.deliveryMapInstance.getDiv();
+                      if (mapDiv) {
+                        mapDiv.style.display = 'block';
+                        mapDiv.style.visibility = 'visible';
+                        mapDiv.style.opacity = '1';
+                      }
+                      
+                      // Trigger resize to ensure map renders
+                      if (window.google && window.google.maps) {
+                        window.google.maps.event.trigger(window.deliveryMapInstance, 'resize');
+                        console.log('✅ Map resize triggered before showing Reached Pickup popup');
+                      }
+                    } catch (error) {
+                      console.warn('⚠️ Error ensuring map visibility before popup:', error);
+                    }
+                  }
+                }, 50);
+                
                 setShowreachedPickupPopup(true);
                 // Close directions map if open
                 setShowDirectionsMap(false);
@@ -4968,182 +5108,68 @@ export default function DeliveryHome() {
 
   // Ola Maps SDK check removed
 
-  // Re-run map init when container might have become available (ref can be null on first run)
-  const [mapInitRetry, setMapInitRetry] = useState(0)
-
-  // Initialize Google Map - Preserve map across navigation, re-attach when returning
+  // STEP 2 & 3: Initialize Google Map - Correct lifecycle flow
+  // React renders UI → Map container becomes visible → Container gets real width and height → Initialize Google Map
   useEffect(() => {
+    // Don't initialize if home sections are showing
     if (showHomeSections) {
-      console.log('📍 Map view hidden (showHomeSections is true)');
       return;
     }
 
-    if (!mapContainerRef.current) {
-      console.log('📍 Map container ref not available yet, will retry...');
-      if (mapInitRetry < 10) {
-        const timer = setTimeout(() => setMapInitRetry((r) => r + 1), 200);
-        return () => clearTimeout(timer);
-      }
-      return;
-    }
-
-    // Store preserved state for re-initialization after navigation
-    let preservedState = null;
-    
-    // If map instance exists, preserve state before re-initializing
+    // STEP 3: Check if map already exists - never recreate map repeatedly
     if (window.deliveryMapInstance) {
-      const existingMap = window.deliveryMapInstance;
-      const existingBikeMarker = bikeMarkerRef.current;
-      const existingPolyline = routePolylineRef.current;
-      
-      console.log('📍 Map instance exists, preserving state for re-initialization...');
-      
       // Check if map is already attached to current container
       try {
-        const mapDiv = existingMap.getDiv();
+        const mapDiv = window.deliveryMapInstance.getDiv();
         if (mapDiv && mapDiv === mapContainerRef.current) {
-          console.log('📍 Map already attached to current container, skipping re-initialization');
-          return; // Map is already properly attached, no need to re-initialize
+          console.log('✅ Map already initialized and attached to container');
+          return;
         }
       } catch (error) {
-        // Map div check failed, will re-initialize
-        console.log('📍 Map container check failed, will re-initialize');
+        // Map div check failed, will check container dimensions
       }
-      
-      // Store map state safely
-      try {
-        preservedState = {
-          center: existingMap.getCenter(),
-          zoom: existingMap.getZoom(),
-          bikeMarkerPosition: null,
-          bikeMarkerHeading: null,
-          hasPolyline: !!existingPolyline
-        };
-        
-        // Store bike marker state
-        if (existingBikeMarker) {
-          const pos = existingBikeMarker.getPosition();
-          if (pos) {
-            preservedState.bikeMarkerPosition = { lat: pos.lat(), lng: pos.lng() };
-            // Get heading from icon rotation if available
-            const icon = existingBikeMarker.getIcon();
-            if (icon && typeof icon === 'object' && icon.rotation !== undefined) {
-              preservedState.bikeMarkerHeading = icon.rotation;
-            }
-          }
-        }
-      } catch (error) {
-        console.warn('⚠️ Error preserving map state:', error);
-        preservedState = null;
-      }
-      
-      // Remove markers from old map before clearing (safely)
-      try {
-        if (existingBikeMarker && typeof existingBikeMarker.setMap === 'function') {
-          existingBikeMarker.setMap(null);
-        }
-        if (existingPolyline && typeof existingPolyline.setMap === 'function') {
-          existingPolyline.setMap(null);
-        }
-      } catch (error) {
-        console.warn('⚠️ Error removing markers from old map:', error);
-      }
-      
-      // Clear old map instance reference (will be re-created below)
-      // Markers preserved in refs, will be re-attached after map initialization
-      window.deliveryMapInstance = null;
     }
 
-    console.log('📍 Starting map initialization...');
+    // STEP 2: Ensure map container exists and has real dimensions before initialization
+    if (!mapContainerRef.current) {
+      console.log('📍 Map container ref not available yet');
+      return;
+    }
 
-    // Load Google Maps if not already loaded
+    const container = mapContainerRef.current;
+    const containerWidth = container.offsetWidth || container.clientWidth;
+    const containerHeight = container.offsetHeight || container.clientHeight;
+
+    // STEP 4: Verify container dimensions before initializing map
+    if (containerWidth === 0 || containerHeight === 0) {
+      console.log('📍 Map container has no dimensions yet, waiting for layout...');
+      return;
+    }
+
+    // Check if container is visible
+    const computedStyle = window.getComputedStyle(container);
+    if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden' || computedStyle.opacity === '0') {
+      console.log('📍 Map container is not visible yet');
+      return;
+    }
+
+    // STEP 7: Ensure Google Maps API loads fully before map initialization
     const loadGoogleMapsIfNeeded = async () => {
       // Check if already loaded
       if (window.google && window.google.maps) {
         console.log('✅ Google Maps already loaded');
-        // Wait a bit to ensure ref is available
-        await new Promise(resolve => setTimeout(resolve, 100));
-        initializeGoogleMap();
+        await initializeGoogleMap();
         return;
       }
       
-      // Check if script tag is already present (from main.jsx)
+      // Check if script tag is already present
       const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
       if (existingScript || window.__googleMapsLoading) {
         console.log('📍 Google Maps is already being loaded, waiting...');
+        // Wait for API to load (single wait, no retry loop)
         let attempts = 0;
-        const maxAttempts = 50; // 5 seconds max wait
+        const maxAttempts = 50;
         
-        while ((!window.google || !window.google.maps) && attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          attempts++;
-        }
-        
-        if (window.google && window.google.maps) {
-          console.log('✅ Google Maps loaded via script tag');
-          await initializeGoogleMap();
-          return;
-        }
-      }
-      
-      // Only use Loader if no script tag exists and not already loading
-      if (!existingScript && !window.__googleMapsLoading) {
-        console.log('📍 Google Maps not loaded, using Loader as fallback...');
-        window.__googleMapsLoading = true;
-        try {
-          // Force refresh API key to ensure we get latest from backend
-          const apiKey = await getGoogleMapsApiKey(true); // Force refresh
-          console.log('🔑 API Key check:', {
-            hasKey: !!apiKey,
-            keyLength: apiKey?.length || 0,
-            keyPreview: apiKey ? `${apiKey.substring(0, 10)}...` : 'empty'
-          });
-          
-          if (apiKey && apiKey.trim().length > 0) {
-            console.log('✅ API key found, loading Google Maps...');
-            const loader = new Loader({
-              apiKey: apiKey.trim(),
-              version: "weekly",
-              libraries: ["places", "geometry", "drawing", "routes"]
-            });
-            await loader.load();
-            console.log('✅ Google Maps loaded via Loader');
-            window.__googleMapsLoaded = true;
-            window.__googleMapsLoading = false;
-            await initializeGoogleMap();
-          } else {
-            const errorMsg = 'Google Maps API key not found. Please set it in Admin → System → ENV Setup';
-            console.error('❌ No Google Maps API key found or key is empty');
-            console.error('❌ Please check:');
-            console.error('   1. Admin → System → ENV Setup → Google Maps API Key is set');
-            console.error('   2. Backend server is running');
-            console.error('   3. Backend /api/env/public endpoint returns the key');
-            window.__googleMapsLoading = false;
-            setMapLoading(false);
-            setMapError(errorMsg);
-            return;
-          }
-        } catch (error) {
-          const errorMsg = error.message?.includes('InvalidKey') 
-            ? 'Invalid Google Maps API Key. Please check Admin → System → ENV Setup'
-            : error.message?.includes('Billing') || error.message?.includes('billing')
-            ? 'Google Maps billing not enabled. Please enable billing in Google Cloud Console'
-            : `Failed to load Google Maps: ${error.message || 'Unknown error'}`;
-          console.error('❌ Error loading Google Maps:', error);
-          console.error('❌ Error details:', {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-          });
-          window.__googleMapsLoading = false;
-          setMapLoading(false);
-          setMapError(errorMsg);
-          return;
-        }
-      } else {
-        // Wait a bit more if script is loading
-        let attempts = 0;
-        const maxAttempts = 30; // 3 seconds
         while ((!window.google || !window.google.maps) && attempts < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, 100));
           attempts++;
@@ -5156,70 +5182,95 @@ export default function DeliveryHome() {
           console.error('❌ Google Maps failed to load');
           setMapLoading(false);
         }
+        return;
       }
-
-      // Wait for MapTypeId to be available (sometimes it loads slightly after maps)
-      if (window.google && window.google.maps && !window.google.maps.MapTypeId) {
-        console.log('📍 Waiting for MapTypeId to be available...');
-        let attempts = 0;
-        const maxAttempts = 20; // 2 seconds max wait
-        
-        while (!window.google.maps.MapTypeId && attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          attempts++;
+      
+      // Load Google Maps API if not present
+      if (!existingScript && !window.__googleMapsLoading) {
+        console.log('📍 Loading Google Maps API...');
+        window.__googleMapsLoading = true;
+        try {
+          const apiKey = await getGoogleMapsApiKey(true);
+          
+          if (apiKey && apiKey.trim().length > 0) {
+            const loader = new Loader({
+              apiKey: apiKey.trim(),
+              version: "weekly",
+              libraries: ["places", "geometry", "drawing", "routes"]
+            });
+            await loader.load();
+            console.log('✅ Google Maps loaded via Loader');
+            window.__googleMapsLoaded = true;
+            window.__googleMapsLoading = false;
+            await initializeGoogleMap();
+          } else {
+            const errorMsg = 'Google Maps API key not found. Please set it in Admin → System → ENV Setup';
+            console.error('❌ No Google Maps API key found');
+            window.__googleMapsLoading = false;
+            setMapLoading(false);
+            setMapError(errorMsg);
+          }
+        } catch (error) {
+          const errorMsg = error.message?.includes('InvalidKey') 
+            ? 'Invalid Google Maps API Key. Please check Admin → System → ENV Setup'
+            : error.message?.includes('Billing') || error.message?.includes('billing')
+            ? 'Google Maps billing not enabled. Please enable billing in Google Cloud Console'
+            : `Failed to load Google Maps: ${error.message || 'Unknown error'}`;
+          console.error('❌ Error loading Google Maps:', error);
+          window.__googleMapsLoading = false;
+          setMapLoading(false);
+          setMapError(errorMsg);
         }
-      }
-
-      // Initialize map once Google Maps is fully loaded
-      // Check for both maps and MapTypeId to ensure API is fully initialized
-      if (window.google && window.google.maps) {
-        // MapTypeId might still not be available, but we have a fallback
-        if (!window.google.maps.MapTypeId) {
-          console.warn('⚠️ MapTypeId not available, will use string fallback');
-        }
-        await initializeGoogleMap();
-      } else {
-        console.error('❌ Google Maps API still not available or not fully loaded');
-        console.error('❌ API status:', {
-          google: !!window.google,
-          maps: !!window.google?.maps,
-          MapTypeId: !!window.google?.maps?.MapTypeId
-        });
-        setMapLoading(false);
       }
     };
 
     loadGoogleMapsIfNeeded();
 
     async function initializeGoogleMap() {
+      // STEP 3: Initialize map only once - check if map already exists
+      if (window.deliveryMapInstance) {
+        console.log('✅ Map already initialized, skipping');
+        return;
+      }
+
+      // STEP 2: Ensure map container exists before map initialization
+      if (!mapContainerRef.current) {
+        console.log('📍 Map container ref not available yet');
+        setMapLoading(false);
+        return;
+      }
+
+      // STEP 4: Verify container dimensions before initializing map
+      const container = mapContainerRef.current;
+      const containerWidth = container.offsetWidth || container.clientWidth;
+      const containerHeight = container.offsetHeight || container.clientHeight;
+      
+      // Check if container has real dimensions from layout
+      if (containerWidth === 0 || containerHeight === 0) {
+        console.log('📍 Map container has no dimensions yet, waiting for layout...');
+        setMapLoading(false);
+        return;
+      }
+
+      // Check if container is visible
+      const computedStyle = window.getComputedStyle(container);
+      if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden' || computedStyle.opacity === '0') {
+        console.log('📍 Map container is not visible yet');
+        setMapLoading(false);
+        return;
+      }
+
+      // STEP 7: Ensure Google Maps API loads fully before map initialization
+      if (!window.google || !window.google.maps) {
+        console.error('❌ Google Maps API not available');
+        setMapLoading(false);
+        return;
+      }
+
+      console.log('📍 Initializing Google Map with container dimensions:', containerWidth, 'x', containerHeight);
+      setMapLoading(true);
+      
       try {
-        // Wait for map container ref to be available
-        if (!mapContainerRef.current) {
-          console.log('📍 Map container ref not available yet, waiting...');
-          let attempts = 0;
-          const maxAttempts = 50; // 5 seconds max wait
-          
-          while (!mapContainerRef.current && attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            attempts++;
-          }
-          
-          if (!mapContainerRef.current) {
-            console.error('❌ Map container ref is still null after waiting');
-            setMapLoading(false);
-            return;
-          }
-        }
-
-        if (!window.google || !window.google.maps) {
-          console.error('❌ Google Maps API not available');
-          setMapLoading(false);
-          return;
-        }
-
-        console.log('📍 Initializing Google Map with container:', mapContainerRef.current);
-        setMapLoading(true);
-        
         // Get location from multiple sources (priority: riderLocation > saved location > wait for GPS)
         let initialCenter = null;
         
@@ -5328,27 +5379,25 @@ export default function DeliveryHome() {
           return;
         }
 
-        // Store map instance
+        // STEP 3: Store map instance safely - initialize only once
         window.deliveryMapInstance = map;
         console.log('✅ Map instance created and stored');
         
         // Clear any previous error state
         setMapError(null);
         
-        // Add error listener for map errors (if available)
-        try {
-          if (window.google.maps.event) {
-            window.google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
-              console.log('✅ Map tiles loaded successfully');
-            });
-          }
-        } catch (eventError) {
-          console.warn('⚠️ Could not add map event listeners:', eventError);
-        }
-        
-        // Add error listener for map errors
+        // STEP 8: Trigger resize only once after map exists (optional safety)
+        // Wait for tiles to load, then trigger resize once
         window.google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
           console.log('✅ Map tiles loaded successfully');
+          
+          // Single resize trigger after layout stabilizes
+          setTimeout(() => {
+            if (window.deliveryMapInstance) {
+              window.google.maps.event.trigger(window.deliveryMapInstance, 'resize');
+              console.log('✅ Map resize triggered after tiles loaded');
+            }
+          }, 100);
         });
         
         // Handle map errors
@@ -5388,72 +5437,40 @@ export default function DeliveryHome() {
           // Removed zoom limit to allow full zoom in
         });
 
-        // Restore preserved state if coming back from navigation
-        if (preservedState) {
-          if (preservedState.center && preservedState.zoom) {
-            map.setCenter(preservedState.center);
-            map.setZoom(preservedState.zoom);
-            console.log('📍 Restored map center and zoom after navigation');
-          }
+        // Initialize route history with current location (first time initialization)
+        if (riderLocation && riderLocation.length === 2) {
+          routeHistoryRef.current = [{
+            lat: riderLocation[0],
+            lng: riderLocation[1]
+          }];
+          lastLocationRef.current = riderLocation;
           
-          // Re-create bike marker if it existed before navigation (always, not just when online)
-          if (preservedState.bikeMarkerPosition) {
-            console.log('📍 Re-creating bike marker after navigation:', preservedState.bikeMarkerPosition);
-            createOrUpdateBikeMarker(
-              preservedState.bikeMarkerPosition.lat, 
-              preservedState.bikeMarkerPosition.lng, 
-              preservedState.bikeMarkerHeading,
-              false // Don't center when restoring from navigation
-            );
-          } else if (riderLocation && riderLocation.length === 2) {
-            // If no preserved marker but we have current location, create marker
-            console.log('📍 Creating bike marker from riderLocation after navigation');
-            createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, false);
-          }
-          
-          // Don't re-attach route polyline on refresh - only show if there's an active order
-          // This prevents showing default/mock polylines on page refresh
-          if (preservedState.hasPolyline && routePolylineRef.current && selectedRestaurant) {
-            // Only re-attach if we have an active order
-            if (routeHistoryRef.current.length >= 2) {
-              routePolylineRef.current.setMap(map);
-              console.log('✅ Route polyline re-attached after navigation');
+          // Create bike marker immediately when map initializes with location
+          if (!bikeMarkerRef.current) {
+            console.log('📍 Creating bike marker during map initialization:', { lat: riderLocation[0], lng: riderLocation[1] });
+            createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, true);
+          } else {
+            // Ensure marker is on map
+            if (bikeMarkerRef.current.getMap() === null) {
+              bikeMarkerRef.current.setMap(map);
             }
-          } else if (!selectedRestaurant && routePolylineRef.current) {
-            // Clear polyline if no active order
+            map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
+          }
+        }
+        
+        // Clear polylines if no active order
+        if (!selectedRestaurant) {
+          if (routePolylineRef.current) {
             routePolylineRef.current.setMap(null);
             routePolylineRef.current = null;
           }
-          
-          // Clear live tracking polyline if no active order
-          if (!selectedRestaurant && liveTrackingPolylineRef.current) {
+          if (liveTrackingPolylineRef.current) {
             liveTrackingPolylineRef.current.setMap(null);
             liveTrackingPolylineRef.current = null;
           }
-          if (!selectedRestaurant && liveTrackingPolylineShadowRef.current) {
+          if (liveTrackingPolylineShadowRef.current) {
             liveTrackingPolylineShadowRef.current.setMap(null);
             liveTrackingPolylineShadowRef.current = null;
-          }
-        } else {
-          // Initialize route history with current location (first time initialization)
-          if (riderLocation && riderLocation.length === 2) {
-            routeHistoryRef.current = [{
-              lat: riderLocation[0],
-              lng: riderLocation[1]
-            }];
-            lastLocationRef.current = riderLocation;
-            
-            // Create bike marker immediately when map initializes with location
-            if (!bikeMarkerRef.current) {
-              console.log('📍 Creating bike marker during map initialization:', { lat: riderLocation[0], lng: riderLocation[1] });
-              createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, true);
-            } else {
-              // Ensure marker is on map
-              if (bikeMarkerRef.current.getMap() === null) {
-                bikeMarkerRef.current.setMap(map);
-              }
-              map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
-            }
           }
         }
 
@@ -5534,6 +5551,7 @@ export default function DeliveryHome() {
       } catch (error) {
         console.error('❌ Error initializing Google Map:', error);
         setMapLoading(false);
+        setMapError(error.message || 'Failed to initialize Google Map');
       }
     }
 
@@ -5551,90 +5569,104 @@ export default function DeliveryHome() {
         // Don't set to null - preserve reference for re-attachment
       }
     }
-  }, [showHomeSections, mapInitRetry]) // Re-run when showHomeSections or container retry
+  }, [showHomeSections]) // Re-run when showHomeSections changes
+  
+  // Force map initialization when showHomeSections becomes false (after order acceptance)
+  useEffect(() => {
+    if (!showHomeSections && !window.deliveryMapInstance && mapContainerRef.current && window.google && window.google.maps) {
+      console.log('📍 showHomeSections changed to false, forcing map initialization');
+      setMapInitRetry(prev => prev + 1);
+    }
+  }, [showHomeSections])
+  
+  // CRITICAL: Ensure map stays visible when Reached Pickup popup is shown
+  useEffect(() => {
+    if (showreachedPickupPopup) {
+      // Ensure map view is shown (not home sections)
+      setShowHomeSections(false);
+      setSwipeBarPosition(0);
+      
+      // Ensure map container is visible
+      setTimeout(() => {
+        if (mapContainerRef.current) {
+          mapContainerRef.current.style.display = 'block';
+          mapContainerRef.current.style.visibility = 'visible';
+          mapContainerRef.current.style.opacity = '1';
+          mapContainerRef.current.style.zIndex = '1';
+          console.log('✅ Map container visibility ensured - Reached Pickup popup is open');
+        }
+        
+        // Ensure map is initialized and visible
+        if (window.deliveryMapInstance) {
+          try {
+            const mapDiv = window.deliveryMapInstance.getDiv();
+            if (mapDiv) {
+              mapDiv.style.display = 'block';
+              mapDiv.style.visibility = 'visible';
+              mapDiv.style.opacity = '1';
+            }
+            
+            // Trigger resize to ensure map renders
+            if (window.google && window.google.maps) {
+              window.google.maps.event.trigger(window.deliveryMapInstance, 'resize');
+              
+              // Force map to redraw by panning slightly
+              const center = window.deliveryMapInstance.getCenter();
+              const zoom = window.deliveryMapInstance.getZoom();
+              if (center) {
+                // Trigger a tiny pan to force redraw
+                window.deliveryMapInstance.setCenter({
+                  lat: center.lat() + 0.000001,
+                  lng: center.lng()
+                });
+                setTimeout(() => {
+                  window.deliveryMapInstance.setCenter(center);
+                  window.deliveryMapInstance.setZoom(zoom || 18);
+                }, 50);
+              }
+              
+              console.log('✅ Map resize and redraw triggered - Reached Pickup popup is open');
+            }
+          } catch (error) {
+            console.warn('⚠️ Error ensuring map visibility with Reached Pickup popup:', error);
+          }
+        } else if (mapContainerRef.current && window.google && window.google.maps) {
+          // Map not initialized - trigger initialization
+          console.log('📍 Map not initialized, triggering initialization - Reached Pickup popup is open');
+          setMapInitRetry(prev => prev + 1);
+        }
+      }, 100);
+      
+      // Additional check after a longer delay
+      setTimeout(() => {
+        if (window.deliveryMapInstance && mapContainerRef.current) {
+          // Force map to render
+          window.google.maps.event.trigger(window.deliveryMapInstance, 'resize');
+          const center = window.deliveryMapInstance.getCenter();
+          if (center) {
+            window.deliveryMapInstance.setCenter(center);
+          }
+          console.log('✅ Map forced to render again - Reached Pickup popup (delayed check)');
+        }
+      }, 500);
+    }
+  }, [showreachedPickupPopup])
 
-  // Initialize map when riderLocation becomes available (if map not already initialized)
+  // STEP 3: Map should only be initialized once by the main useEffect
+  // If map exists and rider location changes, just update the center (no re-initialization)
   useEffect(() => {
     if (showHomeSections) return
     if (!riderLocation || riderLocation.length !== 2) return
-    if (window.deliveryMapInstance) return // Map already initialized
-    if (!window.google || !window.google.maps) return // Google Maps not loaded yet
-    if (!mapContainerRef.current) return // Container not ready
-
-    console.log('📍 Rider location available, initializing map...')
-    // Map initialization will happen in the main useEffect, but we can trigger it
-    // by calling initializeGoogleMap directly
-    const initializeMap = async () => {
+    
+    // STEP 3: Never recreate map - only update center if map already exists
+    if (window.deliveryMapInstance) {
       try {
-        const initialCenter = { lat: riderLocation[0], lng: riderLocation[1] }
-        console.log('📍 Initializing map with rider location:', initialCenter)
-        
-        if (!window.google || !window.google.maps) return
-
-        // Use same constructor handling as main map initialization
-        let MapConstructor = null
-        if (window.google?.maps?.importLibrary) {
-          const { Map } = await window.google.maps.importLibrary('maps')
-          MapConstructor = Map
-        } else if (window.google?.maps?.Map) {
-          MapConstructor = window.google.maps.Map
-        } else {
-          console.error('❌ Google Maps Map constructor not available for riderLocation init')
-          return
-        }
-        if (typeof MapConstructor !== 'function') {
-          console.error('❌ Invalid Map constructor in riderLocation init:', MapConstructor)
-          return
-        }
-
-        const map = new MapConstructor(mapContainerRef.current, {
-          center: initialCenter,
-          zoom: 18,
-          minZoom: 10,
-          maxZoom: 21,
-          mapTypeId: window.google.maps.MapTypeId?.ROADMAP || 'roadmap',
-          tilt: 45,
-          heading: 0,
-          disableDefaultUI: true, // Hide all default UI controls
-          zoomControl: false,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          rotateControl: false, // Hide UI control but allow gesture rotation
-          scaleControl: false,
-          gestureHandling: 'greedy', // Enable all gestures including rotation (two-finger rotate)
-          draggable: true, // Enable dragging
-          scrollwheel: true, // Enable mouse wheel zoom
-          disableDoubleClickZoom: false // Allow double-click zoom
-        })
-        
-        window.deliveryMapInstance = map
-        console.log('✅ Map initialized with rider location')
-        
-        // Explicitly set terrain map type
-        try {
-          if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
-            map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
-            console.log('✅ Terrain map type set for rider location map');
-          } else {
-            map.setMapTypeId('terrain');
-          }
-        } catch (e) {
-          console.warn('⚠️ Could not set terrain map type:', e);
-        }
-        
-        // Don't create marker directly - Firebase listener will handle it
-        // Only center map on location
-        map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
-        setMapLoading(false)
+        window.deliveryMapInstance.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
       } catch (error) {
-        console.error('❌ Error initializing map with rider location:', error)
-        setMapLoading(false)
+        console.error('❌ Error updating map center:', error);
       }
     }
-    
-    initializeMap()
-  }, [riderLocation, showHomeSections]) // Initialize when location is available
+  }, [riderLocation, showHomeSections]) // Update center when location changes
 
   // Firebase listener for delivery boy location updates (reduces Google Maps API calls)
   useEffect(() => {
@@ -5856,6 +5888,10 @@ export default function DeliveryHome() {
   useEffect(() => {
     if (showHomeSections || !window.deliveryMapInstance) return;
 
+    // Track last restaurant marker check to avoid unnecessary warnings
+    let lastRestaurantMarkerCheck = 0;
+    const RESTAURANT_MARKER_CHECK_INTERVAL = 5000; // Only check every 5 seconds
+
     // Check every 2 seconds if markers are still on map
     const checkInterval = setInterval(() => {
       // Check bike marker - ensure it's always visible
@@ -5889,46 +5925,96 @@ export default function DeliveryHome() {
         }
       }
       
-      // Check restaurant marker
-      if (selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
-        if (restaurantMarkerRef.current) {
-          const markerMap = restaurantMarkerRef.current.getMap();
-          if (markerMap === null || markerMap !== window.deliveryMapInstance) {
-            console.warn('⚠️ Restaurant marker lost map reference, re-adding...');
+      // Check restaurant marker - only check every 5 seconds to reduce warnings
+      const now = Date.now();
+      if (now - lastRestaurantMarkerCheck < RESTAURANT_MARKER_CHECK_INTERVAL) {
+        return; // Skip restaurant marker check if too soon
+      }
+      lastRestaurantMarkerCheck = now;
+
+      if (selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng && window.deliveryMapInstance) {
+        // First, verify marker actually doesn't exist (double-check)
+        let markerExists = false;
+        try {
+          if (restaurantMarkerRef.current) {
+            const markerMap = restaurantMarkerRef.current.getMap();
+            markerExists = markerMap === window.deliveryMapInstance;
+          }
+        } catch (error) {
+          // Marker ref exists but getMap() failed - treat as not existing
+          markerExists = false;
+        }
+
+        if (markerExists) {
+          // Marker exists and is on correct map - just update position if needed
+          try {
+            const currentPos = restaurantMarkerRef.current.getPosition();
+            if (currentPos) {
+              const currentLat = currentPos.lat();
+              const currentLng = currentPos.lng();
+              if (Math.abs(currentLat - selectedRestaurant.lat) > 0.0001 || 
+                  Math.abs(currentLng - selectedRestaurant.lng) > 0.0001) {
+                restaurantMarkerRef.current.setPosition({
+                  lat: selectedRestaurant.lat,
+                  lng: selectedRestaurant.lng
+                });
+              }
+            }
+          } catch (error) {
+            // Ignore position update errors
+          }
+        } else if (restaurantMarkerRef.current) {
+          // Marker ref exists but is not on map - re-attach
+          try {
             const restaurantLocation = {
               lat: selectedRestaurant.lat,
               lng: selectedRestaurant.lng
             };
-            
             restaurantMarkerRef.current.setMap(window.deliveryMapInstance);
             restaurantMarkerRef.current.setPosition(restaurantLocation);
+            console.log('📍 Restaurant marker re-attached to map (safeguard)');
+          } catch (error) {
+            console.warn('⚠️ Error re-attaching restaurant marker, clearing ref:', error);
+            restaurantMarkerRef.current = null;
           }
         } else {
-          // Marker doesn't exist, create it
-          console.warn('⚠️ Restaurant marker missing, creating...');
-          const restaurantLocation = {
-            lat: selectedRestaurant.lat,
-            lng: selectedRestaurant.lng
-          };
-          
-          restaurantMarkerRef.current = new window.google.maps.Marker({
-            position: restaurantLocation,
-            map: window.deliveryMapInstance,
-            icon: {
-              url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="11" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2"/>
-                  <path d="M8 10c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v6H8v-6z" fill="#FFFFFF"/>
-                  <path d="M7 16h10M10 12h4M9 14h6" stroke="#FF6B35" stroke-width="1.5" stroke-linecap="round"/>
-                  <path d="M10 8h4v2h-4z" fill="#FFFFFF" opacity="0.7"/>
-                </svg>
-              `),
-              scaledSize: new window.google.maps.Size(48, 48),
-              anchor: new window.google.maps.Point(24, 48)
-            },
-            title: selectedRestaurant.name || 'Restaurant',
-            zIndex: 10
-          });
+          // Marker truly doesn't exist - create it only if map is fully ready
+          if (window.deliveryMapInstance && mapContainerRef.current) {
+            // Double-check that useEffect hasn't just created it
+            setTimeout(() => {
+              if (!restaurantMarkerRef.current && selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
+                console.log('📍 Creating restaurant marker (safeguard - marker truly missing)');
+                const restaurantLocation = {
+                  lat: selectedRestaurant.lat,
+                  lng: selectedRestaurant.lng
+                };
+                
+                try {
+                  restaurantMarkerRef.current = new window.google.maps.Marker({
+                    position: restaurantLocation,
+                    map: window.deliveryMapInstance,
+                    icon: {
+                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="11" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2"/>
+                          <path d="M8 10c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v6H8v-6z" fill="#FFFFFF"/>
+                          <path d="M7 16h10M10 12h4M9 14h6" stroke="#FF6B35" stroke-width="1.5" stroke-linecap="round"/>
+                          <path d="M10 8h4v2h-4z" fill="#FFFFFF" opacity="0.7"/>
+                        </svg>
+                      `),
+                      scaledSize: new window.google.maps.Size(48, 48),
+                      anchor: new window.google.maps.Point(24, 48)
+                    },
+                    title: selectedRestaurant.name || 'Restaurant',
+                    zIndex: 10
+                  });
+                  console.log('✅ Restaurant marker created successfully (safeguard)');
+                } catch (error) {
+                  console.error('❌ Error creating restaurant marker (safeguard):', error);
+                }
+              }
+            }, 100); // Small delay to let useEffect run first
+          }
         }
       }
     }, 2000); // Check every 2 seconds
@@ -5936,53 +6022,134 @@ export default function DeliveryHome() {
     return () => clearInterval(checkInterval);
   }, [riderLocation, selectedRestaurant, showHomeSections])
 
-  // Create restaurant marker when selectedRestaurant changes
+  // Fetch restaurant location from Firebase when order is accepted
   useEffect(() => {
-    if (!window.deliveryMapInstance || !selectedRestaurant || !selectedRestaurant.lat || !selectedRestaurant.lng) {
+    if (!selectedRestaurant?.id && !selectedRestaurant?.orderId) {
       return;
     }
 
-    // Only create marker if it doesn't exist or is on wrong map
-    if (!restaurantMarkerRef.current || restaurantMarkerRef.current.getMap() !== window.deliveryMapInstance) {
+    const orderId = selectedRestaurant.id || selectedRestaurant.orderId;
+    
+    const fetchRestaurantLocationFromFirebase = async () => {
+      try {
+        const { getOrderTrackingFromFirebase } = await import('@/lib/firebaseRealtime.js');
+        const trackingData = await getOrderTrackingFromFirebase(orderId);
+        
+        if (trackingData && trackingData.restaurantLat && trackingData.restaurantLng) {
+          console.log('✅ Fetched restaurant location from Firebase:', {
+            lat: trackingData.restaurantLat,
+            lng: trackingData.restaurantLng
+          });
+          
+          // Update selectedRestaurant with Firebase location if not already set
+          if (!selectedRestaurant.lat || !selectedRestaurant.lng) {
+            setSelectedRestaurant(prev => ({
+              ...prev,
+              lat: trackingData.restaurantLat,
+              lng: trackingData.restaurantLng
+            }));
+            console.log('✅ Updated selectedRestaurant with Firebase location');
+          }
+        } else {
+          console.log('ℹ️ Restaurant location not found in Firebase for order:', orderId);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error fetching restaurant location from Firebase:', error);
+      }
+    };
+
+    fetchRestaurantLocationFromFirebase();
+  }, [selectedRestaurant?.id, selectedRestaurant?.orderId]);
+
+  // Create restaurant marker when selectedRestaurant changes
+  useEffect(() => {
+    if (!window.deliveryMapInstance || !selectedRestaurant || !selectedRestaurant.lat || !selectedRestaurant.lng) {
+      // If map is not ready but we have restaurant data, log for debugging
+      if (!window.deliveryMapInstance && selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
+        console.log('📍 Map not ready yet, will create restaurant marker when map initializes');
+      }
+      return;
+    }
+
+    // Check if marker exists and is on correct map
+    let markerExists = false;
+    try {
+      if (restaurantMarkerRef.current) {
+        const markerMap = restaurantMarkerRef.current.getMap();
+        markerExists = markerMap === window.deliveryMapInstance;
+      }
+    } catch (error) {
+      console.warn('⚠️ Error checking restaurant marker:', error);
+      markerExists = false;
+    }
+
+    if (!markerExists) {
       const restaurantLocation = {
         lat: selectedRestaurant.lat,
         lng: selectedRestaurant.lng
       };
       
-      // Remove old marker if exists
+      // Remove old marker if exists (but on wrong map or null)
       if (restaurantMarkerRef.current) {
-        restaurantMarkerRef.current.setMap(null);
+        try {
+          restaurantMarkerRef.current.setMap(null);
+        } catch (error) {
+          console.warn('⚠️ Error removing old restaurant marker:', error);
+        }
+        restaurantMarkerRef.current = null;
       }
       
       // Create new restaurant marker
-      restaurantMarkerRef.current = new window.google.maps.Marker({
-        position: restaurantLocation,
-        map: window.deliveryMapInstance,
-        icon: {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="11" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2"/>
-              <path d="M8 10c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v6H8v-6z" fill="#FFFFFF"/>
-              <path d="M7 16h10M10 12h4M9 14h6" stroke="#FF6B35" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M10 8h4v2h-4z" fill="#FFFFFF" opacity="0.7"/>
-            </svg>
-          `),
-          scaledSize: new window.google.maps.Size(48, 48),
-          anchor: new window.google.maps.Point(24, 48)
-        },
-        title: selectedRestaurant.name || 'Restaurant',
-        animation: window.google.maps.Animation.DROP,
-        zIndex: 10
-      });
-      
-      console.log('✅ Restaurant marker created/updated on main map');
+      try {
+        restaurantMarkerRef.current = new window.google.maps.Marker({
+          position: restaurantLocation,
+          map: window.deliveryMapInstance,
+          icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="11" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2"/>
+                <path d="M8 10c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v6H8v-6z" fill="#FFFFFF"/>
+                <path d="M7 16h10M10 12h4M9 14h6" stroke="#FF6B35" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M10 8h4v2h-4z" fill="#FFFFFF" opacity="0.7"/>
+              </svg>
+            `),
+            scaledSize: new window.google.maps.Size(48, 48),
+            anchor: new window.google.maps.Point(24, 48)
+          },
+          title: selectedRestaurant.name || 'Restaurant',
+          animation: window.google.maps.Animation.DROP,
+          zIndex: 10
+        });
+        
+        console.log('✅ Restaurant marker created/updated on main map');
+      } catch (error) {
+        console.error('❌ Error creating restaurant marker:', error);
+        restaurantMarkerRef.current = null;
+      }
     } else {
-      // Update position if marker exists
-      restaurantMarkerRef.current.setPosition({
-        lat: selectedRestaurant.lat,
-        lng: selectedRestaurant.lng
-      });
-      restaurantMarkerRef.current.setTitle(selectedRestaurant.name || 'Restaurant');
+      // Marker exists and is on correct map - just update position and title if needed
+      try {
+        const currentPos = restaurantMarkerRef.current.getPosition();
+        if (currentPos) {
+          const currentLat = currentPos.lat();
+          const currentLng = currentPos.lng();
+          if (Math.abs(currentLat - selectedRestaurant.lat) > 0.0001 || 
+              Math.abs(currentLng - selectedRestaurant.lng) > 0.0001) {
+            restaurantMarkerRef.current.setPosition({
+              lat: selectedRestaurant.lat,
+              lng: selectedRestaurant.lng
+            });
+          }
+        } else {
+          restaurantMarkerRef.current.setPosition({
+            lat: selectedRestaurant.lat,
+            lng: selectedRestaurant.lng
+          });
+        }
+        restaurantMarkerRef.current.setTitle(selectedRestaurant.name || 'Restaurant');
+      } catch (error) {
+        console.warn('⚠️ Error updating restaurant marker:', error);
+      }
     }
   }, [selectedRestaurant?.lat, selectedRestaurant?.lng, selectedRestaurant?.name])
 
@@ -7290,6 +7457,42 @@ export default function DeliveryHome() {
     
     if (!isReachedPickupConfirmed) {
       console.log('✅ Order ready – showing Reached Pickup popup')
+      
+      // CRITICAL: Ensure map stays visible when popup shows
+      setShowHomeSections(false);
+      setSwipeBarPosition(0);
+      
+      // Ensure map container is visible
+      setTimeout(() => {
+        if (mapContainerRef.current) {
+          mapContainerRef.current.style.display = 'block';
+          mapContainerRef.current.style.visibility = 'visible';
+          mapContainerRef.current.style.opacity = '1';
+          mapContainerRef.current.style.zIndex = '1';
+          console.log('✅ Map container visibility ensured before showing Reached Pickup popup (order ready)');
+        }
+        
+        // Ensure map is initialized and visible
+        if (window.deliveryMapInstance) {
+          try {
+            const mapDiv = window.deliveryMapInstance.getDiv();
+            if (mapDiv) {
+              mapDiv.style.display = 'block';
+              mapDiv.style.visibility = 'visible';
+              mapDiv.style.opacity = '1';
+            }
+            
+            // Trigger resize to ensure map renders
+            if (window.google && window.google.maps) {
+              window.google.maps.event.trigger(window.deliveryMapInstance, 'resize');
+              console.log('✅ Map resize triggered before showing Reached Pickup popup (order ready)');
+            }
+          } catch (error) {
+            console.warn('⚠️ Error ensuring map visibility before popup (order ready):', error);
+          }
+        }
+      }, 50);
+      
       setShowreachedPickupPopup(true)
     } else {
       console.log('🚫 Reached pickup already confirmed, skipping popup')
@@ -7620,6 +7823,42 @@ export default function DeliveryHome() {
     // But only if reached pickup is not already confirmed
     if (!showreachedPickupPopup && !isReachedPickupConfirmed && !isOrderIdConfirmed) {
       console.log('✅ Order is in pickup phase, showing Reached Pickup popup immediately')
+      
+      // CRITICAL: Ensure map stays visible when popup shows
+      setShowHomeSections(false);
+      setSwipeBarPosition(0);
+      
+      // Ensure map container is visible
+      setTimeout(() => {
+        if (mapContainerRef.current) {
+          mapContainerRef.current.style.display = 'block';
+          mapContainerRef.current.style.visibility = 'visible';
+          mapContainerRef.current.style.opacity = '1';
+          mapContainerRef.current.style.zIndex = '1';
+          console.log('✅ Map container visibility ensured before showing Reached Pickup popup (location monitor)');
+        }
+        
+        // Ensure map is initialized and visible
+        if (window.deliveryMapInstance) {
+          try {
+            const mapDiv = window.deliveryMapInstance.getDiv();
+            if (mapDiv) {
+              mapDiv.style.display = 'block';
+              mapDiv.style.visibility = 'visible';
+              mapDiv.style.opacity = '1';
+            }
+            
+            // Trigger resize to ensure map renders
+            if (window.google && window.google.maps) {
+              window.google.maps.event.trigger(window.deliveryMapInstance, 'resize');
+              console.log('✅ Map resize triggered before showing Reached Pickup popup (location monitor)');
+            }
+          } catch (error) {
+            console.warn('⚠️ Error ensuring map visibility before popup (location monitor):', error);
+          }
+        }
+      }, 50);
+      
       setShowreachedPickupPopup(true)
       
       // Close directions map if open
@@ -9021,22 +9260,26 @@ export default function DeliveryHome() {
       {!showHomeSections ? (
         <>
           {/* Map View - Shows map with Hotspot or Select drop mode */}
-          <div className="relative flex-1 overflow-hidden pb-16 md:pb-0" style={{ minHeight: 0, pointerEvents: 'auto' }}>
-          {/* Google Maps Container */}
+          {/* STEP 1: Full screen parent container with proper flex layout */}
+          <div 
+            className="relative flex-1 overflow-hidden" 
+            style={{ 
+              minHeight: 0, 
+              display: 'flex',
+              flexDirection: 'column',
+              width: '100%'
+            }}
+          >
+          {/* STEP 1: Map container must expand automatically and get real height from layout */}
+          {/* STEP 6: Map container occupies full height behind bottom sheet */}
           <div
             ref={mapContainerRef}
-            className="w-full h-full"
+            className="w-full flex-1"
             style={{ 
-              height: '100%', 
-              width: '100%', 
-              backgroundColor: 'transparent', // Let real map tiles be fully visible
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              pointerEvents: 'auto',
-              zIndex: 1 // Ensure map sits above background and below overlays
+              minHeight: 0,
+              backgroundColor: mapLoading ? '#f0f0f0' : 'transparent',
+              position: 'relative',
+              zIndex: 1
             }}
           />
           
