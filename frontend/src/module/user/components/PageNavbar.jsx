@@ -979,8 +979,8 @@ export default function PageNavbar({
           </Button>
         </div>
 
-        {/* Center: Company Logo or Name - Show on all screen sizes */}
-        <Link to="/user" className="flex items-center justify-center">
+        {/* Center: Company Logo or Name - Show on mobile only */}
+        <Link to="/user" className="flex items-center justify-center md:hidden">
           {logoUrl ? (
             <img
               src={logoUrl}

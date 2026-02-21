@@ -56,10 +56,6 @@ export const sidebarMenuData = [
         subItems: [
           { label: "Restaurants List", path: "/admin/restaurants" },
           {
-            label: "New Joining Request",
-            path: "/admin/restaurants/joining-request",
-          },
-          {
             label: "Restaurant Commission",
             path: "/admin/restaurants/commission",
           },

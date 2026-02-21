@@ -128,23 +128,40 @@ export default function ViewZone() {
       console.log("Creating Google Map with container:", container)
       
       // Create map
-      const map = new google.maps.Map(container, {
+      // Check if MapTypeControlStyle is available, otherwise use default
+      const mapTypeControlStyle = google.maps.MapTypeControlStyle?.HORIZONTAL_BAR || 
+                                  google.maps.MapTypeControlStyle?.DEFAULT ||
+                                  undefined
+
+      const mapOptions = {
         center: initialLocation,
         zoom: 5,
         mapTypeId: google.maps.MapTypeId.TERRAIN, // Default to terrain map
         mapTypeControl: true,
-        mapTypeControlOptions: {
-          style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
-          position: google.maps.ControlPosition.TOP_RIGHT,
-          mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
-        },
         zoomControl: true,
         streetViewControl: false,
         fullscreenControl: true,
         scrollwheel: true,
         gestureHandling: 'greedy',
         disableDoubleClickZoom: false,
-      })
+      }
+
+      // Only add mapTypeControlOptions if style is available
+      if (mapTypeControlStyle) {
+        mapOptions.mapTypeControlOptions = {
+          style: mapTypeControlStyle,
+          position: google.maps.ControlPosition.TOP_RIGHT,
+          mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        }
+      } else {
+        // Fallback: use default mapTypeControlOptions without style
+        mapOptions.mapTypeControlOptions = {
+          position: google.maps.ControlPosition.TOP_RIGHT,
+          mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        }
+      }
+
+      const map = new google.maps.Map(container, mapOptions)
 
       mapInstanceRef.current = map
       console.log("Map instance created successfully, map:", map)

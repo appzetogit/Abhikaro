@@ -331,6 +331,14 @@ export function useLocation() {
 
         clearTimeout(timeoutId); // Clear timeout if request completes
 
+        // Handle HTTP 403 error gracefully - use fallback instead of throwing
+        if (response.status === 403) {
+          console.warn("⚠️⚠️⚠️ Google Maps API returned HTTP 403 - using fallback reverse geocoding");
+          console.warn("⚠️ This usually means API key restrictions or billing issues");
+          console.warn("⚠️ Falling back to alternative reverse geocoding service...");
+          return reverseGeocodeDirect(latitude, longitude);
+        }
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -359,16 +367,18 @@ export function useLocation() {
         has_results: !!data.results && data.results.length > 0
       });
 
-      // Check for API errors
+      // Check for API errors - handle 403 gracefully and use fallback
       if (data.status === "REQUEST_DENIED") {
-        console.error("❌❌❌ Google Maps API REQUEST_DENIED!");
-        console.error("❌ Error message:", data.error_message);
-        console.error("❌ Possible reasons:");
-        console.error("   1. API key is invalid or missing");
-        console.error("   2. Geocoding API is not enabled in Google Cloud Console");
-        console.error("   3. Billing is not enabled");
-        console.error("   4. API key restrictions are blocking the request");
-        throw new Error(`Google Maps API REQUEST_DENIED: ${data.error_message || "Check API key and billing"}`);
+        console.warn("⚠️⚠️⚠️ Google Maps API REQUEST_DENIED (403) - using fallback reverse geocoding");
+        console.warn("⚠️ Error message:", data.error_message);
+        console.warn("⚠️ Possible reasons:");
+        console.warn("   1. API key is invalid or missing");
+        console.warn("   2. Geocoding API is not enabled in Google Cloud Console");
+        console.warn("   3. Billing is not enabled");
+        console.warn("   4. API key restrictions are blocking the request");
+        console.warn("⚠️ Falling back to alternative reverse geocoding service...");
+        // Don't throw error - let it fall back to reverseGeocodeDirect
+        return reverseGeocodeDirect(latitude, longitude);
       }
 
       if (data.status === "OVER_QUERY_LIMIT") {
@@ -1401,8 +1411,8 @@ export function useLocation() {
 
   /* ===================== MAIN LOCATION ===================== */
   const getLocation = async (updateDB = true, forceFresh = false, showLoading = false) => {
-    // Prevent multiple simultaneous calls (even with forceFresh to avoid duplicate API calls)
-    if (isFetchingLocationRef.current) {
+    // If forceFresh is true, allow the request even if another is in progress (user explicitly requested)
+    if (isFetchingLocationRef.current && !forceFresh) {
       if (process.env.NODE_ENV === 'development') {
         console.log("⏸️ Location fetch already in progress, skipping duplicate call", { forceFresh })
       }
@@ -1442,7 +1452,12 @@ export function useLocation() {
       return new Promise((resolve, reject) => {
         const isRetry = retryCount > 0
         console.log(`📍 Requesting location${isRetry ? ' (retry with lower accuracy)' : ' (high accuracy)'}...`)
-        console.log(`📍 Force fresh: ${forceFresh ? 'YES' : 'NO'}, maximumAge: ${options.maximumAge || (forceFresh ? 0 : 60000)}`)
+        console.log(`📍 Force fresh: ${forceFresh ? 'YES' : 'NO'}, updateDB: ${updateDB}, showLoading: ${showLoading}`)
+        console.log(`📍 Options:`, {
+          enableHighAccuracy: options.enableHighAccuracy,
+          timeout: options.timeout,
+          maximumAge: options.maximumAge
+        })
 
         // Use cached location if available and not too old (faster response)
         // If forceFresh is true, don't use cache (maximumAge: 0)
@@ -1450,19 +1465,25 @@ export function useLocation() {
           ...options,
           maximumAge: forceFresh ? 0 : (options.maximumAge || 60000), // If forceFresh, get fresh location
         }
+        
+        console.log(`📍 Final geolocation options:`, cachedOptions)
 
+        console.log(`🔵 Calling navigator.geolocation.getCurrentPosition with options:`, cachedOptions)
+        
         navigator.geolocation.getCurrentPosition(
           async (pos) => {
             try {
               const { latitude, longitude, accuracy } = pos.coords
               const timestamp = pos.timestamp || Date.now()
 
-              console.log(`✅ Got location${isRetry ? ' (lower accuracy)' : ' (high accuracy)'}:`, {
+              console.log(`✅✅✅ Got location${isRetry ? ' (lower accuracy)' : ' (high accuracy)'}:`, {
                 latitude,
                 longitude,
                 accuracy: `${accuracy}m`,
                 timestamp: new Date(timestamp).toISOString(),
-                coordinates: `${latitude.toFixed(8)}, ${longitude.toFixed(8)}`
+                coordinates: `${latitude.toFixed(8)}, ${longitude.toFixed(8)}`,
+                forceFresh,
+                updateDB
               })
 
               // Validate coordinates are in India range BEFORE attempting geocoding
@@ -1619,7 +1640,7 @@ export function useLocation() {
                 console.error("❌ Last resort geocoding also failed:", lastErr.message)
               }
 
-              // If all geocoding fails, use placeholder but don't save
+              // If all geocoding fails, use placeholder but STILL SAVE COORDINATES
               const fallbackLoc = {
                 latitude,
                 longitude,
@@ -1629,18 +1650,46 @@ export function useLocation() {
                 address: "Select location", // Don't show coordinates
                 formattedAddress: "Select location", // Don't show coordinates
               }
-              // Don't save placeholder values to localStorage
-              // Only set in state for display
-              console.warn("⚠️ Skipping save - all geocoding failed, using placeholder")
+              // CRITICAL: Save coordinates even if address is placeholder - coordinates are still useful
+              console.warn("⚠️ All geocoding failed, but saving coordinates to database and Firebase:", {
+                coordinates: `${latitude}, ${longitude}`
+              })
+              localStorage.setItem("userLocation", JSON.stringify(fallbackLoc))
               setLocation(fallbackLoc)
               setPermissionGranted(true)
               if (showLoading) setLoading(false)
-              // Don't try to update DB with placeholder
+              // CRITICAL: Save coordinates to database and Firebase even if address is placeholder
+              if (updateDB) {
+                await updateLocationInDB(fallbackLoc).catch(err => {
+                  console.error("❌ Failed to update location in DB (fallback):", err)
+                })
+              }
               isFetchingLocationRef.current = false // Reset flag on fallback
               resolve(fallbackLoc)
             }
           },
           async (err) => {
+            // Check if error is due to Google's network location provider 403
+            const isGoogle403Error = err.message && (
+              err.message.includes('403') || 
+              err.message.includes('googleapis') ||
+              err.message.includes('Network location provider')
+            )
+
+            if (isGoogle403Error) {
+              console.warn("⚠️ Google network location provider returned 403 - trying GPS-only mode...")
+              // Try again with high accuracy only (GPS, skip network-based location)
+              if (retryCount === 0) {
+                console.warn("🔄 Retrying with GPS-only (high accuracy, longer timeout)...")
+                getPositionWithRetry({
+                  enableHighAccuracy: true, // Force GPS only
+                  timeout: 15000,  // Longer timeout for GPS
+                  maximumAge: 0 // Don't use cached network location
+                }, 1).then(resolve).catch(reject)
+                return
+              }
+            }
+
             // If timeout and we haven't retried yet, try with lower accuracy
             if (err.code === 3 && retryCount === 0 && options.enableHighAccuracy) {
               console.warn("⏱️ High accuracy timeout, retrying with lower accuracy...")
@@ -1656,6 +1705,8 @@ export function useLocation() {
             // Don't log timeout errors as errors - they're expected in some cases
             if (err.code === 3) {
               console.warn("⏱️ Geolocation timeout (code 3) - using fallback location")
+            } else if (isGoogle403Error) {
+              console.warn("⚠️ Google network location provider 403 - using fallback location")
             } else {
               console.error("❌ Geolocation error:", err.code, err.message)
             }
@@ -1692,19 +1743,14 @@ export function useLocation() {
                 isFetchingLocationRef.current = false // Reset flag on fallback success
                 resolve(fallback)
               } else {
-                // No fallback available - set a default location so UI doesn't hang
-                console.warn("⚠️ No fallback location available, setting default")
-                const defaultLocation = {
-                  city: "Select location",
-                  address: "Select location",
-                  formattedAddress: "Select location"
-                }
-                setLocation(defaultLocation)
+                // No fallback available - reject the promise so caller can handle it
+                console.warn("⚠️ No fallback location available and geolocation failed")
                 setError(err.code === 3 ? "Location request timed out. Please try again." : err.message)
                 setPermissionGranted(false)
                 if (showLoading) setLoading(false)
-                isFetchingLocationRef.current = false // Reset flag on default location
-                resolve(defaultLocation) // Always resolve with something
+                isFetchingLocationRef.current = false // Reset flag on error
+                // Reject instead of resolving with invalid location
+                reject(new Error(err.code === 3 ? "Location request timed out. Please try again." : err.message))
               }
             } catch (fallbackErr) {
               console.warn("⚠️ Fallback retrieval failed:", fallbackErr)
@@ -1713,7 +1759,8 @@ export function useLocation() {
               setPermissionGranted(false)
               if (showLoading) setLoading(false)
               isFetchingLocationRef.current = false // Reset flag on error
-              resolve(null)
+              // Reject instead of resolving with null - caller should handle the error
+              reject(new Error(err.code === 3 ? "Location request timed out. Please try again." : err.message))
             }
           },
           options
@@ -1724,11 +1771,16 @@ export function useLocation() {
       // Try with high accuracy first
       // If forceFresh is true, don't use cached location (maximumAge: 0)
       // Otherwise, allow cached location for faster response
-      return getPositionWithRetry({
+      const locationResult = await getPositionWithRetry({
         enableHighAccuracy: true,  // Use GPS for exact location (highest accuracy)
         timeout: 15000,            // 15 seconds timeout (gives GPS more time to get accurate fix)
         maximumAge: forceFresh ? 0 : 60000  // If forceFresh, get fresh location. Otherwise allow 1 minute cache
       })
+      
+      // Ensure flag is reset after getting location
+      isFetchingLocationRef.current = false
+      
+      return locationResult
     } catch (err) {
       // Handle any unexpected errors
       console.error("❌ Unexpected error in getLocation:", err)
@@ -2285,19 +2337,35 @@ export function useLocation() {
   }, [])
 
   const requestLocation = async () => {
-    console.log("📍📍📍 User requested location update - clearing cache and fetching fresh")
+    console.log("📍📍📍 User requested location update - fetching fresh")
+    console.log("📍📍📍 Resetting isFetchingLocationRef to allow fresh request")
+    
+    // Reset the fetching flag to allow new request even if one was in progress
+    isFetchingLocationRef.current = false
+    
     setLoading(true)
     setError(null)
 
     try {
-      // Clear cached location to force fresh fetch
-      localStorage.removeItem("userLocation")
-      console.log("🗑️ Cleared cached location from localStorage")
+      // Don't clear localStorage yet - keep it as fallback if geolocation fails
+      // We'll update it after successfully getting new location
+      console.log("📍 Keeping cached location as fallback until new location is confirmed")
 
       // Show loading, so pass showLoading = true
       // forceFresh = true, updateDB = true, showLoading = true
       // This ensures we get fresh GPS coordinates and reverse geocode with Google Maps
+      console.log("📍📍📍 Calling getLocation with forceFresh=true, updateDB=true, showLoading=true")
       const location = await getLocation(true, true, true)
+
+      if (!location) {
+        console.error("❌❌❌ getLocation returned null/undefined")
+        throw new Error("Failed to get location. Please check your GPS settings and try again.")
+      }
+
+      if (!location.latitude || !location.longitude) {
+        console.error("❌❌❌ Location missing coordinates:", location)
+        throw new Error("Invalid location data received. Please try again.")
+      }
 
       console.log("✅✅✅ Fresh location requested successfully:", location)
       console.log("✅✅✅ Complete Location details:", {
@@ -2339,6 +2407,24 @@ export function useLocation() {
     } catch (err) {
       console.error("❌ Failed to request location:", err)
       setError(err.message || "Failed to get location")
+      
+      // Try to use cached location as fallback
+      const cached = localStorage.getItem("userLocation")
+      if (cached) {
+        try {
+          const cachedLocation = JSON.parse(cached)
+          if (cachedLocation?.latitude && cachedLocation?.longitude) {
+            console.log("📍 Using cached location as fallback after error:", cachedLocation)
+            setLocation(cachedLocation)
+            // Don't throw error if we have cached location
+            setLoading(false)
+            return cachedLocation
+          }
+        } catch (e) {
+          console.error("❌ Failed to parse cached location:", e)
+        }
+      }
+      
       // Still try to start watching in case it works
       startWatchingLocation()
       throw err

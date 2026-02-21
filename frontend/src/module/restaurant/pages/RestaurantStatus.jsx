@@ -109,14 +109,14 @@ export default function RestaurantStatus() {
         console.error("Error loading outlet timings:", error)
       }
 
-      // Check if current day is closed in outlet timings
+      // Check if current day is closed in outlet timings (for display only, not for blocking)
       if (outletTimingsData && outletTimingsData[currentDayFull]) {
         const dayData = outletTimingsData[currentDayFull]
         if (dayData.isOpen === false) {
-          // Day is closed in outlet timings
+          // Day is closed in outlet timings (for info only, don't block manual control)
           setIsDayClosed(true)
           setIsWithinTimings(false)
-          setShowOutletClosedDialog(true)
+          // Don't automatically show dialog - let owner control manually
           return
         }
         
@@ -272,20 +272,10 @@ export default function RestaurantStatus() {
     loadDeliveryStatus()
   }, [])
 
-  // Handle delivery status change
+  // Handle delivery status change - FULL MANUAL CONTROL (no automatic restrictions)
   const handleDeliveryStatusChange = async (checked) => {
-    // If day is closed in outlet timings, don't allow turning on
-    if (checked && isDayClosed) {
-      setShowOutletClosedDialog(true)
-      return
-    }
-    
-    // If outside scheduled delivery timings, show popup
-    if (checked && isWithinTimings === false && !isDayClosed) {
-      setShowOutsideTimingsDialog(true)
-      return
-    }
-    
+    // Restaurant owner has full manual control - no automatic restrictions
+    // They can turn delivery ON/OFF anytime regardless of timings
     setDeliveryStatus(checked)
     try {
       // Save to localStorage

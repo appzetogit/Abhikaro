@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+        }
+        #log {
+            background: #f5f5f5;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>Location Fetch Test</h1>
+    <button onclick="testGeolocation()">Test Basic Geolocation</button>
+    <button onclick="testWithOptions()">Test With Options (forceFresh)</button>
+    <button onclick="clearLog()">Clear Log</button>
+    
+    <div id="log"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type;
+            logDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function testGeolocation() {
+            log('🔵 Testing basic navigator.geolocation.getCurrentPosition...', 'info');
+            
+            if (!navigator.geolocation) {
+                log('❌ Geolocation API not supported', 'error');
+                return;
+            }
+
+            log('✅ Geolocation API is available', 'success');
+            
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude, accuracy } = position.coords;
+                    log(`✅ SUCCESS: Got location!`, 'success');
+                    log(`   Latitude: ${latitude}`, 'success');
+                    log(`   Longitude: ${longitude}`, 'success');
+                    log(`   Accuracy: ${accuracy}m`, 'success');
+                    log(`   Timestamp: ${new Date(position.timestamp).toISOString()}`, 'success');
+                },
+                (error) => {
+                    let errorMsg = '';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMsg = 'PERMISSION_DENIED (1): User denied location permission';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMsg = 'POSITION_UNAVAILABLE (2): Location unavailable';
+                            break;
+                        case error.TIMEOUT:
+                            errorMsg = 'TIMEOUT (3): Location request timed out';
+                            break;
+                        default:
+                            errorMsg = `Unknown error (${error.code}): ${error.message}`;
+                    }
+                    log(`❌ ERROR: ${errorMsg}`, 'error');
+                    if (error.message) {
+                        log(`   Message: ${error.message}`, 'error');
+                    }
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 0
+                }
+            );
+        }
+
+        function testWithOptions() {
+            log('🔵 Testing with forceFresh options (maximumAge: 0)...', 'info');
+            
+            if (!navigator.geolocation) {
+                log('❌ Geolocation API not supported', 'error');
+                return;
+            }
+
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0  // Force fresh location
+            };
+
+            log(`   Options: ${JSON.stringify(options, null, 2)}`, 'info');
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude, accuracy } = position.coords;
+                    log(`✅ SUCCESS: Got fresh location!`, 'success');
+                    log(`   Latitude: ${latitude}`, 'success');
+                    log(`   Longitude: ${longitude}`, 'success');
+                    log(`   Accuracy: ${accuracy}m`, 'success');
+                    
+                    // Check if coordinates are in India range
+                    const isInIndiaRange = latitude >= 6.5 && latitude <= 37.1 && 
+                                         longitude >= 68.7 && longitude <= 97.4 && 
+                                         longitude > 0;
+                    if (isInIndiaRange) {
+                        log(`   ✅ Coordinates are in India range`, 'success');
+                    } else {
+                        log(`   ⚠️ Coordinates are OUTSIDE India range`, 'warning');
+                    }
+                },
+                (error) => {
+                    let errorMsg = '';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMsg = 'PERMISSION_DENIED (1): User denied location permission';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMsg = 'POSITION_UNAVAILABLE (2): Location unavailable';
+                            break;
+                        case error.TIMEOUT:
+                            errorMsg = 'TIMEOUT (3): Location request timed out';
+                            break;
+                        default:
+                            errorMsg = `Unknown error (${error.code}): ${error.message}`;
+                    }
+                    log(`❌ ERROR: ${errorMsg}`, 'error');
+                    if (error.message) {
+                        log(`   Message: ${error.message}`, 'error');
+                        if (error.message.includes('403') || error.message.includes('googleapis')) {
+                            log(`   ⚠️ This is a 403 error from Google's network location provider`, 'warning');
+                            log(`   💡 Solution: The code should retry with GPS-only mode`, 'info');
+                        }
+                    }
+                },
+                options
+            );
+        }
+
+        // Check permissions on load
+        window.addEventListener('load', () => {
+            log('🔵 Checking geolocation permissions...', 'info');
+            
+            if (navigator.permissions && navigator.permissions.query) {
+                navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+                    log(`   Permission status: ${result.state}`, 'info');
+                    if (result.state === 'granted') {
+                        log('   ✅ Permission already granted', 'success');
+                    } else if (result.state === 'prompt') {
+                        log('   ⚠️ Permission will be prompted when requested', 'warning');
+                    } else {
+                        log('   ❌ Permission denied', 'error');
+                    }
+                }).catch((err) => {
+                    log(`   ⚠️ Could not check permissions: ${err.message}`, 'warning');
+                });
+            } else {
+                log('   ⚠️ Permissions API not available', 'warning');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -737,6 +737,8 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
               errorMessage = "Location request timed out. Please check your GPS settings and try again."
             } else if (raceError.message.includes("unavailable")) {
               errorMessage = "Location information is unavailable. Please check your device settings."
+            } else if (raceError.message.includes("403") || raceError.message.includes("googleapis")) {
+              errorMessage = "Location service temporarily unavailable. Using GPS instead. Please wait..."
             }
 
             toast.error(errorMessage, {
@@ -754,6 +756,8 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             errorMessage = "Location request timed out. Please check your GPS settings and try again."
           } else if (raceError.message.includes("unavailable")) {
             errorMessage = "Location information is unavailable. Please check your device settings."
+          } else if (raceError.message.includes("403") || raceError.message.includes("googleapis")) {
+            errorMessage = "Location service temporarily unavailable. Using GPS instead. Please wait..."
           }
 
           toast.error(errorMessage, {
@@ -806,7 +810,17 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           locationData.formattedAddress.split(',').length >= 4
       })
 
-      // Save location to backend with ALL fields
+      // CRITICAL: Save location to localStorage immediately so it's available right away
+      if (locationData?.latitude && locationData?.longitude) {
+        try {
+          localStorage.setItem("userLocation", JSON.stringify(locationData))
+          console.log("✅ Location saved to localStorage immediately")
+        } catch (storageError) {
+          console.error("Error saving location to localStorage:", storageError)
+        }
+      }
+
+      // Save location to backend with ALL fields (backend also saves to Firebase)
       if (locationData?.latitude && locationData?.longitude) {
         try {
           await userAPI.updateLocation({
@@ -822,13 +836,42 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             street: locationData.street,
             streetNumber: locationData.streetNumber
           })
-          console.log("✅ Location saved to backend successfully")
+          console.log("✅ Location saved to backend and Firebase successfully")
         } catch (backendError) {
           // Only log non-network errors (network errors are handled by axios interceptor)
           if (backendError.code !== 'ERR_NETWORK' && backendError.message !== 'Network Error') {
             console.error("Error saving location to backend:", backendError)
           }
           // Don't fail the whole operation if backend save fails
+        }
+
+        // Also save directly to Firebase as backup (even if backend API fails)
+        try {
+          const userToken = localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken')
+          if (userToken) {
+            try {
+              const payload = JSON.parse(atob(userToken.split('.')[1]))
+              const userId = payload._id || payload.id || payload.userId
+              
+              if (userId) {
+                const { updateUserLocationInFirebase } = await import('@/lib/firebaseRealtime.js')
+                await updateUserLocationInFirebase(userId, locationData.latitude, locationData.longitude, {
+                  address: locationData.address || locationData.formattedAddress || "",
+                  city: locationData.city || "",
+                  state: locationData.state || "",
+                  area: locationData.area || "",
+                  formattedAddress: locationData.formattedAddress || locationData.address || "",
+                  postalCode: locationData.postalCode,
+                  accuracy: locationData.accuracy
+                })
+                console.log("✅ Location also saved directly to Firebase as backup")
+              }
+            } catch (tokenErr) {
+              console.warn("⚠️ Could not extract userId from token for Firebase:", tokenErr)
+            }
+          }
+        } catch (firebaseErr) {
+          console.warn("⚠️ Failed to save to Firebase directly (backend save may have succeeded):", firebaseErr)
         }
       }
 
@@ -881,14 +924,12 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       const addressPreview = locationData?.formattedAddress || locationData?.address || "Location updated"
       toast.success(`Location updated: ${addressPreview.split(',').slice(0, 2).join(', ')}`, {
         id: "location-request",
-        duration: 2000,
+        duration: 1500,
       })
 
-      // Wait 2 seconds then redirect to home page
-      setTimeout(() => {
-        onClose()
-        navigate("/")
-      }, 2000)
+      // Close overlay and navigate immediately so user sees the location updated
+      onClose()
+      navigate("/")
     } catch (error) {
       // Handle permission denied or other errors
       if (error.code === 1 || error.message?.includes("denied") || error.message?.includes("permission")) {
@@ -906,6 +947,13 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           id: "location-request",
           duration: 3000,
         })
+      } else if (error.message?.includes("403") || error.message?.includes("googleapis")) {
+        // 403 error from Google's network location provider - try GPS only
+        toast.info("Location service issue detected. Trying GPS-only mode...", {
+          id: "location-request",
+          duration: 3000,
+        })
+        // The hook will automatically retry with GPS-only mode
       } else {
         toast.error("Failed to get location. Please try again.", {
           id: "location-request",

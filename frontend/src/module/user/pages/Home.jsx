@@ -797,7 +797,7 @@ export default function Home() {
             restaurantId: restaurant.restaurantId,
             location: restaurant.location, // Store location for distance recalculation
             isActive: restaurant.isActive !== false, // Default to true if not specified
-            isAcceptingOrders: restaurant.isAcceptingOrders !== false, // Default to true if not specified
+            isAcceptingOrders: restaurant.isAcceptingOrders === false || restaurant.isAcceptingOrders === 0 ? false : (restaurant.isAcceptingOrders !== undefined ? restaurant.isAcceptingOrders : true), // Preserve false/0, default to true if undefined
           }
         })
 
@@ -805,8 +805,8 @@ export default function Home() {
         if (userLat && userLng) {
           transformedRestaurants.sort((a, b) => {
             // Available restaurants first, then unavailable
-            const aAvailable = a.isActive && a.isAcceptingOrders
-            const bAvailable = b.isActive && b.isAcceptingOrders
+            const aAvailable = a.isActive && (a.isAcceptingOrders !== false && a.isAcceptingOrders !== 0)
+            const bAvailable = b.isActive && (b.isAcceptingOrders !== false && b.isAcceptingOrders !== 0)
 
             if (aAvailable !== bAvailable) {
               return aAvailable ? -1 : 1 // Available restaurants come first
@@ -981,8 +981,8 @@ export default function Home() {
       // This ensures all restaurants in zone are shown, but nearby ones appear first
       filtered.sort((a, b) => {
         // Available restaurants first, then unavailable
-        const aAvailable = a.isActive && a.isAcceptingOrders
-        const bAvailable = b.isActive && b.isAcceptingOrders
+        const aAvailable = a.isActive && (a.isAcceptingOrders !== false && a.isAcceptingOrders !== 0)
+        const bAvailable = b.isActive && (b.isAcceptingOrders !== false && b.isAcceptingOrders !== 0)
 
         if (aAvailable !== bAvailable) {
           return aAvailable ? -1 : 1 // Available restaurants come first
@@ -1811,7 +1811,7 @@ export default function Home() {
                   >
                     <div className="h-full group">
                       <Link to={`/user/restaurants/${restaurantSlug}`} className="h-full flex">
-                        <Card className={`overflow-hidden gap-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] border-background transition-all duration-500 py-0 rounded-2xl sm:rounded-3xl flex flex-col h-full w-full relative ${isOutOfService ? 'grayscale opacity-75' : ''
+                        <Card className={`overflow-hidden gap-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] border-background transition-all duration-500 py-0 rounded-2xl sm:rounded-3xl flex flex-col h-full w-full relative ${isOutOfService || restaurant.isAcceptingOrders === false || restaurant.isAcceptingOrders === 0 ? 'grayscale-[100%] opacity-80' : ''
                           }`}>
                           {/* Image Section with Carousel */}
                           <div className="relative">
@@ -1819,6 +1819,17 @@ export default function Home() {
                               restaurant={restaurant}
                               priority={index < 3}
                             />
+
+                            {/* CURRENTLY CLOSED Banner - Center Overlay (when restaurant is offline) */}
+                            {(restaurant.isAcceptingOrders === false || restaurant.isAcceptingOrders === 0) && (
+                              <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                                <div className="bg-gray-800/95 backdrop-blur-sm text-white px-4 py-2 md:px-6 md:py-3 rounded-lg transform -rotate-12 shadow-2xl border-2 border-gray-700">
+                                  <span className="text-sm md:text-base lg:text-lg font-bold tracking-wide">
+                                    CURRENTLY CLOSED
+                                  </span>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Featured Dish Badge - Top Left */}
                             <div className="absolute top-3 left-3 md:top-4 md:left-4 flex items-center z-10 transform transition-transform duration-300 group-hover:scale-105 group-hover:-translate-y-0.5">

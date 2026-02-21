@@ -141,8 +141,9 @@ export const getRestaurants = async (req, res) => {
       }
     }
     
-    // Build base query
-    const query = { isActive: true, isAcceptingOrders: true };
+    // Build base query - Show all active restaurants (including offline ones)
+    // Offline restaurants will be displayed with "CURRENTLY CLOSED" tag on frontend
+    const query = { isActive: true };
     
     // CRITICAL: Use MongoDB geospatial query if user coordinates provided
     // This replaces Google Places API Nearby Search

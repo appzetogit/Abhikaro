@@ -227,22 +227,39 @@ export default function ZoneSetup() {
       const initialLocation = { lat: 20.5937, lng: 78.9629 }
 
       // Create map
-      const map = new google.maps.Map(mapRef.current, {
+      // Check if MapTypeControlStyle is available, otherwise use default
+      const mapTypeControlStyle = google.maps.MapTypeControlStyle?.HORIZONTAL_BAR || 
+                                  google.maps.MapTypeControlStyle?.DEFAULT ||
+                                  undefined
+
+      const mapOptions = {
         center: initialLocation,
         zoom: 5,
         mapTypeControl: true,
-        mapTypeControlOptions: {
-          style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
-          position: google.maps.ControlPosition.TOP_RIGHT,
-          mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
-        },
         zoomControl: true,
         streetViewControl: false,
         fullscreenControl: true,
         scrollwheel: true,
         gestureHandling: 'greedy',
         disableDoubleClickZoom: false,
-      })
+      }
+
+      // Only add mapTypeControlOptions if style is available
+      if (mapTypeControlStyle) {
+        mapOptions.mapTypeControlOptions = {
+          style: mapTypeControlStyle,
+          position: google.maps.ControlPosition.TOP_RIGHT,
+          mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        }
+      } else {
+        // Fallback: use default mapTypeControlOptions without style
+        mapOptions.mapTypeControlOptions = {
+          position: google.maps.ControlPosition.TOP_RIGHT,
+          mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        }
+      }
+
+      const map = new google.maps.Map(mapRef.current, mapOptions)
 
       mapInstanceRef.current = map
       console.log("✅ Map initialized successfully")

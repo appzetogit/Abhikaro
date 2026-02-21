@@ -140,14 +140,9 @@ export default function DeliverySettings() {
   }
 
   const handleDeliveryStatusChange = (checked) => {
-    // If turning ON and outside outlet timings, show warning
-    if (checked && !canEnableDelivery) {
-      setPendingStatus(checked)
-      setShowConfirmDialog(true)
-      return
-    }
-
-    // If turning OFF, show confirmation
+    // Restaurant owner has full manual control - no automatic restrictions
+    // They can turn delivery ON/OFF anytime regardless of timings
+    // Only show confirmation when turning OFF (optional)
     if (!checked && deliveryStatus) {
       setPendingStatus(checked)
       setShowConfirmDialog(true)
