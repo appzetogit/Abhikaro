@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useLocation } from "../hooks/useLocation"
 import { useZone } from "../hooks/useZone"
-import appzetoFoodLogo from "@/assets/appzetologo.png"
 import offerImage from "@/assets/offerimage.png"
 import api, { restaurantAPI } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
