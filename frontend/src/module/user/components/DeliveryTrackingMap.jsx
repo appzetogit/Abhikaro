@@ -5,6 +5,7 @@ import bikeLogo from '@/assets/bikelogo.png';
 import { RouteBasedAnimationController, updateMarkerIconRotation } from '@/module/user/utils/routeBasedAnimation';
 import { extractPolylineFromDirections, findNearestPointOnPolyline } from '@/module/delivery/utils/liveTrackingPolyline';
 import { calculateBearingFromLocations } from '@/module/delivery/utils/bearingCalculation';
+import { snapToPolyline, detectOffRoute, PolylineAnimationController } from '@/module/delivery/utils/enhancedMapMatching';
 import './DeliveryTrackingMap.css';
 
 // Helper function to calculate Haversine distance
@@ -47,7 +48,10 @@ const DeliveryTrackingMap = ({
   const routePolylineRef = useRef(null);
   const routePolylinePointsRef = useRef(null); // Store decoded polyline points for route-based animation
   const animationControllerRef = useRef(null); // Route-based animation controller
+  const polylineAnimationControllerRef = useRef(null); // Enhanced polyline animation controller
   const previousLocationRef = useRef(null); // Store previous location for bearing calculation
+  const lastSnappedPositionRef = useRef(null); // Last snapped position for forward-only movement
+  const isReRoutingRef = useRef(false); // Flag to prevent multiple simultaneous re-routes
   const lastRouteUpdateRef = useRef(null);
   const userHasInteractedRef = useRef(false);
   const isProgrammaticChangeRef = useRef(false);
