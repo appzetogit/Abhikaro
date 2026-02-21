@@ -1089,8 +1089,8 @@ export default function RestaurantOnboarding() {
             <Label className="text-xs text-gray-700">Phone number*</Label>
             <Input
               value={step1.ownerPhone || ""}
-              readOnly
-              className="mt-1 bg-gray-100 text-sm text-black placeholder-black cursor-not-allowed"
+              onChange={(e) => setStep1({ ...step1, ownerPhone: e.target.value })}
+              className="mt-1 bg-white text-sm text-black placeholder-black"
               placeholder="+91 98XXXXXX"
             />
           </div>
@@ -1103,8 +1103,8 @@ export default function RestaurantOnboarding() {
           <Label className="text-xs text-gray-700">Primary contact number*</Label>
           <Input
             value={step1.primaryContactNumber || ""}
-            readOnly
-            className="mt-1 bg-gray-100 text-sm text-black placeholder-black cursor-not-allowed"
+            onChange={(e) => setStep1({ ...step1, primaryContactNumber: e.target.value })}
+            className="mt-1 bg-white text-sm text-black placeholder-black"
             placeholder="Restaurant's primary contact number"
           />
           <p className="text-[11px] text-gray-500 mt-1">

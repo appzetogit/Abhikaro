@@ -175,16 +175,21 @@ export default function ZoneSetup() {
         return
       }
 
-      // If Google Maps is already loaded, use it directly
-      if (window.google && window.google.maps) {
+      // Use window.google only if the full Maps API is ready (Map must be a constructor)
+      const googleReady = window.google?.maps && typeof window.google.maps.Map === "function"
+      if (googleReady) {
         console.log("✅ Google Maps already loaded from main.jsx, initializing map...")
-        initializeMap(window.google)
-        return
+        try {
+          initializeMap(window.google)
+          return
+        } catch (err) {
+          console.warn("⚠️ initializeMap with window.google failed, falling back to Loader:", err?.message)
+        }
       }
 
-      // If Google Maps is not loaded yet and we have an API key, use Loader as fallback
+      // Load with Loader if not ready or fallback after error
       if (apiKey) {
-        console.log("📍 Google Maps not loaded from main.jsx, loading with Loader...")
+        console.log("📍 Loading Google Maps with Loader...")
         const loader = new Loader({
           apiKey: apiKey,
           version: "weekly"
@@ -244,18 +249,21 @@ export default function ZoneSetup() {
         disableDoubleClickZoom: false,
       }
 
-      // Only add mapTypeControlOptions if style is available
-      if (mapTypeControlStyle) {
-        mapOptions.mapTypeControlOptions = {
-          style: mapTypeControlStyle,
-          position: google.maps.ControlPosition.TOP_RIGHT,
-          mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
-        }
-      } else {
-        // Fallback: use default mapTypeControlOptions without style
-        mapOptions.mapTypeControlOptions = {
-          position: google.maps.ControlPosition.TOP_RIGHT,
-          mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+      // Only add mapTypeControlOptions when ControlPosition is available (may be undefined if script not fully loaded)
+      const ControlPosition = google.maps?.ControlPosition
+      const MapTypeId = google.maps?.MapTypeId
+      if (ControlPosition && MapTypeId) {
+        if (mapTypeControlStyle) {
+          mapOptions.mapTypeControlOptions = {
+            style: mapTypeControlStyle,
+            position: ControlPosition.TOP_RIGHT,
+            mapTypeIds: [MapTypeId.ROADMAP, MapTypeId.SATELLITE]
+          }
+        } else {
+          mapOptions.mapTypeControlOptions = {
+            position: ControlPosition.TOP_RIGHT,
+            mapTypeIds: [MapTypeId.ROADMAP, MapTypeId.SATELLITE]
+          }
         }
       }
 
