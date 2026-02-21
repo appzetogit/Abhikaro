@@ -1526,14 +1526,17 @@ export const adminAPI = {
   assignOrderToDeliveryPartner: (orderId, deliveryPartnerId) => {
     return apiClient.post(
       API_ENDPOINTS.ADMIN.ORDER_ASSIGN_DELIVERY_PARTNER.replace(":id", orderId),
-      { deliveryPartnerId }
+      { deliveryPartnerId },
     );
   },
 
   // Get delivery partner wallet info
   getDeliveryPartnerWallet: (deliveryPartnerId) => {
     return apiClient.get(
-      API_ENDPOINTS.ADMIN.DELIVERY_PARTNER_WALLET.replace(":id", deliveryPartnerId)
+      API_ENDPOINTS.ADMIN.DELIVERY_PARTNER_WALLET.replace(
+        ":id",
+        deliveryPartnerId,
+      ),
     );
   },
 
@@ -1571,7 +1574,10 @@ export const adminAPI = {
   approveOfflinePayment: (orderId) => {
     if (!orderId) return Promise.reject(new Error("Order ID is required"));
     return apiClient.put(
-      API_ENDPOINTS.ADMIN.ORDERS_APPROVE_OFFLINE_PAYMENT.replace(":orderId", orderId),
+      API_ENDPOINTS.ADMIN.ORDERS_APPROVE_OFFLINE_PAYMENT.replace(
+        ":orderId",
+        orderId,
+      ),
     );
   },
 
@@ -2077,9 +2083,12 @@ export const orderAPI = {
 
   // Update delivery instructions
   updateDeliveryInstructions: (orderId, note) => {
-    return apiClient.patch(API_ENDPOINTS.ORDER.UPDATE_NOTE.replace(":id", orderId), {
-      note,
-    });
+    return apiClient.patch(
+      API_ENDPOINTS.ORDER.UPDATE_NOTE.replace(":id", orderId),
+      {
+        note,
+      },
+    );
   },
 };
 

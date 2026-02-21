@@ -36,7 +36,8 @@ export default function BottomPopup({
   showBackdrop = true, // Show backdrop overlay
   backdropBlocksInteraction = true, // Whether backdrop blocks pointer events
   preventScroll = false, // Prevent content scrolling
-  allowSwipeDown = true // Allow swipe down to close
+  allowSwipeDown = true, // Allow swipe down to close
+  slideDownOffset = 0 // Optional: translate popup down by pixels (e.g. when chat overlay opens)
 }) {
   const popupRef = useRef(null)
   const handleRef = useRef(null)
@@ -264,7 +265,7 @@ export default function BottomPopup({
             ref={popupRef}
             initial={{ y: "100%" }}
             animate={{ 
-              y: isDragging ? dragY : 0,
+              y: isDragging ? dragY : (slideDownOffset || 0),
               transition: isDragging ? { duration: 0 } : { 
                 type: "spring", 
                 damping: 30, 

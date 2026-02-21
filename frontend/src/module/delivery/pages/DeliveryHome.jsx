@@ -8,7 +8,6 @@ import {
   HelpCircle,
   Calendar,
   Clock,
-  Lock,
   ArrowRight,
   ChevronUp,
   ChevronDown,
@@ -29,6 +28,7 @@ import {
   Camera,
 } from "lucide-react"
 import BottomPopup from "../components/BottomPopup"
+import OrderChat from "./OrderChat"
 import FeedNavbar from "../components/FeedNavbar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -638,6 +638,7 @@ export default function DeliveryHome() {
   const [showOrderDeliveredAnimation, setShowOrderDeliveredAnimation] = useState(false)
   const [showCustomerReviewPopup, setShowCustomerReviewPopup] = useState(false)
   const [showPaymentPage, setShowPaymentPage] = useState(false)
+  const [showChatOverlay, setShowChatOverlay] = useState(false)
   const [customerRating, setCustomerRating] = useState(0)
   const [customerReviewText, setCustomerReviewText] = useState("")
   const [orderEarnings, setOrderEarnings] = useState(0) // Store earnings from completed order
@@ -9468,8 +9469,7 @@ export default function DeliveryHome() {
                       // Clear cache and retry
                       const { clearGoogleMapsApiKeyCache } = await import('@/lib/utils/googleMapsApiKey.js');
                       clearGoogleMapsApiKeyCache();
-                      // Force page reload to retry map initialization
-                      window.location.reload();
+                      setMapInitRetry((r) => r + 1);
                     }}
                     className="w-full px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
                   >
@@ -9881,39 +9881,6 @@ export default function DeliveryHome() {
                   <div className="text-white/80 text-sm">Refer your friends now</div>
                 </div>
               </motion.div>
-
-              {/* Unlock Offer Card */}
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.1 }}
-                className="w-full rounded-xl p-6 shadow-lg bg-black text-white"
-              >
-                <div className="flex items-center text-center justify-center gap-2 mb-2">
-                  <div className="text-4xl font-bold text-center">₹100</div>
-                  <Lock className="w-5 h-5 text-white" />
-                </div>
-                <p className="text-white/90 text-center text-sm mb-4">Complete 1 order to unlock ₹100</p>
-                <div className="flex items-center text-center justify-center gap-2 text-white/70 text-xs mb-4">
-                  <Clock className="w-4 h-4" />
-                  <span className="text-center">Valid till 10 December 2025</span>
-                </div>
-                <button
-                  onClick={() => {
-                    if (isOnline) {
-                      goOffline()
-                    } else {
-                      // Always show the popup when offline (same as navbar behavior)
-                      setShowBookGigsPopup(true)
-                    }
-                  }}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                >
-                  <span>Go online</span>
-                  <ArrowRight className="w-5 h-5" />
-                </button>
-              </motion.div>
-
 
               {/* Earnings Guarantee Card */}
               <motion.div
@@ -11241,78 +11208,28 @@ export default function DeliveryHome() {
         </div>
       </BottomPopup>
 
-      {/* Start Navigation Button Card - Show when order is out_for_delivery */}
-      {selectedRestaurant &&
-        (selectedRestaurant.orderStatus === 'out_for_delivery' ||
-          selectedRestaurant.deliveryPhase === 'en_route_to_delivery') &&
-        !showReachedDropPopup &&
-        !showOrderDeliveredAnimation &&
-        !showCustomerReviewPopup &&
-        !showPaymentPage && (
-          <div className="fixed bottom-24 left-0 right-0 px-4 z-50">
+      {/* Chat overlay - full screen over current view, no route change */}
+      <AnimatePresence>
+        {showChatOverlay && (() => {
+          const orderIdForChat = selectedRestaurant?.id || selectedRestaurant?.orderId || selectedRestaurant?._id;
+          if (!orderIdForChat) return null;
+          return (
             <motion.div
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="bg-white rounded-2xl shadow-2xl p-5 border border-gray-100"
+              key="chat-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[200] bg-white flex flex-col"
             >
-              {/* Customer Info */}
-              <div className="mb-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-teal-600"
-                    >
-                      <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-semibold text-gray-900">
-                      Head to Customer Location
-                    </h3>
-                    <p className="text-sm text-gray-600 mt-0.5">
-                      {selectedRestaurant?.customerName || 'Customer'}
-                    </p>
-                  </div>
-                </div>
-                {selectedRestaurant?.customerAddress && (
-                  <p className="text-xs text-gray-500 ml-13 truncate">
-                    {selectedRestaurant.customerAddress}
-                  </p>
-                )}
-              </div>
-
-              {/* Start Navigation Button */}
-              <button
-                onClick={handleStartNavigation}
-                className="w-full bg-[#4285F4] hover:bg-[#357ae8] text-white font-bold py-4 px-6 rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center gap-2 active:scale-95"
-              >
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
-                </svg>
-                <span>START NAVIGATION</span>
-              </button>
-
-              <p className="text-center text-xs text-gray-500 mt-3">
-                Opens Google Maps in Bike Mode 🏍️
-              </p>
+              <OrderChat
+                orderId={orderIdForChat}
+                onClose={() => setShowChatOverlay(false)}
+              />
             </motion.div>
-          </div>
-        )}
+          );
+        })()}
+      </AnimatePresence>
 
       {/* Reached Drop Popup - shown instantly after Order Picked Up confirmation */}
       <BottomPopup
@@ -11324,6 +11241,7 @@ export default function DeliveryHome() {
         showHandle={true}
         showBackdrop={false}
         backdropBlocksInteraction={false}
+        slideDownOffset={showChatOverlay ? 60 : 0}
       >
         <div className="">
           {/* Drop Label */}
@@ -11356,12 +11274,7 @@ export default function DeliveryHome() {
               onClick={() => {
                 const orderIdForChat = selectedRestaurant?.id || selectedRestaurant?.orderId || selectedRestaurant?._id;
                 if (orderIdForChat) {
-                  // Save popup state before navigating to chat
-                  if (showReachedDropPopup) {
-                    localStorage.setItem('shouldShowReachedDropPopup', 'true');
-                    localStorage.setItem('reachedDropPopupOrderId', orderIdForChat.toString());
-                  }
-                  navigate(`/delivery/chat/${orderIdForChat}`);
+                  setShowChatOverlay(true);
                 } else {
                   toast.error('Order ID not available');
                 }

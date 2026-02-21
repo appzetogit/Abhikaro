@@ -6,9 +6,10 @@ import { toast } from "sonner";
 import io from "socket.io-client";
 import { API_BASE_URL } from "@/lib/api/config";
 
-export default function OrderChat() {
-  const { orderId } = useParams();
+export default function OrderChat({ orderId: orderIdProp = null, onClose = null }) {
+  const { orderId: paramsOrderId } = useParams();
   const navigate = useNavigate();
+  const orderId = orderIdProp ?? paramsOrderId;
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -241,7 +242,7 @@ export default function OrderChat() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center gap-4">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => (onClose ? onClose() : navigate(-1))}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <ArrowLeft className="w-5 h-5 text-gray-600" />
