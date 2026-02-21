@@ -145,11 +145,21 @@ export default function OrderDetails() {
             time: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
             restaurant: order.restaurantName || 'Restaurant',
             address: order.address?.street || order.address?.city || 'Address not available',
+            additionalAddress: order.address?.additionalDetails || order.address?.additionalAddress || '', // Additional address details
             customer: {
               name: order.userId?.name || 'Customer',
+              phone: order.userId?.phone || order.phone || '',
+              email: order.userId?.email || order.email || '',
               orderCount: 1,
               location: `${order.address?.city || ''}, ${order.address?.state || ''}`.trim(),
               distance: order.distance ?? null
+            },
+            fullAddress: {
+              street: order.address?.street || '',
+              city: order.address?.city || '',
+              state: order.address?.state || '',
+              zipCode: order.address?.zipCode || order.address?.pincode || order.address?.postalCode || '',
+              formattedAddress: order.address?.formattedAddress || ''
             },
             items: order.items?.map(item => ({
               name: item.name,
@@ -244,6 +254,7 @@ export default function OrderDetails() {
 
   const handlePrintReceipt = async () => {
     try {
+      console.log('🖨️ Print button clicked')
       setIsGeneratingPDF(true)
       setToastMessage("Generating receipt...")
       setShowToast(true)
@@ -253,9 +264,11 @@ export default function OrderDetails() {
       
       // Check if orderData exists
       if (!orderData) {
+        console.error('❌ Order data not found')
         throw new Error("Order data not found")
       }
       
+      console.log('📄 Creating PDF with order data:', orderData.id)
       const doc = new jsPDF()
     const pageWidth = doc.internal.pageSize.getWidth()
     let yPosition = 20
@@ -282,12 +295,13 @@ export default function OrderDetails() {
     doc.line(15, yPosition, pageWidth - 15, yPosition)
     yPosition += 10
 
-    // Order Information
-    doc.setFontSize(11)
+    // Order Information - Order ID prominently displayed
+    doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
     doc.text("Order ID:", 15, yPosition)
     doc.setFont("helvetica", "normal")
-    doc.text(orderData.id, 50, yPosition)
+    doc.setFontSize(11)
+    doc.text(orderData.id || 'N/A', 50, yPosition)
     yPosition += 7
 
     doc.setFont("helvetica", "bold")
@@ -323,20 +337,69 @@ export default function OrderDetails() {
     doc.setFont("helvetica", "bold")
     doc.text("Name:", 15, yPosition)
     doc.setFont("helvetica", "normal")
-    doc.text(orderData.customer.name, 50, yPosition)
+    doc.text(orderData.customer.name || 'N/A', 50, yPosition)
     yPosition += 6
 
-    doc.setFont("helvetica", "bold")
-    doc.text("Location:", 15, yPosition)
-    doc.setFont("helvetica", "normal")
-    doc.text(orderData.customer.location, 50, yPosition)
-    yPosition += 6
+    // Phone Number
+    if (orderData.customer.phone) {
+      doc.setFont("helvetica", "bold")
+      doc.text("Phone:", 15, yPosition)
+      doc.setFont("helvetica", "normal")
+      doc.text(orderData.customer.phone, 50, yPosition)
+      yPosition += 6
+    }
 
+    // Email
+    if (orderData.customer.email) {
+      doc.setFont("helvetica", "bold")
+      doc.text("Email:", 15, yPosition)
+      doc.setFont("helvetica", "normal")
+      doc.text(orderData.customer.email, 50, yPosition)
+      yPosition += 6
+    }
+
+    // Full Delivery Address
     doc.setFont("helvetica", "bold")
-    doc.text("Distance:", 15, yPosition)
+    doc.text("Delivery Address:", 15, yPosition)
     doc.setFont("helvetica", "normal")
-    doc.text(orderData.customer.distance, 50, yPosition)
-    yPosition += 10
+    yPosition += 6
+    
+    // Build full address
+    const addressParts = []
+    if (orderData.additionalAddress) {
+      addressParts.push(orderData.additionalAddress)
+    }
+    if (orderData.fullAddress?.street) {
+      addressParts.push(orderData.fullAddress.street)
+    }
+    if (orderData.fullAddress?.city) {
+      addressParts.push(orderData.fullAddress.city)
+    }
+    if (orderData.fullAddress?.state) {
+      addressParts.push(orderData.fullAddress.state)
+    }
+    if (orderData.fullAddress?.zipCode) {
+      addressParts.push(orderData.fullAddress.zipCode)
+    }
+    
+    const fullAddressText = addressParts.length > 0 
+      ? addressParts.join(', ')
+      : orderData.customer.location || 'Address not available'
+    
+    const addressLines = doc.splitTextToSize(fullAddressText, pageWidth - 50)
+    doc.text(addressLines, 50, yPosition)
+    yPosition += addressLines.length * 6
+
+    // Distance
+    if (orderData.customer.distance) {
+      doc.setFont("helvetica", "bold")
+      doc.text("Distance:", 15, yPosition)
+      doc.setFont("helvetica", "normal")
+      doc.text(orderData.customer.distance, 50, yPosition)
+      yPosition += 6
+    }
+    
+    yPosition += 4
 
     // Items Section
     doc.setLineWidth(0.5)
@@ -353,7 +416,7 @@ export default function OrderDetails() {
       `${item.quantity}x`,
       item.name,
       item.type || "-",
-      `₹${item.price}`
+      `Rs. ${item.price}`
     ])
 
     // Use autoTable with the doc instance
@@ -389,11 +452,11 @@ export default function OrderDetails() {
     doc.setFontSize(10)
     doc.setFont("helvetica", "normal")
     doc.text("Item Subtotal:", 15, yPosition)
-    doc.text(`₹${orderData.billing.itemSubtotal}`, pageWidth - 15, yPosition, { align: "right" })
+    doc.text(`Rs. ${orderData.billing.itemSubtotal}`, pageWidth - 15, yPosition, { align: "right" })
     yPosition += 6
 
     doc.text("Taxes:", 15, yPosition)
-    doc.text(`₹${orderData.billing.taxes}`, pageWidth - 15, yPosition, { align: "right" })
+    doc.text(`Rs. ${orderData.billing.taxes}`, pageWidth - 15, yPosition, { align: "right" })
     yPosition += 6
 
     // Dashed line for total
@@ -405,7 +468,7 @@ export default function OrderDetails() {
     doc.setFont("helvetica", "bold")
     doc.setFontSize(11)
     doc.text("Total Bill:", 15, yPosition)
-    doc.text(`₹${orderData.billing.total}`, pageWidth - 15, yPosition, { align: "right" })
+    doc.text(`Rs. ${orderData.billing.total}`, pageWidth - 15, yPosition, { align: "right" })
     yPosition += 6
 
     doc.setFontSize(9)
@@ -484,14 +547,17 @@ export default function OrderDetails() {
     doc.text(`Generated on: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: "center" })
 
     // Save the PDF
-    doc.save(`Order_Receipt_${orderData.id}.pdf`)
+    const fileName = `Order_Receipt_${orderData.id}.pdf`
+    console.log('💾 Saving PDF:', fileName)
+    doc.save(fileName)
     
     // Show success message
+    console.log('✅ PDF saved successfully')
     setToastMessage("Receipt downloaded successfully!")
     setShowToast(true)
     setTimeout(() => setShowToast(false), 2000)
     } catch (error) {
-      console.error("Error generating PDF:", error)
+      console.error("❌ Error generating PDF:", error)
       console.error("Error details:", error.message, error.stack)
       setToastMessage(`Failed: ${error.message || "Unknown error"}`)
       setShowToast(true)  
@@ -584,10 +650,16 @@ export default function OrderDetails() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handlePrintReceipt}
-              disabled={isGeneratingPDF}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                console.log('🖨️ Print button clicked - calling handlePrintReceipt')
+                handlePrintReceipt()
+              }}
+              disabled={isGeneratingPDF || !orderData}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed relative"
               aria-label="Print"
+              title={!orderData ? "Order data not available" : "Download order receipt"}
             >
               {isGeneratingPDF ? (
                 <svg className="animate-spin h-5 w-5 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

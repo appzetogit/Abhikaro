@@ -322,6 +322,30 @@ export default function FoodApproval() {
                     <p className="text-sm text-gray-900">{selectedRequest.description}</p>
                   </div>
                 )}
+                {/* Variants Section */}
+                {(() => {
+                  const variations = selectedRequest.item?.variations || selectedRequest.variations || [];
+                  return variations.length > 0 ? (
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Variants ({variations.length})</label>
+                      <div className="bg-gray-50 rounded-lg p-4 space-y-3 border border-gray-200">
+                        {variations.map((variant, index) => (
+                          <div key={variant.id || index} className="bg-white rounded-md p-3 border border-gray-200">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-gray-900 mb-1">{variant.name || `Variant ${index + 1}`}</p>
+                                <div className="flex gap-4 text-xs text-gray-600">
+                                  <span className="font-medium">Price: <span className="text-gray-900">₹{variant.price || 0}</span></span>
+                                  <span className="font-medium">Stock: <span className="text-gray-900">{variant.stock === 'Unlimited' || variant.stock === 'unlimited' ? 'Unlimited' : variant.stock || 'Unlimited'}</span></span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
                 {(() => {
                   // Collect all images - from images array, single image field, and item.images as fallback
                   const allImages = [];

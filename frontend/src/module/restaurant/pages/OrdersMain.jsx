@@ -802,6 +802,7 @@ export default function OrdersMain() {
               items: latestConfirmedOrder.items || [],
               total: latestConfirmedOrder.pricing?.total || 0,
               customerAddress: latestConfirmedOrder.address,
+              userId: latestConfirmedOrder.userId, // Include full userId object with name, phone, email
               status: latestConfirmedOrder.status,
               createdAt: latestConfirmedOrder.createdAt,
               estimatedDeliveryTime: latestConfirmedOrder.estimatedDeliveryTime || 30,
@@ -1020,14 +1021,119 @@ export default function OrdersMain() {
 
   // Handle PDF download
   const handlePrint = async () => {
-    if (!newOrder) {
-      console.warn('No order data available for PDF generation')
+    console.log('🖨️ Print button clicked in OrdersMain')
+    // Use popupOrder or newOrder for printing
+    let orderForPrint = popupOrder || newOrder
+    if (!orderForPrint) {
+      console.warn('❌ No order data available for PDF generation')
+      alert('No order data available. Please wait for order to load.')
       return
     }
 
+    // If userId is not populated, try to fetch full order details from API
+    const orderId = orderForPrint.orderId || orderForPrint.orderMongoId
+    if (orderId && (!orderForPrint.userId || !orderForPrint.userId.name)) {
+      console.log('📡 Fetching full order details from API for order:', orderId)
+      try {
+        // Use the restaurant orders endpoint to get order details
+        const response = await restaurantAPI.getOrderById(orderId)
+        if (response.data?.success && response.data.data?.order) {
+          console.log('✅ Fetched order details from API:', response.data.data.order)
+          // Merge API data with existing order data (API data takes priority)
+          orderForPrint = {
+            ...orderForPrint,
+            ...response.data.data.order,
+            // Preserve items and other fields from popupOrder if they exist
+            items: orderForPrint.items || response.data.data.order.items,
+            userId: response.data.data.order.userId || orderForPrint.userId,
+            // Preserve full address object including additionalDetails
+            address: response.data.data.order.address || orderForPrint.address || {},
+            // Also preserve customerAddress if it exists
+            customerAddress: response.data.data.order.address || orderForPrint.customerAddress || orderForPrint.address || {}
+          }
+          
+          console.log('✅ Merged order data:', {
+            hasAddress: !!orderForPrint.address,
+            addressKeys: orderForPrint.address ? Object.keys(orderForPrint.address) : [],
+            additionalDetails: orderForPrint.address?.additionalDetails,
+            additionalAddress: orderForPrint.address?.additionalAddress
+          })
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch order details from API, using existing data:', error)
+        // Continue with existing orderForPrint data
+      }
+    }
+
+    console.log('📋 Order data before processing:', {
+      orderId: orderForPrint.orderId || orderForPrint.orderMongoId,
+      hasUserId: !!orderForPrint.userId,
+      userIdName: orderForPrint.userId?.name,
+      userIdPhone: orderForPrint.userId?.phone,
+      userIdEmail: orderForPrint.userId?.email,
+      hasAddress: !!orderForPrint.address,
+      addressKeys: orderForPrint.address ? Object.keys(orderForPrint.address) : []
+    })
+
+    // Prepare order data for printing
+    // Get customer data from multiple possible locations
+    const customerName = orderForPrint.userId?.name || 
+                         orderForPrint.customerName || 
+                         orderForPrint.customer?.name || 
+                         'Customer'
+    
+    const customerPhone = orderForPrint.userId?.phone || 
+                          orderForPrint.phone || 
+                          orderForPrint.customerPhone || 
+                          orderForPrint.customer?.phone || 
+                          ''
+    
+    const customerEmail = orderForPrint.userId?.email || 
+                           orderForPrint.email || 
+                           orderForPrint.customerEmail || 
+                           orderForPrint.customer?.email || 
+                           ''
+    
+    // Get address from multiple possible locations
+    const customerAddress = orderForPrint.address || 
+                            orderForPrint.deliveryAddress || 
+                            orderForPrint.customerAddress || 
+                            {}
+    
+    const orderToPrintData = {
+      orderId: orderForPrint.orderId || orderForPrint.orderMongoId || 'N/A',
+      restaurantName: orderForPrint.restaurantName || 'Restaurant',
+      items: orderForPrint.items || [],
+      total: orderForPrint.pricing?.total || orderForPrint.total || 0,
+      customerAddress: customerAddress,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      customerEmail: customerEmail,
+      status: orderForPrint.status || 'pending',
+      createdAt: orderForPrint.createdAt || new Date().toISOString(),
+      estimatedDeliveryTime: orderForPrint.estimatedDeliveryTime || 30,
+      note: orderForPrint.note || '',
+      sendCutlery: orderForPrint.sendCutlery || false,
+      paymentMethod: orderForPrint.paymentMethod || orderForPrint.payment?.method || 'N/A',
+      payment: orderForPrint.payment
+    }
+    
+    console.log('📋 Order data for printing:', {
+      orderId: orderToPrintData.orderId,
+      customerName: orderToPrintData.customerName,
+      customerPhone: orderToPrintData.customerPhone,
+      customerEmail: orderToPrintData.customerEmail,
+      customerAddress: orderToPrintData.customerAddress,
+      additionalDetails: orderToPrintData.customerAddress?.additionalDetails,
+      additionalAddress: orderToPrintData.customerAddress?.additionalAddress
+    })
+
     try {
+      console.log('📄 Creating PDF with order:', orderToPrintData.orderId)
       // Create new PDF document
       const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
 
       // Set font
       doc.setFont('helvetica', 'bold')
@@ -1039,16 +1145,16 @@ export default function OrdersMain() {
       // Restaurant name
       doc.setFontSize(14)
       doc.setFont('helvetica', 'normal')
-      doc.text(orderToPrint.restaurantName || 'Restaurant', 105, 30, { align: 'center' })
+      doc.text(orderToPrintData.restaurantName || 'Restaurant', 105, 30, { align: 'center' })
 
       // Order details
       doc.setFontSize(10)
       doc.setFont('helvetica', 'bold')
-      doc.text(`Order ID: ${orderToPrint.orderId || 'N/A'}`, 20, 45)
+      doc.text(`Order ID: ${orderToPrintData.orderId || 'N/A'}`, 20, 45)
       doc.setFont('helvetica', 'normal')
 
-      const orderDate = orderToPrint.createdAt
-        ? new Date(orderToPrint.createdAt).toLocaleString('en-GB', {
+      const orderDate = orderToPrintData.createdAt
+        ? new Date(orderToPrintData.createdAt).toLocaleString('en-GB', {
           day: 'numeric',
           month: 'short',
           year: 'numeric',
@@ -1059,33 +1165,111 @@ export default function OrdersMain() {
 
       doc.text(`Date: ${orderDate}`, 20, 52)
 
-      // Customer address
-      if (orderToPrint.customerAddress) {
+      // Customer Details Section
+      let yPos = 62
+      doc.setLineWidth(0.5)
+      doc.line(15, yPos, pageWidth - 15, yPos)
+      yPos += 8
+
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'bold')
+      doc.text('CUSTOMER DETAILS', 20, yPos)
+      yPos += 8
+
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Name:', 20, yPos)
+      doc.setFont('helvetica', 'normal')
+      doc.text(orderToPrintData.customerName || 'Customer', 50, yPos)
+      yPos += 6
+
+      // Phone Number
+      if (orderToPrintData.customerPhone) {
         doc.setFont('helvetica', 'bold')
-        doc.text('Delivery Address:', 20, 62)
+        doc.text('Phone:', 20, yPos)
         doc.setFont('helvetica', 'normal')
-        const addressText = [
-          orderToPrint.customerAddress.street,
-          orderToPrint.customerAddress.city,
-          orderToPrint.customerAddress.state
-        ].filter(Boolean).join(', ') || 'Address not available'
-        const addressLines = doc.splitTextToSize(addressText, 170)
-        doc.text(addressLines, 20, 69)
+        doc.text(orderToPrintData.customerPhone, 50, yPos)
+        yPos += 6
       }
 
-      // Items table
-      let yPos = 85
-      if (orderToPrint.items && orderToPrint.items.length > 0) {
+      // Email
+      if (orderToPrintData.customerEmail) {
+        doc.setFont('helvetica', 'bold')
+        doc.text('Email:', 20, yPos)
+        doc.setFont('helvetica', 'normal')
+        doc.text(orderToPrintData.customerEmail, 50, yPos)
+        yPos += 6
+      }
+
+      // Full Delivery Address
+      doc.setFont('helvetica', 'bold')
+      doc.text('Delivery Address:', 20, yPos)
+      doc.setFont('helvetica', 'normal')
+      yPos += 6
+
+      if (orderToPrintData.customerAddress) {
+        // Build full address with additional details
+        // Additional address/details should be shown FIRST (most important)
+        const addressParts = []
+        
+        // Check for additional address/details in multiple possible field names
+        const additionalAddress = orderToPrintData.customerAddress.additionalDetails || 
+                                  orderToPrintData.customerAddress.additionalAddress ||
+                                  orderToPrintData.customerAddress.additionalDetailsText ||
+                                  ''
+        
+        if (additionalAddress) {
+          addressParts.push(additionalAddress)
+        }
+        
+        if (orderToPrintData.customerAddress.street) {
+          addressParts.push(orderToPrintData.customerAddress.street)
+        }
+        if (orderToPrintData.customerAddress.city) {
+          addressParts.push(orderToPrintData.customerAddress.city)
+        }
+        if (orderToPrintData.customerAddress.state) {
+          addressParts.push(orderToPrintData.customerAddress.state)
+        }
+        if (orderToPrintData.customerAddress.zipCode || orderToPrintData.customerAddress.pincode || orderToPrintData.customerAddress.postalCode) {
+          addressParts.push(orderToPrintData.customerAddress.zipCode || orderToPrintData.customerAddress.pincode || orderToPrintData.customerAddress.postalCode)
+        }
+        
+        const fullAddressText = addressParts.length > 0 
+          ? addressParts.join(', ')
+          : (orderToPrintData.customerAddress.formattedAddress || 'Address not available')
+        
+        console.log('📍 Full address for PDF:', {
+          additionalAddress,
+          addressParts,
+          fullAddressText,
+          customerAddressObject: orderToPrintData.customerAddress,
+          hasAdditionalDetails: !!orderToPrintData.customerAddress?.additionalDetails,
+          hasAdditionalAddress: !!orderToPrintData.customerAddress?.additionalAddress
+        })
+        
+        const addressLines = doc.splitTextToSize(fullAddressText, 170)
+        doc.text(addressLines, 50, yPos)
+        yPos += addressLines.length * 5 + 4
+      } else {
+        doc.text('Address not available', 50, yPos)
+        yPos += 6
+      }
+
+      // Items table - yPos is already set from address section
+      yPos += 4
+      
+      if (orderToPrintData.items && orderToPrintData.items.length > 0) {
         doc.setFont('helvetica', 'bold')
         doc.text('Items:', 20, yPos)
         yPos += 8
 
         // Prepare table data
-        const tableData = orderToPrint.items.map(item => [
+        const tableData = orderToPrintData.items.map(item => [
           item.name || 'Item',
           item.quantity || 1,
-          `₹${(item.price || 0).toFixed(2)}`,
-          `₹${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`
+          `Rs. ${(item.price || 0).toFixed(2)}`,
+          `Rs. ${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`
         ])
 
         autoTable(doc, {
@@ -1109,39 +1293,38 @@ export default function OrdersMain() {
       // Total
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(12)
-      doc.text(`Total: ₹${(orderToPrint.total || 0).toFixed(2)}`, 20, yPos)
+      doc.text(`Total: Rs. ${(orderToPrintData.total || 0).toFixed(2)}`, 20, yPos)
 
       // Payment status
       yPos += 10
       doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
-      doc.text(`Payment Status: ${orderToPrint.status === 'confirmed' ? 'Paid' : 'Pending'}`, 20, yPos)
+      doc.text(`Payment Status: ${orderToPrintData.status === 'confirmed' ? 'Paid' : 'Pending'}`, 20, yPos)
 
       // Estimated delivery time
-      if (orderToPrint.estimatedDeliveryTime) {
+      if (orderToPrintData.estimatedDeliveryTime) {
         yPos += 8
-        doc.text(`Estimated Delivery: ${orderToPrint.estimatedDeliveryTime} minutes`, 20, yPos)
+        doc.text(`Estimated Delivery: ${orderToPrintData.estimatedDeliveryTime} minutes`, 20, yPos)
       }
 
       // Notes
-      if (orderToPrint.note) {
+      if (orderToPrintData.note) {
         yPos += 10
         doc.setFont('helvetica', 'bold')
         doc.text('Note:', 20, yPos)
         doc.setFont('helvetica', 'normal')
-        const noteLines = doc.splitTextToSize(orderToPrint.note, 170)
+        const noteLines = doc.splitTextToSize(orderToPrintData.note, 170)
         doc.text(noteLines, 20, yPos + 7)
       }
 
       // Send cutlery
-      if (orderToPrint.sendCutlery) {
+      if (orderToPrintData.sendCutlery) {
         yPos += 15
         doc.setFont('helvetica', 'normal')
         doc.text('✓ Send cutlery requested', 20, yPos)
       }
 
       // Footer
-      const pageHeight = doc.internal.pageSize.height
       doc.setFontSize(8)
       doc.setFont('helvetica', 'italic')
       doc.text(
@@ -1152,13 +1335,19 @@ export default function OrdersMain() {
       )
 
       // Download PDF
-      const fileName = `Order-${orderToPrint.orderId || 'Receipt'}-${Date.now()}.pdf`
+      const fileName = `Order-${orderToPrintData.orderId || 'Receipt'}-${Date.now()}.pdf`
+      console.log('💾 Saving PDF:', fileName)
       doc.save(fileName)
 
-      console.log('✅ PDF generated successfully:', fileName)
+      console.log('✅ PDF generated and saved successfully:', fileName)
+      // Show success toast if available
+      if (window.toast) {
+        window.toast.success('Order receipt downloaded successfully!')
+      }
     } catch (error) {
       console.error('❌ Error generating PDF:', error)
-      alert('Failed to generate PDF. Please try again.')
+      console.error('Error details:', error.message, error.stack)
+      alert(`Failed to generate PDF: ${error.message || 'Unknown error'}. Please check console for details.`)
     }
   }
 
@@ -1572,9 +1761,15 @@ export default function OrdersMain() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={handlePrint}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        console.log('🖨️ Print button clicked in popup modal')
+                        handlePrint()
+                      }}
                       className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                      aria-label="Print"
+                      aria-label="Print order receipt"
+                      title="Download order receipt"
                     >
                       <Printer className="w-5 h-5 text-gray-700" />
                     </button>

@@ -132,6 +132,7 @@ export default function Cart() {
     freeDeliveryThreshold: 149,
     platformFee: 5,
     gstRate: 5,
+    deliveryFeeRanges: [], // Delivery fee ranges based on order value
   })
 
 
@@ -627,6 +628,7 @@ export default function Cart() {
             freeDeliveryThreshold: response.data.data.feeSettings.freeDeliveryThreshold || 149,
             platformFee: response.data.data.feeSettings.platformFee || 5,
             gstRate: response.data.data.feeSettings.gstRate || 5,
+            deliveryFeeRanges: response.data.data.feeSettings.deliveryFeeRanges || [], // Include delivery fee ranges
           })
         }
       } catch (error) {
@@ -637,9 +639,52 @@ export default function Cart() {
     fetchFeeSettings()
   }, [])
 
+  // Calculate delivery fee based on order value ranges
+  const calculateDeliveryFeeFromRanges = (orderValue) => {
+    // Check if coupon provides free delivery
+    if (appliedCoupon?.freeDelivery) {
+      return 0
+    }
+
+    // PRIORITY: Check delivery fee ranges FIRST if configured
+    // This ensures admin-configured ranges take precedence over freeDeliveryThreshold
+    if (feeSettings.deliveryFeeRanges && Array.isArray(feeSettings.deliveryFeeRanges) && feeSettings.deliveryFeeRanges.length > 0) {
+      // Sort ranges by min value to ensure proper checking
+      const sortedRanges = [...feeSettings.deliveryFeeRanges].sort((a, b) => a.min - b.min)
+      
+      // Find matching range (orderValue >= min && orderValue < max)
+      // For the last range, we check orderValue >= min && orderValue <= max
+      for (let i = 0; i < sortedRanges.length; i++) {
+        const range = sortedRanges[i]
+        const isLastRange = i === sortedRanges.length - 1
+        
+        if (isLastRange) {
+          // Last range: include max value
+          if (orderValue >= range.min && orderValue <= range.max) {
+            return range.fee // Return the fee from range (could be 0 if admin set it to 0)
+          }
+        } else {
+          // Other ranges: exclude max value (handled by next range)
+          if (orderValue >= range.min && orderValue < range.max) {
+            return range.fee // Return the fee from range (could be 0 if admin set it to 0)
+          }
+        }
+      }
+    }
+
+    // Only check freeDeliveryThreshold if NO ranges are configured or NO range matched
+    // This allows admin to set ranges that override the freeDeliveryThreshold
+    if (orderValue >= feeSettings.freeDeliveryThreshold) {
+      return 0
+    }
+
+    // Fallback to default delivery fee if no range matches and order value is below threshold
+    return feeSettings.deliveryFee
+  }
+
   // Use backend pricing if available, otherwise fallback to database settings
   const subtotal = pricing?.subtotal || cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
-  const deliveryFee = pricing?.deliveryFee ?? (subtotal >= feeSettings.freeDeliveryThreshold || appliedCoupon?.freeDelivery ? 0 : feeSettings.deliveryFee)
+  const deliveryFee = pricing?.deliveryFee ?? calculateDeliveryFeeFromRanges(subtotal)
   const platformFee = pricing?.platformFee || feeSettings.platformFee
   const gstCharges = pricing?.tax || Math.round(subtotal * (feeSettings.gstRate / 100))
   const discount = pricing?.discount || (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)

@@ -133,8 +133,8 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
     };
 
     // Valid statuses for order acceptance (unassigned orders in these statuses can be viewed by any delivery boy)
-    // FIXED: Delivery partner should ONLY see orders when status is 'ready' (Ready to Pickup)
-    const validAcceptanceStatuses = ["ready"];
+    // Allow delivery partners to see and accept orders when status is 'preparing' or 'ready'
+    const validAcceptanceStatuses = ["preparing", "ready"];
 
     // If order is assigned to this delivery partner, allow access
     if (orderDeliveryPartnerId === currentDeliveryId) {
@@ -312,13 +312,13 @@ export const acceptOrder = asyncHandler(async (req, res) => {
         normalizedPriorityIds.includes(normalizedCurrentId) ||
         normalizedExpandedIds.includes(normalizedCurrentId);
 
-      // FIXED: Only allow acceptance if order is in 'ready' status (Ready to Pickup)
-      // Delivery partners should NOT accept orders that are still being prepared
-      const isValidStatus = order.status === "ready";
+      // Allow acceptance if order is in 'preparing' or 'ready' status
+      // Delivery partners can accept orders even when restaurant is still preparing them
+      const isValidStatus = order.status === "preparing" || order.status === "ready";
 
       if (!wasNotified && !isValidStatus) {
         console.error(
-          `❌ Order ${order.orderId} is not assigned, delivery partner ${currentDeliveryId} was not notified, and order status is ${order.status} (must be 'ready')`,
+          `❌ Order ${order.orderId} is not assigned, delivery partner ${currentDeliveryId} was not notified, and order status is ${order.status} (must be 'preparing' or 'ready')`,
         );
         console.error(`❌ Full order details:`, {
           orderId: order.orderId,
@@ -332,19 +332,19 @@ export const acceptOrder = asyncHandler(async (req, res) => {
         return errorResponse(
           res,
           403,
-          `This order is not ready for pickup. Order status: ${order.status}. Please wait until the restaurant marks it as ready.`,
+          `This order cannot be accepted. Order status: ${order.status}. Order must be in 'preparing' or 'ready' status.`,
         );
       }
 
-      // FIXED: Additional validation - even if notified, order must be 'ready' to accept
+      // Allow acceptance if order is in 'preparing' or 'ready' status
       if (!isValidStatus) {
         console.error(
-          `❌ Order ${order.orderId} status is ${order.status}, but must be 'ready' for delivery partner to accept`,
+          `❌ Order ${order.orderId} status is ${order.status}, but must be 'preparing' or 'ready' for delivery partner to accept`,
         );
         return errorResponse(
           res,
           400,
-          `Order cannot be accepted. Current status: ${order.status}. Order must be in 'ready' status (Ready to Pickup).`,
+          `Order cannot be accepted. Current status: ${order.status}. Order must be in 'preparing' or 'ready' status.`,
         );
       }
 
@@ -509,8 +509,8 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     });
 
     // Check if order is in valid state to accept
-    // FIXED: Delivery partner should ONLY see orders when status is 'ready' (Ready to Pickup)
-    const validStatuses = ["ready"];
+    // Allow delivery partners to accept orders when status is 'preparing' or 'ready'
+    const validStatuses = ["preparing", "ready"];
     if (!validStatuses.includes(order.status)) {
       console.warn(
         `⚠️ Order ${order.orderId} cannot be accepted. Current status: ${order.status}, Valid statuses: ${validStatuses.join(", ")}`,
@@ -518,7 +518,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       return errorResponse(
         res,
         400,
-        `Order cannot be accepted. Current status: ${order.status}. Order must be in 'ready' status (Ready to Pickup).`,
+        `Order cannot be accepted. Current status: ${order.status}. Order must be in 'preparing' or 'ready' status.`,
       );
     }
 

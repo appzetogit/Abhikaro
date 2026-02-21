@@ -19,7 +19,7 @@ import { createPortal } from 'react-dom';
  * listens for cart changes to trigger appropriate animations.
  */
 export default function AddToCartAnimation({
-  bottomOffset = 96,
+  bottomOffset = 120, // Increased from 96 to 120 to move button up
   pillClassName = '',
   hideOnPages = true,
   linkTo = '/cart',

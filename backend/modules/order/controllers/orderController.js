@@ -49,6 +49,7 @@ export const createOrder = async (req, res) => {
       hotelReference, // Hotel ID if order came from hotel QR code
       hotelName, // Hotel name for reference
       roomNumber, // Room number for pay_at_hotel orders
+      additionalAddress, // Additional address details from frontend
     } = req.body;
     // Support both camelCase and snake_case from client
     const paymentMethod = bodyPaymentMethod ?? req.body.payment_method;
@@ -584,10 +585,13 @@ export const createOrder = async (req, res) => {
     // restaurantLat and restaurantLng are already available from validation above
 
     // Prepare address with explicit lat/lng
+    // Merge additionalAddress into address.additionalDetails if provided
     const addressWithLocation = {
       ...address,
       latitude: userLat,
       longitude: userLng,
+      // If additionalAddress is provided separately, merge it into additionalDetails
+      additionalDetails: additionalAddress || address?.additionalDetails || address?.additionalAddress || null,
     };
 
     // Prepare restaurant location object

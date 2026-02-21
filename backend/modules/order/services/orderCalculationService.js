@@ -45,20 +45,15 @@ export const calculateDeliveryFee = async (orderValue, restaurant, deliveryAddre
   // Get fee settings from database
   const feeSettings = await getFeeSettings();
   
-  // Check restaurant settings for free delivery threshold (takes priority)
+  // PRIORITY 1: Check restaurant settings for free delivery threshold (takes highest priority)
   if (restaurant?.freeDeliveryAbove) {
     if (orderValue >= restaurant.freeDeliveryAbove) {
       return 0; // Free delivery
     }
-  } else {
-    // Use admin settings for free delivery threshold
-    const freeDeliveryThreshold = feeSettings.freeDeliveryThreshold || 149;
-    if (orderValue >= freeDeliveryThreshold) {
-      return 0;
-    }
   }
   
-  // Check if delivery fee ranges are configured
+  // PRIORITY 2: Check delivery fee ranges FIRST if configured
+  // This ensures admin-configured ranges take precedence over freeDeliveryThreshold
   if (feeSettings.deliveryFeeRanges && Array.isArray(feeSettings.deliveryFeeRanges) && feeSettings.deliveryFeeRanges.length > 0) {
     // Sort ranges by min value to ensure proper checking
     const sortedRanges = [...feeSettings.deliveryFeeRanges].sort((a, b) => a.min - b.min);
@@ -72,18 +67,25 @@ export const calculateDeliveryFee = async (orderValue, restaurant, deliveryAddre
       if (isLastRange) {
         // Last range: include max value
         if (orderValue >= range.min && orderValue <= range.max) {
-          return range.fee;
+          return range.fee; // Return the fee from range (could be 0 if admin set it to 0)
         }
       } else {
         // Other ranges: exclude max value (handled by next range)
         if (orderValue >= range.min && orderValue < range.max) {
-          return range.fee;
+          return range.fee; // Return the fee from range (could be 0 if admin set it to 0)
         }
       }
     }
   }
   
-  // Fallback to default delivery fee if no range matches
+  // PRIORITY 3: Only check freeDeliveryThreshold if NO ranges are configured or NO range matched
+  // This allows admin to set ranges that override the freeDeliveryThreshold
+  const freeDeliveryThreshold = feeSettings.freeDeliveryThreshold || 149;
+  if (orderValue >= freeDeliveryThreshold) {
+    return 0;
+  }
+  
+  // Fallback to default delivery fee if no range matches and order value is below threshold
   const baseDeliveryFee = feeSettings.deliveryFee || 25;
   
   // TODO: Add distance-based calculation when address coordinates are available
