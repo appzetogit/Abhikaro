@@ -124,22 +124,85 @@ export const updateLocation = asyncHandler(async (req, res) => {
         // Get heading if available
         const heading = req.body.heading || updatedDelivery.availability?.heading || null;
         
+        // Calculate bearing if not provided and we have previous location
+        let calculatedBearing = heading;
+        if (!calculatedBearing && updatedDelivery.availability?.latitude && updatedDelivery.availability?.longitude) {
+          try {
+            const { calculateBearingFromLocations } = await import('../utils/bearingCalculation.js');
+            const prevLocation = {
+              lat: updatedDelivery.availability.latitude,
+              lng: updatedDelivery.availability.longitude
+            };
+            const currentLocation = { lat: latitude, lng: longitude };
+            calculatedBearing = calculateBearingFromLocations(prevLocation, currentLocation);
+          } catch (err) {
+            logger.warn(`Failed to calculate bearing: ${err.message}`);
+          }
+        }
+
         // Update Firebase (non-blocking) with heading
         updateDeliveryBoyLocation(
           delivery._id.toString(),
           latitude,
           longitude,
           orderId,
-          heading
+          calculatedBearing || heading
         ).catch(err => {
           logger.warn(`Failed to update Firebase location: ${err.message}`);
         });
+
+        // Emit Socket.io event for real-time location updates (non-blocking)
+        (async () => {
+          try {
+            const serverModule = await import('../../../server.js');
+            const getIO = serverModule.getIO;
+            if (getIO) {
+              const io = getIO();
+              if (io) {
+                const deliveryNamespace = io.of('/delivery');
+                const deliveryId = delivery._id.toString();
+
+                // Emit to delivery boy's own room
+                deliveryNamespace.to(`delivery:${deliveryId}`).emit('location-update', {
+                  lat: latitude,
+                  lng: longitude,
+                  bearing: calculatedBearing || heading || null,
+                  timestamp: Date.now()
+                });
+
+                // If there's an active order, also emit to order tracking room
+                if (orderId) {
+                  const Order = (await import('../../order/models/Order.js')).default;
+                  const order = await Order.findOne({
+                    $or: [{ orderId }, { _id: orderId }]
+                  }).select('_id userId').lean();
+
+                  if (order) {
+                    // Emit to customer tracking this order
+                    io.to(`order:${order._id.toString()}`).emit(`location-receive-${order.orderId || order._id}`, {
+                      lat: latitude,
+                      lng: longitude,
+                      bearing: calculatedBearing || heading || null,
+                      heading: calculatedBearing || heading || null, // Alias for compatibility
+                      timestamp: Date.now()
+                    });
+                  }
+                }
+
+                logger.info(`📡 Socket.io location update emitted for delivery ${deliveryId}`);
+              }
+            }
+          } catch (socketError) {
+            // Log but don't fail the request if socket emit fails
+            logger.warn(`Failed to emit socket location update: ${socketError.message}`);
+          }
+        })();
         
         logger.info(`✅ Delivery boy location saved to database and Firebase:`, {
           deliveryBoyId: delivery._id.toString(),
           lat: latitude,
           lng: longitude,
-          heading: heading || 'N/A',
+          heading: calculatedBearing || heading || 'N/A',
           orderId: orderId || 'none',
         });
       } catch (firebaseError) {
@@ -163,23 +226,28 @@ export const updateLocation = asyncHandler(async (req, res) => {
             .select('orderId _id')
             .lean();
 
-          // Broadcast location to each order's tracking room
+          // Get heading if available
+          const heading = updatedDelivery.availability?.heading || req.body.heading || null;
+
+          // Broadcast location to each order's tracking room with bearing
           activeOrders.forEach(order => {
             const orderId = order.orderId || order._id.toString();
             const locationData = {
               orderId: orderId,
               lat: latitude,
               lng: longitude,
-              heading: 0, // Can be enhanced later if heading is available
+              bearing: heading,
+              heading: heading, // Alias for compatibility
               timestamp: Date.now()
             };
 
             // Send to order tracking room (customer tracking this order)
-            io.to(`order:${orderId}`).emit(`location-receive-${orderId}`, locationData);
+            io.to(`order:${order._id.toString()}`).emit(`location-receive-${orderId}`, locationData);
             
             console.log(`📍 Location broadcasted to order room ${orderId} for delivery partner ${delivery._id}:`, {
               lat: latitude,
-              lng: longitude
+              lng: longitude,
+              bearing: heading || 'N/A'
             });
           });
 
@@ -187,14 +255,29 @@ export const updateLocation = asyncHandler(async (req, res) => {
           if (activeOrders.length > 0) {
             activeOrders.forEach(order => {
               const orderId = order.orderId || order._id.toString();
-              io.to(`order:${orderId}`).emit('update-location', {
+              io.to(`order:${order._id.toString()}`).emit('update-location', {
                 orderId: orderId,
                 lat: latitude,
                 lng: longitude,
-                heading: 0,
+                bearing: heading,
+                heading: heading, // Alias for compatibility
                 timestamp: Date.now()
               });
             });
+          }
+
+          // Emit to delivery namespace for delivery boy's own app
+          try {
+            const deliveryNamespace = io.of('/delivery');
+            const deliveryId = delivery._id.toString();
+            deliveryNamespace.to(`delivery:${deliveryId}`).emit('location-update', {
+              lat: latitude,
+              lng: longitude,
+              bearing: heading,
+              timestamp: Date.now()
+            });
+          } catch (deliveryNamespaceError) {
+            logger.warn(`Failed to emit to delivery namespace: ${deliveryNamespaceError.message}`);
           }
         }
       } catch (socketError) {

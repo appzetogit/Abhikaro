@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import io from 'socket.io-client';
 import { API_BASE_URL } from '@/lib/api/config';
 import bikeLogo from '@/assets/bikelogo.png';
-import { RouteBasedAnimationController } from '@/module/user/utils/routeBasedAnimation';
+import { RouteBasedAnimationController, updateMarkerIconRotation } from '@/module/user/utils/routeBasedAnimation';
 import { extractPolylineFromDirections, findNearestPointOnPolyline } from '@/module/delivery/utils/liveTrackingPolyline';
+import { calculateBearingFromLocations } from '@/module/delivery/utils/bearingCalculation';
 import './DeliveryTrackingMap.css';
 
 // Helper function to calculate Haversine distance
@@ -18,6 +19,9 @@ function calculateHaversineDistance(lat1, lng1, lat2, lng2) {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
+
+// Helper function to update bike marker rotation (uses imported function)
+const updateBikeMarkerRotation = updateMarkerIconRotation;
 
 const DeliveryTrackingMap = ({
   orderId,
@@ -43,6 +47,7 @@ const DeliveryTrackingMap = ({
   const routePolylineRef = useRef(null);
   const routePolylinePointsRef = useRef(null); // Store decoded polyline points for route-based animation
   const animationControllerRef = useRef(null); // Route-based animation controller
+  const previousLocationRef = useRef(null); // Store previous location for bearing calculation
   const lastRouteUpdateRef = useRef(null);
   const userHasInteractedRef = useRef(false);
   const isProgrammaticChangeRef = useRef(false);
@@ -439,6 +444,20 @@ const DeliveryTrackingMap = ({
         return;
       }
 
+      // Calculate bearing if not provided
+      let calculatedBearing = heading;
+      if ((calculatedBearing === null || calculatedBearing === undefined || calculatedBearing === 0) && previousLocationRef.current) {
+        calculatedBearing = calculateBearingFromLocations(
+          previousLocationRef.current,
+          { lat, lng }
+        );
+        if (calculatedBearing === null) {
+          calculatedBearing = 0; // Default to North if calculation fails
+        }
+      } else if (!calculatedBearing) {
+        calculatedBearing = 0; // Default to North
+      }
+
       const position = new window.google.maps.LatLng(lat, lng);
 
       if (!bikeMarkerRef.current) {
@@ -447,12 +466,12 @@ const DeliveryTrackingMap = ({
         console.log('🚴 Map instance:', !!mapInstance.current);
         console.log('🚴 Position:', { lat, lng, heading });
 
-        // Create bike icon configuration
+        // Create bike icon configuration with rotation
         let bikeIcon = {
           url: bikeLogo,
           scaledSize: new window.google.maps.Size(50, 50), // Slightly larger for better visibility
           anchor: new window.google.maps.Point(25, 25),
-          rotation: heading || 0
+          rotation: calculatedBearing || 0
         };
 
         try {
@@ -622,7 +641,15 @@ const DeliveryTrackingMap = ({
                 onRoute: true,
                 snappedToRoad: true
               });
-              animationControllerRef.current.updatePosition(progress, heading || 0);
+              // Calculate bearing for route segment if not provided
+              let segmentBearing = calculatedBearing;
+              if (!segmentBearing && nearest.segmentIndex < routePolylinePointsRef.current.length - 1) {
+                const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
+                const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1];
+                segmentBearing = calculateBearingFromLocations(segmentStart, segmentEnd) || 0;
+              }
+              
+              animationControllerRef.current.updatePosition(progress, segmentBearing || calculatedBearing || 0);
               animationControllerRef.current.lastProgress = progress;
             } else {
               // Initialize animation controller if not exists
@@ -631,14 +658,33 @@ const DeliveryTrackingMap = ({
                   bikeMarkerRef.current,
                   routePolylinePointsRef.current
                 );
-                animationControllerRef.current.updatePosition(progress, heading || 0);
+                
+                // Calculate bearing for route segment if not provided
+                let segmentBearing = calculatedBearing;
+                if (!segmentBearing && nearest.segmentIndex < routePolylinePointsRef.current.length - 1) {
+                  const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
+                  const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1];
+                  segmentBearing = calculateBearingFromLocations(segmentStart, segmentEnd) || 0;
+                }
+                
+                animationControllerRef.current.updatePosition(progress, segmentBearing || calculatedBearing || 0);
                 animationControllerRef.current.lastProgress = progress;
                 console.log('✅ Initialized route-based animation controller');
               } else {
                 // Fallback: Move to nearest point on polyline (STAY ON ROAD)
                 const nearestPosition = new window.google.maps.LatLng(nearest.nearestPoint.lat, nearest.nearestPoint.lng);
                 bikeMarkerRef.current.setPosition(nearestPosition);
-                bikeMarkerRef.current.setRotation(heading || 0);
+                
+                // Calculate bearing for segment
+                let segmentBearing = calculatedBearing;
+                if (!segmentBearing && nearest.segmentIndex < routePolylinePointsRef.current.length - 1) {
+                  const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
+                  const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1];
+                  segmentBearing = calculateBearingFromLocations(segmentStart, segmentEnd) || 0;
+                }
+                
+                // Update marker rotation
+                updateBikeMarkerRotation(bikeMarkerRef.current, segmentBearing || calculatedBearing || 0);
                 console.log('🛣️ Bike snapped to nearest road point:', nearest.nearestPoint);
               }
             }
@@ -661,6 +707,9 @@ const DeliveryTrackingMap = ({
           return; // Exit early - don't update marker
         }
 
+        // Update previous location for next bearing calculation
+        previousLocationRef.current = { lat, lng };
+        
         // Ensure bike is visible
         bikeMarkerRef.current.setVisible(true);
 

@@ -61,6 +61,52 @@ export function smoothRotation(currentBearing, targetBearing, smoothingFactor = 
 }
 
 /**
+ * Update marker icon rotation using canvas
+ * @param {Object} marker - Google Maps Marker instance
+ * @param {number} bearing - Bearing in degrees (0-360)
+ */
+export function updateMarkerIconRotation(marker, bearing) {
+  if (!marker || !window.google) return;
+  
+  try {
+    const currentIcon = marker.getIcon();
+    if (typeof currentIcon === 'object' && currentIcon.url) {
+      // Use canvas to rotate icon
+      const canvas = document.createElement('canvas');
+      canvas.width = 60;
+      canvas.height = 60;
+      const ctx = canvas.getContext('2d');
+      
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = currentIcon.url;
+      
+      img.onload = () => {
+        ctx.clearRect(0, 0, 60, 60);
+        ctx.save();
+        ctx.translate(30, 30);
+        ctx.rotate((bearing * Math.PI) / 180);
+        ctx.drawImage(img, -30, -30, 60, 60);
+        ctx.restore();
+        
+        marker.setIcon({
+          url: canvas.toDataURL(),
+          scaledSize: currentIcon.scaledSize || new window.google.maps.Size(60, 60),
+          anchor: currentIcon.anchor || new window.google.maps.Point(30, 30)
+        });
+      };
+      
+      img.onerror = () => {
+        // If image fails to load, try to keep current icon
+        console.warn('Failed to load icon for rotation');
+      };
+    }
+  } catch (error) {
+    console.warn('Failed to update marker icon rotation:', error);
+  }
+}
+
+/**
  * Animate marker smoothly along route polyline
  * @param {Object} marker - Google Maps Marker instance
  * @param {Object} currentPos - Current position {lat, lng}
@@ -91,24 +137,23 @@ export function animateMarkerSmoothly(marker, currentPos, targetPos, duration = 
     // Update marker position
     marker.setPosition({ lat: currentLat, lng: currentLng });
     
-    // Calculate and update bearing (rotation)
-    if (progress < 1) {
-      const prevPos = progress > 0.1 
-        ? { lat: startLat + deltaLat * easeOutCubic(Math.max(0, progress - 0.1)), 
-            lng: startLng + deltaLng * easeOutCubic(Math.max(0, progress - 0.1)) }
-        : currentPos;
+      // Calculate and update bearing (rotation)
+      if (progress < 1) {
+        const prevPos = progress > 0.1 
+          ? { lat: startLat + deltaLat * easeOutCubic(Math.max(0, progress - 0.1)), 
+              lng: startLng + deltaLng * easeOutCubic(Math.max(0, progress - 0.1)) }
+          : currentPos;
       
       const bearing = calculateBearing(prevPos, { lat: currentLat, lng: currentLng });
-      const currentRotation = marker.getRotation() || 0;
-      const smoothedBearing = smoothRotation(currentRotation, bearing, 0.4);
-      marker.setRotation(smoothedBearing);
+      // Update icon rotation instead of setRotation (Google Maps doesn't support setRotation)
+      updateMarkerIconRotation(marker, bearing);
       
       requestAnimationFrame(animate);
     } else {
       // Animation complete
       marker.setPosition(targetPos);
       const finalBearing = calculateBearing(currentPos, targetPos);
-      marker.setRotation(finalBearing);
+      updateMarkerIconRotation(marker, finalBearing);
       
       if (onComplete) onComplete();
     }
@@ -282,8 +327,16 @@ export class RouteBasedAnimationController {
     } else {
       // First time - set position directly
       this.marker.setPosition(targetPos);
-      if (bearing !== undefined) {
-        this.marker.setRotation(bearing);
+      
+      // Calculate bearing from route segment if not provided
+      let calculatedBearing = bearing;
+      if (!calculatedBearing && pointInfo.currentPoint && pointInfo.nextPoint) {
+        calculatedBearing = calculateBearing(pointInfo.currentPoint, pointInfo.nextPoint);
+      }
+      
+      // Update marker rotation (icon rotation)
+      if (calculatedBearing !== undefined && calculatedBearing !== null) {
+        updateMarkerIconRotation(this.marker, calculatedBearing);
       }
     }
     
