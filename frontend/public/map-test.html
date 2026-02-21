@@ -1,0 +1,173 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Google Maps API Key Test</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+      }
+      #map {
+        width: 100%;
+        height: 70vh;
+      }
+      #log {
+        padding: 10px;
+        background: #1a1a1a;
+        color: #0f0;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 30vh;
+        overflow-y: auto;
+      }
+      .error {
+        color: #f44;
+      }
+      .success {
+        color: #4f4;
+      }
+      .info {
+        color: #44f;
+      }
+      .warn {
+        color: #ff0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="log"></div>
+
+    <script>
+      const logEl = document.getElementById("log");
+      function log(msg, cls = "") {
+        const div = document.createElement("div");
+        div.className = cls;
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+        console.log(msg);
+      }
+
+      async function init() {
+        // Fetch from BACKEND directly (port 5000), not Vite (port 5173)
+        const BACKEND_URL = "http://localhost:5000/api/env/public";
+        log("Fetching API key from backend: " + BACKEND_URL);
+
+        try {
+          const resp = await fetch(BACKEND_URL);
+          const data = await resp.json();
+          const apiKey = data?.data?.VITE_GOOGLE_MAPS_API_KEY;
+
+          if (!apiKey || apiKey.trim().length === 0) {
+            log("ERROR: No API key found in database!", "error");
+            return;
+          }
+
+          log(
+            `API Key found: ${apiKey.substring(0, 15)}... (${apiKey.length} chars)`,
+            "success",
+          );
+
+          // Load Google Maps via direct script tag (simplest method)
+          log("Loading Google Maps via direct script tag...");
+          const script = document.createElement("script");
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry&v=weekly&callback=onMapsLoaded`;
+          script.async = true;
+          script.defer = true;
+          script.onerror = (e) =>
+            log("Script load FAILED! Check API key restrictions.", "error");
+
+          window.onMapsLoaded = () => {
+            log("Google Maps script loaded!", "success");
+            log(
+              `google.maps.Map type: ${typeof window.google?.maps?.Map}`,
+              "info",
+            );
+
+            try {
+              const map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 20.5937, lng: 78.9629 },
+                zoom: 5,
+                mapTypeId: "roadmap",
+              });
+
+              log("Map instance created!", "success");
+
+              google.maps.event.addListenerOnce(map, "tilesloaded", () => {
+                log("✅ TILES LOADED SUCCESSFULLY! Map is working!", "success");
+              });
+
+              google.maps.event.addListener(map, "error", (e) => {
+                log("Map error: " + JSON.stringify(e), "error");
+              });
+
+              // Check tile rendering after timeout
+              setTimeout(() => {
+                const mapDiv = map.getDiv();
+                // Check for tile images or canvas elements
+                const images = mapDiv.querySelectorAll("img");
+                const canvases = mapDiv.querySelectorAll("canvas");
+                log(
+                  `Images in map: ${images.length}, Canvases: ${canvases.length}`,
+                  "info",
+                );
+
+                // Check computed background color
+                const firstChild = mapDiv.querySelector("div");
+                if (firstChild) {
+                  const bg =
+                    window.getComputedStyle(firstChild).backgroundColor;
+                  log(`Map first child background: ${bg}`, "info");
+                }
+
+                if (images.length === 0 && canvases.length === 0) {
+                  log("⚠️ NO TILES RENDERED after 5s", "error");
+                  log("Possible causes:", "warn");
+                  log(
+                    "  1. Maps JavaScript API not enabled in Google Cloud Console",
+                    "warn",
+                  );
+                  log(
+                    "  2. Billing not enabled for this Google Cloud project",
+                    "warn",
+                  );
+                  log(
+                    "  3. API key HTTP referrer restrictions blocking localhost",
+                    "warn",
+                  );
+                  log("  4. API key is invalid or expired", "warn");
+                } else {
+                  log("✅ Map tiles are rendering!", "success");
+                }
+              }, 5000);
+            } catch (e) {
+              log("Map creation error: " + e.message, "error");
+            }
+          };
+
+          // Also listen for Google Maps auth errors
+          window.gm_authFailure = () => {
+            log("⚠️ Google Maps AUTHENTICATION FAILURE!", "error");
+            log("The API key is INVALID or has restrictive settings.", "error");
+            log(
+              "Go to Google Cloud Console > APIs & Services > Credentials",
+              "warn",
+            );
+            log(
+              "Check: Maps JavaScript API is enabled & key has no IP/referrer restrictions",
+              "warn",
+            );
+          };
+
+          document.head.appendChild(script);
+        } catch (e) {
+          log("Error: " + e.message, "error");
+          log("Make sure backend is running on port 5000", "warn");
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>
