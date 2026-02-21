@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react"
-import { Calendar, Clock, Users, Search, Filter, MessageSquare, ChevronRight, CheckCircle2, XCircle, Clock4 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
+import { Calendar, Clock, Users, Search, Filter, MessageSquare, ChevronRight, CheckCircle2, XCircle, Clock4, ArrowLeft } from "lucide-react"
 import { diningAPI, restaurantAPI } from "@/lib/api"
 import Loader from "@/components/Loader"
 import { Badge } from "@/components/ui/badge"
 
 export default function DiningReservations() {
+    const navigate = useNavigate()
     const [bookings, setBookings] = useState([])
     const [loading, setLoading] = useState(true)
     const [restaurant, setRestaurant] = useState(null)
@@ -67,11 +69,21 @@ export default function DiningReservations() {
         <div className="min-h-screen bg-slate-50 pb-20">
             {/* Header */}
             <div className="bg-white p-6 border-b sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Table Reservations</h1>
-                        <p className="text-slate-500 text-sm mt-1">Manage your upcoming guest bookings</p>
-                    </div>
+                <div className="max-w-7xl mx-auto">
+                    {/* Back Button */}
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="mb-4 flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                        <span className="text-sm font-medium">Back</span>
+                    </button>
+                    
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-900">Table Reservations</h1>
+                            <p className="text-slate-500 text-sm mt-1">Manage your upcoming guest bookings</p>
+                        </div>
 
                     <div className="flex items-center gap-3">
                         <div className="relative flex-1 md:w-64">
@@ -89,6 +101,7 @@ export default function DiningReservations() {
                         <button className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">
                             <Filter className="w-5 h-5 text-slate-600" />
                         </button>
+                    </div>
                     </div>
                 </div>
             </div>

@@ -14,7 +14,6 @@ import {
   Users,
   Settings,
   Bell,
-  Truck,
   FileText,
   Star,
   MessageSquare,
@@ -672,13 +671,11 @@ export default function ExploreMore() {
   // Section data
   const manageOutletItems = [
     { id: 1, label: "Outlet info", icon: Info, route: "/restaurant/outlet-info" },
-    { id: 2, label: "Outlet timings", icon: Clock, route: "/restaurant/outlet-timings" },
     { id: 3, label: "Dining Reservations", icon: Calendar, route: "/restaurant/reservations" },
     { id: 4, label: "Manage staff", icon: Users, route: "/restaurant/contact-details" },
   ]
 
   const settingsItems = [
-    { id: 3, label: "Delivery settings", icon: Truck, route: "/restaurant/delivery-settings" },
     { id: 4, label: "Zone Setup", icon: MapPin, route: "/restaurant/zone-setup" },
   ]
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import Lenis from "lenis"
-import { ArrowLeft, Settings, ChevronRight } from "lucide-react"
+import { ArrowLeft, Settings } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent } from "@/components/ui/card"
 import { restaurantAPI } from "@/lib/api"
@@ -452,7 +452,7 @@ export default function RestaurantStatus() {
           </div>
 
           <p className="text-sm text-gray-700 mb-2">Current delivery slot</p>
-          <div className="flex items-center justify-between">
+          <div>
             <p className="text-base font-bold text-gray-900">
               {loading ? "Loading..." : (
                 (() => {
@@ -469,15 +469,6 @@ export default function RestaurantStatus() {
                 })()
               )}
             </p>
-            {!isDayClosed && (
-              <button
-                onClick={() => navigate("/restaurant/outlet-timings")}
-                className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                Details
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            )}
           </div>
 
           

@@ -231,9 +231,6 @@ export default function ContactDetails() {
               <p className="text-sm text-gray-900 font-normal">
                 {loading ? "Loading..." : (ownerData.phone || "N/A")}
               </p>
-              <p className="text-sm text-gray-900 font-normal">
-                {loading ? "Loading..." : (ownerData.email || "N/A")}
-              </p>
             </div>
             <button
               onClick={handleEditOwner}

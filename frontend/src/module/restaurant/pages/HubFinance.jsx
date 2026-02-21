@@ -475,6 +475,88 @@ export default function HubFinance() {
     `
   }
 
+  // Download Invoice PDF - For Invoices & Taxes section
+  const downloadInvoice = async (type = 'current') => {
+    try {
+      const reportData = getReportData()
+      const htmlContent = generateHTMLContent(reportData)
+      
+      console.log('📄 Generating Invoice PDF...')
+      
+      // Create a temporary hidden iframe to render HTML properly
+      const iframe = document.createElement('iframe')
+      iframe.style.position = 'absolute'
+      iframe.style.left = '-9999px'
+      iframe.style.top = '0'
+      iframe.style.width = '210mm'
+      iframe.style.height = '297mm'
+      iframe.style.border = 'none'
+      document.body.appendChild(iframe)
+      
+      // Write HTML to iframe
+      iframe.contentDocument.open()
+      iframe.contentDocument.write(htmlContent)
+      iframe.contentDocument.close()
+      
+      // Wait for iframe content to load
+      await new Promise((resolve) => {
+        if (iframe.contentDocument.readyState === 'complete') {
+          resolve()
+        } else {
+          iframe.contentWindow.onload = resolve
+          setTimeout(resolve, 1000)
+        }
+      })
+      
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      const html2canvas = (await import('html2canvas')).default
+      const { default: jsPDF } = await import('jspdf')
+    
+      const iframeBody = iframe.contentDocument.body
+      
+      const canvas = await html2canvas(iframeBody, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: iframeBody.scrollWidth,
+        height: iframeBody.scrollHeight
+      })
+      
+      document.body.removeChild(iframe)
+    
+      const imgWidth = 210
+      const pageHeight = 297
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      let heightLeft = imgHeight
+      let position = 0
+      
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+      
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+      
+      const fileName = type === 'current' 
+        ? `invoice-current-cycle-${new Date().toISOString().split("T")[0]}.pdf`
+        : `invoice-${reportData.dateRange.replace(/\s+/g, '-').replace(/'/g, '')}_${new Date().toISOString().split("T")[0]}.pdf`
+      
+      pdf.save(fileName)
+      console.log('✅ Invoice downloaded successfully!')
+    } catch (error) {
+      console.error('❌ Error downloading invoice:', error)
+      alert(`Failed to download invoice: ${error.message}`)
+    }
+  }
+
   // Download PDF report - Direct download without print dialog
   const downloadPDF = async () => {
     try {
@@ -970,24 +1052,46 @@ export default function HubFinance() {
               <div className="space-y-4">
                 {financeData?.currentCycle && (
                   <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm font-semibold text-gray-700 mb-1">Current cycle</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      ₹{(financeData.currentCycle.estimatedPayout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {financeData.currentCycle.totalOrders ?? 0} orders • Payout includes applicable deductions. Tax liability as per local laws.
-                    </p>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-700 mb-1">Current cycle</p>
+                        <p className="text-2xl font-bold text-gray-900">
+                          ₹{(financeData.currentCycle.estimatedPayout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {financeData.currentCycle.totalOrders ?? 0} orders • Payout includes applicable deductions. Tax liability as per local laws.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => downloadInvoice('current')}
+                        className="ml-4 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors shrink-0"
+                        title="Download Invoice"
+                      >
+                        <Download className="w-5 h-5 text-gray-700" />
+                      </button>
+                    </div>
                   </div>
                 )}
                 {pastCyclesData?.orders?.length > 0 && (
                   <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm font-semibold text-gray-700 mb-2">Selected period</p>
-                    <p className="text-lg font-bold text-gray-900">
-                      ₹{(pastCyclesData.orders || []).reduce((sum, o) => sum + (Number(o.payout) || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {pastCyclesData.orders?.length ?? 0} orders in selected range. Tax as per applicable laws.
-                    </p>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-700 mb-2">Selected period</p>
+                        <p className="text-lg font-bold text-gray-900">
+                          ₹{(pastCyclesData.orders || []).reduce((sum, o) => sum + (Number(o.payout) || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {pastCyclesData.orders?.length ?? 0} orders in selected range. Tax as per applicable laws.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => downloadInvoice('past')}
+                        className="ml-4 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors shrink-0"
+                        title="Download Invoice"
+                      >
+                        <Download className="w-5 h-5 text-gray-700" />
+                      </button>
+                    </div>
                   </div>
                 )}
                 {!financeData?.currentCycle && !loading && (
