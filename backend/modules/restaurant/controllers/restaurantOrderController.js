@@ -392,6 +392,15 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       console.error("Error sending notification:", notifError);
     }
 
+    // Send push notification to user when restaurant accepts order
+    try {
+      const { notifyUserRestaurantAccepted } = 
+        await import("../../fcm/services/pushNotificationService.js");
+      await notifyUserRestaurantAccepted(order);
+    } catch (pushError) {
+      console.error("❌ Error sending push notification:", pushError);
+    }
+
     // Priority-based order notification: First notify nearest delivery boys, then expand after 30 seconds
     // Skip for hotel orders as they are served by hotel staff
     // Only proceed if delivery assignment mode is 'automatic'
@@ -1327,6 +1336,15 @@ export const markOrderReady = asyncHandler(async (req, res) => {
           deliveryNotifError,
         );
       }
+    }
+
+    // Send push notification to user when order is ready
+    try {
+      const { notifyUserOrderReady } = 
+        await import("../../fcm/services/pushNotificationService.js");
+      await notifyUserOrderReady(populatedOrder || order);
+    } catch (pushError) {
+      console.error("❌ Error sending push notification:", pushError);
     }
 
     return successResponse(res, 200, "Order marked as ready", {

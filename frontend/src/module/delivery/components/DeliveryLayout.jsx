@@ -4,6 +4,7 @@ import BottomNavigation from "./BottomNavigation"
 import { getUnreadDeliveryNotificationCount } from "../utils/deliveryNotifications"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { DeliveryNotificationsProvider } from "../context/DeliveryNotificationsContext"
+import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 
 export default function DeliveryLayout({
   children,
@@ -46,6 +47,21 @@ export default function DeliveryLayout({
     }
   }, [location.pathname, navigate])
 
+  // Handle foreground push notifications
+  useForegroundNotifications({
+    onNotificationClick: (data) => {
+      // Navigate based on notification type
+      if (data.type === 'new_order' || data.type === 'order_ready') {
+        if (data.orderId) {
+          navigate(`/delivery/order/${data.orderId}`);
+        } else {
+          navigate('/delivery');
+        }
+      }
+    },
+    showToasts: true
+  });
+
   // Update badge count when location changes
   useEffect(() => {
     setRequestBadgeCount(getUnreadDeliveryNotificationCount())
@@ -62,7 +78,7 @@ export default function DeliveryLayout({
       window.removeEventListener('deliveryNotificationsUpdated', handleNotificationUpdate)
       window.removeEventListener('storage', handleNotificationUpdate)
     }
-  }, [location.pathname])
+  }, [location.pathname, navigate])
 
   // Pages where bottom navigation should be shown
   const showBottomNav = [

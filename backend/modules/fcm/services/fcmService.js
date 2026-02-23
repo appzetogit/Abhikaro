@@ -3,6 +3,7 @@ import User from '../../auth/models/User.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import Delivery from '../../delivery/models/Delivery.js';
 import Hotel from '../../hotel/models/Hotel.js';
+import Admin from '../../admin/models/Admin.js';
 import mongoose from 'mongoose';
 
 let fcmInitialized = false;
@@ -15,7 +16,8 @@ function getModelByRole(role) {
     user: User,
     restaurant: Restaurant,
     delivery: Delivery,
-    hotel: Hotel
+    hotel: Hotel,
+    admin: Admin
   };
   return modelMap[role];
 }
@@ -65,7 +67,7 @@ export async function saveFcmToken({ userId, role, fcmToken, platform = 'web', d
     throw new Error('userId, role, and fcmToken are required');
   }
 
-  const validRoles = ['user', 'restaurant', 'delivery', 'hotel'];
+  const validRoles = ['user', 'restaurant', 'delivery', 'hotel', 'admin'];
   if (!validRoles.includes(role)) {
     throw new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
   }
@@ -146,7 +148,7 @@ export async function removeFcmToken(fcmToken) {
  * Returns array of tokens from appropriate model
  */
 export async function getTokensForUser(userId, role) {
-  const validRoles = ['user', 'restaurant', 'delivery', 'hotel'];
+  const validRoles = ['user', 'restaurant', 'delivery', 'hotel', 'admin'];
   if (!validRoles.includes(role)) {
     return [];
   }
@@ -187,13 +189,19 @@ export async function sendNotification(tokens, notification, data = {}) {
   const tokenArray = Array.isArray(tokens) ? tokens : [tokens].filter(Boolean);
   if (tokenArray.length === 0) return { success: false, error: 'No tokens provided' };
 
+  // Ensure tag is present in data for deduplication
+  const dataWithTag = { ...data };
+  if (!dataWithTag.tag) {
+    dataWithTag.tag = dataWithTag.orderId || dataWithTag.notificationId || Date.now().toString();
+  }
+
   const message = {
     notification: {
       title: notification.title || 'Notification',
       body: notification.body || '',
     },
     data: Object.fromEntries(
-      Object.entries(data).map(([k, v]) => [String(k), String(v)])
+      Object.entries(dataWithTag).map(([k, v]) => [String(k), String(v)])
     ),
     tokens: tokenArray,
     android: {
@@ -204,6 +212,11 @@ export async function sendNotification(tokens, notification, data = {}) {
     },
     webpush: {
       headers: { Urgency: 'high' },
+      notification: {
+        tag: dataWithTag.tag, // Use tag for web push deduplication
+        requireInteraction: true,
+        vibrate: [200, 100, 200]
+      }
     },
   };
 
@@ -217,7 +230,7 @@ export async function sendNotification(tokens, notification, data = {}) {
     });
     if (invalidTokens.length > 0) {
       // Remove invalid tokens from all models
-      const models = [User, Restaurant, Delivery, Hotel];
+      const models = [User, Restaurant, Delivery, Hotel, Admin];
       for (const Model of models) {
         await Model.updateMany(
           { fcmtokenWeb: { $in: invalidTokens } },

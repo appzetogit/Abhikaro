@@ -71,6 +71,11 @@ export default function AdminLogin() {
         // Store admin token and data
         setAuthData("admin", data.accessToken, data.admin)
         
+        // Register FCM token for push notifications
+        import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+          registerFcmToken(data.accessToken, { sendLoginAlert: true }).catch(() => {})
+        })
+        
         // Navigate to admin dashboard after successful login
         navigate("/admin", { replace: true })
       } else {

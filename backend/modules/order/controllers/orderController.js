@@ -859,6 +859,16 @@ export const createOrder = async (req, res) => {
           logger.error("❌ Error notifying restaurant:", notifyError);
         }
 
+        // Send push notification to user about order placement
+        try {
+          const { notifyUserOrderPlaced, notifyRestaurantNewOrder: notifyRestaurantPush } = 
+            await import("../../fcm/services/pushNotificationService.js");
+          await notifyUserOrderPlaced(order);
+          await notifyRestaurantPush(order);
+        } catch (pushError) {
+          logger.error("❌ Error sending push notifications:", pushError);
+        }
+
         // Respond to client
         return res.status(201).json({
           success: true,
@@ -931,6 +941,16 @@ export const createOrder = async (req, res) => {
       // Mark as confirmed - Hotel orders are auto-confirmed
       order.payment.status = "pending";
       await order.save();
+
+      // Send push notifications
+      try {
+        const { notifyUserOrderPlaced, notifyRestaurantNewOrder: notifyRestaurantPush } = 
+          await import("../../fcm/services/pushNotificationService.js");
+        await notifyUserOrderPlaced(order);
+        await notifyRestaurantPush(order);
+      } catch (pushError) {
+        logger.error("❌ Error sending push notifications:", pushError);
+      }
 
       // Notify hotel/restaurant about new Pay at Hotel order
       try {
@@ -1012,6 +1032,16 @@ export const createOrder = async (req, res) => {
       };
       await order.save();
 
+      // Send push notifications
+      try {
+        const { notifyUserOrderPlaced, notifyRestaurantNewOrder: notifyRestaurantPush } = 
+          await import("../../fcm/services/pushNotificationService.js");
+        await notifyUserOrderPlaced(order);
+        await notifyRestaurantPush(order);
+      } catch (pushError) {
+        logger.error("❌ Error sending push notifications:", pushError);
+      }
+
       // Notify restaurant about new COD order via Socket.IO (non-blocking)
       try {
         const notifyRestaurantResult = await notifyRestaurantNewOrder(
@@ -1085,6 +1115,16 @@ export const createOrder = async (req, res) => {
       amount: pricing.total,
       razorpayOrderId: razorpayOrder?.id,
     });
+
+    // Send push notifications for Razorpay orders (will be sent after payment verification)
+    // For now, just notify restaurant about new order
+    try {
+      const { notifyRestaurantNewOrder: notifyRestaurantPush } = 
+        await import("../../fcm/services/pushNotificationService.js");
+      await notifyRestaurantPush(order);
+    } catch (pushError) {
+      logger.error("❌ Error sending push notification to restaurant:", pushError);
+    }
 
     // Get Razorpay key ID from env service
     let razorpayKeyId = null;
@@ -1253,6 +1293,16 @@ export const verifyOrderPayment = async (req, res) => {
     order.cashCollected = true;
 
     await order.save();
+
+    // Send push notifications after payment verification
+    try {
+      const { notifyUserOrderPlaced, notifyRestaurantNewOrder: notifyRestaurantPush } = 
+        await import("../../fcm/services/pushNotificationService.js");
+      await notifyUserOrderPlaced(order);
+      await notifyRestaurantPush(order);
+    } catch (pushError) {
+      logger.error("❌ Error sending push notifications:", pushError);
+    }
 
     // Calculate order settlement and hold escrow
     try {

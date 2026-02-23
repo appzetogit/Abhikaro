@@ -10,6 +10,7 @@ import RestaurantNavbar from "../components/RestaurantNavbar"
 import notificationSound from "@/assets/audio/alert.mp3"
 import { restaurantAPI, diningAPI } from "@/lib/api"
 import { useRestaurantNotifications } from "../hooks/useRestaurantNotifications"
+import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -561,6 +562,21 @@ function TableBookings() {
 
 
 export default function OrdersMain() {
+  const navigate = useNavigate();
+
+  // Handle foreground push notifications
+  useForegroundNotifications({
+    onNotificationClick: (data) => {
+      // Navigate based on notification type
+      if (data.type === 'new_order') {
+        if (data.orderId) {
+          // Refresh orders list to show new order
+          window.dispatchEvent(new CustomEvent('order_status_update', { detail: data }));
+        }
+      }
+    },
+    showToasts: true
+  });
   const navigate = useNavigate()
   const [activeFilter, setActiveFilter] = useState("preparing")
   const [isTransitioning, setIsTransitioning] = useState(false)

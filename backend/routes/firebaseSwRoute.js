@@ -34,14 +34,106 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Function to play notification sound using Web Audio API
+async function playNotificationSound() {
+    try {
+        const audioUrl = '/audio/alert.mp3';
+        console.log('🔊 [SW] Attempting to play notification sound:', audioUrl);
+        const response = await fetch(audioUrl);
+        if (!response.ok) {
+            console.warn('[SW] Could not fetch audio file:', response.status);
+            return;
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const audioContext = new (self.AudioContext || self.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start(0);
+        console.log('✅ [SW] Notification sound played successfully');
+        source.onended = () => {
+            try {
+                audioContext.close();
+            } catch (e) {
+                // Ignore errors during cleanup
+            }
+        };
+    } catch (error) {
+        console.warn('[SW] Could not play notification sound:', error);
+    }
+}
+
+// Handle background messages
 messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title || payload.data?.title || 'Notification';
-  const options = {
-    body: payload.notification?.body || payload.data?.body || '',
-    icon: '/vite.svg',
-    data: payload.data || {}
-  };
-  self.registration.showNotification(title, options);
+    console.log('[SW] Received background message:', payload);
+
+    // Play sound for new order notifications
+    const isNewOrder = payload.data?.type === 'new_order' || payload.data?.orderId;
+    if (isNewOrder) {
+        console.log('🔔 [SW] New order notification received - will play sound');
+        playNotificationSound();
+    }
+
+    // If payload has notification object, the browser will show it automatically.
+    // We don't need to call showNotification here to avoid double notifications.
+    if (payload.notification) {
+        console.log('[SW] Payload has notification object, browser will show it automatically');
+        return;
+    }
+
+    const title = payload.data?.title || 'Abhikaro Update';
+    const body = payload.data?.body || '';
+    const tag = payload.data?.tag || payload.data?.orderId || payload.data?.notificationId || 'admin_broadcast';
+
+    // Icon and Image needs to be absolute URLs for maximum compatibility
+    const icon = payload.data?.icon || '/vite.svg';
+    const image = payload.data?.image || null;
+    const sound = payload.data?.sound || (isNewOrder ? '/audio/alert.mp3' : null);
+
+    const notificationOptions = {
+        body: body,
+        icon: icon,
+        image: image,
+        data: payload.data,
+        tag: tag, // THIS IS KEY FOR DEDUPLICATION
+        badge: '/vite.svg',
+        requireInteraction: true,
+        vibrate: [200, 100, 200]
+    };
+
+    // Add sound if available
+    if (sound) {
+        notificationOptions.sound = sound;
+    }
+
+    console.log(\`🔔 [SW] Displaying manual notification: \${title} (Tag: \${tag})\`);
+    return self.registration.showNotification(title, notificationOptions);
+});
+
+// Handle notification click
+self.addEventListener('notificationclick', (event) => {
+    console.log('[SW] Notification clicked:', event.notification.tag);
+    event.notification.close();
+
+    const data = event.notification.data;
+    const urlToOpen = data?.link || data?.click_action || '/';
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+            for (const client of clientList) {
+                if (urlToOpen.includes(client.url) && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow(urlToOpen);
+            }
+        })
+    );
 });
 `;
 

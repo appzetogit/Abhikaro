@@ -174,3 +174,52 @@ export async function removeFcmToken() {
     console.warn("FCM remove token error:", err?.message);
   }
 }
+
+/**
+ * Set up foreground message handler (when app is open)
+ * @param {Function} callback - Function to handle notification: (payload) => void
+ * @returns {Function} Cleanup function to unsubscribe
+ */
+export async function onForegroundMessage(callback) {
+  try {
+    const messaging = await getMessaging();
+    if (!messaging) {
+      console.warn("🔔 [FCM] Messaging not available for foreground handler");
+      return () => {}; // Return no-op cleanup
+    }
+
+    const { onMessage } = await import("firebase/messaging");
+    
+    // Set up the message handler
+    const unsubscribe = onMessage(messaging, (payload) => {
+      console.log("🔔 [FCM] Foreground message received:", payload);
+      
+      // Check for duplicate using tag
+      const tag = payload.data?.tag || payload.data?.orderId || payload.data?.notificationId;
+      if (tag) {
+        // Check if we've already shown this notification
+        const notificationKey = `fcm_notification_${tag}`;
+        const lastShown = sessionStorage.getItem(notificationKey);
+        const now = Date.now();
+        
+        // If same notification was shown in last 2 seconds, skip (prevent duplicates)
+        if (lastShown && (now - parseInt(lastShown)) < 2000) {
+          console.log("🔔 [FCM] Duplicate notification detected, skipping:", tag);
+          return;
+        }
+        sessionStorage.setItem(notificationKey, now.toString());
+      }
+      
+      // Call the callback with the payload
+      if (callback && typeof callback === 'function') {
+        callback(payload);
+      }
+    });
+
+    console.log("✅ [FCM] Foreground message handler registered");
+    return unsubscribe;
+  } catch (err) {
+    console.error("❌ [FCM] Error setting up foreground handler:", err);
+    return () => {}; // Return no-op cleanup
+  }
+}

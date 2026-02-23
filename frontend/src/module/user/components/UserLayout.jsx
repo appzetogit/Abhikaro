@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from "react-router-dom"
+import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useEffect, useState, createContext, useContext, lazy, Suspense, useMemo, useCallback } from "react"
 import { ProfileProvider } from "../context/ProfileContext"
 import LocationPrompt from "./LocationPrompt"
@@ -9,6 +9,7 @@ const SearchOverlay = lazy(() => import("./SearchOverlay"))
 const LocationSelectorOverlay = lazy(() => import("./LocationSelectorOverlay"))
 import BottomNavigation from "./BottomNavigation"
 import DesktopNavbar from "./DesktopNavbar"
+import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 
 // Create SearchOverlay context with default value
 const SearchOverlayContext = createContext({
@@ -118,6 +119,22 @@ function LocationSelectorProvider({ children }) {
 
 export default function UserLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
+
+  // Handle foreground push notifications
+  useForegroundNotifications({
+    onNotificationClick: (data) => {
+      // Navigate based on notification type
+      if (data.type === 'order_placed' || data.type === 'restaurant_accepted' || 
+          data.type === 'order_ready' || data.type === 'out_for_delivery' || 
+          data.type === 'order_delivered') {
+        if (data.orderId) {
+          navigate(`/user/orders/${data.orderId}`);
+        }
+      }
+    },
+    showToasts: true
+  });
 
   useEffect(() => {
     // Reset scroll to top whenever location changes (pathname, search, or hash)

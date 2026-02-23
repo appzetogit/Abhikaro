@@ -1650,6 +1650,17 @@ export const confirmOrderId = asyncHandler(async (req, res) => {
       }
     })();
 
+    // Send push notification to user when order is out for delivery
+    (async () => {
+      try {
+        const { notifyUserOutForDelivery } = 
+          await import("../../fcm/services/pushNotificationService.js");
+        await notifyUserOutForDelivery(updatedOrder);
+      } catch (pushError) {
+        console.error("❌ Error sending push notification:", pushError);
+      }
+    })();
+
     return response;
   } catch (error) {
     logger.error(`Error confirming order ID: ${error.message}`);
@@ -2078,6 +2089,15 @@ export const completeDelivery = asyncHandler(async (req, res) => {
     console.log(
       `✅ Order ${orderIdForLog} marked as delivered by delivery partner ${delivery._id}`,
     );
+
+    // Send push notification to user when order is delivered
+    try {
+      const { notifyUserOrderDelivered } = 
+        await import("../../fcm/services/pushNotificationService.js");
+      await notifyUserOrderDelivered(updatedOrder);
+    } catch (pushError) {
+      console.error("❌ Error sending push notification:", pushError);
+    }
 
     // Mark COD payment as collected (admin Payment Status → Collected)
     if (order.payment?.method === "cash" || order.payment?.method === "cod") {

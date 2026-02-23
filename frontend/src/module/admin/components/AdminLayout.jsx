@@ -1,11 +1,26 @@
 import { useState, useEffect } from "react"
-import { Outlet } from "react-router-dom"
+import { Outlet, useNavigate } from "react-router-dom"
 import AdminSidebar from "./AdminSidebar"
 import AdminNavbar from "./AdminNavbar"
+import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const navigate = useNavigate();
+
+  // Handle foreground push notifications
+  useForegroundNotifications({
+    onNotificationClick: (data) => {
+      // Navigate based on notification type
+      if (data.type === 'admin_notification' || data.type === 'new_order') {
+        if (data.orderId) {
+          navigate(`/admin/orders/${data.orderId}`);
+        }
+      }
+    },
+    showToasts: true
+  });
 
   // Get initial collapsed state from localStorage to set initial margin
   useEffect(() => {

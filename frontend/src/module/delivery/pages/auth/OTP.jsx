@@ -140,6 +140,11 @@ export default function DeliveryOTP() {
         try {
           console.log("Storing auth data for signup flow:", { hasToken: !!accessToken, hasUser: !!user })
           storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
+          
+          // Register FCM token for push notifications
+          import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+            registerFcmToken(accessToken, { sendLoginAlert: false }).catch(() => {})
+          })
           console.log("Auth data stored successfully for signup")
         } catch (storageError) {
           console.error("Failed to store authentication data:", storageError)
@@ -175,6 +180,11 @@ export default function DeliveryOTP() {
       try {
         console.log("Storing auth data for delivery:", { hasToken: !!accessToken, hasUser: !!user })
         storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
+        
+        // Register FCM token for push notifications
+        import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+          registerFcmToken(accessToken, { sendLoginAlert: true }).catch(() => {})
+        })
         console.log("Auth data stored successfully")
       } catch (storageError) {
         console.error("Failed to store authentication data:", storageError)
