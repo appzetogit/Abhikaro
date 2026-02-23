@@ -218,18 +218,41 @@ export async function sendNotification(tokens, notification, data = {}) {
     notificationObj.image = imageUrl;
   }
 
+  // Build Android-specific config with image
+  const androidConfig = {
+    priority: 'high',
+  };
+  
+  // Add image to Android notification if available
+  if (imageUrl) {
+    androidConfig.notification = {
+      imageUrl: imageUrl,
+    };
+  }
+
+  // Build iOS/APNS config with image
+  const apnsConfig = {
+    payload: { 
+      aps: { 
+        sound: 'default',
+        ...(imageUrl && { 'mutable-content': 1 }) // Enable mutable content for image
+      } 
+    },
+  };
+  
+  // Add image URL to APNS payload for iOS notification extension
+  if (imageUrl) {
+    apnsConfig.payload.imageUrl = imageUrl;
+  }
+
   const message = {
     notification: notificationObj,
     data: Object.fromEntries(
       Object.entries(dataWithTag).map(([k, v]) => [String(k), String(v)])
     ),
     tokens: tokenArray,
-    android: {
-      priority: 'high',
-    },
-    apns: {
-      payload: { aps: { sound: 'default' } },
-    },
+    android: androidConfig,
+    apns: apnsConfig,
     webpush: {
       headers: { Urgency: 'high' },
       notification: {
@@ -243,6 +266,9 @@ export async function sendNotification(tokens, notification, data = {}) {
 
   try {
     console.log(`📤 [FCM] Sending notification: "${notification.title}" - "${notification.body}"`);
+    if (imageUrl) {
+      console.log(`🖼️ [FCM] Image URL included: ${imageUrl}`);
+    }
     const response = await admin.messaging().sendEachForMulticast(message);
     
     console.log(`📊 [FCM] Send response: ${response.successCount} success, ${response.failureCount} failures`);

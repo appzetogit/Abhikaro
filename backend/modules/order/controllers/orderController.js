@@ -860,11 +860,12 @@ export const createOrder = async (req, res) => {
         }
 
         // Send push notification to user about order placement
+        // NOTE: Restaurant notification is already sent via notifyRestaurantNewOrder (Socket.IO + FCM)
+        // So we don't need to send duplicate FCM notification here
         try {
-          const { notifyUserOrderPlaced, notifyRestaurantNewOrder: notifyRestaurantPush } = 
+          const { notifyUserOrderPlaced } = 
             await import("../../fcm/services/pushNotificationService.js");
           await notifyUserOrderPlaced(order);
-          await notifyRestaurantPush(order);
         } catch (pushError) {
           logger.error("❌ Error sending push notifications:", pushError);
         }
@@ -942,12 +943,13 @@ export const createOrder = async (req, res) => {
       order.payment.status = "pending";
       await order.save();
 
-      // Send push notifications
+      // Send push notification to user about order placement
+      // NOTE: Restaurant notification is already sent via notifyRestaurantNewOrder (Socket.IO + FCM)
+      // So we don't need to send duplicate FCM notification here
       try {
-        const { notifyUserOrderPlaced, notifyRestaurantNewOrder: notifyRestaurantPush } = 
+        const { notifyUserOrderPlaced } = 
           await import("../../fcm/services/pushNotificationService.js");
         await notifyUserOrderPlaced(order);
-        await notifyRestaurantPush(order);
       } catch (pushError) {
         logger.error("❌ Error sending push notifications:", pushError);
       }
@@ -1032,12 +1034,13 @@ export const createOrder = async (req, res) => {
       };
       await order.save();
 
-      // Send push notifications
+      // Send push notification to user about order placement
+      // NOTE: Restaurant notification is already sent via notifyRestaurantNewOrder (Socket.IO + FCM)
+      // So we don't need to send duplicate FCM notification here
       try {
-        const { notifyUserOrderPlaced, notifyRestaurantNewOrder: notifyRestaurantPush } = 
+        const { notifyUserOrderPlaced } = 
           await import("../../fcm/services/pushNotificationService.js");
         await notifyUserOrderPlaced(order);
-        await notifyRestaurantPush(order);
       } catch (pushError) {
         logger.error("❌ Error sending push notifications:", pushError);
       }
@@ -1116,15 +1119,9 @@ export const createOrder = async (req, res) => {
       razorpayOrderId: razorpayOrder?.id,
     });
 
-    // Send push notifications for Razorpay orders (will be sent after payment verification)
-    // For now, just notify restaurant about new order
-    try {
-      const { notifyRestaurantNewOrder: notifyRestaurantPush } = 
-        await import("../../fcm/services/pushNotificationService.js");
-      await notifyRestaurantPush(order);
-    } catch (pushError) {
-      logger.error("❌ Error sending push notification to restaurant:", pushError);
-    }
+    // NOTE: Restaurant notification will be sent after payment verification
+    // via notifyRestaurantNewOrder (Socket.IO + FCM) in verifyOrderPayment
+    // No need to send duplicate notification here
 
     // Get Razorpay key ID from env service
     let razorpayKeyId = null;
@@ -1294,12 +1291,13 @@ export const verifyOrderPayment = async (req, res) => {
 
     await order.save();
 
-    // Send push notifications after payment verification
+    // Send push notification to user about order placement
+    // NOTE: Restaurant notification is already sent via notifyRestaurantNewOrder (Socket.IO + FCM)
+    // So we don't need to send duplicate FCM notification here
     try {
-      const { notifyUserOrderPlaced, notifyRestaurantNewOrder: notifyRestaurantPush } = 
+      const { notifyUserOrderPlaced } = 
         await import("../../fcm/services/pushNotificationService.js");
       await notifyUserOrderPlaced(order);
-      await notifyRestaurantPush(order);
     } catch (pushError) {
       logger.error("❌ Error sending push notifications:", pushError);
     }
