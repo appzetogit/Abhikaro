@@ -61,6 +61,7 @@ const DeliveryTrackingMap = ({
   const mapInitializedRef = useRef(false);
   const directionsCacheRef = useRef(new Map()); // Cache for Directions API calls
   const lastRouteRequestRef = useRef({ start: null, end: null, timestamp: 0 });
+  const isMountedRef = useRef(true); // Track if component is mounted
 
   const backendUrl = API_BASE_URL.replace('/api', '');
   const [GOOGLE_MAPS_API_KEY, setGOOGLE_MAPS_API_KEY] = useState("");
@@ -978,6 +979,12 @@ const DeliveryTrackingMap = ({
         // Wait for MapTypeId to be available (sometimes it loads slightly after maps)
         let mapTypeIdAttempts = 0;
         const checkMapTypeId = () => {
+          // Check if component is still mounted before proceeding
+          if (!isMountedRef.current || !mapRef.current) {
+            console.log('⚠️ Component unmounted or map container removed, skipping map initialization');
+            return;
+          }
+
           if (window.google?.maps?.MapTypeId) {
             initializeMap();
           } else if (mapTypeIdAttempts < 20) {
@@ -997,11 +1004,28 @@ const DeliveryTrackingMap = ({
 
     loadGoogleMapsIfNeeded();
 
+    // Cleanup function to prevent initialization after unmount
+    return () => {
+      isMountedRef.current = false;
+    };
+
     function initializeMap() {
       try {
         // Verify Google Maps is fully loaded
         if (!window.google || !window.google.maps || !window.google.maps.Map) {
           console.error('❌ Google Maps API not fully loaded');
+          return;
+        }
+
+        // CRITICAL: Check if mapRef.current is still available (component might have unmounted)
+        if (!mapRef.current) {
+          console.warn('⚠️ Map container element not available (component may have unmounted)');
+          return;
+        }
+
+        // Verify coordinates are available
+        if (!restaurantCoords || !customerCoords) {
+          console.warn('⚠️ Restaurant or customer coordinates not available');
           return;
         }
 

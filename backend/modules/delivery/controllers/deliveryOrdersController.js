@@ -505,7 +505,12 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       }
 
       // Update orderDeliveryPartnerId after assignment
-      const updatedOrderDeliveryPartnerId = order.deliveryPartnerId?.toString();
+      // Handle both ObjectId and populated document for deliveryPartnerId
+      const updatedOrderDeliveryPartnerId = (
+        order.deliveryPartnerId?._id || // populated
+        order.deliveryPartnerId ||      // raw ObjectId
+        null
+      )?.toString();
       if (updatedOrderDeliveryPartnerId !== currentDeliveryId) {
         console.error(
           `❌ Order assignment failed - order still not assigned to ${currentDeliveryId}, got ${updatedOrderDeliveryPartnerId}`,

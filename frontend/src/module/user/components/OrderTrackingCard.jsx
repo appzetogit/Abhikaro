@@ -11,6 +11,7 @@ export default function OrderTrackingCard() {
   const [activeOrder, setActiveOrder] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [apiOrders, setApiOrders] = useState([]);
+  const [apiCalled, setApiCalled] = useState(false); // Track if API has been called
 
   // Fetch orders from API (optional - only if endpoint exists)
   // For now, we'll rely primarily on localStorage orders from OrdersContext
@@ -18,27 +19,37 @@ export default function OrderTrackingCard() {
     // Only try API if user is authenticated
     const userToken = localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken');
     if (!userToken) {
-      // No token, skip API call
+      // No token, skip API call - use context orders
+      setApiCalled(true); // Mark as called so we know to use context orders
       return;
     }
 
     const fetchOrders = async () => {
       try {
         const response = await orderAPI.getOrders({ limit: 10, page: 1 });
+        let orders = [];
+        
         if (response?.data?.success && response?.data?.data?.orders) {
-          setApiOrders(response.data.data.orders);
+          orders = response.data.data.orders;
         } else if (response?.data?.orders) {
-          setApiOrders(response.data.orders);
+          orders = response.data.orders;
         } else if (response?.data?.data && Array.isArray(response.data.data)) {
-          setApiOrders(response.data.data);
+          orders = response.data.data;
         }
+        
+        // IMPORTANT: Set orders even if empty array - this means database has no orders
+        setApiOrders(orders);
+        setApiCalled(true);
+        
+        console.log('📡 OrderTrackingCard - API orders fetched:', {
+          count: orders.length,
+          orders: orders.map(o => ({ id: o.id || o._id || o.orderId, status: o.status }))
+        });
       } catch (error) {
-        // Silently fail - don't show error if API fails, just use context orders
-        // Only log if it's not a 404 (endpoint doesn't exist)
-        if (error?.response?.status !== 404) {
-          console.warn('Could not fetch orders from API for tracking card, using context orders only:', error?.response?.status || error?.message);
-        }
+        // API call failed - fall back to context orders
+        console.warn('OrderTrackingCard: API call failed, will use context orders:', error?.response?.status || error?.message);
         setApiOrders([]);
+        setApiCalled(true); // Still mark as called so we know API failed
       }
     };
 
@@ -46,14 +57,38 @@ export default function OrderTrackingCard() {
     fetchOrders();
   }, []);
 
-  // Get active order (not delivered) - check both context and API orders
+  // Get active order (not delivered)
   useEffect(() => {
-    // Combine context orders and API orders
-    const allOrders = [...contextOrders, ...apiOrders];
+    // IMPORTANT: Merge both API orders and context orders to ensure we catch newly placed orders
+    // Context orders might have just-placed orders that haven't synced to API yet
+    // API orders have the latest status from backend
+    const mergedOrders = [...apiOrders];
+    
+    // Add context orders that aren't already in apiOrders (by ID)
+    contextOrders.forEach(contextOrder => {
+      const contextOrderId = contextOrder.id || contextOrder._id || contextOrder.orderId;
+      const existsInApi = mergedOrders.some(apiOrder => 
+        (apiOrder.id || apiOrder._id || apiOrder.orderId) === contextOrderId
+      );
+      
+      if (!existsInApi) {
+        // This is a new order from context that hasn't been synced to API yet
+        mergedOrders.push(contextOrder);
+        console.log('➕ Added context order to merged list:', contextOrderId);
+      }
+    });
+    
+    const sourceOrders = mergedOrders;
+    
+    console.log('📊 OrderTrackingCard - Merged orders:', {
+      apiOrdersCount: apiOrders.length,
+      contextOrdersCount: contextOrders.length,
+      mergedCount: sourceOrders.length
+    });
 
-    // Remove duplicates by ID
-    const uniqueOrders = allOrders.filter((order, index, self) =>
-      index === self.findIndex((o) => (o.id || o._id) === (order.id || order._id))
+    // Remove duplicates by ID (safety)
+    const uniqueOrders = sourceOrders.filter((order, index, self) =>
+      index === self.findIndex((o) => (o.id || o._id || o.orderId) === (order.id || order._id || order.orderId))
     );
 
     console.log('🔍 OrderTrackingCard - Checking for active orders:', {
@@ -61,7 +96,7 @@ export default function OrderTrackingCard() {
       apiOrdersCount: apiOrders.length,
       uniqueOrdersCount: uniqueOrders.length,
       orders: uniqueOrders.map(o => ({
-        id: o.id || o._id,
+        id: o.id || o._id || o.orderId,
         status: o.status || o.deliveryState?.status,
         restaurant: o.restaurant || o.restaurantName
       }))
@@ -73,6 +108,7 @@ export default function OrderTrackingCard() {
       const isInactive = status === 'delivered' ||
         status === 'cancelled' ||
         status === 'completed' ||
+        status === 'restaurant_cancelled' ||
         status === '';
 
       if (isInactive) {
@@ -90,19 +126,64 @@ export default function OrderTrackingCard() {
     } : 'No active order');
 
     if (active) {
-      setActiveOrder(active);
-      // Calculate estimated delivery time
+      // Calculate remaining time based on elapsed time
       const orderTime = new Date(active.createdAt || active.orderDate || active.created_at || active.date || Date.now());
-      const estimatedMinutes = active.estimatedDeliveryTime || active.estimatedTime || active.estimated_delivery_time || 35;
-      const deliveryTime = new Date(orderTime.getTime() + estimatedMinutes * 60000);
-      const remaining = Math.max(0, Math.floor((deliveryTime - new Date()) / 60000));
-      setTimeRemaining(remaining);
-      console.log('⏰ OrderTrackingCard - Time remaining:', remaining, 'minutes');
+      const now = new Date();
+      const elapsedMinutes = Math.floor((now - orderTime) / (1000 * 60));
+      
+      // Get max ETA (use eta.max if available, otherwise estimatedDeliveryTime)
+      const maxETA = active.eta?.max || active.estimatedDeliveryTime || active.estimatedTime || active.estimated_delivery_time || 30;
+      const estimatedMinutes = typeof maxETA === 'number' ? maxETA : parseInt(String(maxETA).match(/\d+/)?.[0] || '30', 10);
+      
+      // Calculate remaining time
+      let remainingMinutes = estimatedMinutes - elapsedMinutes;
+      
+      // If remaining time is 0 or negative, but order is still active (not delivered), 
+      // show at least 1 minute or use estimated time as fallback
+      if (remainingMinutes <= 0) {
+        // If order is still preparing/confirmed/out_for_delivery, show estimated time
+        const orderStatus = (active.status || active.deliveryState?.status || '').toLowerCase();
+        if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled') {
+          // Order is still active but time calculation shows 0 - use estimated time as fallback
+          remainingMinutes = estimatedMinutes;
+          console.log('⚠️ OrderTrackingCard - Time calculation resulted in 0 or negative, using estimated time as fallback:', estimatedMinutes);
+        }
+      }
+      
+      // Ensure minimum of 1 minute if order is still active
+      if (remainingMinutes <= 0) {
+        remainingMinutes = 1;
+      }
+      
+      console.log('⏰ OrderTrackingCard - Time calculation:', {
+        orderTime: orderTime.toISOString(),
+        now: now.toISOString(),
+        elapsedMinutes,
+        estimatedMinutes,
+        remainingMinutes,
+        status: active.status || active.deliveryState?.status,
+        hasEta: !!active.eta,
+        etaMax: active.eta?.max,
+        estimatedDeliveryTime: active.estimatedDeliveryTime
+      });
+      
+      // Show card if order is active (not delivered/cancelled)
+      const orderStatus = (active.status || active.deliveryState?.status || '').toLowerCase();
+      if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled' && orderStatus !== 'restaurant_cancelled') {
+        setActiveOrder(active);
+        setTimeRemaining(remainingMinutes);
+        console.log('✅ OrderTrackingCard - Setting active order with time:', remainingMinutes, 'minutes');
+      } else {
+        // Order is delivered/cancelled - hide card
+        console.log('❌ OrderTrackingCard - Order is delivered/cancelled, hiding card');
+        setActiveOrder(null);
+        setTimeRemaining(null);
+      }
     } else {
       setActiveOrder(null);
       setTimeRemaining(null);
     }
-  }, [contextOrders, apiOrders]);
+  }, [contextOrders, apiOrders, apiCalled]);
 
   // Countdown timer
   useEffect(() => {
@@ -112,8 +193,18 @@ export default function OrderTrackingCard() {
     const updateInterval = timeRemaining <= 1 ? 1000 : 60000;
 
     const interval = setInterval(() => {
-      // Check both context and API orders
-      const allOrders = [...contextOrders, ...apiOrders];
+      // Merge both API and context orders (same logic as above)
+      const mergedOrders = [...apiOrders];
+      contextOrders.forEach(contextOrder => {
+        const contextOrderId = contextOrder.id || contextOrder._id || contextOrder.orderId;
+        const existsInApi = mergedOrders.some(apiOrder => 
+          (apiOrder.id || apiOrder._id || apiOrder.orderId) === contextOrderId
+        );
+        if (!existsInApi) {
+          mergedOrders.push(contextOrder);
+        }
+      });
+      const allOrders = mergedOrders;
       const currentActive = allOrders.find(order => {
         const orderId = order.id || order._id;
         const activeOrderId = activeOrder.id || activeOrder._id;
@@ -127,43 +218,92 @@ export default function OrderTrackingCard() {
       }
 
       const status = (currentActive.status || currentActive.deliveryState?.status || '').toLowerCase();
-      if (status === 'delivered' || status === 'cancelled' || status === 'completed') {
+      if (status === 'delivered' || status === 'cancelled' || status === 'completed' || status === 'restaurant_cancelled') {
         setActiveOrder(null);
         setTimeRemaining(null);
         return;
       }
 
+      // Calculate remaining time based on elapsed time
       const orderTime = new Date(currentActive.createdAt || currentActive.orderDate || currentActive.created_at || Date.now());
-      const estimatedMinutes = currentActive.estimatedDeliveryTime || currentActive.estimatedTime || currentActive.estimated_delivery_time || 35;
-      const deliveryTime = new Date(orderTime.getTime() + estimatedMinutes * 60000);
-      const remaining = Math.max(0, Math.floor((deliveryTime - new Date()) / 60000));
+      const now = new Date();
+      const elapsedMinutes = Math.floor((now - orderTime) / (1000 * 60));
+      
+      // Get max ETA (use eta.max if available, otherwise estimatedDeliveryTime)
+      const maxETA = currentActive.eta?.max || currentActive.estimatedDeliveryTime || currentActive.estimatedTime || currentActive.estimated_delivery_time || 30;
+      const estimatedMinutes = typeof maxETA === 'number' ? maxETA : parseInt(String(maxETA).match(/\d+/)?.[0] || '30', 10);
+      
+      // Calculate remaining time
+      let remaining = estimatedMinutes - elapsedMinutes;
+      
+      // If remaining is 0 or negative but order is still active, use estimated time as fallback
+      if (remaining <= 0) {
+        const orderStatus = (currentActive.status || currentActive.deliveryState?.status || '').toLowerCase();
+        if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled') {
+          remaining = estimatedMinutes; // Use full estimated time as fallback
+        }
+      }
+      
+      // Ensure minimum of 1 minute if order is still active
+      if (remaining <= 0) {
+        remaining = 1;
+      }
+      
       setTimeRemaining(remaining);
 
-      if (remaining === 0) {
+      if (remaining <= 0) {
         setActiveOrder(null);
         setTimeRemaining(null);
       }
     }, updateInterval);
 
     return () => clearInterval(interval);
-  }, [activeOrder, timeRemaining, contextOrders, apiOrders]);
+  }, [activeOrder, timeRemaining, contextOrders, apiOrders, apiCalled]);
 
-  // Listen for order updates from localStorage
+  // Listen for order updates (localStorage or custom events) and refresh API orders
   useEffect(() => {
-    const handleStorageChange = () => {
-      // When storage changes, the OrdersContext will update automatically
-      // No need to fetch from API again - just rely on context orders
-      // This prevents unnecessary API calls and errors
-    };
+    const handleStorageChange = async () => {
+      console.log('🔄 OrderTrackingCard - orderStatusUpdated event received, refreshing...');
+      
+      try {
+        const userToken = localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken')
+        if (!userToken) {
+          console.log('⚠️ No token, will use context orders');
+          // Even without token, context orders should be checked
+          return
+        }
 
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('orderStatusUpdated', handleStorageChange);
+        const response = await orderAPI.getOrders({ limit: 10, page: 1 })
+        let orders = [];
+        
+        if (response?.data?.success && response?.data?.data?.orders) {
+          orders = response.data.data.orders;
+        } else if (response?.data?.orders) {
+          orders = response.data.orders;
+        } else if (response?.data?.data && Array.isArray(response.data.data)) {
+          orders = response.data.data;
+        }
+        
+        // Set orders even if empty (means database has no orders)
+        setApiOrders(orders);
+        setApiCalled(true);
+        
+        console.log('✅ OrderTrackingCard - API orders refreshed after event:', orders.length);
+      } catch (error) {
+        // Silently fail - just log for debugging
+        console.warn('OrderTrackingCard: Failed to refresh orders after storage/event change:', error?.response?.status || error?.message)
+        // Even if API fails, context orders should still work
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('orderStatusUpdated', handleStorageChange)
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('orderStatusUpdated', handleStorageChange);
-    };
-  }, []);
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('orderStatusUpdated', handleStorageChange)
+    }
+  }, [])
 
   // Debug: Log when component renders
   useEffect(() => {
@@ -180,19 +320,27 @@ export default function OrderTrackingCard() {
     return null;
   }
 
-  // Check if order is delivered or time remaining is 0 - hide card
+  // Check if order is delivered or time remaining is 0 or negative - hide card
   const orderStatus = (activeOrder.status || activeOrder.deliveryState?.status || 'preparing').toLowerCase();
-  if (orderStatus === 'delivered' || orderStatus === 'completed' || timeRemaining === 0) {
-    console.log('❌ OrderTrackingCard - Order delivered or time is 0, hiding card');
+  if (orderStatus === 'delivered' || orderStatus === 'completed' || orderStatus === 'cancelled' || orderStatus === 'restaurant_cancelled' || timeRemaining === null || timeRemaining <= 0) {
+    console.log('❌ OrderTrackingCard - Order delivered/cancelled or time is 0, hiding card', {
+      status: orderStatus,
+      timeRemaining
+    });
     return null;
   }
 
   const restaurantName = activeOrder.restaurant || activeOrder.restaurantName || activeOrder.restaurantName || 'Restaurant';
-  const statusText = orderStatus === 'preparing' || orderStatus === 'confirmed' || orderStatus === 'pending'
-    ? 'Preparing your order'
-    : orderStatus === 'out_for_delivery' || orderStatus === 'outfordelivery' || orderStatus === 'on_way'
-      ? 'On the way'
-      : 'Preparing your order';
+  
+  // Show correct status text based on order status
+  let statusText = 'Preparing your order';
+  if (orderStatus === 'out_for_delivery' || orderStatus === 'outfordelivery' || orderStatus === 'on_way' || orderStatus === 'out for delivery') {
+    statusText = 'On the way';
+  } else if (orderStatus === 'ready') {
+    statusText = 'Ready for pickup';
+  } else if (orderStatus === 'preparing' || orderStatus === 'confirmed' || orderStatus === 'pending') {
+    statusText = 'Preparing your order';
+  }
 
   console.log('✅ OrderTrackingCard - Rendering card:', {
     restaurantName,

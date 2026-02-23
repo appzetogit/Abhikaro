@@ -21,19 +21,31 @@ export function OrdersProvider({ children }) {
     }
   }, [orders])
 
-  const createOrder = useCallback((orderData) => {
-    const newOrder = {
-      id: `ORD-${Date.now()}`,
-      ...orderData,
-      status: "confirmed",
-      createdAt: new Date().toISOString(),
-      tracking: {
-        confirmed: { status: true, timestamp: new Date().toISOString() },
-        preparing: { status: false, timestamp: null },
-        outForDelivery: { status: false, timestamp: null },
-        delivered: { status: false, timestamp: null }
-      }
+  const createOrder = useCallback((orderData = {}) => {
+    const now = new Date().toISOString()
+
+    // Prefer backend IDs when available so tracking links work correctly
+    const newOrderId =
+      orderData.id ||
+      orderData.orderId ||
+      (orderData._id && String(orderData._id)) ||
+      `ORD-${Date.now()}`
+
+    const defaultTracking = {
+      confirmed: { status: true, timestamp: now },
+      preparing: { status: false, timestamp: null },
+      outForDelivery: { status: false, timestamp: null },
+      delivered: { status: false, timestamp: null }
     }
+
+    const newOrder = {
+      id: newOrderId,
+      ...orderData,
+      status: orderData.status || "confirmed",
+      createdAt: orderData.createdAt || now,
+      tracking: orderData.tracking || defaultTracking
+    }
+
     setOrders((prev) => [newOrder, ...prev])
     return newOrder.id
   }, [])
@@ -81,7 +93,15 @@ export function OrdersProvider({ children }) {
 export function useOrders() {
   const context = useContext(OrdersContext)
   if (!context) {
-    throw new Error("useOrders must be used within an OrdersProvider")
+    // Fallback to a safe default to avoid crashes if provider is missing
+    console.warn("useOrders called outside of OrdersProvider. Returning default no-op implementation.")
+    return {
+      orders: [],
+      createOrder: () => null,
+      getOrderById: () => undefined,
+      getAllOrders: () => [],
+      updateOrderStatus: () => {}
+    }
   }
   return context
 }

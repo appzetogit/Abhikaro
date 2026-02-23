@@ -1175,8 +1175,25 @@ export default function Cart() {
       // Cash flow: order placed without online payment
       if (selectedPaymentMethod === "cash") {
         toast.success("Order placed with Cash on Delivery")
+        // Save lightweight order in local context so home screen tracking card can show immediately
+        try {
+          createOrder({
+            id: order.id || order._id || order.orderId,
+            orderId: order.orderId,
+            status: order.status || "confirmed",
+            restaurant: restaurantName,
+            restaurantName,
+            items: order.items || cart,
+            estimatedDeliveryTime: order.estimatedDeliveryTime || restaurantData?.estimatedDeliveryTime || 35,
+            createdAt: order.createdAt
+          })
+        } catch (e) {
+          console.warn("Failed to create local tracking order (cash):", e)
+        }
         setPlacedOrderId(order?.orderId || order?.id || null)
         setShowOrderSuccess(true)
+        // Notify home screen tracking card to refresh active orders
+        window.dispatchEvent(new Event('orderStatusUpdated'))
         clearCart()
         setIsPlacingOrder(false)
         return
@@ -1186,8 +1203,24 @@ export default function Cart() {
       if (selectedPaymentMethod === "pay_at_hotel") {
         const hotelName = localStorage.getItem("hotelReferenceName") || "Hotel"
         toast.success(`Order placed - Pay at ${hotelName}`)
+        try {
+          createOrder({
+            id: order.id || order._id || order.orderId,
+            orderId: order.orderId,
+            status: order.status || "confirmed",
+            restaurant: restaurantName,
+            restaurantName,
+            items: order.items || cart,
+            estimatedDeliveryTime: order.estimatedDeliveryTime || restaurantData?.estimatedDeliveryTime || 35,
+            createdAt: order.createdAt
+          })
+        } catch (e) {
+          console.warn("Failed to create local tracking order (pay_at_hotel):", e)
+        }
         setPlacedOrderId(order?.orderId || order?.id || null)
         setShowOrderSuccess(true)
+        // Notify home screen tracking card to refresh active orders
+        window.dispatchEvent(new Event('orderStatusUpdated'))
         clearCart()
         setIsPlacingOrder(false)
         return
@@ -1196,8 +1229,24 @@ export default function Cart() {
       // Wallet flow: order placed with wallet payment (already processed in backend)
       if (selectedPaymentMethod === "wallet") {
         toast.success("Order placed with Wallet payment")
+        try {
+          createOrder({
+            id: order.id || order._id || order.orderId,
+            orderId: order.orderId,
+            status: order.status || "confirmed",
+            restaurant: restaurantName,
+            restaurantName,
+            items: order.items || cart,
+            estimatedDeliveryTime: order.estimatedDeliveryTime || restaurantData?.estimatedDeliveryTime || 35,
+            createdAt: order.createdAt
+          })
+        } catch (e) {
+          console.warn("Failed to create local tracking order (wallet):", e)
+        }
         setPlacedOrderId(order?.orderId || order?.id || null)
         setShowOrderSuccess(true)
+        // Notify home screen tracking card to refresh active orders
+        window.dispatchEvent(new Event('orderStatusUpdated'))
         clearCart()
         setIsPlacingOrder(false)
         // Refresh wallet balance
@@ -1283,8 +1332,24 @@ export default function Cart() {
                 orderId: order.orderId,
                 paymentId: verifyResponse.data.data?.payment?.paymentId
               })
+              try {
+                createOrder({
+                  id: order.id || order._id || order.orderId,
+                  orderId: order.orderId,
+                  status: order.status || "confirmed",
+                  restaurant: restaurantName,
+                  restaurantName,
+                  items: order.items || cart,
+                  estimatedDeliveryTime: order.estimatedDeliveryTime || restaurantData?.estimatedDeliveryTime || 35,
+                  createdAt: order.createdAt
+                })
+              } catch (e) {
+                console.warn("Failed to create local tracking order (razorpay):", e)
+              }
               setPlacedOrderId(order.orderId)
               setShowOrderSuccess(true)
+              // Notify home screen tracking card to refresh active orders
+              window.dispatchEvent(new Event('orderStatusUpdated'))
               clearCart()
               setIsPlacingOrder(false)
             } else {

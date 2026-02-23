@@ -2770,16 +2770,25 @@ export const getRestaurantAnalytics = asyncHandler(async (req, res) => {
     let totalCommission = 0;
     let totalRestaurantEarning = 0;
     let totalFoodPrice = 0;
+    let totalRevenueFromSettlements = 0;
 
     allSettlements.forEach((s) => {
       totalCommission += s.restaurantEarning?.commission || 0;
       totalRestaurantEarning += s.restaurantEarning?.netEarning || 0;
       totalFoodPrice += s.restaurantEarning?.foodPrice || 0;
+      // Total revenue = commission + restaurant earning (net earning)
+      // This ensures revenue matches the actual settled amounts
+      totalRevenueFromSettlements += (s.restaurantEarning?.commission || 0) + (s.restaurantEarning?.netEarning || 0);
     });
 
     totalCommission = Math.round(totalCommission * 100) / 100;
     totalRestaurantEarning = Math.round(totalRestaurantEarning * 100) / 100;
     totalFoodPrice = Math.round(totalFoodPrice * 100) / 100;
+    totalRevenueFromSettlements = Math.round(totalRevenueFromSettlements * 100) / 100;
+    
+    // Use revenue from settlements if available, otherwise use revenue from orders
+    // This ensures consistency: Revenue = Commission + Restaurant Earning
+    const finalTotalRevenue = totalRevenueFromSettlements > 0 ? totalRevenueFromSettlements : totalRevenue;
 
     // Get monthly settlements
     const monthlySettlements = await OrderSettlement.find({
@@ -3082,8 +3091,9 @@ export const getRestaurantAnalytics = asyncHandler(async (req, res) => {
     ).length;
 
     // Calculate average order value
+    // Use finalTotalRevenue (from settlements) for consistency
     const averageOrderValue =
-      completedOrders > 0 ? totalRevenue / completedOrders : 0;
+      completedOrders > 0 ? finalTotalRevenue / completedOrders : 0;
 
     // Calculate rates
     const cancellationRate =
@@ -3126,7 +3136,7 @@ export const getRestaurantAnalytics = asyncHandler(async (req, res) => {
           monthlyProfit: parseFloat(monthlyRestaurantEarning.toFixed(2)),
           yearlyProfit: parseFloat(yearlyRestaurantEarning.toFixed(2)),
           averageOrderValue: parseFloat(averageOrderValue.toFixed(2)),
-          totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+          totalRevenue: parseFloat(finalTotalRevenue.toFixed(2)),
           totalCommission: parseFloat(totalCommission.toFixed(2)),
           restaurantEarning: parseFloat(totalRestaurantEarning.toFixed(2)),
           monthlyOrders,
