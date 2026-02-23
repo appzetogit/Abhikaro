@@ -1184,18 +1184,17 @@ export const markOrderReady = asyncHandler(async (req, res) => {
       order.hotelReference || order.payment?.method === "pay_at_hotel";
     const previousStatus = order.status;
 
+    // IMPORTANT: When restaurant marks an order as "ready", the status should be "ready"
+    // for both normal and hotel/QR orders. Do NOT auto-mark hotel orders as "delivered",
+    // otherwise the user sees the order as delivered immediately after the restaurant clicks ready.
+    order.status = "ready";
+    if (!order.tracking) order.tracking = {};
+    order.tracking.ready = { status: true, timestamp: now };
+
     if (isHotelOrder) {
-      // For hotel orders, mark as delivered directly
-      order.status = "delivered";
-      order.deliveredAt = now;
-      if (!order.tracking) order.tracking = {};
-      order.tracking.ready = { status: true, timestamp: now };
-      order.tracking.delivered = { status: true, timestamp: now };
-      console.log(`🏨 Hotel order ${order.orderId} auto-marked as DELIVERED`);
-    } else {
-      order.status = "ready";
-      if (!order.tracking) order.tracking = {};
-      order.tracking.ready = { status: true, timestamp: now };
+      console.log(
+        `🏨 Hotel/QR order ${order.orderId} marked as READY (no auto-deliver).`,
+      );
     }
 
     await order.save();
