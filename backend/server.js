@@ -104,15 +104,17 @@ if (missingEnvVars.length > 0) {
 const app = express();
 const httpServer = createServer(app);
 
-// Initialize Socket.IO with proper CORS configuration
+// Socket CORS: include production frontend (FRONTEND_URL) so chat works in prod
 const allowedSocketOrigins = [
   process.env.CORS_ORIGIN,
+  process.env.FRONTEND_URL,
   'https://foods.abhikaro.in',
+  'https://www.foods.abhikaro.in',
   'http://localhost:5173',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:3000'
-].filter(Boolean); // Remove undefined values
+].filter(Boolean);
 
 const io = new Server(httpServer, {
   cors: {
