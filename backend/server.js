@@ -682,14 +682,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Delivery boy joins delivery room
-  socket.on('join-delivery', (deliveryId) => {
-    if (deliveryId) {
-      socket.join(`delivery:${deliveryId}`);
-      console.log(`Delivery boy joined: ${deliveryId}`);
-    }
-  });
-
   // Chat functionality
   // Join chat room for an order
   socket.on('join-chat', (orderId) => {
@@ -707,11 +699,40 @@ io.on('connection', (socket) => {
     }
   });
 
-  // User joins user room for notifications
+  // Direct message sending via WebSocket (instant chat without HTTP)
+  socket.on('send-message', async (data) => {
+    try {
+      const { orderId, message } = data;
+      
+      if (!orderId || !message || !message.trim()) {
+        socket.emit('message-error', { error: 'Order ID and message are required' });
+        return;
+      }
+
+      // Get user info from socket (you may need to store this during authentication)
+      // For now, we'll use the HTTP endpoint, but this allows for future direct WebSocket messaging
+      socket.emit('message-error', { 
+        error: 'Please use HTTP endpoint /api/chat/send for now. WebSocket direct messaging coming soon.' 
+      });
+    } catch (error) {
+      console.error('Error in send-message socket handler:', error);
+      socket.emit('message-error', { error: error.message });
+    }
+  });
+
+  // User joins user room for notifications and chat
   socket.on('join-user', (userId) => {
     if (userId) {
       socket.join(`user:${userId}`);
-      console.log(`User joined user room: ${userId}`);
+      console.log(`✅ User joined user room: ${userId}`);
+    }
+  });
+
+  // Delivery boy joins delivery room for notifications and chat
+  socket.on('join-delivery', (deliveryId) => {
+    if (deliveryId) {
+      socket.join(`delivery:${deliveryId}`);
+      console.log(`✅ Delivery boy joined delivery room: ${deliveryId}`);
     }
   });
 

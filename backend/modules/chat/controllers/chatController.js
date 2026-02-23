@@ -204,7 +204,64 @@ export const sendMessage = async (req, res) => {
     // Populate sender info for real-time emission
     const populatedMessage = await Chat.findById(chatMessage._id).lean();
 
-    // Return the created message in response
+    // Emit real-time message via Socket.IO IMMEDIATELY (before HTTP response)
+    // This ensures instant delivery via WebSocket
+    const io = getIO();
+    if (io) {
+      // Use both MongoDB _id and string orderId for compatibility
+      const orderMongoIdStr = orderMongoId.toString();
+      const orderIdStr = order.orderId;
+      const receiverIdStr = receiverId.toString();
+      
+      // Prepare message data for emission
+      const messageData = {
+        message: populatedMessage,
+        orderId: orderMongoIdStr,
+        orderIdString: orderIdStr,
+        timestamp: Date.now()
+      };
+      
+      console.log("📤 Emitting message to Socket.IO rooms (INSTANT):", {
+        orderMongoIdStr,
+        orderIdStr,
+        receiverType,
+        receiverId: receiverIdStr,
+        senderType: userType,
+        senderId: userId.toString()
+      });
+      
+      // Emit to MongoDB _id room (primary room) - both user and delivery boy are here
+      io.to(`order:${orderMongoIdStr}`).emit("new-message", messageData);
+      console.log(`✅ Emitted to order:${orderMongoIdStr}`);
+      
+      // Also emit to string orderId room if different (for compatibility)
+      if (orderIdStr && orderIdStr !== orderMongoIdStr) {
+        io.to(`order:${orderIdStr}`).emit("new-message", messageData);
+        console.log(`✅ Also emitted to order:${orderIdStr}`);
+      }
+
+      // Emit to specific receiver room (direct delivery for instant notification)
+      if (receiverType === "user") {
+        io.to(`user:${receiverIdStr}`).emit("new-message", messageData);
+        console.log(`✅ Also emitted to user:${receiverIdStr}`);
+      } else {
+        io.to(`delivery:${receiverIdStr}`).emit("new-message", messageData);
+        console.log(`✅ Also emitted to delivery:${receiverIdStr}`);
+      }
+
+      // Also emit to sender's own room (for confirmation)
+      if (userType === "user") {
+        const senderIdStr = userId.toString();
+        io.to(`user:${senderIdStr}`).emit("message-sent", messageData);
+      } else {
+        const senderIdStr = userId.toString();
+        io.to(`delivery:${senderIdStr}`).emit("message-sent", messageData);
+      }
+    } else {
+      console.error("❌ Socket.IO instance not available");
+    }
+
+    // Return the created message in response (after WebSocket emission for instant delivery)
     res.status(201).json({
       success: true,
       data: {
@@ -212,56 +269,6 @@ export const sendMessage = async (req, res) => {
         orderId: orderMongoId.toString(),
       },
     });
-
-    // Emit real-time message via Socket.IO
-    const io = getIO();
-    if (io) {
-      // Emit to order room (both user and delivery boy are in this room)
-      // Use both MongoDB _id and string orderId for compatibility
-      const orderMongoIdStr = orderMongoId.toString();
-      const orderIdStr = order.orderId;
-      
-      console.log("📤 Emitting message to Socket.IO rooms:", {
-        orderMongoIdStr,
-        orderIdStr,
-        receiverType,
-        receiverId: receiverId.toString()
-      });
-      
-      // Emit to MongoDB _id room (primary room)
-      io.to(`order:${orderMongoIdStr}`).emit("new-message", {
-        message: populatedMessage,
-        orderId: orderMongoIdStr,
-      });
-      console.log(`✅ Emitted to order:${orderMongoIdStr}`);
-      
-      // Also emit to string orderId room if different (for compatibility)
-      if (orderIdStr && orderIdStr !== orderMongoIdStr) {
-        io.to(`order:${orderIdStr}`).emit("new-message", {
-          message: populatedMessage,
-          orderId: orderMongoIdStr, // Keep MongoDB _id in response
-        });
-        console.log(`✅ Also emitted to order:${orderIdStr}`);
-      }
-
-      // Also emit to specific receiver room (fallback for direct delivery)
-      const receiverIdStr = receiverId.toString();
-      if (receiverType === "user") {
-        io.to(`user:${receiverIdStr}`).emit("new-message", {
-          message: populatedMessage,
-          orderId: orderMongoIdStr,
-        });
-        console.log(`✅ Also emitted to user:${receiverIdStr}`);
-      } else {
-        io.to(`delivery:${receiverIdStr}`).emit("new-message", {
-          message: populatedMessage,
-          orderId: orderMongoIdStr,
-        });
-        console.log(`✅ Also emitted to delivery:${receiverIdStr}`);
-      }
-    } else {
-      console.error("❌ Socket.IO instance not available");
-    }
   } catch (error) {
     console.error("Error sending message:", error);
     console.error("Error stack:", error.stack);

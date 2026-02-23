@@ -68,11 +68,36 @@ export const getOrders = asyncHandler(async (req, res) => {
       .populate("userId", "name phone")
       .lean();
 
+    // Resolve payment method for each order (COD vs Online)
+    const ordersWithPayment = await Promise.all(
+      orders.map(async (order) => {
+        let paymentMethod = order.payment?.method || "razorpay";
+        
+        // Normalize "cod" to "cash" if present
+        if (paymentMethod === "cod" || paymentMethod === "cash") {
+          paymentMethod = "cash";
+        } else {
+          // If not cash/cod, check Payment collection to be sure
+          try {
+            const paymentRecord = await Payment.findOne({ orderId: order._id })
+              .select("method")
+              .lean();
+            if (paymentRecord?.method === "cash" || paymentRecord?.method === "cod") {
+              paymentMethod = "cash";
+            }
+          } catch (e) {
+            /* ignore */
+          }
+        }
+        return { ...order, paymentMethod };
+      })
+    );
+
     // Get total count
     const total = await Order.countDocuments(query);
 
     return successResponse(res, 200, "Orders retrieved successfully", {
-      orders,
+      orders: ordersWithPayment,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -205,13 +230,21 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
     }
 
     // Resolve payment method for delivery boy (COD vs Online)
+    // Normalize payment method: check both order.payment.method and Payment collection
     let paymentMethod = order.payment?.method || "razorpay";
-    if (paymentMethod !== "cash") {
+    
+    // Normalize "cod" to "cash" if present
+    if (paymentMethod === "cod" || paymentMethod === "cash") {
+      paymentMethod = "cash";
+    } else {
+      // If not cash/cod, check Payment collection to be sure
       try {
         const paymentRecord = await Payment.findOne({ orderId: order._id })
           .select("method")
           .lean();
-        if (paymentRecord?.method === "cash") paymentMethod = "cash";
+        if (paymentRecord?.method === "cash" || paymentRecord?.method === "cod") {
+          paymentMethod = "cash";
+        }
       } catch (e) {
         /* ignore */
       }
@@ -970,15 +1003,23 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     }
 
     // Resolve payment method for delivery boy (COD vs Online) - use Payment collection if order.payment is wrong
+    // Normalize payment method: check both order.payment.method and Payment collection
     let paymentMethod = updatedOrder.payment?.method || "razorpay";
-    if (paymentMethod !== "cash") {
+    
+    // Normalize "cod" to "cash" if present
+    if (paymentMethod === "cod" || paymentMethod === "cash") {
+      paymentMethod = "cash";
+    } else {
+      // If not cash/cod, check Payment collection to be sure
       try {
         const paymentRecord = await Payment.findOne({
           orderId: updatedOrder._id,
         })
           .select("method")
           .lean();
-        if (paymentRecord?.method === "cash") paymentMethod = "cash";
+        if (paymentRecord?.method === "cash" || paymentRecord?.method === "cod") {
+          paymentMethod = "cash";
+        }
       } catch (e) {
         /* ignore */
       }

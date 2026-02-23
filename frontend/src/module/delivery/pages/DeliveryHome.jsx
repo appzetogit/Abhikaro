@@ -2503,7 +2503,11 @@ export default function DeliveryHome() {
                 customerLng: order.address?.location?.coordinates?.[0],
                 items: order.items || [],
                 total: order.pricing?.total || 0,
-                paymentMethod: order.paymentMethod ?? order.payment?.method ?? 'razorpay', // backend-resolved first (COD vs Online)
+                paymentMethod: (() => {
+                  const method = order.paymentMethod ?? order.payment?.method ?? 'razorpay';
+                  // Normalize "cod" to "cash" for consistency
+                  return (method === 'cod' || method === 'cash') ? 'cash' : method;
+                })(), // backend-resolved first (COD vs Online)
                 phone: order.restaurantId?.phone || order.restaurantId?.ownerPhone || null, // Restaurant phone number (prefer phone, fallback to ownerPhone)
                 ownerPhone: order.restaurantId?.ownerPhone || null, // Owner phone number (separate field for direct access)
                 orderStatus: order.status || 'preparing', // Store order status (pending, preparing, ready, out_for_delivery, delivered)
