@@ -870,7 +870,8 @@ export default function PocketPage() {
           </CardContent>
         </Card>
 
-        {/* Earnings Guarantee Card */}
+        {/* Earnings Guarantee Card - Only show when there's an active earning addon offer */}
+        {activeEarningAddon && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -991,6 +992,7 @@ export default function PocketPage() {
             </div>
           </div>
         </motion.div>
+        )}
 
         {/* Pocket Section */}
         <div className="my-6 ">

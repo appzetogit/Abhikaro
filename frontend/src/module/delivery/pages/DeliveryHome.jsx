@@ -2496,6 +2496,7 @@ export default function DeliveryHome() {
                 estimatedEarnings: backendEarnings || selectedRestaurant?.estimatedEarnings || 0,
                 amount: earningsValue, // Also set amount for compatibility
                 customerName: order.userId?.name || selectedRestaurant?.customerName,
+                customerPhone: order.userId?.phone || order.userId?.mobile || selectedRestaurant?.customerPhone || null,
                 customerAddress: order.address?.formattedAddress ||
                   (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
                   selectedRestaurant?.customerAddress,
@@ -3964,6 +3965,7 @@ export default function DeliveryHome() {
                 const updatedRestaurant = {
                   ...selectedRestaurant,
                   customerName: order.userId?.name || selectedRestaurant.customerName,
+                  customerPhone: order.userId?.phone || order.userId?.mobile || selectedRestaurant.customerPhone || null,
                   customerAddress: order.address?.formattedAddress ||
                     (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
                     selectedRestaurant.customerAddress,
@@ -9886,7 +9888,8 @@ export default function DeliveryHome() {
                 </div>
               </motion.div>
 
-              {/* Earnings Guarantee Card */}
+              {/* Earnings Guarantee Card - Only show when there's an active earning addon offer */}
+              {activeEarningAddon && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -10007,6 +10010,7 @@ export default function DeliveryHome() {
                   </div>
                 </div>
               </motion.div>
+              )}
 
               {/* Today's Progress Card */}
               <motion.div
@@ -11270,7 +11274,56 @@ export default function DeliveryHome() {
 
           {/* Action Buttons */}
           <div className="flex gap-3 mb-6">
-            <button className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <button
+              onClick={async () => {
+                // Get customer phone number from order
+                let customerPhone = selectedRestaurant?.customerPhone || null;
+
+                // If phone not found, fetch from backend
+                if (!customerPhone && selectedRestaurant?.orderId) {
+                  try {
+                    console.log('📞 [CALL] Fetching order details for customer phone...');
+                    const orderId = selectedRestaurant.orderId || selectedRestaurant.id;
+                    const response = await deliveryAPI.getOrderDetails(orderId);
+                    const order = response.data?.data?.order || response.data?.order || null;
+
+                    if (order) {
+                      // Customer phone is in order.userId.phone
+                      customerPhone = order.userId?.phone || 
+                                     order.userId?.mobile || 
+                                     order.customerPhone || 
+                                     null;
+
+                      // Update selectedRestaurant for future use
+                      if (customerPhone && selectedRestaurant) {
+                        setSelectedRestaurant({
+                          ...selectedRestaurant,
+                          customerPhone: customerPhone
+                        });
+                        console.log('✅ [CALL] Updated selectedRestaurant with customer phone:', customerPhone);
+                      }
+                    }
+                  } catch (error) {
+                    console.error('❌ [CALL] Error fetching order details for customer phone:', error);
+                  }
+                }
+
+                if (customerPhone) {
+                  // Remove any spaces, dashes, or special characters except + and digits
+                  const cleanPhone = customerPhone.replace(/[^\d+]/g, '');
+                  console.log('📞 Calling customer:', { original: customerPhone, clean: cleanPhone });
+                  window.location.href = `tel:${cleanPhone}`;
+                } else {
+                  toast.error('Customer phone number not available. Please contact support.');
+                  console.error('❌ Customer phone not found:', {
+                    selectedRestaurant,
+                    hasCustomerPhone: !!selectedRestaurant?.customerPhone,
+                    orderId: selectedRestaurant?.orderId
+                  });
+                }
+              }}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
               <Phone className="w-5 h-5 text-gray-700" />
               <span className="text-gray-700 font-medium">Call</span>
             </button>
@@ -11288,7 +11341,103 @@ export default function DeliveryHome() {
               <MapPin className="w-5 h-5 text-gray-700" />
               <span className="text-gray-700 font-medium">Chat</span>
             </button>
-            <button className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
+            <button
+              onClick={async () => {
+                // Get customer location coordinates
+                let customerLat = selectedRestaurant?.customerLat;
+                let customerLng = selectedRestaurant?.customerLng;
+
+                // If coordinates not found, fetch from backend
+                if ((!customerLat || !customerLng) && selectedRestaurant?.orderId) {
+                  try {
+                    console.log('🗺️ [MAP] Fetching order details for customer location...');
+                    const orderId = selectedRestaurant.orderId || selectedRestaurant.id;
+                    const response = await deliveryAPI.getOrderDetails(orderId);
+                    const order = response.data?.data?.order || response.data?.order || null;
+
+                    if (order) {
+                      // Customer location is in order.address.location.coordinates as [lng, lat]
+                      const coords = order.address?.location?.coordinates;
+                      if (coords && Array.isArray(coords) && coords.length >= 2) {
+                        customerLng = coords[0];
+                        customerLat = coords[1];
+
+                        // Update selectedRestaurant for future use
+                        if (selectedRestaurant) {
+                          setSelectedRestaurant({
+                            ...selectedRestaurant,
+                            customerLat: customerLat,
+                            customerLng: customerLng
+                          });
+                          console.log('✅ [MAP] Updated selectedRestaurant with customer location:', { lat: customerLat, lng: customerLng });
+                        }
+                      }
+                    }
+                  } catch (error) {
+                    console.error('❌ [MAP] Error fetching order details for customer location:', error);
+                  }
+                }
+
+                if (!customerLat || !customerLng) {
+                  toast.error('Customer location not available');
+                  console.error('❌ Customer coordinates not found:', {
+                    lat: customerLat,
+                    lng: customerLng,
+                    selectedRestaurant
+                  });
+                  return;
+                }
+
+                console.log('🗺️ Opening Google Maps navigation to customer:', {
+                  lat: customerLat,
+                  lng: customerLng,
+                  name: selectedRestaurant?.customerName
+                });
+
+                // Detect platform (Android or iOS)
+                const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+                const isAndroid = /android/i.test(userAgent);
+                const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
+
+                let mapsUrl = '';
+
+                if (isAndroid) {
+                  // Android: Use google.navigation: scheme (opens directly in navigation mode)
+                  mapsUrl = `google.navigation:q=${customerLat},${customerLng}&mode=b`;
+
+                  // Try to open Google Maps app first
+                  window.location.href = mapsUrl;
+
+                  // Fallback to web URL after a short delay (in case app is not installed)
+                  setTimeout(() => {
+                    const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
+                    window.open(webUrl, '_blank');
+                  }, 500);
+                } else if (isIOS) {
+                  // iOS: Use comgooglemaps:// scheme (opens Google Maps app)
+                  mapsUrl = `comgooglemaps://?daddr=${customerLat},${customerLng}&directionsmode=bicycling`;
+
+                  // Try to open Google Maps app first
+                  window.location.href = mapsUrl;
+
+                  // Fallback to web URL after a short delay (in case app is not installed)
+                  setTimeout(() => {
+                    const webUrl = `https://maps.google.com/?daddr=${customerLat},${customerLng}&directionsmode=bicycling`;
+                    window.open(webUrl, '_blank');
+                  }, 500);
+                } else {
+                  // Web/Desktop: Use web URL with navigation
+                  mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
+                  window.open(mapsUrl, '_blank');
+                }
+
+                // Show success message
+                toast.success('Opening Google Maps navigation 🗺️', {
+                  duration: 2000
+                });
+              }}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
               <MapPin className="w-5 h-5 text-white" />
               <span className="text-white font-medium">Map</span>
             </button>

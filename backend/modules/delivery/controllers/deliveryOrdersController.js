@@ -479,6 +479,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
         })
           .populate("restaurantId", "name location address phone ownerPhone")
           .populate("userId", "name phone")
+          .populate("deliveryPartnerId", "name phone") // Populate deliveryPartnerId to ensure it's included
           .lean();
 
         if (!order) {
@@ -877,6 +878,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       )
         .populate("restaurantId", "name location address phone ownerPhone")
         .populate("userId", "name phone")
+        .populate("deliveryPartnerId", "name phone") // Populate deliveryPartnerId to ensure it's included
         .lean();
 
       if (!updatedOrder) {

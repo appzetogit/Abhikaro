@@ -2575,7 +2575,7 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
               itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
               photoUrl: order.items?.[0]?.image || null,
               photoAlt: order.items?.[0]?.name || 'Order',
-              deliveryPartnerId: order.deliveryPartnerId || null,
+              deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null, // Handle both populated object and ObjectId
               paymentMethod: order.paymentMethod ?? order.payment?.method,
               paymentStatus: order.payment?.status
             }
@@ -2831,7 +2831,7 @@ function ReadyOrders({ onSelectOrder }) {
             itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || 'Order',
-            deliveryPartnerId: order.deliveryPartnerId || null, // Include deliveryPartnerId to show assignment status
+            deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null, // Handle both populated object and ObjectId
             paymentMethod: order.paymentMethod ?? order.payment?.method,
             paymentStatus: order.payment?.status
           }))
