@@ -1,16 +1,7 @@
 import { useState, useMemo } from "react"
-import { Search, Download, ChevronDown, Bell, Edit, Trash2, Upload, Settings, Image as ImageIcon } from "lucide-react"
-import { pushNotificationsDummy } from "../data/pushNotificationsDummy"
-// Using placeholders for notification images
-const notificationImage1 = "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&h=400&fit=crop"
-const notificationImage2 = "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=800&h=400&fit=crop"
-const notificationImage3 = "https://images.unsplash.com/photo-1556910096-6f5e72db6803?w=800&h=400&fit=crop"
-
-const notificationImages = {
-  15: notificationImage1,
-  17: notificationImage2,
-  18: notificationImage3,
-}
+import { Search, Download, ChevronDown, Bell, Edit, Trash2, Upload, Settings } from "lucide-react"
+import { adminAPI, uploadAPI } from "@/lib/api"
+import { toast } from "sonner"
 
 export default function PushNotification() {
   const [formData, setFormData] = useState({
@@ -21,8 +12,10 @@ export default function PushNotification() {
     bannerImage: null,
   })
   const [searchQuery, setSearchQuery] = useState("")
-  const [notifications, setNotifications] = useState(pushNotificationsDummy)
+  // Start with empty list – no dummy/default data
+  const [notifications, setNotifications] = useState([])
   const [bannerPreview, setBannerPreview] = useState(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const filteredNotifications = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -40,10 +33,88 @@ export default function PushNotification() {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    console.log("Notification sent:", formData)
-    alert("Notification sent successfully!")
+
+    if (!formData.title.trim()) {
+      toast.error("Please enter notification title")
+      return
+    }
+    if (!formData.description.trim()) {
+      toast.error("Please enter notification description")
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+
+      // Map UI \"Send To\" to backend target role
+      const targetMap = {
+        Customer: "user",
+        "Delivery Man": "delivery",
+        Restaurant: "restaurant",
+      }
+      const target = targetMap[formData.sendTo] || "user"
+
+      // Optional: upload banner image if provided
+      let imageUrl = null
+      if (formData.bannerImage) {
+        try {
+          const uploadRes = await uploadAPI.uploadMedia(formData.bannerImage, {
+            folder: "admin-notifications",
+          })
+          imageUrl =
+            uploadRes?.data?.data?.url ||
+            uploadRes?.data?.url ||
+            uploadRes?.data?.secure_url ||
+            null
+        } catch (err) {
+          console.error("Banner upload failed:", err)
+          toast.error("Image upload failed. Please try again or remove the image.")
+          setIsSubmitting(false)
+          return
+        }
+      }
+
+      // Send broadcast notification from admin
+      await adminAPI.sendBroadcastNotification({
+        target,
+        title: formData.title.trim(),
+        body: formData.description.trim(),
+        data: {
+          type: "admin_notification",
+          zone: formData.zone,
+          image: imageUrl || undefined,
+        },
+      })
+
+      toast.success("Notification sent successfully")
+
+      // Optimistically add to local list (for recent history)
+      setNotifications((prev) => [
+        {
+          sl: prev.length + 1,
+          title: formData.title.trim(),
+          description: formData.description.trim(),
+          image: imageUrl,
+          zone: formData.zone,
+          target: formData.sendTo,
+          status: true,
+        },
+        ...prev,
+      ])
+
+      handleReset()
+    } catch (error) {
+      console.error("Error sending notification:", error)
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to send notification"
+      toast.error(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleReset = () => {
@@ -74,9 +145,14 @@ export default function PushNotification() {
   }
 
   const handleToggleStatus = (sl) => {
-    setNotifications(notifications.map(notification =>
-      notification.sl === sl ? { ...notification, status: !notification.status } : notification
-    ))
+    // This currently only toggles local state (no backend persistence)
+    setNotifications((prev) =>
+      prev.map((notification) =>
+        notification.sl === sl
+          ? { ...notification, status: !notification.status }
+          : notification,
+      ),
+    )
   }
 
   const handleDelete = (sl) => {
@@ -193,9 +269,10 @@ export default function PushNotification() {
               <div className="flex items-center gap-2">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md"
+                  disabled={isSubmitting}
+                  className="px-6 py-2.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-md"
                 >
-                  Send Notification
+                  {isSubmitting ? "Sending..." : "Send Notification"}
                 </button>
                 <button className="p-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-all">
                   <Settings className="w-5 h-5" />
@@ -269,17 +346,17 @@ export default function PushNotification() {
                       {notification.image ? (
                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100">
                           <img
-                            src={notificationImages[notification.sl] || notificationImage1}
+                            src={notification.image}
                             alt={notification.title}
                             className="w-full h-full object-cover"
                             onError={(e) => {
-                              e.target.style.display = "none"
+                              e.currentTarget.style.display = "none"
                             }}
                           />
                         </div>
                       ) : (
-                        <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center">
-                          <ImageIcon className="w-6 h-6 text-slate-400" />
+                        <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] text-slate-400">
+                          No image
                         </div>
                       )}
                     </td>

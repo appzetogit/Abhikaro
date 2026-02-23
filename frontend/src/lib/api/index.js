@@ -1418,6 +1418,64 @@ export const adminAPI = {
     );
   },
 
+  // =========================
+  // Admin Push Notifications
+  // =========================
+
+  /**
+   * Broadcast notification to all / specific role
+   * target: 'user' | 'restaurant' | 'delivery' | 'admin' | 'all'
+   * data can contain extra fields like zone, image, link etc.
+   */
+  sendBroadcastNotification: (payload) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.NOTIFICATIONS_BROADCAST,
+      payload,
+    );
+  },
+
+  /**
+   * Send notification to specific user by ID
+   */
+  sendNotificationToUser: ({ userId, userIds, title, body, data }) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.NOTIFICATIONS_SEND_TO_USER,
+      { userId, userIds, title, body, data },
+    );
+  },
+
+  /**
+   * Send notification to specific restaurant(s) by ID
+   */
+  sendNotificationToRestaurant: ({
+    restaurantId,
+    restaurantIds,
+    title,
+    body,
+    data,
+  }) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.NOTIFICATIONS_SEND_TO_RESTAURANT,
+      { restaurantId, restaurantIds, title, body, data },
+    );
+  },
+
+  /**
+   * Send notification to specific delivery partner(s) by ID
+   */
+  sendNotificationToDelivery: ({
+    deliveryId,
+    deliveryIds,
+    title,
+    body,
+    data,
+  }) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.NOTIFICATIONS_SEND_TO_DELIVERY,
+      { deliveryId, deliveryIds, title, body, data },
+    );
+  },
+
   // Get delivery partners
   getDelivery: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.ADMIN.DELIVERY, { params });

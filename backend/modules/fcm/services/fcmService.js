@@ -150,6 +150,7 @@ export async function removeFcmToken(fcmToken) {
 export async function getTokensForUser(userId, role) {
   const validRoles = ['user', 'restaurant', 'delivery', 'hotel', 'admin'];
   if (!validRoles.includes(role)) {
+    console.warn(`⚠️ [FCM] Invalid role: ${role}`);
     return [];
   }
   
@@ -157,21 +158,29 @@ export async function getTokensForUser(userId, role) {
   const Model = getModelByRole(role);
   
   if (!Model) {
+    console.warn(`⚠️ [FCM] No model found for role: ${role}`);
     return [];
   }
   
   const doc = await Model.findById(objectId).select('fcmtokenWeb fcmtokenMobile').lean();
   
   if (!doc) {
+    console.warn(`⚠️ [FCM] No document found for ${role} ${userId}`);
     return [];
   }
   
   const tokens = [];
   if (doc.fcmtokenWeb) {
     tokens.push(doc.fcmtokenWeb);
+    console.log(`✅ [FCM] Found web token for ${role} ${userId}`);
   }
   if (doc.fcmtokenMobile) {
     tokens.push(doc.fcmtokenMobile);
+    console.log(`✅ [FCM] Found mobile token for ${role} ${userId}`);
+  }
+  
+  if (tokens.length === 0) {
+    console.warn(`⚠️ [FCM] No FCM tokens found for ${role} ${userId}`);
   }
   
   return tokens;
@@ -195,11 +204,22 @@ export async function sendNotification(tokens, notification, data = {}) {
     dataWithTag.tag = dataWithTag.orderId || dataWithTag.notificationId || Date.now().toString();
   }
 
+  // Extract image URL from data if present
+  const imageUrl = dataWithTag.image || null;
+  
+  // Build notification object with image if available
+  const notificationObj = {
+    title: notification.title || 'Notification',
+    body: notification.body || '',
+  };
+  
+  // Add image to notification if available (for display in notification)
+  if (imageUrl) {
+    notificationObj.image = imageUrl;
+  }
+
   const message = {
-    notification: {
-      title: notification.title || 'Notification',
-      body: notification.body || '',
-    },
+    notification: notificationObj,
     data: Object.fromEntries(
       Object.entries(dataWithTag).map(([k, v]) => [String(k), String(v)])
     ),
@@ -215,20 +235,30 @@ export async function sendNotification(tokens, notification, data = {}) {
       notification: {
         tag: dataWithTag.tag, // Use tag for web push deduplication
         requireInteraction: true,
-        vibrate: [200, 100, 200]
+        vibrate: [200, 100, 200],
+        ...(imageUrl && { image: imageUrl }) // Add image to webpush notification
       }
     },
   };
 
   try {
+    console.log(`📤 [FCM] Sending notification: "${notification.title}" - "${notification.body}"`);
     const response = await admin.messaging().sendEachForMulticast(message);
+    
+    console.log(`📊 [FCM] Send response: ${response.successCount} success, ${response.failureCount} failures`);
+    
     const invalidTokens = [];
     response.responses.forEach((resp, idx) => {
-      if (!resp.success && resp.error?.code === 'messaging/invalid-registration-token') {
-        invalidTokens.push(tokenArray[idx]);
+      if (!resp.success) {
+        console.error(`❌ [FCM] Token ${idx} failed:`, resp.error?.code, resp.error?.message);
+        if (resp.error?.code === 'messaging/invalid-registration-token') {
+          invalidTokens.push(tokenArray[idx]);
+        }
       }
     });
+    
     if (invalidTokens.length > 0) {
+      console.log(`🧹 [FCM] Removing ${invalidTokens.length} invalid token(s)`);
       // Remove invalid tokens from all models
       const models = [User, Restaurant, Delivery, Hotel, Admin];
       for (const Model of models) {
@@ -242,6 +272,13 @@ export async function sendNotification(tokens, notification, data = {}) {
         );
       }
     }
+    
+    if (response.successCount > 0) {
+      console.log(`✅ [FCM] Notification sent successfully to ${response.successCount} device(s)`);
+    } else {
+      console.warn(`⚠️ [FCM] No notifications were sent successfully`);
+    }
+    
     return {
       success: response.successCount > 0,
       successCount: response.successCount,
@@ -249,7 +286,8 @@ export async function sendNotification(tokens, notification, data = {}) {
       invalidTokensRemoved: invalidTokens.length,
     };
   } catch (err) {
-    console.error('FCM send error:', err);
+    console.error('❌ [FCM] Send error:', err);
+    console.error('❌ [FCM] Error details:', err.message, err.stack);
     return { success: false, error: err.message };
   }
 }
@@ -259,6 +297,10 @@ export async function sendNotification(tokens, notification, data = {}) {
  */
 export async function sendToUser(userId, role, notification, data = {}) {
   const tokens = await getTokensForUser(userId, role);
-  if (tokens.length === 0) return { success: false, error: 'No tokens found for user' };
+  if (tokens.length === 0) {
+    console.warn(`⚠️ [FCM] No tokens found for ${role} ${userId}`);
+    return { success: false, error: 'No tokens found for user' };
+  }
+  console.log(`📤 [FCM] Sending notification to ${role} ${userId} with ${tokens.length} token(s)`);
   return sendNotification(tokens, notification, data);
 }

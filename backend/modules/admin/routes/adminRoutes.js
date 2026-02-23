@@ -167,6 +167,12 @@ import {
   getEntityAuditLogs,
   getCommissionChangeLogs,
 } from "../controllers/auditLogController.js";
+import {
+  sendNotificationToUser,
+  sendNotificationToRestaurant,
+  sendNotificationToDelivery,
+  broadcastNotification,
+} from "../controllers/notificationController.js";
 import { getAbout, updateAbout } from "../controllers/aboutController.js";
 import {
   getTerms,
@@ -617,5 +623,11 @@ router.get("/audit-logs/commission-changes", getCommissionChangeLogs);
 router.get("/withdrawal/requests", getAllWithdrawalRequests);
 router.post("/withdrawal/:id/approve", approveWithdrawalRequest);
 router.post("/withdrawal/:id/reject", rejectWithdrawalRequest);
+
+// Notification Routes (Admin)
+router.post("/notifications/send-to-user", sendNotificationToUser);
+router.post("/notifications/send-to-restaurant", sendNotificationToRestaurant);
+router.post("/notifications/send-to-delivery", sendNotificationToDelivery);
+router.post("/notifications/broadcast", broadcastNotification);
 
 export default router;

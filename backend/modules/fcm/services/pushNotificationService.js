@@ -233,7 +233,8 @@ export async function notifyUserFromAdmin(userId, payload) {
       data: {
         type: 'admin_notification',
         ...payload.data,
-        tag: payload.data?.tag || `admin_notification_${Date.now()}`
+        image: payload.data?.image || undefined, // Ensure image is passed
+        tag: payload.data?.tag || `admin_notification_user_${userId}_${Date.now()}`
       }
     });
   } catch (error) {
@@ -252,7 +253,8 @@ export async function notifyRestaurantFromAdmin(restaurantId, payload) {
       data: {
         type: 'admin_notification',
         ...payload.data,
-        tag: payload.data?.tag || `admin_notification_${Date.now()}`
+        image: payload.data?.image || undefined, // Ensure image is passed
+        tag: payload.data?.tag || `admin_notification_restaurant_${restaurantId}_${Date.now()}`
       }
     });
   } catch (error) {
@@ -271,7 +273,8 @@ export async function notifyDeliveryFromAdmin(deliveryId, payload) {
       data: {
         type: 'admin_notification',
         ...payload.data,
-        tag: payload.data?.tag || `admin_notification_${Date.now()}`
+        image: payload.data?.image || undefined, // Ensure image is passed
+        tag: payload.data?.tag || `admin_notification_delivery_${deliveryId}_${Date.now()}`
       }
     });
   } catch (error) {

@@ -70,6 +70,9 @@ async function playNotificationSound() {
 // Handle background messages
 messaging.onBackgroundMessage((payload) => {
     console.log('[SW] Received background message:', payload);
+    console.log('[SW] Payload keys:', Object.keys(payload));
+    console.log('[SW] Has notification object:', !!payload.notification);
+    console.log('[SW] Has data object:', !!payload.data);
 
     // Play sound for new order notifications
     const isNewOrder = payload.data?.type === 'new_order' || payload.data?.orderId;
@@ -78,27 +81,21 @@ messaging.onBackgroundMessage((payload) => {
         playNotificationSound();
     }
 
-    // If payload has notification object, the browser will show it automatically.
-    // We don't need to call showNotification here to avoid double notifications.
-    if (payload.notification) {
-        console.log('[SW] Payload has notification object, browser will show it automatically');
-        return;
-    }
-
-    const title = payload.data?.title || 'Abhikaro Update';
-    const body = payload.data?.body || '';
+    // Extract title and body from notification object or data
+    const title = payload.notification?.title || payload.data?.title || 'Abhikaro Update';
+    const body = payload.notification?.body || payload.data?.body || '';
     const tag = payload.data?.tag || payload.data?.orderId || payload.data?.notificationId || 'admin_broadcast';
 
     // Icon and Image needs to be absolute URLs for maximum compatibility
-    const icon = payload.data?.icon || '/vite.svg';
-    const image = payload.data?.image || null;
-    const sound = payload.data?.sound || (isNewOrder ? '/audio/alert.mp3' : null);
+    const icon = payload.notification?.icon || payload.data?.icon || '/vite.svg';
+    const image = payload.notification?.image || payload.data?.image || null;
+    const sound = payload.notification?.sound || payload.data?.sound || (isNewOrder ? '/audio/alert.mp3' : null);
 
     const notificationOptions = {
         body: body,
         icon: icon,
         image: image,
-        data: payload.data,
+        data: payload.data || {},
         tag: tag, // THIS IS KEY FOR DEDUPLICATION
         badge: '/vite.svg',
         requireInteraction: true,
@@ -110,7 +107,10 @@ messaging.onBackgroundMessage((payload) => {
         notificationOptions.sound = sound;
     }
 
-    console.log(\`🔔 [SW] Displaying manual notification: \${title} (Tag: \${tag})\`);
+    console.log('[SW] Displaying notification: ' + title + ' (Tag: ' + tag + ')');
+    console.log('[SW] Notification options:', JSON.stringify(notificationOptions));
+    
+    // Always show notification manually to ensure it appears
     return self.registration.showNotification(title, notificationOptions);
 });
 
