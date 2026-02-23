@@ -64,13 +64,18 @@ export const updateLocation = asyncHandler(async (req, res) => {
     }
 
     const updateData = {};
+    
+    // Declare final coordinates at function scope so they're accessible throughout
+    let finalLatitude = latitude;
+    let finalLongitude = longitude;
+    let locationSnapped = false;
 
     // Update location only if both latitude and longitude are provided
     if (typeof latitude === 'number' && typeof longitude === 'number') {
       // Snap location to road if there's an active order with route
-      let finalLatitude = latitude;
-      let finalLongitude = longitude;
-      let locationSnapped = false;
+      finalLatitude = latitude;
+      finalLongitude = longitude;
+      locationSnapped = false;
 
       try {
         // Find active order for this delivery partner
@@ -119,10 +124,6 @@ export const updateLocation = asyncHandler(async (req, res) => {
       if (heading !== undefined && heading !== null && typeof heading === 'number') {
         updateData['availability.heading'] = heading;
       }
-
-      // Update the variables used later in the function
-      latitude = finalLatitude;
-      longitude = finalLongitude;
     }
 
     // Update online status if provided
@@ -147,8 +148,12 @@ export const updateLocation = asyncHandler(async (req, res) => {
 
     const currentLocation = updatedDelivery.availability?.currentLocation;
 
-    // Update Firebase Realtime Database with delivery boy location
+    // Update Firebase Realtime Database with delivery boy location (using final snapped coordinates)
     if (typeof latitude === 'number' && typeof longitude === 'number') {
+      // Use final snapped coordinates (already set above)
+      const finalLat = finalLatitude;
+      const finalLng = finalLongitude;
+
       try {
         const { updateDeliveryBoyLocation } = await import('../../order/services/firebaseTrackingService.js');
         
@@ -165,10 +170,10 @@ export const updateLocation = asyncHandler(async (req, res) => {
         const orderId = activeOrder ? (activeOrder.orderId || activeOrder._id.toString()) : null;
         
         // Get heading if available
-        const heading = req.body.heading || updatedDelivery.availability?.heading || null;
+        const finalHeading = req.body.heading || updatedDelivery.availability?.heading || null;
         
         // Calculate bearing if not provided and we have previous location
-        let calculatedBearing = heading;
+        let calculatedBearing = finalHeading;
         if (!calculatedBearing && updatedDelivery.availability?.latitude && updatedDelivery.availability?.longitude) {
           try {
             const { calculateBearingFromLocations } = await import('../utils/bearingCalculation.js');
@@ -176,20 +181,20 @@ export const updateLocation = asyncHandler(async (req, res) => {
               lat: updatedDelivery.availability.latitude,
               lng: updatedDelivery.availability.longitude
             };
-            const currentLocation = { lat: latitude, lng: longitude };
-            calculatedBearing = calculateBearingFromLocations(prevLocation, currentLocation);
+            const currentLocationForBearing = { lat: finalLat, lng: finalLng };
+            calculatedBearing = calculateBearingFromLocations(prevLocation, currentLocationForBearing);
           } catch (err) {
             logger.warn(`Failed to calculate bearing: ${err.message}`);
           }
         }
 
-        // Update Firebase (non-blocking) with heading
+        // Update Firebase (non-blocking) with heading - use final snapped coordinates
         updateDeliveryBoyLocation(
           delivery._id.toString(),
-          latitude,
-          longitude,
+          finalLat,
+          finalLng,
           orderId,
-          calculatedBearing || heading
+          calculatedBearing || finalHeading
         ).catch(err => {
           logger.warn(`Failed to update Firebase location: ${err.message}`);
         });
@@ -205,11 +210,11 @@ export const updateLocation = asyncHandler(async (req, res) => {
                 const deliveryNamespace = io.of('/delivery');
                 const deliveryId = delivery._id.toString();
 
-                // Emit to delivery boy's own room
+                // Emit to delivery boy's own room - use final snapped coordinates
                 deliveryNamespace.to(`delivery:${deliveryId}`).emit('location-update', {
-                  lat: latitude,
-                  lng: longitude,
-                  bearing: calculatedBearing || heading || null,
+                  lat: finalLat,
+                  lng: finalLng,
+                  bearing: calculatedBearing || finalHeading || null,
                   timestamp: Date.now()
                 });
 
@@ -221,12 +226,12 @@ export const updateLocation = asyncHandler(async (req, res) => {
                   }).select('_id userId').lean();
 
                   if (order) {
-                    // Emit to customer tracking this order
+                    // Emit to customer tracking this order - use final snapped coordinates
                     io.to(`order:${order._id.toString()}`).emit(`location-receive-${order.orderId || order._id}`, {
-                      lat: latitude,
-                      lng: longitude,
-                      bearing: calculatedBearing || heading || null,
-                      heading: calculatedBearing || heading || null, // Alias for compatibility
+                      lat: finalLat,
+                      lng: finalLng,
+                      bearing: calculatedBearing || finalHeading || null,
+                      heading: calculatedBearing || finalHeading || null, // Alias for compatibility
                       timestamp: Date.now()
                     });
                   }
@@ -243,10 +248,11 @@ export const updateLocation = asyncHandler(async (req, res) => {
         
         logger.info(`✅ Delivery boy location saved to database and Firebase:`, {
           deliveryBoyId: delivery._id.toString(),
-          lat: latitude,
-          lng: longitude,
-          heading: calculatedBearing || heading || 'N/A',
+          lat: finalLat,
+          lng: finalLng,
+          heading: calculatedBearing || finalHeading || 'N/A',
           orderId: orderId || 'none',
+          snapped: locationSnapped || false
         });
       } catch (firebaseError) {
         // Log but don't fail the request if Firebase update fails
@@ -255,7 +261,11 @@ export const updateLocation = asyncHandler(async (req, res) => {
     }
 
     // Broadcast location update to all active orders for this delivery partner via socket
+    // Use final snapped coordinates if available
     if (typeof latitude === 'number' && typeof longitude === 'number' && currentLocation) {
+      const finalLat = typeof finalLatitude !== 'undefined' ? finalLatitude : latitude;
+      const finalLng = typeof finalLongitude !== 'undefined' ? finalLongitude : longitude;
+      
       try {
         const io = req.app.get('io');
         if (io) {
@@ -270,17 +280,17 @@ export const updateLocation = asyncHandler(async (req, res) => {
             .lean();
 
           // Get heading if available
-          const heading = updatedDelivery.availability?.heading || req.body.heading || null;
+          const finalHeading = updatedDelivery.availability?.heading || req.body.heading || null;
 
-          // Broadcast location to each order's tracking room with bearing
+          // Broadcast location to each order's tracking room with bearing - use final snapped coordinates
           activeOrders.forEach(order => {
             const orderId = order.orderId || order._id.toString();
             const locationData = {
               orderId: orderId,
-              lat: latitude,
-              lng: longitude,
-              bearing: heading,
-              heading: heading, // Alias for compatibility
+              lat: finalLat,
+              lng: finalLng,
+              bearing: finalHeading,
+              heading: finalHeading, // Alias for compatibility
               timestamp: Date.now()
             };
 
@@ -288,9 +298,10 @@ export const updateLocation = asyncHandler(async (req, res) => {
             io.to(`order:${order._id.toString()}`).emit(`location-receive-${orderId}`, locationData);
             
             console.log(`📍 Location broadcasted to order room ${orderId} for delivery partner ${delivery._id}:`, {
-              lat: latitude,
-              lng: longitude,
-              bearing: heading || 'N/A'
+              lat: finalLat,
+              lng: finalLng,
+              bearing: finalHeading || 'N/A',
+              snapped: locationSnapped || false
             });
           });
 
@@ -300,23 +311,23 @@ export const updateLocation = asyncHandler(async (req, res) => {
               const orderId = order.orderId || order._id.toString();
               io.to(`order:${order._id.toString()}`).emit('update-location', {
                 orderId: orderId,
-                lat: latitude,
-                lng: longitude,
-                bearing: heading,
-                heading: heading, // Alias for compatibility
+                lat: finalLat,
+                lng: finalLng,
+                bearing: finalHeading,
+                heading: finalHeading, // Alias for compatibility
                 timestamp: Date.now()
               });
             });
           }
 
-          // Emit to delivery namespace for delivery boy's own app
+          // Emit to delivery namespace for delivery boy's own app - use final snapped coordinates
           try {
             const deliveryNamespace = io.of('/delivery');
             const deliveryId = delivery._id.toString();
             deliveryNamespace.to(`delivery:${deliveryId}`).emit('location-update', {
-              lat: latitude,
-              lng: longitude,
-              bearing: heading,
+              lat: finalLat,
+              lng: finalLng,
+              bearing: finalHeading,
               timestamp: Date.now()
             });
           } catch (deliveryNamespaceError) {
