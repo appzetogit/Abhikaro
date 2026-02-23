@@ -18,19 +18,10 @@ export default function OrderChat() {
   const socketRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
-  // MongoDB orderId from API (backend emits to order:<mongoId>) - declare before refs
-  const [mongoOrderId, setMongoOrderId] = useState(null);
+  // Get socket URL from API base URL
+  const socketUrl = API_BASE_URL.replace("/api", "");
 
-  const socketUrl = (() => {
-    const base = (API_BASE_URL || "").replace(/\/api\/?$/, "").trim() || "http://localhost:5000";
-    return base.startsWith("http") ? base : `https://${base}`;
-  })();
-
-  const orderIdRef = useRef(orderId);
-  const mongoOrderIdRef = useRef(mongoOrderId);
-  orderIdRef.current = orderId;
-  mongoOrderIdRef.current = mongoOrderId;
-
+  // Scroll to bottom of messages
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -80,7 +71,7 @@ export default function OrderChat() {
     const userIdFromStorage = getUserIdFromStorage();
     if (userIdFromStorage) {
       setCurrentUserId(userIdFromStorage);
-      if (socketRef.current?.connected) socketRef.current.emit("join-user", userIdFromStorage);
+      console.log("✅ User ID set from localStorage:", userIdFromStorage);
     }
 
     // Then try to fetch from API for more accurate ID
@@ -93,7 +84,7 @@ export default function OrderChat() {
           if (id) {
             const idStr = id.toString();
             setCurrentUserId(idStr);
-            if (socketRef.current?.connected) socketRef.current.emit("join-user", idStr);
+            console.log("✅ User ID set from API:", idStr);
           }
         }
       } catch (error) {
@@ -104,21 +95,22 @@ export default function OrderChat() {
     fetchUserId();
   }, []);
 
+  // Store MongoDB orderId for socket room joining
+  const [mongoOrderId, setMongoOrderId] = useState(null);
+
+  // Fetch messages
   useEffect(() => {
     const fetchMessages = async () => {
       if (!orderId) return;
+
       try {
         setLoading(true);
         const response = await chatAPI.getMessages(orderId);
         if (response.data?.success) {
           setMessages(response.data.data.messages || []);
-          const mongoId = response.data.data.orderId;
-          if (mongoId) {
-            setMongoOrderId(mongoId);
-            mongoOrderIdRef.current = mongoId;
-            if (socketRef.current?.connected && mongoId !== orderId) {
-              socketRef.current.emit("join-chat", mongoId);
-            }
+          // Store MongoDB orderId for socket room joining
+          if (response.data.data.orderId) {
+            setMongoOrderId(response.data.data.orderId);
           }
         }
       } catch (error) {
@@ -128,72 +120,141 @@ export default function OrderChat() {
         setLoading(false);
       }
     };
+
     fetchMessages();
   }, [orderId]);
 
+  // Setup Socket.IO connection
   useEffect(() => {
     if (!orderId) return;
 
-    const socket = io(socketUrl, {
-      transports: ["websocket", "polling"],
+    // Initialize socket connection
+    socketRef.current = io(socketUrl, {
+      transports: ["polling", "websocket"],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 10,
-      timeout: 20000,
+      reconnectionAttempts: 5,
     });
-    socketRef.current = socket;
+
+    const socket = socketRef.current;
 
     socket.on("connect", () => {
-      const oid = orderIdRef.current;
-      const mongoId = mongoOrderIdRef.current;
-      if (oid) {
-        socket.emit("join-chat", oid);
-        socket.emit("join-order-tracking", oid);
+      console.log("✅ Socket connected for chat");
+      console.log("📦 Joining chat for orderId:", orderId);
+      
+      // Join order chat room with string orderId
+      socket.emit("join-chat", orderId);
+      
+      // Also join with MongoDB _id if available
+      if (mongoOrderId && mongoOrderId !== orderId) {
+        console.log("📦 Also joining with MongoDB _id:", mongoOrderId);
+        socket.emit("join-chat", mongoOrderId);
       }
-      if (mongoId && mongoId !== oid) socket.emit("join-chat", mongoId);
+      
+      // Also join user room for notifications
       const getUserId = () => {
         if (currentUserId) return currentUserId.toString();
         const directId = localStorage.getItem("user_id") || localStorage.getItem("userId");
         if (directId) return directId.toString();
-        try {
-          const s = localStorage.getItem("user_user");
-          if (s) { const u = JSON.parse(s); const id = u?._id || u?.id; if (id) return id.toString(); }
-        } catch (e) {}
+        const userUserStr = localStorage.getItem("user_user");
+        if (userUserStr) {
+          try {
+            const userUser = JSON.parse(userUserStr);
+            const id = userUser?._id || userUser?.id;
+            if (id) return id.toString();
+          } catch (e) {}
+        }
         return null;
       };
-      const uid = getUserId();
-      if (uid) socket.emit("join-user", uid);
+      const userId = getUserId();
+      if (userId) {
+        console.log("👤 Joining user room:", userId);
+        socket.emit("join-user", userId);
+      }
+      socket.emit("join-order-tracking", orderId);
     });
 
-    socket.io.on("reconnect", () => {});
+    socket.on("disconnect", () => {
+      console.log("❌ Socket disconnected");
+    });
 
+    // Listen for new messages
     socket.on("new-message", (data) => {
-      if (!data?.message) return;
-      const messageOrderId = (data.orderId && typeof data.orderId === "string") ? data.orderId : data.orderId?.toString?.();
-      const currentOrderId = orderIdRef.current?.toString?.();
-      const mongoOrderIdStr = mongoOrderIdRef.current?.toString?.();
-      const orderIdMatches =
-        messageOrderId === currentOrderId ||
-        messageOrderId === mongoOrderIdStr ||
-        (messageOrderId && currentOrderId && (messageOrderId === currentOrderId || messageOrderId.includes(currentOrderId) || currentOrderId.includes(messageOrderId))) ||
-        (messageOrderId && mongoOrderIdStr && (messageOrderId === mongoOrderIdStr || messageOrderId.includes(mongoOrderIdStr) || mongoOrderIdStr.includes(messageOrderId)));
-      if (!orderIdMatches) return;
-      const msgId = data.message._id?.toString?.() || data.message._id;
-      setMessages((prev) => {
-        const exists = prev.some((m) => m._id?.toString?.() === msgId || (m.isOptimistic && m.message === data.message.message && m.senderId?.toString?.() === data.message.senderId?.toString?.()));
-        if (exists) return prev;
-        const filtered = prev.filter((m) => !(m.isOptimistic && m.message === data.message.message));
-        return [...filtered, data.message];
+      console.log("📨 Received new-message event:", {
+        hasMessage: !!data.message,
+        orderId: data.orderId,
+        currentOrderId: orderId,
+        mongoOrderId: mongoOrderId,
+        senderType: data.message?.senderType,
+        message: data.message?.message?.substring(0, 30)
       });
-      scrollToBottom();
+      
+      if (data.message) {
+        // Check if message belongs to this order (handle both ObjectId and string)
+        const messageOrderId = data.orderId?.toString();
+        const currentOrderId = orderId?.toString();
+        const mongoOrderIdStr = mongoOrderId?.toString();
+        
+        // More flexible matching - check if orderIds match in any way
+        const orderIdMatches = 
+          messageOrderId === currentOrderId || 
+          messageOrderId === mongoOrderIdStr ||
+          data.orderId === orderId ||
+          data.orderId === mongoOrderId ||
+          data.orderId?.toString() === currentOrderId ||
+          data.orderId?.toString() === mongoOrderIdStr ||
+          messageOrderId === orderId ||
+          messageOrderId === mongoOrderId ||
+          (messageOrderId && currentOrderId && (
+            messageOrderId.includes(currentOrderId) ||
+            currentOrderId.includes(messageOrderId)
+          )) ||
+          (messageOrderId && mongoOrderIdStr && (
+            messageOrderId.includes(mongoOrderIdStr) ||
+            mongoOrderIdStr.includes(messageOrderId)
+          ));
+        
+        console.log("🔍 OrderId matching:", {
+          messageOrderId,
+          currentOrderId,
+          mongoOrderIdStr,
+          matches: orderIdMatches
+        });
+        
+        if (orderIdMatches) {
+          console.log("✅ Message matches order, adding to UI");
+          // Check if message is not already in the list
+          setMessages((prev) => {
+            const exists = prev.some(msg => 
+              msg._id?.toString() === data.message._id?.toString() ||
+              (msg.isOptimistic && msg.message === data.message.message && 
+               msg.senderId?.toString() === data.message.senderId?.toString())
+            );
+            if (!exists) {
+              console.log("➕ Adding new message to list");
+              // Remove any optimistic message with same content
+              const filtered = prev.filter(msg => 
+                !(msg.isOptimistic && msg.message === data.message.message)
+              );
+              return [...filtered, data.message];
+            } else {
+              console.log("⚠️ Message already exists, skipping");
+            }
+            return prev;
+          });
+          scrollToBottom();
+        } else {
+          console.log("❌ Message orderId doesn't match, ignoring");
+        }
+      }
     });
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      if (socket) {
+        socket.disconnect();
+      }
     };
-  }, [orderId, socketUrl]);
+  }, [orderId, socketUrl, currentUserId, mongoOrderId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -316,7 +377,6 @@ export default function OrderChat() {
 
   // Format time
   const formatTime = (timestamp) => {
-    if (!timestamp) return "";
     const date = new Date(timestamp);
     const now = new Date();
     const diff = now - date;
