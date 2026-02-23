@@ -6,6 +6,7 @@ import { RouteBasedAnimationController, updateMarkerIconRotation } from '@/modul
 import { extractPolylineFromDirections, findNearestPointOnPolyline } from '@/module/delivery/utils/liveTrackingPolyline';
 import { calculateBearingFromLocations } from '@/module/delivery/utils/bearingCalculation';
 import { snapToPolyline, detectOffRoute, PolylineAnimationController } from '@/module/delivery/utils/enhancedMapMatching';
+import { StrictPolylineController, calculateProgressOnPolyline, getPointOnPolylineByProgress, calculateBearingAtProgress } from '@/module/delivery/utils/strictPolylineTracking';
 import './DeliveryTrackingMap.css';
 
 // Helper function to calculate Haversine distance
@@ -49,8 +50,10 @@ const DeliveryTrackingMap = ({
   const routePolylinePointsRef = useRef(null); // Store decoded polyline points for route-based animation
   const animationControllerRef = useRef(null); // Route-based animation controller
   const polylineAnimationControllerRef = useRef(null); // Enhanced polyline animation controller
+  const strictPolylineControllerRef = useRef(null); // Strict polyline controller (marker always on polyline center)
   const previousLocationRef = useRef(null); // Store previous location for bearing calculation
   const lastSnappedPositionRef = useRef(null); // Last snapped position for forward-only movement
+  const lastProgressRef = useRef(0); // Last progress on polyline (0-1)
   const isReRoutingRef = useRef(false); // Flag to prevent multiple simultaneous re-routes
   const lastRouteUpdateRef = useRef(null);
   const userHasInteractedRef = useRef(false);
@@ -210,11 +213,26 @@ const DeliveryTrackingMap = ({
         if (polylinePoints && polylinePoints.length > 0) {
           routePolylinePointsRef.current = polylinePoints;
 
-          if (bikeMarkerRef.current && !animationControllerRef.current) {
-            animationControllerRef.current = new RouteBasedAnimationController(
+          // Initialize STRICT polyline controller (marker always on polyline center)
+          if (bikeMarkerRef.current) {
+            strictPolylineControllerRef.current = new StrictPolylineController(
               bikeMarkerRef.current,
-              polylinePoints
+              polylinePoints,
+              (bearing) => {
+                updateMarkerIconRotation(bikeMarkerRef.current, bearing);
+              }
             );
+            
+            lastProgressRef.current = 0;
+            
+            if (!animationControllerRef.current) {
+              animationControllerRef.current = new RouteBasedAnimationController(
+                bikeMarkerRef.current,
+                polylinePoints
+              );
+            }
+            
+            console.log('✅ Strict polyline controller initialized from cache');
           }
         }
 
@@ -308,13 +326,29 @@ const DeliveryTrackingMap = ({
             routePolylinePointsRef.current = polylinePoints;
             console.log('✅ Extracted', polylinePoints.length, 'polyline points for route-based animation');
 
-            // Initialize animation controller if bike marker exists
-            if (bikeMarkerRef.current && !animationControllerRef.current) {
-              animationControllerRef.current = new RouteBasedAnimationController(
+            // Initialize STRICT polyline controller (marker always on polyline center)
+            if (bikeMarkerRef.current) {
+              strictPolylineControllerRef.current = new StrictPolylineController(
                 bikeMarkerRef.current,
-                polylinePoints
+                polylinePoints,
+                (bearing) => {
+                  // Update marker rotation when bearing changes
+                  updateMarkerIconRotation(bikeMarkerRef.current, bearing);
+                }
               );
-              console.log('✅ Route-based animation controller initialized');
+              
+              // Reset progress when route changes
+              lastProgressRef.current = 0;
+              
+              // Also initialize legacy controller for backward compatibility
+              if (!animationControllerRef.current) {
+                animationControllerRef.current = new RouteBasedAnimationController(
+                  bikeMarkerRef.current,
+                  polylinePoints
+                );
+              }
+              
+              console.log('✅ Strict polyline controller initialized - marker will stay on polyline center');
             }
           }
 
@@ -588,126 +622,105 @@ const DeliveryTrackingMap = ({
           }
         }
       } else {
-        // RAPIDO/ZOMATO-STYLE: Bike MUST stay on route polyline, NEVER use raw GPS
+        // STRICT POLYLINE TRACKING: Marker ALWAYS on polyline center, NEVER deviates
+        // GPS is used ONLY to calculate progress, position comes from polyline
         if (routePolylinePointsRef.current && routePolylinePointsRef.current.length > 0) {
-          // Find nearest point on polyline (ensures marker stays on road)
-          // Note: findNearestPointOnPolyline takes (polyline, riderPosition)
-          const nearest = findNearestPointOnPolyline(routePolylinePointsRef.current, { lat, lng });
-
-          if (nearest && nearest.nearestPoint) {
-            // Calculate progress on route (0 to 1) based on distance traveled
-            const totalPoints = routePolylinePointsRef.current.length;
-
-            // Calculate cumulative distance to nearest point for accurate progress
-            let distanceToNearest = 0;
-            for (let i = 0; i < nearest.segmentIndex; i++) {
-              const p1 = routePolylinePointsRef.current[i];
-              const p2 = routePolylinePointsRef.current[i + 1];
-              distanceToNearest += calculateHaversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-            }
-
-            // Add distance within current segment
-            const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
-            const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1] || segmentStart;
-            const segmentDistance = calculateHaversineDistance(segmentStart.lat, segmentStart.lng, segmentEnd.lat, segmentEnd.lng);
-            const segmentProgress = calculateHaversineDistance(segmentStart.lat, segmentStart.lng, nearest.nearestPoint.lat, nearest.nearestPoint.lng) / (segmentDistance || 1);
-            distanceToNearest += segmentDistance * segmentProgress;
-
-            // Calculate total route distance
-            let totalDistance = 0;
-            for (let i = 0; i < routePolylinePointsRef.current.length - 1; i++) {
-              const p1 = routePolylinePointsRef.current[i];
-              const p2 = routePolylinePointsRef.current[i + 1];
-              totalDistance += calculateHaversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-            }
-
-            // Calculate progress (0 to 1)
-            let progress = totalDistance > 0 ? Math.min(1, Math.max(0, distanceToNearest / totalDistance)) : 0;
-
-            // Ensure progress doesn't go backwards (only forward movement) - Rapido/Zomato style
-            if (animationControllerRef.current && animationControllerRef.current.lastProgress !== undefined) {
-              const lastProgress = animationControllerRef.current.lastProgress;
-              // Allow small backward movement (GPS noise) but prevent large jumps
-              if (progress < lastProgress - 0.05) {
-                progress = lastProgress; // Don't go backwards more than 5%
-                console.log('🛑 Preventing backward movement:', { new: progress, last: lastProgress });
-              } else if (progress < lastProgress) {
-                // Small backward movement - keep last progress
-                progress = lastProgress;
-              }
-            }
-
-            // Use route-based animation controller if available
-            if (animationControllerRef.current) {
-              console.log('🛵 Route-based animation (Rapido/Zomato style):', {
-                progress,
-                segmentIndex: nearest.segmentIndex,
-                onRoute: true,
-                snappedToRoad: true
-              });
-              // Calculate bearing for route segment if not provided
-              let segmentBearing = calculatedBearing;
-              if (!segmentBearing && nearest.segmentIndex < routePolylinePointsRef.current.length - 1) {
-                const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
-                const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1];
-                segmentBearing = calculateBearingFromLocations(segmentStart, segmentEnd) || 0;
-              }
-              
-              animationControllerRef.current.updatePosition(progress, segmentBearing || calculatedBearing || 0);
-              animationControllerRef.current.lastProgress = progress;
-            } else {
-              // Initialize animation controller if not exists
-              if (bikeMarkerRef.current) {
-                animationControllerRef.current = new RouteBasedAnimationController(
-                  bikeMarkerRef.current,
-                  routePolylinePointsRef.current
-                );
-                
-                // Calculate bearing for route segment if not provided
-                let segmentBearing = calculatedBearing;
-                if (!segmentBearing && nearest.segmentIndex < routePolylinePointsRef.current.length - 1) {
-                  const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
-                  const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1];
-                  segmentBearing = calculateBearingFromLocations(segmentStart, segmentEnd) || 0;
-                }
-                
-                animationControllerRef.current.updatePosition(progress, segmentBearing || calculatedBearing || 0);
-                animationControllerRef.current.lastProgress = progress;
-                console.log('✅ Initialized route-based animation controller');
-              } else {
-                // Fallback: Move to nearest point on polyline (STAY ON ROAD)
-                const nearestPosition = new window.google.maps.LatLng(nearest.nearestPoint.lat, nearest.nearestPoint.lng);
-                bikeMarkerRef.current.setPosition(nearestPosition);
-                
-                // Calculate bearing for segment
-                let segmentBearing = calculatedBearing;
-                if (!segmentBearing && nearest.segmentIndex < routePolylinePointsRef.current.length - 1) {
-                  const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
-                  const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1];
-                  segmentBearing = calculateBearingFromLocations(segmentStart, segmentEnd) || 0;
-                }
-                
-                // Update marker rotation
-                updateBikeMarkerRotation(bikeMarkerRef.current, segmentBearing || calculatedBearing || 0);
-                console.log('🛣️ Bike snapped to nearest road point:', nearest.nearestPoint);
-              }
-            }
+          // Use strict polyline controller if available (preferred method)
+          if (strictPolylineControllerRef.current) {
+            // GPS is used only to calculate progress, marker position comes from polyline
+            strictPolylineControllerRef.current.updateFromGPS({ lat, lng }, 2000);
+            console.log('🛵 Strict polyline tracking: Marker always on polyline center');
           } else {
-            // If nearest point not found, use first point of polyline (don't use raw GPS)
-            console.warn('⚠️ Could not find nearest point, using polyline start point');
-            const firstPoint = routePolylinePointsRef.current[0];
-            if (firstPoint && bikeMarkerRef.current) {
-              const firstPosition = new window.google.maps.LatLng(firstPoint.lat, firstPoint.lng);
-              bikeMarkerRef.current.setPosition(firstPosition);
+            // Initialize strict polyline controller
+            if (bikeMarkerRef.current) {
+              strictPolylineControllerRef.current = new StrictPolylineController(
+                bikeMarkerRef.current,
+                routePolylinePointsRef.current,
+                (bearing) => {
+                  // Update marker rotation when bearing changes
+                  updateBikeMarkerRotation(bikeMarkerRef.current, bearing);
+                }
+              );
+              
+              // Calculate progress from GPS and update
+              const progressData = calculateProgressOnPolyline(
+                routePolylinePointsRef.current,
+                { lat, lng },
+                lastProgressRef.current
+              );
+              
+              // Get exact point on polyline at this progress (ALWAYS on polyline center)
+              const pointOnPolyline = progressData.pointOnPolyline;
+              
+              // Update marker to exact polyline point
+              bikeMarkerRef.current.setPosition(pointOnPolyline);
+              
+              // Calculate and update bearing
+              const bearing = calculateBearingAtProgress(routePolylinePointsRef.current, progressData.progress);
+              updateBikeMarkerRotation(bikeMarkerRef.current, bearing);
+              
+              // Update last progress
+              lastProgressRef.current = progressData.progress;
+              
+              console.log('✅ Strict polyline controller initialized, marker on polyline center:', {
+                progress: progressData.progress.toFixed(3),
+                pointOnPolyline
+              });
+            } else {
+              // Fallback: Use legacy method but ensure marker is on polyline
+              const nearest = findNearestPointOnPolyline(routePolylinePointsRef.current, { lat, lng });
+              
+              if (nearest && nearest.nearestPoint) {
+                // Calculate progress
+                let distanceToNearest = 0;
+                for (let i = 0; i < nearest.segmentIndex; i++) {
+                  const p1 = routePolylinePointsRef.current[i];
+                  const p2 = routePolylinePointsRef.current[i + 1];
+                  distanceToNearest += calculateHaversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+                }
+                
+                const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
+                const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1] || segmentStart;
+                const segmentDistance = calculateHaversineDistance(segmentStart.lat, segmentStart.lng, segmentEnd.lat, segmentEnd.lng);
+                const segmentProgress = calculateHaversineDistance(segmentStart.lat, segmentStart.lng, nearest.nearestPoint.lat, nearest.nearestPoint.lng) / (segmentDistance || 1);
+                distanceToNearest += segmentDistance * segmentProgress;
+                
+                let totalDistance = 0;
+                for (let i = 0; i < routePolylinePointsRef.current.length - 1; i++) {
+                  const p1 = routePolylinePointsRef.current[i];
+                  const p2 = routePolylinePointsRef.current[i + 1];
+                  totalDistance += calculateHaversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+                }
+                
+                let progress = totalDistance > 0 ? Math.min(1, Math.max(0, distanceToNearest / totalDistance)) : 0;
+                
+                // Forward-only constraint
+                if (progress < lastProgressRef.current) {
+                  progress = lastProgressRef.current;
+                }
+                
+                // Get exact point on polyline (ALWAYS on polyline center)
+                const pointOnPolyline = getPointOnPolylineByProgress(routePolylinePointsRef.current, progress);
+                
+                // Update marker to exact polyline point (not nearest point from GPS)
+                bikeMarkerRef.current.setPosition(pointOnPolyline);
+                
+                // Calculate bearing
+                const bearing = calculateBearingAtProgress(routePolylinePointsRef.current, progress);
+                updateBikeMarkerRotation(bikeMarkerRef.current, bearing);
+                
+                lastProgressRef.current = progress;
+                
+                console.log('🛣️ Marker updated to polyline center (fallback):', {
+                  progress: progress.toFixed(3),
+                  pointOnPolyline
+                });
+              }
             }
           }
         } else {
           // CRITICAL: If no polyline, DO NOT show bike at raw GPS location
-          // Wait for route to be generated first
           console.warn('⚠️⚠️⚠️ NO POLYLINE AVAILABLE - Bike marker NOT updated to prevent off-road display');
-          console.warn('⚠️ Waiting for route to be generated before showing bike position');
-          // Don't update marker position - keep it at last known position on route
-          // This prevents bike from jumping to buildings/footpaths
           return; // Exit early - don't update marker
         }
 
@@ -772,14 +785,22 @@ const DeliveryTrackingMap = ({
         setCurrentLocation(location);
         setDeliveryBoyLocation(location);
 
-        // RAPIDO-STYLE: Use route-based animation if progress is available
+        // STRICT POLYLINE TRACKING: Marker always on polyline center
         if (isMapLoaded && mapInstance.current) {
-          if (data.progress !== undefined && animationControllerRef.current && routePolylinePointsRef.current) {
+          // Priority 1: Use strict polyline controller (marker always on polyline center)
+          if (strictPolylineControllerRef.current && routePolylinePointsRef.current) {
+            // GPS is used only to calculate progress, marker position comes from polyline
+            strictPolylineControllerRef.current.updateFromGPS({ lat: data.lat, lng: data.lng }, 2000);
+            console.log('🛵 Strict polyline tracking: Marker on polyline center');
+          }
+          // Priority 2: Use backend progress if available
+          else if (data.progress !== undefined && animationControllerRef.current && routePolylinePointsRef.current) {
             // Backend sent progress - use route-based animation
             console.log('🛵 Using route-based animation with progress:', data.progress);
             animationControllerRef.current.updatePosition(data.progress, data.bearing || data.heading || 0);
-          } else {
-            // Fallback: Use moveBikeSmoothly (will use route-based if polyline available)
+          }
+          // Priority 3: Fallback to moveBikeSmoothly (will use strict polyline if available)
+          else {
             console.log('🚴 Moving bike to location:', location);
             moveBikeSmoothly(data.lat, data.lng, data.heading || data.bearing || 0);
           }
@@ -801,14 +822,22 @@ const DeliveryTrackingMap = ({
         setCurrentLocation(location);
         setDeliveryBoyLocation(location);
 
-        // RAPIDO-STYLE: Use route-based animation if progress is available
+        // STRICT POLYLINE TRACKING: Marker always on polyline center
         if (isMapLoaded && mapInstance.current) {
-          if (data.progress !== undefined && animationControllerRef.current && routePolylinePointsRef.current) {
+          // Priority 1: Use strict polyline controller (marker always on polyline center)
+          if (strictPolylineControllerRef.current && routePolylinePointsRef.current) {
+            // GPS is used only to calculate progress, marker position comes from polyline
+            strictPolylineControllerRef.current.updateFromGPS({ lat: data.lat, lng: data.lng }, 2000);
+            console.log('🛵 Strict polyline tracking: Marker on polyline center');
+          }
+          // Priority 2: Use backend progress if available
+          else if (data.progress !== undefined && animationControllerRef.current && routePolylinePointsRef.current) {
             // Backend sent progress - use route-based animation
             console.log('🛵 Using route-based animation with progress:', data.progress);
             animationControllerRef.current.updatePosition(data.progress, data.bearing || data.heading || 0);
-          } else {
-            // Fallback: Use moveBikeSmoothly (will use route-based if polyline available)
+          }
+          // Priority 3: Fallback to moveBikeSmoothly (will use strict polyline if available)
+          else {
             console.log('🚴 Moving bike to current location:', location);
             moveBikeSmoothly(data.lat, data.lng, data.heading || data.bearing || 0);
           }
@@ -828,16 +857,35 @@ const DeliveryTrackingMap = ({
       if (data.points && Array.isArray(data.points) && data.points.length > 0) {
         routePolylinePointsRef.current = data.points;
 
-        // Initialize animation controller if bike marker exists
-        if (bikeMarkerRef.current && !animationControllerRef.current) {
-          animationControllerRef.current = new RouteBasedAnimationController(
+        // Initialize STRICT polyline controller (marker always on polyline center)
+        if (bikeMarkerRef.current) {
+          strictPolylineControllerRef.current = new StrictPolylineController(
             bikeMarkerRef.current,
-            data.points
+            data.points,
+            (bearing) => {
+              updateMarkerIconRotation(bikeMarkerRef.current, bearing);
+            }
           );
-          console.log('✅ Route-based animation controller initialized from backend route');
-        } else if (animationControllerRef.current) {
-          // Update existing controller with new polyline
-          animationControllerRef.current.updatePolyline(data.points);
+          
+          lastProgressRef.current = 0;
+          
+          // Also initialize legacy controller for backward compatibility
+          if (!animationControllerRef.current) {
+            animationControllerRef.current = new RouteBasedAnimationController(
+              bikeMarkerRef.current,
+              data.points
+            );
+          } else {
+            // Update existing controller with new polyline
+            animationControllerRef.current.updatePolyline(data.points);
+          }
+          
+          // Update strict controller polyline
+          if (strictPolylineControllerRef.current) {
+            strictPolylineControllerRef.current.updatePolyline(data.points);
+          }
+          
+          console.log('✅ Strict polyline controller initialized from backend route');
         }
       }
     });
@@ -875,6 +923,11 @@ const DeliveryTrackingMap = ({
         socketRef.current.off(`current-location-${orderId}`);
         socketRef.current.off('order_status_update');
         socketRef.current.disconnect();
+      }
+      
+      // Cleanup strict polyline controller
+      if (strictPolylineControllerRef.current) {
+        strictPolylineControllerRef.current.cancel();
       }
     };
   }, [orderId, backendUrl, moveBikeSmoothly]);

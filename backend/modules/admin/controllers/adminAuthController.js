@@ -71,7 +71,7 @@ export const adminSignup = asyncHandler(async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     });
 
     // Remove password from response
@@ -140,7 +140,7 @@ export const adminLogin = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
   });
 
   // Remove password from response
@@ -221,7 +221,7 @@ export const adminSignupWithOTP = asyncHandler(async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     });
 
     // Remove password from response
@@ -242,6 +242,58 @@ export const adminSignupWithOTP = asyncHandler(async (req, res) => {
     }
     
     return errorResponse(res, 500, 'Failed to register admin');
+  }
+});
+
+/**
+ * Refresh Access Token
+ * POST /api/admin/auth/refresh-token
+ */
+export const refreshToken = asyncHandler(async (req, res) => {
+  // Get refresh token from cookie
+  const refreshToken = req.cookies?.refreshToken;
+
+  if (!refreshToken) {
+    return errorResponse(res, 401, 'Refresh token not found');
+  }
+
+  try {
+    // Verify refresh token
+    const decoded = jwtService.verifyRefreshToken(refreshToken);
+
+    // Ensure it's an admin token
+    if (decoded.role !== 'admin') {
+      return errorResponse(res, 401, 'Invalid token for admin');
+    }
+
+    // Get admin from database
+    const admin = await Admin.findById(decoded.userId).select('-password');
+
+    if (!admin || !admin.isActive) {
+      return errorResponse(res, 401, 'Admin not found or inactive');
+    }
+
+    // Generate new access token
+    const accessToken = jwtService.generateAccessToken({
+      userId: admin._id.toString(),
+      role: 'admin',
+      email: admin.email,
+      adminRole: admin.role
+    });
+
+    // Update refresh token cookie expiry to extend session
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+
+    return successResponse(res, 200, 'Token refreshed successfully', {
+      accessToken
+    });
+  } catch (error) {
+    return errorResponse(res, 401, error.message || 'Invalid refresh token');
   }
 });
 

@@ -182,7 +182,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
-          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
 
         // Register FCM token if provided in request (for mobile apps)
@@ -243,7 +243,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     });
 
     // Update last login
@@ -333,6 +333,14 @@ export const refreshToken = asyncHandler(async (req, res) => {
       userId: delivery._id.toString(),
       role: 'delivery',
       email: delivery.email || delivery.phone || delivery.deliveryId
+    });
+
+    // Update refresh token cookie expiry to extend session
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     });
 
     return successResponse(res, 200, 'Token refreshed successfully', {

@@ -67,19 +67,62 @@ export const updateLocation = asyncHandler(async (req, res) => {
 
     // Update location only if both latitude and longitude are provided
     if (typeof latitude === 'number' && typeof longitude === 'number') {
+      // Snap location to road if there's an active order with route
+      let finalLatitude = latitude;
+      let finalLongitude = longitude;
+      let locationSnapped = false;
+
+      try {
+        // Find active order for this delivery partner
+        const Order = (await import('../../order/models/Order.js')).default;
+        const activeOrder = await Order.findOne({
+          deliveryPartnerId: delivery._id,
+          status: { $nin: ['delivered', 'cancelled'] },
+          'deliveryState.currentPhase': { $ne: 'completed' }
+        })
+          .select('orderId _id')
+          .lean();
+
+        const orderId = activeOrder ? (activeOrder.orderId || activeOrder._id.toString()) : null;
+
+        // Snap to road if we have an active order
+        if (orderId) {
+          const { snapLocationToRoad } = await import('../services/locationProcessingService.js');
+          const snapped = await snapLocationToRoad(
+            { lat: latitude, lng: longitude },
+            orderId,
+            50 // Max 50 meters to snap
+          );
+
+          if (snapped.snapped && snapped.distance <= 50) {
+            finalLatitude = snapped.lat;
+            finalLongitude = snapped.lng;
+            locationSnapped = true;
+            console.log(`✅ Location snapped to road (distance: ${snapped.distance.toFixed(2)}m)`);
+          }
+        }
+      } catch (snapError) {
+        // Log but don't fail - use original location
+        logger.warn(`Failed to snap location to road: ${snapError.message}`);
+      }
+
       updateData['availability.currentLocation'] = {
         type: 'Point',
-        coordinates: [longitude, latitude] // MongoDB uses [longitude, latitude]
+        coordinates: [finalLongitude, finalLatitude] // MongoDB uses [longitude, latitude]
       };
       // Also save explicit lat/lng for easy access
-      updateData['availability.latitude'] = latitude;
-      updateData['availability.longitude'] = longitude;
+      updateData['availability.latitude'] = finalLatitude;
+      updateData['availability.longitude'] = finalLongitude;
       updateData['availability.lastLocationUpdate'] = new Date();
       
       // Save heading if provided (for marker rotation)
       if (heading !== undefined && heading !== null && typeof heading === 'number') {
         updateData['availability.heading'] = heading;
       }
+
+      // Update the variables used later in the function
+      latitude = finalLatitude;
+      longitude = finalLongitude;
     }
 
     // Update online status if provided

@@ -440,30 +440,133 @@ function calculateBearing(from, to) {
 }
 
 /**
- * Find nearest point on polyline
+ * Project a point onto a line segment
+ * @param {Object} point - {lat, lng} Point to project
+ * @param {Object} lineStart - {lat, lng} Start of line segment
+ * @param {Object} lineEnd - {lat, lng} End of line segment
+ * @returns {Object} {projectedPoint: {lat, lng}, t: number (0-1), distance: number}
+ */
+function projectPointOntoLineSegment(point, lineStart, lineEnd) {
+  const A = point.lat - lineStart.lat;
+  const B = point.lng - lineStart.lng;
+  const C = lineEnd.lat - lineStart.lat;
+  const D = lineEnd.lng - lineStart.lng;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  let t = 0;
+  
+  if (lenSq !== 0) {
+    t = Math.max(0, Math.min(1, dot / lenSq));
+  }
+
+  const projectedPoint = {
+    lat: lineStart.lat + t * C,
+    lng: lineStart.lng + t * D
+  };
+
+  const distance = calculateDistance(point, projectedPoint);
+
+  return {
+    projectedPoint,
+    t,
+    distance
+  };
+}
+
+/**
+ * Find nearest point on polyline (with projection onto segments)
+ * This ensures the point is on the road, not just at polyline vertices
  * @param {Object} location - {lat, lng}
  * @param {Array} polylinePoints - Array of {lat, lng}
- * @returns {Object} {point: {lat, lng}, index: number, distance: number}
+ * @param {number} maxSnapDistance - Maximum distance to snap (default 50m)
+ * @returns {Object} {point: {lat, lng}, index: number, distance: number, snapped: boolean}
  */
-export function findNearestPointOnPolyline(location, polylinePoints) {
+export function findNearestPointOnPolyline(location, polylinePoints, maxSnapDistance = 50) {
+  if (!polylinePoints || polylinePoints.length < 2) {
+    return {
+      point: location,
+      index: 0,
+      distance: Infinity,
+      snapped: false
+    };
+  }
+
   let minDistance = Infinity;
   let nearestIndex = 0;
   let nearestPoint = polylinePoints[0];
-  
-  for (let i = 0; i < polylinePoints.length; i++) {
-    const distance = calculateDistance(location, polylinePoints[i]);
-    if (distance < minDistance) {
-      minDistance = distance;
+  let bestProjection = null;
+
+  // Check all segments (project onto each segment, not just vertices)
+  for (let i = 0; i < polylinePoints.length - 1; i++) {
+    const segmentStart = polylinePoints[i];
+    const segmentEnd = polylinePoints[i + 1];
+    
+    const projection = projectPointOntoLineSegment(location, segmentStart, segmentEnd);
+    
+    if (projection.distance < minDistance) {
+      minDistance = projection.distance;
       nearestIndex = i;
-      nearestPoint = polylinePoints[i];
+      nearestPoint = projection.projectedPoint;
+      bestProjection = projection;
     }
   }
-  
+
+  // Only snap if within maxSnapDistance
+  const snapped = minDistance <= maxSnapDistance;
+
   return {
-    point: nearestPoint,
+    point: snapped ? nearestPoint : location,
     index: nearestIndex,
-    distance: minDistance
+    distance: minDistance,
+    snapped: snapped
   };
+}
+
+/**
+ * Snap GPS location to nearest road using route polyline if available
+ * Falls back to simple smoothing if no route available
+ * @param {Object} rawLocation - {lat, lng}
+ * @param {string} orderId - Active order ID (optional)
+ * @param {number} maxSnapDistance - Maximum distance to snap in meters (default 50m)
+ * @returns {Promise<Object>} {lat, lng, snapped: boolean}
+ */
+export async function snapLocationToRoad(rawLocation, orderId = null, maxSnapDistance = 50) {
+  try {
+    // If we have an active order with a route, snap to that route's polyline
+    if (orderId) {
+      const route = routePolylines.get(orderId);
+      if (route && route.points && route.points.length >= 2) {
+        const nearest = findNearestPointOnPolyline(rawLocation, route.points, maxSnapDistance);
+        if (nearest.snapped) {
+          console.log(`✅ Snapped location to route polyline (distance: ${nearest.distance.toFixed(2)}m)`);
+          return {
+            lat: nearest.point.lat,
+            lng: nearest.point.lng,
+            snapped: true,
+            distance: nearest.distance
+          };
+        }
+      }
+    }
+
+    // If no route available or too far from route, return original location
+    // (We could add Google Roads API here, but it's expensive)
+    return {
+      lat: rawLocation.lat,
+      lng: rawLocation.lng,
+      snapped: false,
+      distance: Infinity
+    };
+  } catch (error) {
+    console.error('❌ Error snapping location to road:', error);
+    return {
+      lat: rawLocation.lat,
+      lng: rawLocation.lng,
+      snapped: false,
+      distance: Infinity
+    };
+  }
 }
 
 /**
@@ -478,13 +581,24 @@ export async function calculateRouteProgress(orderId, currentLocation) {
     return null;
   }
   
-  // Find nearest point on polyline
-  const nearest = findNearestPointOnPolyline(currentLocation, route.points);
+  // Find nearest point on polyline (with projection onto segments for better accuracy)
+  const nearest = findNearestPointOnPolyline(currentLocation, route.points, 50);
   
   // Calculate distance covered up to nearest point
+  // If point is projected onto a segment, calculate partial distance within that segment
   let distanceCovered = 0;
   for (let i = 1; i <= nearest.index; i++) {
     distanceCovered += calculateDistance(route.points[i-1], route.points[i]);
+  }
+  
+  // Add partial distance within the current segment if point was projected
+  if (nearest.snapped && nearest.index < route.points.length - 1) {
+    const segmentStart = route.points[nearest.index];
+    const segmentEnd = route.points[nearest.index + 1];
+    const segmentDistance = calculateDistance(segmentStart, segmentEnd);
+    // Calculate how far along the segment the projected point is
+    const segmentProgress = calculateDistance(segmentStart, nearest.point) / (segmentDistance || 1);
+    distanceCovered += segmentDistance * segmentProgress;
   }
   
   // Calculate progress (0 to 1)

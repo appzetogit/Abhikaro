@@ -667,7 +667,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     // Register FCM token if provided in request (for mobile apps)
@@ -794,7 +794,7 @@ export const register = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 
   logger.info(`New restaurant registered via email: ${restaurant._id}`, {
@@ -872,7 +872,7 @@ export const login = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 
   // Register FCM token if provided in request (for mobile apps)
@@ -1014,6 +1014,14 @@ export const refreshToken = asyncHandler(async (req, res) => {
       userId: restaurant._id.toString(),
       role: "restaurant",
       email: restaurant.email || restaurant.phone || restaurant.restaurantId,
+    });
+
+    // Update refresh token cookie expiry to extend session
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     return successResponse(res, 200, "Token refreshed successfully", {
@@ -1344,7 +1352,7 @@ export const firebaseGoogleLogin = asyncHandler(async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     return successResponse(
