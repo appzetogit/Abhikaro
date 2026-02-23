@@ -14,7 +14,6 @@ import {
   Headphones,
   Ticket,
   Bell,
-  IndianRupee,
   Sparkles,
   LogOut,
   X
@@ -286,22 +285,6 @@ export default function ProfilePage() {
 
         {/* Sections */}
         <div ref={sectionsRef} className="space-y-4">
-          {/* Referral bonus */}
-          <Card 
-            onClick={() => navigate("/delivery/refer-and-earn")}
-            className="py-0 bg-white border-0 shadow-none cursor-pointer hover:bg-gray-200 transition-colors"
-          >
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-medium mb-1">₹2000 referral bonus</h3>
-                <p className="text-gray-600 text-sm">Refer your friend and earn</p>
-              </div>
-              <div className="flex items-center justify-center w-12 h-12">
-                <IndianRupee className="w-8 h-8 text-yellow-400" />
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Support Section */}
           <div>
             <h3 className="text-base font-medium mb-3 px-1">Support</h3>

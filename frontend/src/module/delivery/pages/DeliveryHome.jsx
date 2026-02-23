@@ -58,7 +58,6 @@ import {
   animateMarker,
   calculateDistance
 } from "../utils/liveTrackingPolyline"
-import referralBonusBg from "../../../assets/referralbonuscardbg.png"
 // import dropLocationBanner from "../../../assets/droplocationbanner.png" // File not found - commented out
 import alertSound from "../../../assets/audio/alert.mp3"
 import originalSound from "../../../assets/audio/original.mp3"
@@ -9967,27 +9966,6 @@ export default function DeliveryHome() {
                 WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
               }}
             >
-              {/* Referral Bonus Banner */}
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                onClick={() => navigate("/delivery/refer-and-earn")}
-                className="w-full rounded-xl p-6 shadow-lg relative overflow-hidden min-h-[70px] cursor-pointer"
-                style={{
-                  backgroundImage: `url(${referralBonusBg})`,
-                  backgroundSize: '100% 100%',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat'
-                }}
-              >
-                <div className="relative z-10">
-                  <div className="text-white text-3xl font-bold mb-1">₹6,000                 <span className="text-white/90 text-base font-medium mb-1">referral bonus</span>
-                  </div>
-                  <div className="text-white/80 text-sm">Refer your friends now</div>
-                </div>
-              </motion.div>
-
               {/* Earnings Guarantee Card - Only show when there's an active earning addon offer */}
               {activeEarningAddon && (
               <motion.div
