@@ -111,6 +111,7 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
 
     const orders = await Order.find(query)
       .populate("userId", "name email phone")
+      .populate("deliveryPartnerId", "name phone") // Populate deliveryPartnerId to show assignment status
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(skip)

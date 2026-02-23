@@ -302,7 +302,31 @@ export const useRestaurantNotifications = () => {
     // Listen for order status updates
     socketRef.current.on('order_status_update', (data) => {
       console.log('📊 Order status update:', data);
-      // You can handle status updates here if needed
+      // Trigger order refresh event for components to listen
+      if (data.deliveryPartnerId) {
+        window.dispatchEvent(new CustomEvent('order_assigned', {
+          detail: {
+            orderId: data.orderId || data.orderMongoId,
+            orderMongoId: data.orderMongoId,
+            deliveryPartnerId: data.deliveryPartnerId,
+            status: data.status
+          }
+        }));
+      }
+    });
+
+    // Listen for order assignment (when delivery boy accepts)
+    socketRef.current.on('order_assigned', (data) => {
+      console.log('✅ Order assigned to delivery boy:', data);
+      // Trigger order refresh event for components to listen
+      window.dispatchEvent(new CustomEvent('order_assigned', {
+        detail: {
+          orderId: data.orderId || data.orderMongoId,
+          orderMongoId: data.orderMongoId,
+          deliveryPartnerId: data.deliveryPartnerId,
+          status: data.status
+        }
+      }));
     });
 
     // Load notification sound

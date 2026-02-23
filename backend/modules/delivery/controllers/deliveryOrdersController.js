@@ -908,6 +908,49 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       `📍 Route calculated: ${routeData.distance.toFixed(2)} km, ${routeData.duration.toFixed(1)} mins`,
     );
 
+    // Notify restaurant via WebSocket that order has been assigned to delivery boy
+    (async () => {
+      try {
+        const serverModule = await import("../../../server.js");
+        const getIO = serverModule.getIO;
+        if (getIO) {
+          const io = getIO();
+          if (io) {
+            const restaurantNamespace = io.of("/restaurant");
+            const restaurantId = updatedOrder.restaurantId?._id?.toString() || 
+                                 updatedOrder.restaurantId?.toString() || 
+                                 updatedOrder.restaurantId;
+            
+            if (restaurantId) {
+              // Emit order assignment update to restaurant
+              restaurantNamespace.to(`restaurant:${restaurantId}`).emit("order_assigned", {
+                orderId: updatedOrder.orderId || updatedOrder._id?.toString(),
+                orderMongoId: updatedOrder._id?.toString(),
+                deliveryPartnerId: delivery._id.toString(),
+                status: updatedOrder.status,
+                deliveryState: updatedOrder.deliveryState,
+                timestamp: new Date().toISOString()
+              });
+              
+              // Also emit order status update for UI refresh
+              restaurantNamespace.to(`restaurant:${restaurantId}`).emit("order_status_update", {
+                orderId: updatedOrder.orderId || updatedOrder._id?.toString(),
+                orderMongoId: updatedOrder._id?.toString(),
+                status: updatedOrder.status,
+                deliveryPartnerId: delivery._id.toString(),
+                updatedAt: new Date().toISOString()
+              });
+              
+              console.log(`✅ Notified restaurant ${restaurantId} about order assignment for order ${updatedOrder.orderId}`);
+            }
+          }
+        }
+      } catch (socketError) {
+        console.warn(`Failed to notify restaurant via WebSocket: ${socketError.message}`);
+        // Don't fail the request if socket notification fails
+      }
+    })();
+
     // Calculate delivery distance (restaurant to customer) for earnings calculation
     let deliveryDistance = 0;
     if (

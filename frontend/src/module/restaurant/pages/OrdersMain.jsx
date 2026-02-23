@@ -2611,6 +2611,15 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
 
     fetchOrders()
 
+    // Listen for order assignment events (when delivery boy accepts)
+    const handleOrderAssigned = () => {
+      if (isMounted) {
+        console.log('🔄 Order assigned - refreshing preparing orders...')
+        fetchOrders()
+      }
+    }
+    window.addEventListener('order_assigned', handleOrderAssigned)
+
     // Refresh orders every 10 seconds
     intervalId = setInterval(() => {
       if (isMounted) {
@@ -2627,6 +2636,7 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
 
     return () => {
       isMounted = false
+      window.removeEventListener('order_assigned', handleOrderAssigned)
       if (intervalId) {
         clearInterval(intervalId)
       }
@@ -2821,6 +2831,7 @@ function ReadyOrders({ onSelectOrder }) {
             itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || 'Order',
+            deliveryPartnerId: order.deliveryPartnerId || null, // Include deliveryPartnerId to show assignment status
             paymentMethod: order.paymentMethod ?? order.payment?.method,
             paymentStatus: order.payment?.status
           }))
@@ -2852,6 +2863,15 @@ function ReadyOrders({ onSelectOrder }) {
 
     fetchOrders()
 
+    // Listen for order assignment events (when delivery boy accepts)
+    const handleOrderAssigned = () => {
+      if (isMounted) {
+        console.log('🔄 Order assigned - refreshing ready orders...')
+        fetchOrders()
+      }
+    }
+    window.addEventListener('order_assigned', handleOrderAssigned)
+
     // Refresh every 10 seconds (reduced frequency to avoid spam if backend is down)
     intervalId = setInterval(() => {
       if (isMounted) {
@@ -2861,6 +2881,7 @@ function ReadyOrders({ onSelectOrder }) {
 
     return () => {
       isMounted = false
+      window.removeEventListener('order_assigned', handleOrderAssigned)
       if (intervalId) {
         clearInterval(intervalId)
       }
