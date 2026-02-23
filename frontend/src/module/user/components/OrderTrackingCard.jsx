@@ -59,31 +59,59 @@ export default function OrderTrackingCard() {
 
   // Get active order (not delivered)
   useEffect(() => {
-    // IMPORTANT: Merge both API orders and context orders to ensure we catch newly placed orders
-    // Context orders might have just-placed orders that haven't synced to API yet
-    // API orders have the latest status from backend
+    // IMPORTANT: Show card immediately when user places order (from contextOrders)
+    // Continue showing from contextOrders until order is delivered
+    // Also check API orders for latest status
+    // Hide card when order is delivered
+    
+    // Merge API orders and contextOrders
+    // Priority: API orders (latest status from database), but also include contextOrders for newly placed orders
     const mergedOrders = [...apiOrders];
     
-    // Add context orders that aren't already in apiOrders (by ID)
+    // Add contextOrders that aren't already in apiOrders
+    // But only if they're recent (placed within last 5 minutes) or if API hasn't been called yet
     contextOrders.forEach(contextOrder => {
       const contextOrderId = contextOrder.id || contextOrder._id || contextOrder.orderId;
-      const existsInApi = mergedOrders.some(apiOrder => 
+      const existsInApi = apiOrders.some(apiOrder => 
         (apiOrder.id || apiOrder._id || apiOrder.orderId) === contextOrderId
       );
       
       if (!existsInApi) {
-        // This is a new order from context that hasn't been synced to API yet
-        mergedOrders.push(contextOrder);
-        console.log('➕ Added context order to merged list:', contextOrderId);
+        // Check if order is recent (placed within last 5 minutes)
+        const orderTime = new Date(contextOrder.createdAt || contextOrder.orderDate || contextOrder.created_at || Date.now());
+        const now = new Date();
+        const minutesSinceOrder = Math.floor((now - orderTime) / (1000 * 60));
+        const isRecent = minutesSinceOrder < 5; // Within last 5 minutes
+        
+        if (!apiCalled || isRecent) {
+          // Add if API not called yet, or if order is recent (just placed)
+          mergedOrders.push(contextOrder);
+          console.log('➕ Added context order (newly placed or recent):', contextOrderId, {
+            minutesSinceOrder,
+            isRecent,
+            apiCalled
+          });
+        } else {
+          // Order is not in database and not recent - probably deleted or doesn't exist
+          console.log('❌ OrderTrackingCard - Order in context but NOT in database and not recent, hiding:', contextOrderId, {
+            minutesSinceOrder,
+            apiCalled
+          });
+        }
       }
     });
     
     const sourceOrders = mergedOrders;
     
     console.log('📊 OrderTrackingCard - Merged orders:', {
+      apiCalled,
       apiOrdersCount: apiOrders.length,
       contextOrdersCount: contextOrders.length,
-      mergedCount: sourceOrders.length
+      mergedCount: sourceOrders.length,
+      orders: sourceOrders.map(o => ({
+        id: o.id || o._id || o.orderId,
+        status: o.status || o.deliveryState?.status
+      }))
     });
 
     // Remove duplicates by ID (safety)
@@ -193,15 +221,24 @@ export default function OrderTrackingCard() {
     const updateInterval = timeRemaining <= 1 ? 1000 : 60000;
 
     const interval = setInterval(() => {
-      // Merge both API and context orders (same logic as above)
+      // Use same merge logic as above
       const mergedOrders = [...apiOrders];
       contextOrders.forEach(contextOrder => {
         const contextOrderId = contextOrder.id || contextOrder._id || contextOrder.orderId;
-        const existsInApi = mergedOrders.some(apiOrder => 
+        const existsInApi = apiOrders.some(apiOrder => 
           (apiOrder.id || apiOrder._id || apiOrder.orderId) === contextOrderId
         );
+        
         if (!existsInApi) {
-          mergedOrders.push(contextOrder);
+          // Check if order is recent (placed within last 5 minutes)
+          const orderTime = new Date(contextOrder.createdAt || contextOrder.orderDate || contextOrder.created_at || Date.now());
+          const now = new Date();
+          const minutesSinceOrder = Math.floor((now - orderTime) / (1000 * 60));
+          const isRecent = minutesSinceOrder < 5; // Within last 5 minutes
+          
+          if (!apiCalled || isRecent) {
+            mergedOrders.push(contextOrder);
+          }
         }
       });
       const allOrders = mergedOrders;

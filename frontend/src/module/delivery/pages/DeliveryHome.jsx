@@ -2500,6 +2500,11 @@ export default function DeliveryHome() {
                 customerAddress: order.address?.formattedAddress ||
                   (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
                   selectedRestaurant?.customerAddress,
+                // Additional address / delivery instructions entered by user
+                customerAdditionalAddress: order.address?.additionalDetails ||
+                  order.address?.additionalAddress ||
+                  order.additionalAddress ||
+                  null,
                 customerLat: order.address?.location?.coordinates?.[1],
                 customerLng: order.address?.location?.coordinates?.[0],
                 items: order.items || [],
@@ -3969,6 +3974,12 @@ export default function DeliveryHome() {
                   customerAddress: order.address?.formattedAddress ||
                     (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
                     selectedRestaurant.customerAddress,
+                  // Additional address / delivery instructions entered by user
+                  customerAdditionalAddress: order.address?.additionalDetails ||
+                    order.address?.additionalAddress ||
+                    order.additionalAddress ||
+                    selectedRestaurant.customerAdditionalAddress ||
+                    null,
                   customerLat,
                   customerLng
                 }
@@ -7877,6 +7888,95 @@ export default function DeliveryHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showreachedPickupPopup, selectedRestaurant?.orderId, selectedRestaurant?.id])
 
+  // Fetch order details when Reached Drop popup is shown to ensure we have customer address and additional address
+  useEffect(() => {
+    console.log('🔍 Reached Drop popup useEffect triggered:', {
+      showReachedDropPopup,
+      hasOrderId: !!selectedRestaurant?.orderId,
+      hasId: !!selectedRestaurant?.id,
+      currentCustomerAddress: selectedRestaurant?.customerAddress,
+      currentCustomerAdditionalAddress: selectedRestaurant?.customerAdditionalAddress,
+      orderId: selectedRestaurant?.orderId,
+      id: selectedRestaurant?.id,
+    })
+
+    if (!showReachedDropPopup) {
+      console.log('⏭️ Skipping fetch - Reached Drop popup not shown')
+      return
+    }
+
+    const orderId = selectedRestaurant?.orderId || selectedRestaurant?.id
+    if (!orderId) {
+      console.log('⏭️ Skipping fetch - no orderId or id found')
+      return
+    }
+
+    // Fetch order details to get customer address and additional address
+    const fetchOrderDetails = async () => {
+      try {
+        console.log('📋 Fetching order details for customer address and additional address, orderId:', orderId)
+
+        const response = await deliveryAPI.getOrderDetails(orderId)
+
+        if (response.data?.success && response.data.data) {
+          const orderData = response.data.data
+          const order = orderData.order || orderData
+
+          console.log('🔍 Order address data:', {
+            hasAddress: !!order.address,
+            addressKeys: order.address ? Object.keys(order.address) : [],
+            additionalDetails: order.address?.additionalDetails,
+            additionalAddress: order.address?.additionalAddress,
+            formattedAddress: order.address?.formattedAddress,
+          })
+
+          // Update selectedRestaurant with customer address and additional address
+          if (order && selectedRestaurant) {
+            const customerCoords = order.address?.location?.coordinates
+            const customerLat = customerCoords?.[1]
+            const customerLng = customerCoords?.[0]
+
+            const updates = {
+              customerName: order.userId?.name || selectedRestaurant.customerName,
+              customerPhone: order.userId?.phone || order.userId?.mobile || selectedRestaurant.customerPhone || null,
+              customerAddress: order.address?.formattedAddress ||
+                (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
+                selectedRestaurant.customerAddress,
+              // Additional address / delivery instructions entered by user
+              customerAdditionalAddress: order.address?.additionalDetails ||
+                order.address?.additionalAddress ||
+                order.additionalAddress ||
+                selectedRestaurant.customerAdditionalAddress ||
+                null,
+            }
+
+            if (customerLat && customerLng) {
+              updates.customerLat = customerLat
+              updates.customerLng = customerLng
+            }
+
+            if (Object.keys(updates).length > 0) {
+              setSelectedRestaurant(prev => ({
+                ...prev,
+                ...updates
+              }))
+              console.log('✅ Updated selectedRestaurant with customer address and additional address:', {
+                customerAddress: updates.customerAddress,
+                customerAdditionalAddress: updates.customerAdditionalAddress,
+                hasAdditionalAddress: !!updates.customerAdditionalAddress
+              })
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error fetching order details for customer address:', error)
+      }
+    }
+
+    fetchOrderDetails()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReachedDropPopup, selectedRestaurant?.orderId, selectedRestaurant?.id])
+
   // Monitor delivery boy's location for "Reached Pickup" detection
   // Show "Reached Pickup" popup when delivery boy is within 500 meters of restaurant location
   useEffect(() => {
@@ -11264,10 +11364,29 @@ export default function DeliveryHome() {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
               {selectedRestaurant?.customerName || 'Customer Name'}
             </h2>
-            <p className="text-gray-600 mb-2 leading-relaxed">
+            <p className="text-gray-600 mb-1 leading-relaxed">
               {selectedRestaurant?.customerAddress || 'Customer Address'}
             </p>
-            <p className="text-gray-500 text-sm font-medium">
+            {/* Additional address / delivery instructions */}
+            {(() => {
+              const additionalAddress = selectedRestaurant?.customerAdditionalAddress;
+              if (additionalAddress && typeof additionalAddress === 'string' && additionalAddress.trim()) {
+                console.log('📍 [Reached Drop] Displaying additional address:', additionalAddress);
+                return (
+                  <p className="text-gray-500 text-sm mb-1 leading-relaxed italic">
+                    {additionalAddress}
+                  </p>
+                );
+              } else {
+                console.log('⚠️ [Reached Drop] No additional address found:', {
+                  hasCustomerAdditionalAddress: !!selectedRestaurant?.customerAdditionalAddress,
+                  customerAdditionalAddress: selectedRestaurant?.customerAdditionalAddress,
+                  type: typeof selectedRestaurant?.customerAdditionalAddress
+                });
+                return null;
+              }
+            })()}
+            <p className="text-gray-500 text-sm font-medium mt-1">
               Order ID: {selectedRestaurant?.orderId || 'ORD1234567890'}
             </p>
           </div>
