@@ -577,7 +577,7 @@ export default function OrdersMain() {
     },
     showToasts: true
   });
-  const navigate = useNavigate()
+
   const [activeFilter, setActiveFilter] = useState("preparing")
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState(null)
