@@ -222,87 +222,73 @@ export default function HotelDashboard() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Overview Section */}
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold text-gray-900 mb-2">Overview</h2>
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">Overview</h2>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
             {/* Total Requests */}
             <div
               onClick={() => navigate("/hotel/orders")}
-              className="bg-white rounded-lg shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-gray-400"
+              className="bg-white rounded-lg shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-gray-400"
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-1.5 bg-gray-100 rounded-lg">
-                  <FileText className="w-5 h-5 text-gray-600" />
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-gray-100 rounded-lg">
+                  <FileText className="w-6 h-6 text-gray-600" />
                 </div>
               </div>
-              <p className="text-[11px] text-gray-500 mb-0.5">Total Requests</p>
-              <p className="text-lg font-bold text-gray-900">{stats.totalRequests}</p>
+              <p className="text-xs text-gray-500 mb-1">Total Requests</p>
+              <p className="text-xl font-bold text-gray-900">{stats.totalRequests}</p>
             </div>
 
             {/* Total Amount (Revenue) */}
-            <div className="bg-white p-2.5 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+            <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
               <div className="absolute right-0 top-0 p-3 opacity-10">
                 <TrendingUp size={48} className="text-green-500" />
               </div>
               <div className="flex flex-col">
-                <div className="p-1 bg-green-50 rounded-lg w-fit mb-1.5">
-                  <TrendingUp size={16} className="text-green-500" />
+                <div className="p-1.5 bg-green-50 rounded-lg w-fit mb-2">
+                  <TrendingUp size={18} className="text-green-500" />
                 </div>
-                <p className="text-gray-500 text-[11px] font-medium">Total Amount</p>
-                <h3 className="text-lg font-bold text-gray-800 mt-0.5">
+                <p className="text-gray-500 text-xs font-medium">Total Amount</p>
+                <h3 className="text-xl font-bold text-gray-800 mt-1">
                   ₹{stats?.totalRevenue || 0}
                 </h3>
               </div>
             </div>
 
             {/* New Card: Hotel Revenue (Commission) */}
-            <div className="bg-white p-2.5 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+            <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
               <div className="absolute right-0 top-0 p-3 opacity-10">
                 <CreditCard size={48} className="text-purple-500" />
               </div>
               <div className="flex flex-col">
-                <div className="p-1 bg-purple-50 rounded-lg w-fit mb-1.5">
-                  <CreditCard size={16} className="text-purple-500" />
+                <div className="p-1.5 bg-purple-50 rounded-lg w-fit mb-2">
+                  <CreditCard size={18} className="text-purple-500" />
                 </div>
-                <p className="text-gray-500 text-[11px] font-medium">Your Earnings (Commission)</p>
-                <h3 className="text-lg font-bold text-gray-800 mt-0.5">
+                <p className="text-gray-500 text-xs font-medium">Your Earnings (Commission)</p>
+                <h3 className="text-xl font-bold text-gray-800 mt-1">
                   ₹{stats?.totalHotelRevenue || 0}
                 </h3>
               </div>
             </div>
 
             {/* Total Cash Collected */}
-            <div className="bg-white p-2.5 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+            <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
               <div className="absolute right-0 top-0 p-3 opacity-10">
                 <CheckCircle size={48} className="text-orange-500" />
               </div>
               <div className="flex flex-col">
-                <div className="p-1 bg-orange-50 rounded-lg w-fit mb-1.5">
-                  <CheckCircle size={16} className="text-orange-500" />
+                <div className="p-1.5 bg-orange-50 rounded-lg w-fit mb-2">
+                  <CheckCircle size={18} className="text-orange-500" />
                 </div>
-                <p className="text-gray-500 text-[11px] font-medium">
+                <p className="text-gray-500 text-xs font-medium">
                   Total Cash Collected
                 </p>
-                <h3 className="text-lg font-bold text-gray-800 mt-0.5">
+                <h3 className="text-xl font-bold text-gray-800 mt-1">
                   ₹{settlementSummary?.totalCashCollected || 0}
                 </h3>
               </div>
-            </div>
-
-            {/* Settlement Amount (10%) */}
-            <div
-              onClick={() => navigate("/hotel/settlement")}
-              className="bg-white rounded-lg shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-red-500"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <CreditCard className="w-6 h-6 text-red-600" />
-                </div>
-              </div>
-              <p className="text-[11px] text-gray-500 mb-0.5">Settlement Amount</p>
-              <p className="text-lg font-bold text-red-600">₹{settlementSummary.adminCommissionDue || 0}</p>
             </div>
           </div>
         </div>

@@ -231,30 +231,45 @@ export default function OrdersTable({ orders, visibleColumns, onViewOrder, onPri
                       // Determine payment type display
                       let paymentTypeDisplay = order.paymentType;
                       
+                      const rawMethod = (order.payment?.method || order.paymentMethod || '').toLowerCase();
+                      const isPayAtHotelMethod = rawMethod === 'pay_at_hotel';
+                      const isPayAtHotelRazorpay =
+                        isPayAtHotelMethod &&
+                        (order.payment?.razorpayOrderId || order.payment?.razorpayPaymentId);
+
                       if (!paymentTypeDisplay) {
-                        const paymentMethod = order.payment?.method || order.paymentMethod;
-                        if (paymentMethod === 'cash' || paymentMethod === 'cod') {
+                        if (rawMethod === 'cash' || rawMethod === 'cod') {
                           paymentTypeDisplay = 'Cash on Delivery';
-                        } else if (paymentMethod === 'wallet') {
+                        } else if (rawMethod === 'wallet') {
                           paymentTypeDisplay = 'Wallet';
+                        } else if (isPayAtHotelRazorpay) {
+                          paymentTypeDisplay = 'Pay at Hotel (Razorpay)';
+                        } else if (isPayAtHotelMethod) {
+                          paymentTypeDisplay = 'Pay at Hotel';
                         } else {
                           paymentTypeDisplay = 'Online';
                         }
                       }
                       
-                      // Override if payment method is wallet but paymentType is not set correctly
-                      const paymentMethod = order.payment?.method || order.paymentMethod;
-                      if (paymentMethod === 'wallet' && paymentTypeDisplay !== 'Wallet') {
+                      // Override if payment method is wallet / pay_at_hotel but paymentType is not set correctly
+                      if (rawMethod === 'wallet' && paymentTypeDisplay !== 'Wallet') {
                         paymentTypeDisplay = 'Wallet';
+                      } else if (isPayAtHotelRazorpay && paymentTypeDisplay !== 'Pay at Hotel (Razorpay)') {
+                        paymentTypeDisplay = 'Pay at Hotel (Razorpay)';
+                      } else if (isPayAtHotelMethod && !isPayAtHotelRazorpay && paymentTypeDisplay !== 'Pay at Hotel') {
+                        paymentTypeDisplay = 'Pay at Hotel';
                       }
                       
                       const isCod = paymentTypeDisplay === 'Cash on Delivery';
                       const isWallet = paymentTypeDisplay === 'Wallet';
+                      const isPayAtHotel = paymentTypeDisplay === 'Pay at Hotel';
+                      const isPayAtHotelRazor = paymentTypeDisplay === 'Pay at Hotel (Razorpay)';
                       
                       return (
                         <span className={`text-sm font-medium ${
                           isCod ? 'text-amber-600' : 
                           isWallet ? 'text-purple-600' : 
+                          (isPayAtHotel || isPayAtHotelRazor) ? 'text-orange-600' :
                           'text-emerald-600'
                         }`}>
                           {paymentTypeDisplay}
