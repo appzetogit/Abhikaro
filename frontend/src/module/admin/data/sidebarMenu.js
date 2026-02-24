@@ -148,6 +148,12 @@ export const sidebarMenuData = [
       },
       {
         type: "link",
+        label: "Hotel Wallet",
+        path: "/admin/hotel-wallet",
+        icon: "Wallet",
+      },
+      {
+        type: "link",
         label: "Hotel Withdrawal",
         path: "/admin/hotel-withdrawal",
         icon: "Wallet",

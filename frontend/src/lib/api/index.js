@@ -1335,6 +1335,9 @@ export const adminAPI = {
   rejectHotelWithdrawal: (id) => {
     return apiClient.post(`/admin/hotel-withdrawal/${id}/reject`);
   },
+  getHotelWalletOverview: (params = {}) => {
+    return apiClient.get("/admin/hotels/wallets", { params });
+  },
 
   // Get all offers (with restaurant and dish details)
   getAllOffers: (params = {}) => {

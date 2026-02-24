@@ -628,6 +628,118 @@ export const getHotelCommissionStats = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Get Hotel Wallet overview for admin
+ * GET /api/admin/hotels/wallets
+ */
+export const getHotelWalletOverview = asyncHandler(async (req, res) => {
+  try {
+    const { search = "", page = 1, limit = 20 } = req.query;
+
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    const hotelQuery = {};
+
+    if (search) {
+      hotelQuery.$or = [
+        { hotelName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+        { address: { $regex: search, $options: "i" } },
+        { hotelId: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const [hotels, totalHotels] = await Promise.all([
+      Hotel.find(hotelQuery)
+        .select("hotelName hotelId email phone isActive")
+        .sort({ hotelName: 1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Hotel.countDocuments(hotelQuery),
+    ]);
+
+    if (hotels.length === 0) {
+      return successResponse(res, 200, "Hotel wallets overview fetched", {
+        hotels: [],
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: 0,
+          pages: 0,
+        },
+      });
+    }
+
+    const hotelIds = hotels.map((h) => h._id);
+    const hotelCodes = hotels
+      .map((h) => h.hotelId)
+      .filter((id) => typeof id === "string" && id.length > 0);
+
+    // Load wallets for these hotels
+    const wallets = await HotelWallet.find({ hotelId: { $in: hotelIds } })
+      .select("hotelId totalBalance totalEarned totalWithdrawn withdrawalRequests")
+      .lean();
+
+    const walletByHotelId = new Map(
+      wallets.map((w) => [w.hotelId.toString(), w]),
+    );
+
+    // For now, skip expensive per-hotel order aggregation to avoid 500 errors.
+    // These stats will remain 0 until we wire a more robust aggregation.
+    const orderStatsByHotelId = new Map();
+
+    const result = hotels.map((hotel) => {
+      const hid = hotel._id.toString();
+      const wallet = walletByHotelId.get(hid) || {};
+      const stats = orderStatsByHotelId.get(hid) || {};
+
+      const totalEarned = wallet.totalEarned || 0;
+      const totalWithdrawn = wallet.totalWithdrawn || 0;
+      const totalBalance = wallet.totalBalance || 0;
+      const logicalAvailable = totalEarned - totalWithdrawn;
+      const availableBalance =
+        logicalAvailable > 0 ? logicalAvailable : totalBalance;
+
+      const totalWithdrawalCount = Array.isArray(wallet.withdrawalRequests)
+        ? wallet.withdrawalRequests.length
+        : 0;
+
+      return {
+        hotelId: hotel._id,
+        hotelName: hotel.hotelName,
+        hotelCode: hotel.hotelId,
+        phone: hotel.phone,
+        email: hotel.email,
+        isActive: hotel.isActive,
+        totalRequests: stats.totalRequests || 0,
+        totalAmountCollected: stats.totalAmountCollected || 0,
+        totalCashCollected: stats.totalCashCollected || 0,
+        hotelEarnings: totalEarned,
+        availableBalance: Math.max(0, availableBalance),
+        totalWithdrawn,
+        totalWithdrawalCount,
+      };
+    });
+
+    return successResponse(res, 200, "Hotel wallets overview fetched", {
+      hotels: result,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalHotels,
+        pages: Math.ceil(totalHotels / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching hotel wallet overview:", error);
+    return errorResponse(res, 500, "Failed to fetch hotel wallet overview");
+  }
+});
+
+/**
  * Get hotel withdrawal requests (admin)
  * GET /api/admin/hotel-withdrawal/requests
  */
