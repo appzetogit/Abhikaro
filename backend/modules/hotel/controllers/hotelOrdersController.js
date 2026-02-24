@@ -406,16 +406,23 @@ export const collectPayment = async (req, res) => {
       });
     }
 
-    // Check if order is already completed or cancelled
-    if (order.status === "delivered" || order.status === "cancelled") {
+    // Prevent duplicate collection or cancelled orders
+    if (order.status === "cancelled") {
       return res.status(400).json({
         success: false,
-        message: `Order is already ${order.status}`,
+        message: "Order is cancelled. Cannot collect payment.",
+      });
+    }
+
+    if (order.cashCollected || order.payment.status === "completed") {
+      return res.status(400).json({
+        success: false,
+        message: "Payment has already been collected for this order.",
       });
     }
 
     // Update payment status and cash collected flag (hotel-side completion)
-    // IMPORTANT: Do NOT change global order.status here, so restaurant flow/state remains independent.
+    // IMPORTANT: Do NOT change global order.status here, so restaurant / delivery flow remains independent.
     order.payment.status = "completed";
     order.cashCollected = true;
 

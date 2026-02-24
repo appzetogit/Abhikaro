@@ -18,7 +18,8 @@ export default function HotelCommission() {
   const [stats, setStats] = useState({
     totalHotelCommission: 0,
     totalAdminHotelCommission: 0,
-    totalCombinedCommission: 0
+    totalCombinedCommission: 0,
+    totalHotelWithdrawals: 0,
   })
 
   // Fetch hotels on component mount
@@ -140,7 +141,7 @@ export default function HotelCommission() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
           <div className="p-3 bg-blue-50 rounded-lg">
             <Building2 className="h-6 w-6 text-blue-600" />
@@ -176,6 +177,21 @@ export default function HotelCommission() {
             <div className="flex items-center gap-1">
               <IndianRupee className="h-4 w-4 text-gray-900" />
               <p className="text-2xl font-bold text-gray-900">{(Number(stats.totalCombinedCommission) || 0).toLocaleString('en-IN')}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="p-3 bg-purple-50 rounded-lg">
+            <Wallet className="h-6 w-6 text-purple-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Hotel Withdrawals</p>
+            <div className="flex items-center gap-1">
+              <IndianRupee className="h-4 w-4 text-gray-900" />
+              <p className="text-2xl font-bold text-gray-900">
+                {(Number(stats.totalHotelWithdrawals) || 0).toLocaleString('en-IN')}
+              </p>
             </div>
           </div>
         </div>

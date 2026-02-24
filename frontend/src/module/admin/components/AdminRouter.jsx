@@ -36,6 +36,7 @@ const HotelsList = lazy(() => import("../pages/hotels/HotelsList"));
 const HotelRequests = lazy(() => import("../pages/hotels/HotelRequests"));
 const HotelStandRequests = lazy(() => import("../pages/hotels/HotelStandRequests"));
 const HotelCommission = lazy(() => import("../pages/hotels/HotelCommission"));
+const HotelWithdrawal = lazy(() => import("../pages/HotelWithdrawal"));
 // Food Management
 const FoodsList = lazy(() => import("../pages/foods/FoodsList"));
 const AddonsList = lazy(() => import("../pages/addons/AddonsList"));
@@ -198,6 +199,7 @@ export default function AdminRouter() {
           <Route path="hotel-requests" element={<HotelRequests />} />
           <Route path="hotel-stand-requests" element={<HotelStandRequests />} />
           <Route path="hotels/commission" element={<HotelCommission />} />
+          <Route path="hotel-withdrawal" element={<HotelWithdrawal />} />
 
           {/* FOOD MANAGEMENT */}
           {/* Categories */}

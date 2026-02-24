@@ -43,6 +43,9 @@ import {
   getHotelCommissionStats,
   getHotelStandRequests,
   approveHotelStandRequest,
+  getHotelWithdrawalRequests,
+  approveHotelWithdrawalRequest,
+  rejectHotelWithdrawalRequest,
 } from "../controllers/hotelController.js";
 import {
   getBusinessSettings,
@@ -332,6 +335,9 @@ router.get("/hotels/requests", getHotelRequests);
 router.get("/hotels/stand-requests", getHotelStandRequests);
 router.post("/hotels/stand-requests/:id/approve", approveHotelStandRequest);
 router.get("/hotels-commissions/stats", getHotelCommissionStats);
+router.get("/hotel-withdrawal/requests", getHotelWithdrawalRequests);
+router.post("/hotel-withdrawal/:id/approve", approveHotelWithdrawalRequest);
+router.post("/hotel-withdrawal/:id/reject", rejectHotelWithdrawalRequest);
 router.post("/hotels", createHotel);
 router.get("/hotels/:id", getHotelById);
 router.put("/hotels/:id", updateHotel);

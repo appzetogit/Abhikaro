@@ -146,6 +146,12 @@ export const sidebarMenuData = [
         path: "/admin/hotels/commission",
         icon: "Percent",
       },
+      {
+        type: "link",
+        label: "Hotel Withdrawal",
+        path: "/admin/hotel-withdrawal",
+        icon: "Wallet",
+      },
     ],
   },
   {
@@ -206,6 +212,12 @@ export const sidebarMenuData = [
         type: "link",
         label: "Delivery Withdrawal",
         path: "/admin/delivery-withdrawal",
+        icon: "Wallet",
+      },
+      {
+        type: "link",
+        label: "Hotel Withdrawal",
+        path: "/admin/hotel-withdrawal",
         icon: "Wallet",
       },
       {

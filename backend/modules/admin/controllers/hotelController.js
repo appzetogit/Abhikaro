@@ -4,6 +4,7 @@ import {
 } from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import Hotel from "../../hotel/models/Hotel.js";
+import HotelWallet from "../../hotel/models/HotelWallet.js";
 
 /**
  * GET /api/admin/hotels
@@ -590,6 +591,22 @@ export const getHotelCommissionStats = asyncHandler(async (req, res) => {
       });
     }
 
+    // 3. Aggregate total hotel withdrawals from HotelWallet
+    const wallets = await HotelWallet.find({})
+      .select("withdrawalRequests")
+      .lean();
+
+    let totalHotelWithdrawals = 0;
+    wallets.forEach((wallet) => {
+      if (Array.isArray(wallet.withdrawalRequests)) {
+        wallet.withdrawalRequests.forEach((wr) => {
+          if (!wr || typeof wr.amount !== "number") return;
+          // Count all requests (Pending + Approved + Processed) towards total withdrawals
+          totalHotelWithdrawals += wr.amount;
+        });
+      }
+    });
+
     return successResponse(
       res,
       200,
@@ -600,6 +617,8 @@ export const getHotelCommissionStats = asyncHandler(async (req, res) => {
         totalCombinedCommission:
           Math.round((totalHotelComm + totalAdminComm) * 100) / 100,
         orderCount: result.orderCount,
+        totalHotelWithdrawals:
+          Math.round(totalHotelWithdrawals * 100) / 100,
       },
     );
   } catch (error) {
@@ -607,6 +626,229 @@ export const getHotelCommissionStats = asyncHandler(async (req, res) => {
     return errorResponse(res, 500, "Failed to fetch hotel commission stats");
   }
 });
+
+/**
+ * Get hotel withdrawal requests (admin)
+ * GET /api/admin/hotel-withdrawal/requests
+ */
+export const getHotelWithdrawalRequests = asyncHandler(async (req, res) => {
+  try {
+    const { status, page = 1, limit = 50 } = req.query;
+
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Pull wallets that have withdrawal requests
+    const wallets = await HotelWallet.find({
+      "withdrawalRequests.0": { $exists: true },
+    })
+      .populate("hotelId", "hotelName hotelId email phone")
+      .lean();
+
+    let allRequests = [];
+
+    wallets.forEach((wallet) => {
+      const hotel = wallet.hotelId;
+      if (!Array.isArray(wallet.withdrawalRequests)) return;
+
+      wallet.withdrawalRequests.forEach((wr) => {
+        if (!wr) return;
+        if (
+          status &&
+          ["Pending", "Approved", "Rejected", "Processed"].includes(status) &&
+          wr.status !== status
+        ) {
+          return;
+        }
+
+        allRequests.push({
+          id: wr._id,
+          walletId: wallet._id,
+          hotelMongoId: hotel?._id || wallet.hotelId,
+          hotelName: hotel?.hotelName || "Unknown Hotel",
+          hotelIdString: hotel?.hotelId || (hotel?._id || "").toString(),
+          hotelEmail: hotel?.email || "N/A",
+          hotelPhone: hotel?.phone || "N/A",
+          amount: wr.amount,
+          status: wr.status,
+          paymentMethod: wr.paymentMethod,
+          requestedAt: wr.requestedAt,
+          processedAt: wr.processedAt,
+        });
+      });
+    });
+
+    // Sort by requestedAt desc
+    allRequests.sort(
+      (a, b) =>
+        new Date(b.requestedAt || b.createdAt || 0) -
+        new Date(a.requestedAt || a.createdAt || 0),
+    );
+
+    const total = allRequests.length;
+    const paginated = allRequests.slice(skip, skip + limitNum);
+
+    return successResponse(res, 200, "Hotel withdrawal requests fetched", {
+      requests: paginated,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching hotel withdrawal requests:", error);
+    return errorResponse(res, 500, "Failed to fetch hotel withdrawal requests");
+  }
+});
+
+/**
+ * Approve hotel withdrawal request (admin)
+ * POST /api/admin/hotel-withdrawal/:id/approve
+ */
+export const approveHotelWithdrawalRequest = asyncHandler(
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const wallet = await HotelWallet.findOne({
+        "withdrawalRequests._id": id,
+      });
+
+      if (!wallet) {
+        return errorResponse(res, 404, "Withdrawal request not found");
+      }
+
+      const request = wallet.withdrawalRequests.id(id);
+      if (!request) {
+        return errorResponse(res, 404, "Withdrawal request not found");
+      }
+
+      if (request.status !== "Pending") {
+        return errorResponse(
+          res,
+          400,
+          `Withdrawal request is already ${request.status}`,
+        );
+      }
+
+      request.status = "Approved";
+      request.processedAt = new Date();
+
+      // Mark linked transaction as completed (if exists)
+      if (request.transactionId) {
+        const tx = wallet.transactions.id(request.transactionId);
+        if (tx && tx.type === "withdrawal" && tx.status === "Pending") {
+          tx.status = "Completed";
+          tx.processedAt = new Date();
+        }
+      }
+
+      await wallet.save();
+
+      return successResponse(
+        res,
+        200,
+        "Hotel withdrawal request approved successfully",
+        {
+          request: {
+            id: request._id,
+            amount: request.amount,
+            status: request.status,
+            processedAt: request.processedAt,
+          },
+        },
+      );
+    } catch (error) {
+      console.error("Error approving hotel withdrawal request:", error);
+      return errorResponse(
+        res,
+        500,
+        "Failed to approve hotel withdrawal request",
+      );
+    }
+  },
+);
+
+/**
+ * Reject hotel withdrawal request (admin)
+ * POST /api/admin/hotel-withdrawal/:id/reject
+ */
+export const rejectHotelWithdrawalRequest = asyncHandler(
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const wallet = await HotelWallet.findOne({
+        "withdrawalRequests._id": id,
+      });
+
+      if (!wallet) {
+        return errorResponse(res, 404, "Withdrawal request not found");
+      }
+
+      const request = wallet.withdrawalRequests.id(id);
+      if (!request) {
+        return errorResponse(res, 404, "Withdrawal request not found");
+      }
+
+      if (request.status !== "Pending") {
+        return errorResponse(
+          res,
+          400,
+          `Withdrawal request is already ${request.status}`,
+        );
+      }
+
+      request.status = "Rejected";
+      request.processedAt = new Date();
+
+      // Reverse wallet balances for rejected request
+      const amount = Number(request.amount) || 0;
+      if (amount > 0) {
+        wallet.totalBalance = (wallet.totalBalance || 0) + amount;
+        wallet.totalWithdrawn = Math.max(
+          0,
+          (wallet.totalWithdrawn || 0) - amount,
+        );
+      }
+
+      // Mark linked transaction as cancelled (if exists)
+      if (request.transactionId) {
+        const tx = wallet.transactions.id(request.transactionId);
+        if (tx && tx.type === "withdrawal" && tx.status === "Pending") {
+          tx.status = "Cancelled";
+          tx.processedAt = new Date();
+        }
+      }
+
+      await wallet.save();
+
+      return successResponse(
+        res,
+        200,
+        "Hotel withdrawal request rejected successfully",
+        {
+          request: {
+            id: request._id,
+            amount: request.amount,
+            status: request.status,
+            processedAt: request.processedAt,
+          },
+        },
+      );
+    } catch (error) {
+      console.error("Error rejecting hotel withdrawal request:", error);
+      return errorResponse(
+        res,
+        500,
+        "Failed to reject hotel withdrawal request",
+      );
+    }
+  },
+);
 
 /**
  * GET /api/admin/hotels/stand-requests

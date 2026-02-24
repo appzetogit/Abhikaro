@@ -3802,7 +3802,18 @@ export default function DeliveryHome() {
       }
     } catch (error) {
       console.error('❌ Error uploading bill image:', error)
-      toast.error('Failed to upload bill image. Please try again.')
+
+      // Show more helpful error message from backend if available
+      const backendMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message
+
+      if (backendMessage) {
+        toast.error(backendMessage)
+      } else {
+        toast.error('Failed to upload bill image. Please try again.')
+      }
       setBillImageUrl(null)
       setBillImageUploaded(false)
     } finally {

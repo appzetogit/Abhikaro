@@ -351,15 +351,30 @@ export const getOrders = asyncHandler(async (req, res) => {
         paymentStatus: paymentStatusDisplay,
         paymentType: (() => {
           const paymentMethod = order.payment?.method;
+
           if (paymentMethod === 'cash' || paymentMethod === 'cod') {
             return 'Cash on Delivery';
-          } else if (paymentMethod === 'wallet') {
-            return 'Wallet';
-          } else {
-            return 'Online';
           }
+
+          if (paymentMethod === 'wallet') {
+            return 'Wallet';
+          }
+
+          if (paymentMethod === 'pay_at_hotel') {
+            // Distinguish between pure cash-at-hotel vs Razorpay-at-hotel using Razorpay IDs
+            if (order.payment?.razorpayOrderId || order.payment?.razorpayPaymentId) {
+              return 'Pay at Hotel (Razorpay)';
+            }
+            return 'Pay at Hotel';
+          }
+
+          return 'Online';
         })(),
-        paymentCollectionStatus: (order.payment?.method === 'cash' || order.payment?.method === 'cod')
+        paymentCollectionStatus: (
+          order.payment?.method === 'cash' ||
+          order.payment?.method === 'cod' ||
+          order.payment?.method === 'pay_at_hotel'
+        )
           ? (order.status === 'delivered' ? 'Collected' : 'Not Collected')
           : 'Collected',
         orderStatus: orderStatusDisplay,

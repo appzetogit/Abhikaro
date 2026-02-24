@@ -867,6 +867,12 @@ export const hotelAPI = {
   getWallet: () => {
     return apiClient.get(API_ENDPOINTS.HOTEL.WALLET);
   },
+  createWithdrawalRequest: (amount) => {
+    return apiClient.post(`${API_ENDPOINTS.HOTEL.WALLET}/withdraw`, {
+      amount,
+      paymentMethod: "bank_transfer",
+    });
+  },
 
   // Settlement
   getSettlementSummary: () => {
@@ -1317,6 +1323,17 @@ export const adminAPI = {
   // Get hotel commission stats
   getHotelCommissionStats: () => {
     return apiClient.get(API_ENDPOINTS.ADMIN.HOTEL_COMMISSION_STATS);
+  },
+
+  // Hotel withdrawal requests
+  getHotelWithdrawalRequests: (params = {}) => {
+    return apiClient.get("/admin/hotel-withdrawal/requests", { params });
+  },
+  approveHotelWithdrawal: (id) => {
+    return apiClient.post(`/admin/hotel-withdrawal/${id}/approve`);
+  },
+  rejectHotelWithdrawal: (id) => {
+    return apiClient.post(`/admin/hotel-withdrawal/${id}/reject`);
   },
 
   // Get all offers (with restaurant and dish details)
