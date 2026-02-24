@@ -19,13 +19,17 @@ async function verify() {
         hotelName: "Test Hotel Commission",
         phone: "9999999999",
         address: "Test Address",
-        commission: 15, // 15% Hotel
-        adminCommission: 10, // 10% Admin
+        // For this test use the same numbers as your example:
+        // Total commission 30% of food amount (100):
+        // - 10% Hotel (₹10)
+        // - 20% Admin (₹20)
+        commission: 10, // 10% Hotel
+        adminCommission: 20, // 20% Admin
         isActive: true,
       });
     } else {
-      hotel.commission = 15;
-      hotel.adminCommission = 10;
+      hotel.commission = 10;
+      hotel.adminCommission = 20;
       await hotel.save();
     }
     console.log(
@@ -33,7 +37,8 @@ async function verify() {
     );
 
     const restaurantId = new mongoose.Types.ObjectId().toString();
-    const subtotal = 1000;
+    // Use simple numbers to mirror example: food subtotal = 100
+    const subtotal = 100;
     const orderData = {
       orderId: `VERIFY-${Date.now()}`,
       userId: new mongoose.Types.ObjectId(), // Fake user

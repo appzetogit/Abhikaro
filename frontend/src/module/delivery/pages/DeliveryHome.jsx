@@ -641,6 +641,7 @@ export default function DeliveryHome() {
   const [customerRating, setCustomerRating] = useState(0)
   const [customerReviewText, setCustomerReviewText] = useState("")
   const [orderEarnings, setOrderEarnings] = useState(0) // Store earnings from completed order
+  const [orderEarningsBreakdown, setOrderEarningsBreakdown] = useState(null) // Store commission breakdown (base + per-km)
   const [routePolyline, setRoutePolyline] = useState([])
   const [showRoutePath, setShowRoutePath] = useState(false) // Toggle to show/hide route path - disabled by default
   const [directionsResponse, setDirectionsResponse] = useState(null) // Directions API response for road-based routing
@@ -11832,6 +11833,10 @@ export default function DeliveryHome() {
                         orderEarnings
                       setOrderEarnings(earnings)
 
+                      // Store detailed commission breakdown if available (base payout + per-km distance)
+                      const earningsBreakdown = response.data.data?.earnings?.breakdown || null
+                      setOrderEarningsBreakdown(earningsBreakdown)
+
                       console.log('✅ Delivery completed and earnings added to wallet:', earnings)
                       console.log('✅ Wallet transaction:', response.data.data?.walletTransaction)
 
@@ -11922,26 +11927,34 @@ export default function DeliveryHome() {
                 })()}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Trip pay</span>
+                    <span className="text-gray-600">Base / Trip pay</span>
                     <span className="text-gray-900 font-semibold">₹{(() => {
-                      let earnings = 0;
-                      if (orderEarnings > 0) {
-                        earnings = orderEarnings;
-                      } else {
-                        const estEarnings = selectedRestaurant?.amount || selectedRestaurant?.estimatedEarnings || 0;
-                        if (typeof estEarnings === 'object' && estEarnings.totalEarning) {
-                          earnings = estEarnings.totalEarning;
-                        } else if (typeof estEarnings === 'number') {
-                          earnings = estEarnings;
-                        }
+                      // Prefer backend breakdown (basePayout) if available
+                      if (orderEarningsBreakdown?.basePayout != null) {
+                        return Number(orderEarningsBreakdown.basePayout).toFixed(2)
                       }
-                      return (earnings - 5).toFixed(2);
+                      // Fallback: assume small fixed base (e.g. previous legacy ₹5)
+                      const earnings = orderEarnings > 0
+                        ? orderEarnings
+                        : (() => {
+                            const est = selectedRestaurant?.amount || selectedRestaurant?.estimatedEarnings || 0
+                            if (typeof est === 'object' && est.totalEarning) return est.totalEarning
+                            if (typeof est === 'number') return est
+                            return 0
+                          })()
+                      return Math.max(0, earnings - 5).toFixed(2)
                     })()}</span>
                   </div>
 
                   <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Long distance return pay</span>
-                    <span className="text-gray-900 font-semibold">₹5.00</span>
+                    <span className="text-gray-600">Distance pay</span>
+                    <span className="text-gray-900 font-semibold">₹{(() => {
+                      if (orderEarningsBreakdown?.distanceCommission != null) {
+                        return Number(orderEarningsBreakdown.distanceCommission).toFixed(2)
+                      }
+                      // Legacy fallback: fixed 5 as earlier UI showed
+                      return "5.00"
+                    })()}</span>
                   </div>
 
                   <div className="flex justify-between items-center py-2">

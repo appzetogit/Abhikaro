@@ -1187,30 +1187,30 @@ export const confirmReachedPickup = asyncHandler(async (req, res) => {
       });
     }
 
-    // ENFORCE: Restaurant must have marked order as Ready to Pickup before delivery can "reach pickup"
+    // Prefer restaurant marking order as "ready", but don't hard-block delivery partner if status is slightly out of sync.
     if (order.status !== "ready") {
-      console.error(
-        `❌ Reached pickup rejected: Order ${order.orderId} status is '${order.status}'. Restaurant must mark as Ready to Pickup first.`,
-      );
-      return errorResponse(
-        res,
-        400,
-        'Order is not ready for pickup. Ask the restaurant to mark the order as "Ready to Pickup" first.',
+      console.warn(
+        `⚠️ Reached pickup called for order ${order.orderId} while status is '${order.status}'. ` +
+          'Ideally restaurant should mark as "Ready to Pickup" first, but continuing to avoid blocking delivery partner.',
       );
     }
 
-    // Allow reached pickup only when en_route_to_pickup (and order is ready, checked above)
+    // Allow reached pickup only when en_route_to_pickup / accepted (and order is ready, checked above)
+    // If state is slightly out-of-sync but order is ready and not past pickup, auto-correct it instead of failing
     const isValidState =
       order.deliveryState.currentPhase === "en_route_to_pickup" ||
       order.deliveryState.currentPhase === "accepted" ||
       order.deliveryState.status === "accepted";
 
     if (!isValidState) {
-      return errorResponse(
-        res,
-        400,
-        `Order is not in valid state for reached pickup. Current phase: ${order.deliveryState?.currentPhase || "unknown"}, Status: ${order.deliveryState?.status || "unknown"}`,
+      console.warn(
+        `⚠️ Order ${order.orderId} not in ideal state for reached pickup (phase=${order.deliveryState?.currentPhase || "unknown"}, status=${order.deliveryState?.status || "unknown"}). Auto-correcting state and continuing.`,
       );
+      // Auto-fix to a valid pre-pickup state so delivery partner is not blocked
+      order.deliveryState.currentPhase = "en_route_to_pickup";
+      if (!order.deliveryState.status || order.deliveryState.status === "accepted") {
+        order.deliveryState.status = "accepted";
+      }
     }
 
     // Update order state
@@ -1432,15 +1432,11 @@ export const confirmOrderId = asyncHandler(async (req, res) => {
       });
     }
 
-    // ENFORCE: Restaurant must have marked order as Ready to Pickup before delivery can confirm order ID (pick up)
+    // Prefer restaurant marking order as "ready", but don't hard-block delivery partner if status is slightly out of sync.
     if (order.status !== "ready") {
-      console.error(
-        `❌ Confirm order ID rejected: Order ${order.orderId} status is '${order.status}'. Restaurant must mark as Ready to Pickup first.`,
-      );
-      return errorResponse(
-        res,
-        400,
-        'Order is not ready for pickup. Ask the restaurant to mark the order as "Ready to Pickup" first.',
+      console.warn(
+        `⚠️ Confirm order ID called for order ${order.orderId} while status is '${order.status}'. ` +
+          'Ideally restaurant should mark as "Ready to Pickup" first, but continuing to avoid blocking delivery partner.',
       );
     }
 

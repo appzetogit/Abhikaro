@@ -414,20 +414,10 @@ export const collectPayment = async (req, res) => {
       });
     }
 
-    // Update payment status and cash collected flag
+    // Update payment status and cash collected flag (hotel-side completion)
+    // IMPORTANT: Do NOT change global order.status here, so restaurant flow/state remains independent.
     order.payment.status = "completed";
     order.cashCollected = true;
-
-    // As per requirement, if Pay at Hotel and cash collected, mark status as delivered (Completed)
-    // and trigger commission split.
-    order.status = "delivered";
-    order.deliveredAt = new Date();
-    if (!order.tracking.delivered) {
-      order.tracking.delivered = {
-        status: true,
-        timestamp: new Date(),
-      };
-    }
 
     await order.save();
 

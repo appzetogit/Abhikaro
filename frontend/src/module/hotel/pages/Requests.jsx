@@ -5,6 +5,7 @@ import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { loadBusinessSettings } from "@/lib/utils/businessSettings"
+import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 
 export default function HotelRequests() {
   const navigate = useNavigate()
@@ -12,6 +13,17 @@ export default function HotelRequests() {
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState(searchParams.get("filter") || "all") // all, pending, completed
+
+  // Handle foreground push notifications on requests screen
+  useForegroundNotifications({
+    onNotificationClick: (data) => {
+      // For any hotel request / order notification, focus pending requests
+      if (data?.requestId || data?.orderId || data?.type) {
+        navigate("/hotel/requests?filter=pending")
+      }
+    },
+    showToasts: true,
+  })
 
   // Load business settings (title and favicon)
   useEffect(() => {

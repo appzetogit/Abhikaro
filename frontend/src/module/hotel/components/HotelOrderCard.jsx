@@ -15,7 +15,14 @@ export default function HotelOrderCard({ order, onUpdate }) {
             cancelled: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-800 dark:text-red-400', label: 'Cancelled' }
         };
 
-        const config = statusConfig[order.status] || statusConfig.pending;
+        // For hotel Pay-at-Hotel / Cash orders, treat "cashCollected" as completion,
+        // even if global order.status is still "ready" (so restaurant panel stays independent).
+        const isCashCompleted =
+            (order.payment?.method === 'pay_at_hotel' || order.payment?.method === 'cash') &&
+            (order.payment?.status === 'completed' || order.cashCollected === true);
+
+        const effectiveStatus = isCashCompleted ? 'delivered' : order.status;
+        const config = statusConfig[effectiveStatus] || statusConfig.pending;
 
         return (
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${config.bg} ${config.text}`}>

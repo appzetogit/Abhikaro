@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Loader2, Package, RefreshCw } from 'lucide-react';
 import HotelOrderCard from '../components/HotelOrderCard';
 import BottomNavigation from '../components/BottomNavigation';
+import { useForegroundNotifications } from '@/lib/hooks/useForegroundNotifications';
 
 export default function HotelOrders() {
     const [orders, setOrders] = useState([]);
@@ -12,6 +13,18 @@ export default function HotelOrders() {
     const [stats, setStats] = useState(null);
     const [filter, setFilter] = useState('all'); // all | pending | confirmed | delivered | cancelled
     const [refreshing, setRefreshing] = useState(false);
+
+    // Handle foreground push notifications on orders screen
+    useForegroundNotifications({
+        onNotificationClick: (data) => {
+            // For any order-related notification, refresh orders & stats
+            if (data?.orderId || data?.type) {
+                fetchOrders(true);
+                fetchStats();
+            }
+        },
+        showToasts: true,
+    });
 
     const fetchOrders = async (showRefreshIndicator = false) => {
         try {
