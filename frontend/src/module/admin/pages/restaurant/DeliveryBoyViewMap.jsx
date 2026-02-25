@@ -255,13 +255,6 @@ export default function DeliveryBoyViewMap() {
     }
 
     const map = new google.maps.Map(mapRef.current, mapOptions)
-      zoomControl: true,
-      streetViewControl: false,
-      fullscreenControl: true,
-      scrollwheel: true,
-      gestureHandling: 'greedy',
-      disableDoubleClickZoom: false,
-    })
 
     mapInstanceRef.current = map
     setMapLoading(false)
