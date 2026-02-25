@@ -215,13 +215,6 @@ export default function AddZone() {
     }
 
     const map = new google.maps.Map(mapRef.current, mapOptions)
-      zoomControl: true,
-      streetViewControl: false,
-      fullscreenControl: true,
-      scrollwheel: true, // Enable mouse wheel zoom
-      gestureHandling: 'greedy', // Allow zoom with mouse wheel and touch gestures
-      disableDoubleClickZoom: false, // Allow double-click zoom
-    })
 
     mapInstanceRef.current = map
 

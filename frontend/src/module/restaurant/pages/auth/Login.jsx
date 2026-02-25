@@ -478,7 +478,6 @@ export default function RestaurantLogin() {
                 <div className="flex-1 flex flex-col">
                   <input
                     type="tel"
-                    inputMode="numeric"
                     placeholder="Enter phone number"
                     value={formData.phone}
                     onChange={handlePhoneChange}
