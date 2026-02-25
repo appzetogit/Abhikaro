@@ -628,6 +628,180 @@ export const getHotelCommissionStats = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Update cash collected override for a specific hotel wallet (admin-only)
+ * PUT /api/admin/hotels/:id/wallet/cash-collected
+ */
+export const updateHotelCashCollected = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { cashCollected } = req.body;
+
+  const amount = Number(cashCollected);
+  if (Number.isNaN(amount) || amount < 0) {
+    return errorResponse(
+      res,
+      400,
+      "cashCollected must be a non-negative number",
+    );
+  }
+
+  const hotel = await Hotel.findById(id).select("_id hotelName hotelId phone");
+  if (!hotel) {
+    return errorResponse(res, 404, "Hotel not found");
+  }
+
+  const wallet = await HotelWallet.findOrCreateByHotelId(hotel._id);
+  wallet.manualCashCollectedOverride = amount;
+  await wallet.save();
+
+  return successResponse(
+    res,
+    200,
+    "Hotel cash collected value updated successfully",
+    {
+      hotel: {
+        id: hotel._id,
+        hotelId: hotel.hotelId,
+        hotelName: hotel.hotelName,
+        phone: hotel.phone,
+      },
+      cashCollected: amount,
+    },
+  );
+});
+
+/**
+ * Get detailed QR / hotel-related order earnings for a specific hotel
+ * GET /api/admin/hotels/:id/wallet/earnings
+ */
+export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { limit = 200 } = req.query;
+
+  const hotel = await Hotel.findById(id)
+    .select("_id hotelName hotelId commission")
+    .lean();
+
+  if (!hotel) {
+    return errorResponse(res, 404, "Hotel not found");
+  }
+
+  const Order = (await import("../../order/models/Order.js")).default;
+
+  const hotelObjectId = hotel._id;
+  const hotelIdStr = hotel.hotelId;
+  const lim = Math.min(parseInt(limit, 10) || 200, 500);
+
+  const orders = await Order.find({
+    $or: [
+      { hotelId: hotelObjectId },
+      { hotelReference: hotelIdStr },
+      { hotelReference: hotelObjectId.toString() },
+    ],
+    status: { $ne: "cancelled" },
+    "payment.method": {
+      $in: ["pay_at_hotel", "cash", "razorpay", "wallet"],
+    },
+  })
+    .select(
+      "orderId pricing.total payment.method cashCollected commissionBreakdown.hotel orderType createdAt",
+    )
+    .sort({ createdAt: -1 })
+    .limit(lim)
+    .lean();
+
+  const hotelCommPercent = Number(hotel.commission) || 0;
+
+  let totalOrders = 0;
+  let cashOrders = 0;
+  let onlineOrders = 0;
+  let totalHotelEarningCash = 0;
+  let totalHotelEarningOnline = 0;
+  let totalCashCollected = 0;
+
+  const rows = orders.map((order) => {
+    const total =
+      (order.pricing && typeof order.pricing.total === "number"
+        ? order.pricing.total
+        : 0) || 0;
+
+    let hotelEarning =
+      order.commissionBreakdown &&
+      typeof order.commissionBreakdown.hotel === "number"
+        ? order.commissionBreakdown.hotel
+        : (total * hotelCommPercent) / 100;
+
+    // Normalize to 2 decimals
+    hotelEarning = Math.round(hotelEarning * 100) / 100;
+
+    const paymentMethod =
+      order.payment && typeof order.payment.method === "string"
+        ? order.payment.method
+        : "unknown";
+
+    const isCashPayment =
+      paymentMethod === "pay_at_hotel" || paymentMethod === "cash";
+    const isOnlinePayment =
+      paymentMethod === "razorpay" || paymentMethod === "wallet";
+
+    const isQrOrder =
+      order.orderType === "QR" ||
+      Boolean(order.hotelReference) ||
+      paymentMethod === "pay_at_hotel";
+
+    if (isQrOrder) {
+      totalOrders += 1;
+      if (isCashPayment) {
+        cashOrders += 1;
+        totalHotelEarningCash += hotelEarning;
+        if (order.cashCollected === true) {
+          totalCashCollected += total;
+        }
+      } else if (isOnlinePayment) {
+        onlineOrders += 1;
+        totalHotelEarningOnline += hotelEarning;
+      }
+    }
+
+    return {
+      orderId: order.orderId,
+      createdAt: order.createdAt,
+      orderType: order.orderType || "DIRECT",
+      totalAmount: Math.round(total * 100) / 100,
+      hotelEarning,
+      paymentMethod,
+      cashCollected: order.cashCollected === true,
+      isCashPayment,
+      isOnlinePayment,
+      isQrOrder,
+    };
+  });
+
+  const summary = {
+    totalOrders,
+    cashOrders,
+    onlineOrders,
+    totalHotelEarningCash: Math.round(totalHotelEarningCash * 100) / 100,
+    totalHotelEarningOnline: Math.round(totalHotelEarningOnline * 100) / 100,
+    totalCashCollected: Math.round(totalCashCollected * 100) / 100,
+  };
+
+  return successResponse(
+    res,
+    200,
+    "Hotel wallet order earnings fetched successfully",
+    {
+      hotel: {
+        id: hotel._id,
+        hotelId: hotel.hotelId,
+        hotelName: hotel.hotelName,
+      },
+      summary,
+      orders: rows,
+    },
+  );
+});
+
+/**
  * Get Hotel Wallet overview for admin
  * GET /api/admin/hotels/wallets
  */
@@ -653,7 +827,8 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
 
     const [hotels, totalHotels] = await Promise.all([
       Hotel.find(hotelQuery)
-        .select("hotelName hotelId email phone isActive")
+        // Include commission so we can compute fallback earnings
+        .select("hotelName hotelId email phone isActive commission")
         .sort({ hotelName: 1 })
         .skip(skip)
         .limit(limitNum)
@@ -674,38 +849,168 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
     }
 
     const hotelIds = hotels.map((h) => h._id);
+    const hotelIdStrings = hotelIds.map((id) => id.toString());
     const hotelCodes = hotels
       .map((h) => h.hotelId)
       .filter((id) => typeof id === "string" && id.length > 0);
 
     // Load wallets for these hotels
     const wallets = await HotelWallet.find({ hotelId: { $in: hotelIds } })
-      .select("hotelId totalBalance totalEarned totalWithdrawn withdrawalRequests")
+      .select(
+        "hotelId totalBalance totalEarned totalWithdrawn withdrawalRequests manualCashCollectedOverride",
+      )
       .lean();
 
     const walletByHotelId = new Map(
       wallets.map((w) => [w.hotelId.toString(), w]),
     );
 
-    // For now, skip expensive per-hotel order aggregation to avoid 500 errors.
-    // These stats will remain 0 until we wire a more robust aggregation.
+    // --- Aggregate per-hotel order stats so admin sees same numbers as hotel app ---
     const orderStatsByHotelId = new Map();
+
+    try {
+      const Order = (await import("../../order/models/Order.js")).default;
+
+      // Map for quick hotel lookup by both Mongo _id and hotelId string
+      const hotelByMongoId = new Map(
+        hotels.map((h) => [h._id.toString(), h]),
+      );
+      const hotelByCode = new Map(
+        hotels
+          .filter(
+            (h) => typeof h.hotelId === "string" && h.hotelId.trim().length > 0,
+          )
+          .map((h) => [h.hotelId, h]),
+      );
+
+      const hotelReferenceCandidates = [
+        ...hotelCodes,
+        ...hotelIdStrings,
+      ];
+
+      const orders =
+        hotelIds.length === 0
+          ? []
+          : await Order.find({
+              $or: [
+                { hotelId: { $in: hotelIds } },
+                {
+                  hotelReference: {
+                    $in: hotelReferenceCandidates,
+                  },
+                },
+              ],
+            })
+              .select(
+                "hotelId hotelReference pricing.total commissionBreakdown.hotel status payment.method cashCollected",
+              )
+              .lean();
+
+      orders.forEach((order) => {
+        const hotelIdObj =
+          order.hotelId && typeof order.hotelId === "object"
+            ? order.hotelId.toString()
+            : null;
+        const hotelRef =
+          typeof order.hotelReference === "string"
+            ? order.hotelReference
+            : order.hotelReference
+            ? order.hotelReference.toString()
+            : null;
+
+        // Resolve the hotel document this order belongs to
+        const hotelDoc =
+          (hotelIdObj && hotelByMongoId.get(hotelIdObj)) ||
+          (hotelRef &&
+            (hotelByCode.get(hotelRef) || hotelByMongoId.get(hotelRef)));
+
+        if (!hotelDoc) return;
+
+        const hid = hotelDoc._id.toString();
+
+        let stats = orderStatsByHotelId.get(hid);
+        if (!stats) {
+          stats = {
+            totalRequests: 0,
+            totalAmountCollected: 0,
+            totalCashCollected: 0,
+            hotelEarnings: 0,
+          };
+          orderStatsByHotelId.set(hid, stats);
+        }
+
+        stats.totalRequests += 1;
+
+        const totalAmount =
+          (order.pricing && typeof order.pricing.total === "number"
+            ? order.pricing.total
+            : 0) || 0;
+
+        // For non-cancelled orders, aggregate revenue & earnings
+        if (order.status !== "cancelled") {
+          stats.totalAmountCollected += totalAmount;
+
+          const hasHotelCommissionFromOrder =
+            order.commissionBreakdown &&
+            typeof order.commissionBreakdown.hotel === "number";
+
+          if (hasHotelCommissionFromOrder) {
+            stats.hotelEarnings += order.commissionBreakdown.hotel;
+          } else {
+            // Fallback: derive from hotel's current commission percentage
+            const hotelCommPercent = Number(hotelDoc.commission) || 0;
+            stats.hotelEarnings += (totalAmount * hotelCommPercent) / 100;
+          }
+
+          const paymentMethod =
+            order.payment && typeof order.payment.method === "string"
+              ? order.payment.method
+              : null;
+          const isCashMethod =
+            paymentMethod === "pay_at_hotel" || paymentMethod === "cash";
+
+          if (isCashMethod && order.cashCollected === true) {
+            stats.totalCashCollected += totalAmount;
+          }
+        }
+      });
+    } catch (statsError) {
+      console.error(
+        "Error aggregating hotel order stats for wallet overview:",
+        statsError,
+      );
+    }
 
     const result = hotels.map((hotel) => {
       const hid = hotel._id.toString();
       const wallet = walletByHotelId.get(hid) || {};
       const stats = orderStatsByHotelId.get(hid) || {};
 
-      const totalEarned = wallet.totalEarned || 0;
+      // Mirror hotel app logic for withdrawable / available balance:
+      // Prefer stats-based earnings, then fall back to wallet aggregates.
+      const statsTotalEarned =
+        typeof stats.hotelEarnings === "number"
+          ? stats.hotelEarnings
+          : null;
+      const totalEarned =
+        statsTotalEarned != null ? statsTotalEarned : wallet.totalEarned || 0;
       const totalWithdrawn = wallet.totalWithdrawn || 0;
       const totalBalance = wallet.totalBalance || 0;
-      const logicalAvailable = totalEarned - totalWithdrawn;
+      const withdrawableRaw = totalEarned - totalWithdrawn;
       const availableBalance =
-        logicalAvailable > 0 ? logicalAvailable : totalBalance;
+        withdrawableRaw >= 0 ? withdrawableRaw : totalBalance;
 
       const totalWithdrawalCount = Array.isArray(wallet.withdrawalRequests)
         ? wallet.withdrawalRequests.length
         : 0;
+
+      const hasManualCashOverride =
+        typeof wallet.manualCashCollectedOverride === "number" &&
+        wallet.manualCashCollectedOverride >= 0;
+
+      const totalCashCollected = hasManualCashOverride
+        ? wallet.manualCashCollectedOverride
+        : stats.totalCashCollected || 0;
 
       return {
         hotelId: hotel._id,
@@ -715,9 +1020,11 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
         email: hotel.email,
         isActive: hotel.isActive,
         totalRequests: stats.totalRequests || 0,
-        totalAmountCollected: stats.totalAmountCollected || 0,
-        totalCashCollected: stats.totalCashCollected || 0,
-        hotelEarnings: totalEarned,
+        totalAmountCollected:
+          Math.round((stats.totalAmountCollected || 0) * 100) / 100,
+        totalCashCollected: Math.round(totalCashCollected * 100) / 100,
+        hotelEarnings:
+          Math.round((stats.hotelEarnings || 0) * 100) / 100,
         availableBalance: Math.max(0, availableBalance),
         totalWithdrawn,
         totalWithdrawalCount,

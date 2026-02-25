@@ -1,5 +1,6 @@
 import Order from "../../order/models/Order.js";
 import Hotel from "../models/Hotel.js";
+import HotelWallet from "../models/HotelWallet.js";
 import {
   updateSettlementOnStatusChange,
   calculateOrderSettlement,
@@ -346,6 +347,31 @@ export const getOrderStats = async (req, res) => {
       totalCashCollected: 0,
     };
 
+    // Optional override from wallet if admin has manually adjusted cash collected
+    let overrideCashCollected = null;
+    try {
+      const wallet = await HotelWallet.findOne({ hotelId: hotelObjectId })
+        .select("manualCashCollectedOverride")
+        .lean();
+      if (
+        wallet &&
+        typeof wallet.manualCashCollectedOverride === "number" &&
+        wallet.manualCashCollectedOverride >= 0
+      ) {
+        overrideCashCollected = wallet.manualCashCollectedOverride;
+      }
+    } catch (walletErr) {
+      console.error(
+        "Error reading hotel wallet for stats cash override:",
+        walletErr,
+      );
+    }
+
+    const finalCashCollected =
+      overrideCashCollected != null
+        ? overrideCashCollected
+        : financial.totalCashCollected || 0;
+
     const finalResult = {
       totalRequests: (facet.counts || []).reduce(
         (acc, curr) => acc + curr.count,
@@ -362,7 +388,7 @@ export const getOrderStats = async (req, res) => {
       totalRevenue: Math.round(financial.totalRevenue * 100) / 100,
       yourEarnings: Math.round(financial.yourEarnings * 100) / 100,
       totalHotelRevenue: Math.round(financial.yourEarnings * 100) / 100,
-      totalCashCollected: Math.round(financial.totalCashCollected * 100) / 100,
+      totalCashCollected: Math.round(finalCashCollected * 100) / 100,
     };
 
     return res.status(200).json({
@@ -572,8 +598,28 @@ export const getSettlementSummary = async (req, res) => {
       restaurantAmountDue: 0,
     };
 
+    // Allow admin-side manual override from wallet
+    let finalCashCollected = result.totalCashCollected || 0;
+    try {
+      const wallet = await HotelWallet.findOne({ hotelId: hotelObjectId })
+        .select("manualCashCollectedOverride")
+        .lean();
+      if (
+        wallet &&
+        typeof wallet.manualCashCollectedOverride === "number" &&
+        wallet.manualCashCollectedOverride >= 0
+      ) {
+        finalCashCollected = wallet.manualCashCollectedOverride;
+      }
+    } catch (walletErr) {
+      console.error(
+        "Error reading hotel wallet for settlement cash override:",
+        walletErr,
+      );
+    }
+
     const summary = {
-      totalCashCollected: Math.round(result.totalCashCollected * 100) / 100,
+      totalCashCollected: Math.round(finalCashCollected * 100) / 100,
       adminCommissionDue: Math.round(result.adminCommissionDue * 100) / 100,
       restaurantAmountDue: Math.round(result.restaurantAmountDue * 100) / 100,
       settlementAmount: Math.round(result.restaurantAmountDue * 100) / 100,

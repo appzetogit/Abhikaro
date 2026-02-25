@@ -118,6 +118,16 @@ const hotelWalletSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    /**
+     * Optional override for "cash collected" that admin can edit manually.
+     * When set, admin dashboards will use this value instead of deriving
+     * cash collection purely from order aggregation.
+     */
+    manualCashCollectedOverride: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
     totalEarned: {
       type: Number,
       default: 0,
