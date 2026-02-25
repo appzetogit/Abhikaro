@@ -483,7 +483,6 @@ export default function RestaurantLogin() {
                     onChange={handlePhoneChange}
                     onBlur={handlePhoneBlur}
                     maxLength={formData.countryCode === "+91" ? 10 : 15}
-                    inputMode="numeric"
                     pattern="[0-9]*"
                     className={`w-full px-4 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 text-base border rounded-lg min-w-0 bg-white ${errors.phone && (formData.phone.length > 0 || touched.phone)
                       ? "border-red-500 focus:ring-red-500 focus:border-red-500"

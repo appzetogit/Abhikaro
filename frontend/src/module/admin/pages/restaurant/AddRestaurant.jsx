@@ -295,8 +295,6 @@ export default function AddRestaurant() {
         // Auth
         email: auth.email || null,
         phone: auth.phone || null,
-        email: auth.email || null,
-        phone: auth.phone || null,
         signupMethod: auth.email ? 'email' : 'phone',
         // Dining Settings
         diningSettings: step4.diningSettings,
