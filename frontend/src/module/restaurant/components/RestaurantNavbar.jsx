@@ -17,7 +17,7 @@ export default function RestaurantNavbar({
   const [restaurantData, setRestaurantData] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Fetch restaurant data on mount
+  // Fetch restaurant data on mount (used for name, address AND initial online/offline state)
   useEffect(() => {
     const fetchRestaurantData = async () => {
       try {
@@ -26,6 +26,17 @@ export default function RestaurantNavbar({
         const data = response?.data?.data?.restaurant || response?.data?.restaurant
         if (data) {
           setRestaurantData(data)
+
+          // Sync header status with backend isAcceptingOrders so it doesn't show stale "Offline"
+          if (typeof data.isAcceptingOrders === "boolean") {
+            const isOnline = data.isAcceptingOrders
+            setStatus(isOnline ? "Online" : "Offline")
+            try {
+              localStorage.setItem("restaurant_online_status", JSON.stringify(isOnline))
+            } catch (e) {
+              // Ignore localStorage errors, UI state is still correct
+            }
+          }
         }
       } catch (error) {
         // Only log error if it's not a network/timeout error (backend might be down/slow)

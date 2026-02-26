@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -28,25 +28,58 @@ import { adminAPI } from "@/lib/api"
 
 export default function AdminHome() {
   const navigate = useNavigate()
+  const [zones, setZones] = useState([])
   const [selectedZone, setSelectedZone] = useState("all")
   const [selectedPeriod, setSelectedPeriod] = useState("overall")
+  const [customRange, setCustomRange] = useState({ start: "", end: "" })
   const [isLoading, setIsLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState(null)
+  const filtersRequestRef = useRef({ zone: "all", timeFilter: "overall", startDate: "", endDate: "" })
+  const debounceRef = useRef(null)
 
-  // Fetch dashboard stats on mount
+  // Fetch zones for zone filter (once)
   useEffect(() => {
-    const fetchDashboardStats = async () => {
+    const fetchZones = async () => {
+      try {
+        const zonesResponse = await adminAPI.getZones({ limit: 1000, isActive: true })
+        if (zonesResponse.data?.success && zonesResponse.data?.data) {
+          setZones(zonesResponse.data.data.zones || zonesResponse.data.data || [])
+        }
+      } catch (error) {
+        console.error('❌ Error fetching zones:', error)
+      }
+    }
+
+    fetchZones()
+  }, [])
+
+  // Fetch dashboard stats when filters change (single combined request, debounced)
+  useEffect(() => {
+    const fetchFilteredStats = async () => {
       try {
         setIsLoading(true)
-        const response = await adminAPI.getDashboardStats()
+        const params = {
+          zone: selectedZone === "all" ? "all" : selectedZone,
+          timeFilter: selectedPeriod,
+        }
+
+        if (selectedPeriod === "custom" && customRange.start && customRange.end) {
+          params.startDate = customRange.start
+          params.endDate = customRange.end
+        }
+
+        // Skip request if params are unchanged (prevents duplicate refresh)
+        const key = JSON.stringify(params)
+        const lastKey = JSON.stringify(filtersRequestRef.current)
+        if (key === lastKey && dashboardData) {
+          setIsLoading(false)
+          return
+        }
+        filtersRequestRef.current = params
+
+        const response = await adminAPI.getDashboardStats(params)
         if (response.data?.success && response.data?.data) {
           setDashboardData(response.data.data)
-          console.log('✅ Dashboard stats fetched:', response.data.data)
-          console.log('💰 Commission:', response.data.data.commission)
-          console.log('💳 Platform Fee:', response.data.data.platformFee)
-          console.log('🚚 Delivery Fee:', response.data.data.deliveryFee)
-          console.log('🧾 GST:', response.data.data.gst)
-          console.log('💵 Total Admin Earnings:', response.data.data.totalAdminEarnings)
         } else {
           console.error('❌ Invalid response format:', response.data)
         }
@@ -57,17 +90,25 @@ export default function AdminHome() {
       }
     }
 
-    fetchDashboardStats()
-  }, [])
-
-  // Update loading state when filters change
-  useEffect(() => {
-    if (dashboardData) {
-      setIsLoading(true)
-      const timer = setTimeout(() => setIsLoading(false), 350)
-      return () => clearTimeout(timer)
+    // Guard: for custom period, wait until both dates are selected
+    if (selectedPeriod === "custom" && (!customRange.start || !customRange.end)) {
+      return
     }
-  }, [selectedZone, selectedPeriod])
+
+    // Debounce to avoid multiple rapid requests
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+    }
+    debounceRef.current = setTimeout(() => {
+      fetchFilteredStats()
+    }, 250)
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+    }
+  }, [selectedZone, selectedPeriod, customRange.start, customRange.end])
 
   // Get order stats from real data
   const getOrderStats = () => {
@@ -106,8 +147,8 @@ export default function AdminHome() {
     }))
   }
 
-  const orderStats = getOrderStats()
-  const monthlyData = getMonthlyData()
+  const orderStats = useMemo(() => getOrderStats(), [dashboardData])
+  const monthlyData = useMemo(() => getMonthlyData(), [dashboardData])
 
   // Calculate totals from real data
   const revenueTotal = dashboardData?.revenue?.total || 0
@@ -165,15 +206,16 @@ export default function AdminHome() {
               </SelectTrigger>
               <SelectContent className="border-neutral-200 bg-white text-neutral-900">
                 <SelectItem value="all">All zones</SelectItem>
-                <SelectItem value="zone1">Zone 1</SelectItem>
-                <SelectItem value="zone2">Zone 2</SelectItem>
-                <SelectItem value="zone3">Zone 3</SelectItem>
-                <SelectItem value="zone4">Zone 4</SelectItem>
+                {zones.map((zone) => (
+                  <SelectItem key={zone._id} value={zone.name}>
+                    {zone.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
               <SelectTrigger className="min-w-[140px] border-neutral-300 bg-white text-neutral-900">
-                <SelectValue placeholder="Overall" />
+                <SelectValue placeholder="Time Filter" />
               </SelectTrigger>
               <SelectContent className="border-neutral-200 bg-white text-neutral-900">
                 <SelectItem value="overall">Overall</SelectItem>
@@ -181,9 +223,60 @@ export default function AdminHome() {
                 <SelectItem value="week">This week</SelectItem>
                 <SelectItem value="month">This month</SelectItem>
                 <SelectItem value="year">This year</SelectItem>
+                <SelectItem value="custom">Custom range</SelectItem>
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* Active filter indicator & custom range inputs */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-50 px-6 py-3 text-xs text-neutral-600">
+          <div className="rounded-full bg-white px-3 py-1 shadow-sm ring-1 ring-neutral-200">
+            <span className="font-medium text-neutral-800">Active filters:</span>{" "}
+            <span className="ml-1">
+              Zone: {selectedZone === "all" ? "All" : selectedZone} | Time:{" "}
+              {selectedPeriod === "overall"
+                ? "Overall"
+                : selectedPeriod === "today"
+                ? "Today"
+                : selectedPeriod === "week"
+                ? "This Week"
+                : selectedPeriod === "month"
+                ? "This Month"
+                : selectedPeriod === "year"
+                ? "This Year"
+                : customRange.start && customRange.end
+                ? `Custom (${customRange.start} → ${customRange.end})`
+                : "Custom"}
+            </span>
+          </div>
+
+          {selectedPeriod === "custom" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-[11px] font-medium text-neutral-700">
+                From
+              </label>
+              <input
+                type="date"
+                value={customRange.start}
+                onChange={(e) =>
+                  setCustomRange((prev) => ({ ...prev, start: e.target.value }))
+                }
+                className="h-8 rounded-md border border-neutral-300 bg-white px-2 text-xs text-neutral-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-neutral-800/70"
+              />
+              <label className="text-[11px] font-medium text-neutral-700">
+                To
+              </label>
+              <input
+                type="date"
+                value={customRange.end}
+                onChange={(e) =>
+                  setCustomRange((prev) => ({ ...prev, end: e.target.value }))
+                }
+                className="h-8 rounded-md border border-neutral-300 bg-white px-2 text-xs text-neutral-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-neutral-800/70"
+              />
+            </div>
+          )}
         </div>
 
         <div className="space-y-6 px-6 py-6">
@@ -194,7 +287,6 @@ export default function AdminHome() {
               helper="Rolling 12 months"
               icon={<ShoppingBag className="h-5 w-5 text-emerald-600" />}
               accent="bg-emerald-200/40"
-              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Commission earned"
@@ -202,7 +294,6 @@ export default function AdminHome() {
               helper="Restaurant commission"
               icon={<ArrowUpRight className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
-              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Orders processed"
@@ -210,7 +301,6 @@ export default function AdminHome() {
               helper="Fulfilled & billed"
               icon={<Activity className="h-5 w-5 text-amber-600" />}
               accent="bg-amber-200/40"
-              onClick={() => navigate("/admin/orders/all")}
             />
             <MetricCard
               title="Platform fee"
@@ -218,7 +308,6 @@ export default function AdminHome() {
               helper="Total platform fees"
               icon={<CreditCard className="h-5 w-5 text-purple-600" />}
               accent="bg-purple-200/40"
-              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Delivery fee"
@@ -226,7 +315,6 @@ export default function AdminHome() {
               helper="Total delivery fees"
               icon={<Truck className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
-              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="GST"
@@ -234,7 +322,6 @@ export default function AdminHome() {
               helper="Total GST collected"
               icon={<Receipt className="h-5 w-5 text-orange-600" />}
               accent="bg-orange-200/40"
-              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Total revenue"
@@ -242,7 +329,6 @@ export default function AdminHome() {
               helper={`Commission ₹${commissionTotal.toFixed(2)} + Platform ₹${platformFeeTotal.toFixed(2)} + Delivery ₹${deliveryFeeTotal.toFixed(2)} + GST ₹${gstTotal.toFixed(2)}`}
               icon={<DollarSign className="h-5 w-5 text-green-600" />}
               accent="bg-green-200/40"
-              onClick={() => navigate("/admin/reports/transaction")}
             />
             <MetricCard
               title="Total restaurants"
@@ -323,13 +409,14 @@ export default function AdminHome() {
               <CardHeader className="flex flex-col gap-2 border-b border-neutral-200 pb-4">
                 <CardTitle className="text-lg text-neutral-900">Revenue trajectory</CardTitle>
                 <p className="text-sm text-neutral-500">
-                  Commission and gross revenue with monthly order volume
+                  Commission and gross revenue with {selectedPeriod === "today" ? "hourly" : selectedPeriod === "year" ? "monthly" : "daily"} order volume
                 </p>
               </CardHeader>
               <CardContent className="pt-4">
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={monthlyData}>
+                {monthlyData && monthlyData.length > 0 ? (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={monthlyData}>
                       <defs>
                         <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.25} />
@@ -349,32 +436,37 @@ export default function AdminHome() {
                         itemStyle={{ color: "#111827" }}
                       />
                       <Legend />
-                      <Area
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="#0ea5e9"
-                        fillOpacity={1}
-                        fill="url(#revFill)"
-                        name="Gross revenue"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="commission"
-                        stroke="#a855f7"
-                        fillOpacity={1}
-                        fill="url(#comFill)"
-                        name="Commission"
-                      />
-                      <Bar
-                        dataKey="orders"
-                        fill="#ef4444"
-                        radius={[6, 6, 0, 0]}
-                        name="Orders"
-                        barSize={10}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                        <Area
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke="#0ea5e9"
+                          fillOpacity={1}
+                          fill="url(#revFill)"
+                          name="Gross revenue"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="commission"
+                          stroke="#a855f7"
+                          fillOpacity={1}
+                          fill="url(#comFill)"
+                          name="Commission"
+                        />
+                        <Bar
+                          dataKey="orders"
+                          fill="#ef4444"
+                          radius={[6, 6, 0, 0]}
+                          name="Orders"
+                          barSize={10}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="flex h-80 items-center justify-center text-sm text-neutral-500">
+                    No data available for the selected filters
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -457,56 +549,6 @@ export default function AdminHome() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-neutral-200 bg-white">
-              <CardHeader className="border-b border-neutral-200 pb-4">
-                <CardTitle className="text-lg text-neutral-900">Live signals</CardTitle>
-                <p className="text-sm text-neutral-500">Ops notes and service health</p>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-4">
-                {activityFeed.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-start justify-between rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-900">{item.title}</p>
-                      <p className="text-xs text-neutral-600">{item.detail}</p>
-                    </div>
-                    <span className="text-xs text-neutral-500">{item.time}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="border-neutral-200 bg-white">
-              <CardHeader className="border-b border-neutral-200 pb-4">
-                <CardTitle className="text-lg text-neutral-900">Order states</CardTitle>
-                <p className="text-sm text-neutral-500">Quick glance by status</p>
-              </CardHeader>
-              <CardContent className="grid gap-3 pt-4">
-                {orderStats.map((item) => (
-                  <div
-                    key={item.label}
-                    className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="flex h-9 w-9 items-center justify-center rounded-lg text-sm font-semibold text-neutral-900"
-                        style={{ background: `${item.color}1A`, color: item.color }}
-                      >
-                        {item.label.slice(0, 2).toUpperCase()}
-                      </span>
-                      <div>
-                        <p className="text-sm text-neutral-900">{item.label}</p>
-                        <p className="text-xs text-neutral-500">Tracked in {selectedPeriod}</p>
-                      </div>
-                    </div>
-                    <p className="text-sm font-semibold text-neutral-900">{item.value}</p>
-                  </div>
-                ))}
               </CardContent>
             </Card>
           </div>

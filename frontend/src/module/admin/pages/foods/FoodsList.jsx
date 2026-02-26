@@ -16,8 +16,8 @@ export default function FoodsList() {
       try {
         setLoading(true)
         
-        // First, fetch all restaurants
-        const restaurantsResponse = await adminAPI.getRestaurants({ limit: 1000 })
+        // First, fetch all restaurants (active + inactive) so we can show foods from all menus
+        const restaurantsResponse = await adminAPI.getRestaurants({ limit: 1000, status: "all" })
         const restaurants = restaurantsResponse?.data?.data?.restaurants || 
                           restaurantsResponse?.data?.restaurants || 
                           []
