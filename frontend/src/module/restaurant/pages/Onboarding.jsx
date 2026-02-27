@@ -197,8 +197,9 @@ export default function RestaurantOnboarding() {
     menuImages: [],
     profileImage: null,
     cuisines: [],
-    openingTime: "",
-    closingTime: "",
+    // Default timings so required validation passes even if user keeps defaults
+    openingTime: "10:00", // 10:00 AM
+    closingTime: "22:00", // 10:00 PM
     openDays: [],
   })
 
@@ -375,9 +376,9 @@ export default function RestaurantOnboarding() {
             })
           }
 
-          // Determine which step to show based on completeness
-          const stepToShow = determineStepToShow(data)
-          setStep(stepToShow)
+          // Do NOT auto-jump between steps based on completeness.
+          // Step navigation is now controlled only by user actions
+          // (Next / Previous buttons or URL step param / local draft).
         }
       } catch (err) {
         // Handle error gracefully - if it's a 401 (unauthorized), the user might need to login again
@@ -1483,7 +1484,37 @@ export default function RestaurantOnboarding() {
         </div>
         <div>
           <Label className="text-xs text-gray-700">PAN image</Label>
-          <div className="mt-1 flex gap-2">
+
+          {/* PAN image preview (if selected or already uploaded) */}
+          {step3.panImage && (
+            <div className="mt-2 w-28 h-16 rounded-md overflow-hidden bg-gray-100 border border-gray-200 flex items-center justify-center">
+              {(() => {
+                let imageSrc = null
+
+                if (step3.panImage instanceof File) {
+                  imageSrc = URL.createObjectURL(step3.panImage)
+                } else if (step3.panImage?.url) {
+                  imageSrc = step3.panImage.url
+                } else if (typeof step3.panImage === "string") {
+                  imageSrc = step3.panImage
+                }
+
+                return imageSrc ? (
+                  <img
+                    src={imageSrc}
+                    alt="PAN preview"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[10px] text-gray-500 px-2 text-center">
+                    Preview not available
+                  </span>
+                )
+              })()}
+            </div>
+          )}
+
+          <div className="mt-2 flex gap-2">
             <label
               htmlFor="panImageCameraInput"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
@@ -1634,7 +1665,37 @@ export default function RestaurantOnboarding() {
             </Popover>
           </div>
         </div>
-        <div className="flex gap-2">
+
+        {/* FSSAI image preview (if selected or already uploaded) */}
+        {step3.fssaiImage && (
+          <div className="mt-2 w-28 h-16 rounded-md overflow-hidden bg-gray-100 border border-gray-200 flex items-center justify-center">
+            {(() => {
+              let imageSrc = null
+
+              if (step3.fssaiImage instanceof File) {
+                imageSrc = URL.createObjectURL(step3.fssaiImage)
+              } else if (step3.fssaiImage?.url) {
+                imageSrc = step3.fssaiImage.url
+              } else if (typeof step3.fssaiImage === "string") {
+                imageSrc = step3.fssaiImage
+              }
+
+              return imageSrc ? (
+                <img
+                  src={imageSrc}
+                  alt="FSSAI preview"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-[10px] text-gray-500 px-2 text-center">
+                  Preview not available
+                </span>
+              )
+            })()}
+          </div>
+        )}
+
+        <div className="mt-2 flex gap-2">
           <label
             htmlFor="fssaiImageCameraInput"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
@@ -1795,26 +1856,13 @@ export default function RestaurantOnboarding() {
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <div ref={formContainerRef} className="min-h-screen bg-gray-100 flex flex-col">
         <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white border-b border-gray-100 flex items-center justify-between">
+          {/* Clean header without debug labels / auto-fill in production */}
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
-            <div className="text-sm font-bold text-black tracking-tight">Tastizo Backend</div>
           </div>
-          <div className="flex items-center gap-3">
-            {import.meta.env.DEV && (
-              <Button
-                onClick={fillDummyData}
-                variant="outline"
-                size="sm"
-                className="text-xs bg-black text-white hover:bg-gray-800 border-none rounded-full px-4 flex items-center gap-1.5 transition-all active:scale-95"
-                title="Fill with dummy data (Dev only)"
-              >
-                <Sparkles className="w-3 h-3" />
-                Auto-Fill
-              </Button>
-            )}
-          </div>
+          {/* Auto-fill dev button removed as per request */}
         </header>
 
         <main className="flex-1 px-4 sm:px-6 py-8 max-w-3xl mx-auto w-full">

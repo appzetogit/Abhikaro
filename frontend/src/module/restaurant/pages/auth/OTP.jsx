@@ -135,6 +135,15 @@ export default function RestaurantOTP() {
       return
     }
 
+    // Decide purpose:
+    // - For phone-based flows, ALWAYS use "login" (backend handles auto-registration if needed)
+    //   so that we don't block OTP verification for missing name.
+    // - For email-based explicit signups, keep the 2‑step UX.
+    let purpose = authData?.isSignUp ? "register" : "login"
+    if (contactType === "phone") {
+      purpose = "login"
+    }
+
     // For email-based signup, use a two-step UX:
     // 1) First validate OTP format and show name input
     // 2) Then, once name is provided, call the backend
@@ -166,7 +175,6 @@ export default function RestaurantOTP() {
       // Determine identifier type (phone or email)
       const phone = authData.method === "phone" ? authData.phone : null
       const email = authData.method === "email" ? authData.email : null
-      const purpose = authData.isSignUp ? "register" : "login"
 
       // Decide which name to send:
       // - If we're currently showing the name input (either because backend returned needsName
@@ -180,7 +188,13 @@ export default function RestaurantOTP() {
         nameToSend = authData.name
       }
 
-      const response = await restaurantAPI.verifyOTP(phone, code, purpose, nameToSend, email)
+      const response = await restaurantAPI.verifyOTP(
+        phone,
+        code,
+        purpose,
+        nameToSend,
+        email,
+      )
 
       // Extract restaurant and token or special flags (like needsName) from backend response
       const data = response?.data?.data || response?.data

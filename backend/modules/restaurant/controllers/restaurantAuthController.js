@@ -125,6 +125,10 @@ export const verifyOTP = asyncHandler(async (req, res) => {
     const identifier = normalizedPhone || email;
     const identifierType = normalizedPhone ? "phone" : "email";
 
+    // For login/auto-register flows we may derive a default name (especially for phone OTP)
+    // so that we don't have to block the OTP screen asking for restaurant name.
+    let effectiveName = name;
+
     if (purpose === "register") {
       // Registration flow
       // Check if restaurant already exists with normalized phone
@@ -400,18 +404,25 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
       restaurant = await Restaurant.findOne(findQuery);
 
-      if (!restaurant && !name) {
-        // Tell the client that we need restaurant name to proceed with auto-registration
-        return successResponse(
-          res,
-          200,
-          "Restaurant not found. Please provide restaurant name for registration.",
-          {
-            needsName: true,
-            identifierType,
-            identifier,
-          },
-        );
+      if (!restaurant && !effectiveName) {
+        // Phone login with new restaurant: auto-generate a temporary name
+        // so OTP flow can continue without asking on the verify screen.
+        if (normalizedPhone) {
+          const last4 = normalizedPhone.slice(-4);
+          effectiveName = `Restaurant ${last4}`;
+        } else {
+          // For pure email flows, keep the old behavior and ask client for a name
+          return successResponse(
+            res,
+            200,
+            "Restaurant not found. Please provide restaurant name for registration.",
+            {
+              needsName: true,
+              identifierType,
+              identifier,
+            },
+          );
+        }
       }
 
       // Handle reset-password purpose
@@ -442,7 +453,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       if (!restaurant) {
         // Auto-register new restaurant after OTP verification
         const restaurantData = {
-          name,
+          name: effectiveName,
           signupMethod: normalizedPhone ? "phone" : "email",
         };
 
@@ -469,7 +480,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
           restaurantData.password = password;
         }
 
-        restaurantData.ownerName = name;
+        restaurantData.ownerName = effectiveName;
 
         // Set isActive to false - restaurant needs admin approval before becoming active
         // Auto-approve in development
