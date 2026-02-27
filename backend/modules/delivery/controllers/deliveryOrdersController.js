@@ -2699,6 +2699,33 @@ export const markHotelCashSettled = asyncHandler(async (req, res) => {
     order.hotelCashSettled = true;
     await order.save();
 
+    // Also add this amount to delivery boy's cashInHand so his pocket view matches
+    try {
+      const codAmount = Number(order.pricing?.total) || 0;
+      if (codAmount > 0) {
+        // Ensure wallet exists
+        const wallet = await DeliveryWallet.findOrCreateByDeliveryId(
+          deliveryId,
+        );
+        const oldCash = Number(wallet.cashInHand) || 0;
+        wallet.cashInHand = oldCash + codAmount;
+        await wallet.save();
+
+        console.log(
+          `✅ Pay-at-Hotel cash ₹${codAmount.toFixed(
+            2,
+          )} added to delivery cashInHand for order ${order.orderId}. Old cashInHand=${oldCash.toFixed(
+            2,
+          )}, new cashInHand=${wallet.cashInHand.toFixed(2)}`,
+        );
+      }
+    } catch (walletErr) {
+      logger.error(
+        "❌ Error adding Pay-at-Hotel cash to delivery wallet cashInHand:",
+        walletErr,
+      );
+    }
+
     return successResponse(res, 200, "Hotel cash marked as settled", {
       orderId: order.orderId,
       hotelCashSettled: true,

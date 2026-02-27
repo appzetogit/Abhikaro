@@ -541,6 +541,7 @@ export const getSettlementSummary = async (req, res) => {
         $project: {
           total: { $ifNull: ["$pricing.total", 0] },
           cashCollected: "$cashCollected",
+          hotelCashSettled: "$hotelCashSettled",
           status: "$status",
           adminComm: {
             $ifNull: [
@@ -581,7 +582,16 @@ export const getSettlementSummary = async (req, res) => {
           _id: null,
           totalCashCollected: {
             $sum: {
-              $cond: [{ $eq: ["$cashCollected", true] }, "$total", 0],
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$cashCollected", true] },
+                    { $ne: ["$hotelCashSettled", true] }, // exclude orders where cash already settled
+                  ],
+                },
+                "$total",
+                0,
+              ],
             },
           },
           adminCommissionDue: {
