@@ -1484,6 +1484,24 @@ export default function Cart() {
     navigate(`/user/orders/${placedOrderId}?confirmed=true`)
   }
 
+  // Layout helpers - behave differently for hotel QR orders vs normal orders
+  const scrollContainerClass = isHotelOrder
+    ? "pt-16 md:pt-20 pb-72 md:pb-80"
+    : "overflow-y-auto overflow-x-hidden pt-16 md:pt-20 pb-44 md:pb-56"
+
+  const scrollContainerStyle = isHotelOrder
+    ? {
+        WebkitOverflowScrolling: "touch",
+        paddingTop: "64px", // Header height
+        paddingBottom: "260px", // Extra space below Order Summary + button
+      }
+    : {
+        height: "100vh",
+        WebkitOverflowScrolling: "touch",
+        paddingTop: "64px", // Header height
+        paddingBottom: "200px", // Bottom button height + extra space
+      }
+
   // Empty cart state - but don't show if order success or placing order modal is active
   if (cart.length === 0 && !showOrderSuccess && !showPlacingOrder) {
     return (
@@ -1541,13 +1559,8 @@ export default function Cart() {
 
       {/* Scrollable Content Area */}
       <div
-        className="overflow-y-auto overflow-x-hidden pt-16 md:pt-20 pb-44 md:pb-56"
-        style={{
-          height: '100vh',
-          WebkitOverflowScrolling: 'touch',
-          paddingTop: '64px', // Header height
-          paddingBottom: '200px' // Bottom button height + extra space
-        }}
+        className={scrollContainerClass}
+        style={scrollContainerStyle}
       >
         {/* FIXED: Restaurant Location Missing Alert */}
         {restaurantData && (!restaurantData.location || 
@@ -2034,8 +2047,12 @@ export default function Cart() {
         </div>
       </div>
 
-      {/* Bottom Sticky - Place Order */}
-      <div className="bg-white dark:bg-[#1a1a1a] border-t dark:border-gray-800 shadow-lg z-30 flex-shrink-0 fixed bottom-0 left-0 right-0">
+      {/* Bottom Sticky - Place Order (hotel QR orders use sticky, others use fixed) */}
+      <div
+        className={`bg-white dark:bg-[#1a1a1a] border-t dark:border-gray-800 shadow-lg z-30 flex-shrink-0 ${
+          isHotelOrder ? "sticky bottom-0" : "fixed bottom-0 left-0 right-0"
+        }`}
+      >
         <div className="max-w-7xl mx-auto">
           <div className="px-4 md:px-6 py-3 md:py-4">
             <div className="w-full max-w-md md:max-w-lg mx-auto">
