@@ -26,6 +26,11 @@ export default defineConfig({
     host: "0.0.0.0", // Allow access from network
     port: 5173, // Default Vite port
     proxy: {
+      // Proxy /api to backend - use VITE_API_BASE_URL=/api for mobile testing on same network
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
       // Proxy service worker requests to backend (backend serves configured version)
       // Fallback static file in public/ will be used if backend is unavailable
       "/firebase-messaging-sw.js": {

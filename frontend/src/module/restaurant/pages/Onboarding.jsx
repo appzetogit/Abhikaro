@@ -431,9 +431,18 @@ export default function RestaurantOnboarding() {
       const d = res?.data?.data || res?.data
       return { url: d.url, publicId: d.publicId }
     } catch (err) {
-      // Provide more informative error message for upload failures
-      const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Failed to upload image"
+      const isNetworkError =
+        err?.message === "Network Error" ||
+        err?.code === "ERR_NETWORK" ||
+        (err?.request && !err?.response)
+      const serverMsg = err?.response?.data?.message || err?.response?.data?.error
+      const errorMsg = serverMsg || err?.message || "Failed to upload image"
       console.error("Upload error:", errorMsg, err)
+      if (isNetworkError) {
+        throw new Error(
+          "Network error: Check internet connection. If using mobile app, ensure backend URL is reachable (not localhost)."
+        )
+      }
       throw new Error(`Image upload failed: ${errorMsg}`)
     }
   }

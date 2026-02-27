@@ -2128,10 +2128,9 @@ export const uploadAPI = {
       formData.append("folder", options.folder);
     }
 
+    // Do NOT set Content-Type - let axios set multipart/form-data with correct boundary
     return apiClient.post(API_ENDPOINTS.UPLOAD.MEDIA, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      timeout: 60000, // 60s for large images on slow networks
     });
   },
 };
