@@ -2118,9 +2118,7 @@ export default function Cart() {
                         className="w-full px-4 py-3 border-2 border-orange-300 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent font-medium"
                         required
                       />
-                      <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
-                        Please enter your room number to complete the order. Payment will be collected at your room.
-                      </p>
+                      
                       {isHotelOrder && hotelName && (
                         <p className="mt-1 text-xs font-medium text-orange-600 dark:text-orange-400">
                           📍 Ordering from: {hotelName}
