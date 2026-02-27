@@ -7,6 +7,7 @@ import {
   confirmOrderId,
   confirmReachedDrop,
   completeDelivery,
+  markHotelCashSettled,
 } from "../controllers/deliveryOrdersController.js";
 import { getTripHistory } from "../controllers/deliveryTripHistoryController.js";
 import { authenticate } from "../middleware/deliveryAuth.js";
@@ -24,6 +25,7 @@ router.patch("/orders/:orderId/reached-pickup", confirmReachedPickup);
 router.patch("/orders/:orderId/confirm-order-id", confirmOrderId);
 router.patch("/orders/:orderId/reached-drop", confirmReachedDrop);
 router.patch("/orders/:orderId/complete-delivery", completeDelivery);
+router.patch("/orders/:orderId/hotel-cash-settled", markHotelCashSettled);
 
 // Trip History route
 router.get("/trip-history", getTripHistory);

@@ -2635,3 +2635,76 @@ export const completeDelivery = asyncHandler(async (req, res) => {
     );
   }
 });
+
+/**
+ * Mark hotel cash as settled for a Pay-at-Hotel / Cash order.
+ * Called from delivery app when delivery boy confirms hotel has handed over cash.
+ *
+ * PATCH /api/delivery/orders/:orderId/hotel-cash-settled
+ */
+export const markHotelCashSettled = asyncHandler(async (req, res) => {
+  try {
+    const delivery = req.delivery;
+    const { orderId } = req.params;
+
+    if (!delivery) {
+      return errorResponse(res, 401, "Unauthorized");
+    }
+
+    // Find order assigned to this delivery partner (by _id or orderId string)
+    let order = null;
+    const deliveryId = delivery._id;
+
+    if (mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24) {
+      order = await Order.findOne({
+        _id: orderId,
+        deliveryPartnerId: deliveryId,
+      });
+    }
+
+    if (!order) {
+      order = await Order.findOne({
+        orderId,
+        deliveryPartnerId: deliveryId,
+      });
+    }
+
+    if (!order) {
+      return errorResponse(
+        res,
+        404,
+        "Order not found or not assigned to you",
+      );
+    }
+
+    // Only allow for pay_at_hotel / cash orders where hotel has already collected from guest
+    const method = order.payment?.method;
+    const isCashFlow = method === "pay_at_hotel" || method === "cash";
+
+    if (!isCashFlow || !order.cashCollected) {
+      return errorResponse(
+        res,
+        400,
+        "Hotel cash can only be settled for Pay at Hotel / Cash orders after hotel has collected payment",
+      );
+    }
+
+    if (order.hotelCashSettled === true) {
+      return successResponse(res, 200, "Hotel cash already settled for this order", {
+        orderId: order.orderId,
+        hotelCashSettled: true,
+      });
+    }
+
+    order.hotelCashSettled = true;
+    await order.save();
+
+    return successResponse(res, 200, "Hotel cash marked as settled", {
+      orderId: order.orderId,
+      hotelCashSettled: true,
+    });
+  } catch (error) {
+    logger.error(`Error marking hotel cash settled: ${error.message}`);
+    return errorResponse(res, 500, "Failed to mark hotel cash as settled");
+  }
+});

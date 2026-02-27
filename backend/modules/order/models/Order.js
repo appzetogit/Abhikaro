@@ -207,6 +207,13 @@ const orderSchema = new mongoose.Schema(
     adminCommission: { type: Number, default: 0 },
     restaurantShare: { type: Number, default: 0 },
     cashCollected: { type: Boolean, default: false },
+    /**
+     * For Pay-at-Hotel / Cash QR orders:
+     * - cashCollected = hotel has received cash from guest
+     * - hotelCashSettled = hotel has handed over that cash to platform/delivery
+     *   (so it should no longer count towards "Total Cash Collected" on hotel dashboard)
+     */
+    hotelCashSettled: { type: Boolean, default: false },
     commissionDistributed: { type: Boolean, default: false },
     payment: {
       method: {

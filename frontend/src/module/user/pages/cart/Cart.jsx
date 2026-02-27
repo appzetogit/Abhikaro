@@ -2117,8 +2117,7 @@ export default function Cart() {
                         placeholder="Enter your room number (e.g., 101)"
                         className="w-full px-4 py-3 border-2 border-orange-300 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent font-medium"
                         required
-                      />
-                      
+                      />   
                       {isHotelOrder && hotelName && (
                         <p className="mt-1 text-xs font-medium text-orange-600 dark:text-orange-400">
                           📍 Ordering from: {hotelName}

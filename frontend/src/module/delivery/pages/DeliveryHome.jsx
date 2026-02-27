@@ -636,6 +636,8 @@ export default function DeliveryHome() {
   const [showReachedDropPopup, setShowReachedDropPopup] = useState(false)
   const [showOrderDeliveredAnimation, setShowOrderDeliveredAnimation] = useState(false)
   const [showCustomerReviewPopup, setShowCustomerReviewPopup] = useState(false)
+  // For Pay at Hotel orders: track when delivery partner confirms that hotel has collected cash
+  const [hotelCashConfirmed, setHotelCashConfirmed] = useState(false)
   const [showPaymentPage, setShowPaymentPage] = useState(false)
   const [showChatOverlay, setShowChatOverlay] = useState(false)
   const [customerRating, setCustomerRating] = useState(0)
@@ -11675,24 +11677,93 @@ export default function DeliveryHome() {
             </div>
           </div>
 
-          {/* Payment info: Online = amount paid, COD = collect from customer */}
+          {/* Payment info: Online = amount paid, COD = collect from customer, Pay at Hotel = hotel collects */}
           {selectedRestaurant?.total != null && (() => {
-            const m = (selectedRestaurant.paymentMethod || '').toLowerCase()
-            const isCod = m === 'cash' || m === 'cod'
+            const m = (selectedRestaurant.paymentMethod || "").toLowerCase()
+            const isCod = m === "cash" || m === "cod"
+            const isPayAtHotel = m === "pay_at_hotel"
             const total = Number(selectedRestaurant.total) || 0
+
+            const containerClasses = isCod
+              ? "bg-amber-50 border border-amber-200"
+              : isPayAtHotel
+              ? "bg-orange-50 border border-orange-200"
+              : "bg-emerald-50 border border-emerald-200"
+
+            const iconColor = isCod
+              ? "text-amber-600"
+              : isPayAtHotel
+              ? "text-orange-600"
+              : "text-emerald-600"
+
+            const textColor = isCod
+              ? "text-amber-800"
+              : isPayAtHotel
+              ? "text-orange-800"
+              : "text-emerald-800"
+
+            const amountColor = isCod
+              ? "text-amber-700"
+              : isPayAtHotel
+              ? "text-orange-700"
+              : "text-emerald-700"
+
+            const label = isCod
+              ? "Collect from customer (COD)"
+              : isPayAtHotel
+              ? "Pay at Hotel"
+              : "Amount paid (Online)"
+
             return (
-              <div className={`rounded-xl p-4 mb-6 ${isCod ? 'bg-amber-50 border border-amber-200' : 'bg-emerald-50 border border-emerald-200'}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <IndianRupee className={`w-4 h-4 ${isCod ? 'text-amber-600' : 'text-emerald-600'}`} />
-                    <span className={`text-sm font-medium ${isCod ? 'text-amber-800' : 'text-emerald-800'}`}>
-                      {isCod ? 'Collect from customer (COD)' : 'Amount paid (Online)'}
+              <div className="mb-6 space-y-3">
+                <div className={`rounded-xl p-4 ${containerClasses}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <IndianRupee className={`w-4 h-4 ${iconColor}`} />
+                      <span className={`text-sm font-medium ${textColor}`}>
+                        {label}
+                      </span>
+                    </div>
+                    <span className={`text-lg font-bold ${amountColor}`}>
+                      ₹
+                      {total.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
-                  <span className={`text-lg font-bold ${isCod ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    ₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
                 </div>
+
+                {/* For Pay at Hotel orders, show a clear Cash Collected indicator (for delivery partner) */}
+                {isPayAtHotel && selectedRestaurant?.orderId && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (hotelCashConfirmed) return
+                      try {
+                        const response = await deliveryAPI.patch(
+                          `/delivery/orders/${encodeURIComponent(
+                            selectedRestaurant.orderId,
+                          )}/hotel-cash-settled`,
+                        )
+                        if (response?.data?.success) {
+                          setHotelCashConfirmed(true)
+                        }
+                      } catch (error) {
+                        console.error("Error marking hotel cash settled:", error)
+                      }
+                    }}
+                    className={`w-full py-3 rounded-full text-sm font-semibold shadow-sm transition-colors ${
+                      hotelCashConfirmed
+                        ? "bg-emerald-600 text-white"
+                        : "bg-orange-500 text-white"
+                    }`}
+                  >
+                    {hotelCashConfirmed
+                      ? "Cash Collected (Verified)"
+                      : "Cash Collected at Hotel"}
+                  </button>
+                )}
               </div>
             )
           })()}

@@ -315,6 +315,10 @@ export const getOrderStats = async (req, res) => {
                       $and: [
                         { $in: ["$payment.method", ["pay_at_hotel", "cash"]] },
                         { $eq: ["$cashCollected", true] },
+                        // Exclude orders where hotel has already handed over cash
+                        {
+                          $ne: ["$hotelCashSettled", true],
+                        },
                       ],
                     },
                     { $ifNull: ["$pricing.total", 0] },
