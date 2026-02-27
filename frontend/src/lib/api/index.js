@@ -1061,6 +1061,15 @@ export const deliveryAPI = {
       },
     );
   },
+  // Mark hotel cash as settled for Pay-at-Hotel / Cash orders
+  markHotelCashSettled: (orderId) => {
+    return apiClient.patch(
+      API_ENDPOINTS.DELIVERY.ORDER_HOTEL_CASH_SETTLED.replace(
+        ":orderId",
+        orderId,
+      ),
+    );
+  },
 
   // Get trip history
   getTripHistory: (params = {}) => {

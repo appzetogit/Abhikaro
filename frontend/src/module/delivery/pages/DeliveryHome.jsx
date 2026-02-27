@@ -11741,10 +11741,8 @@ export default function DeliveryHome() {
                     onClick={async () => {
                       if (hotelCashConfirmed) return
                       try {
-                        const response = await deliveryAPI.patch(
-                          `/delivery/orders/${encodeURIComponent(
-                            selectedRestaurant.orderId,
-                          )}/hotel-cash-settled`,
+                        const response = await deliveryAPI.markHotelCashSettled(
+                          selectedRestaurant.orderId,
                         )
                         if (response?.data?.success) {
                           setHotelCashConfirmed(true)

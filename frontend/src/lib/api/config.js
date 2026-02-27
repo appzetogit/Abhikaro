@@ -275,6 +275,8 @@ export const API_ENDPOINTS = {
     ORDER_CONFIRM_ID: "/delivery/orders/:orderId/confirm-order-id",
     ORDER_REACHED_DROP: "/delivery/orders/:orderId/reached-drop",
     ORDER_COMPLETE_DELIVERY: "/delivery/orders/:orderId/complete-delivery",
+    ORDER_HOTEL_CASH_SETTLED:
+      "/delivery/orders/:orderId/hotel-cash-settled",
     TRIP_HISTORY: "/delivery/trip-history",
     EARNINGS: "/delivery/earnings",
     EARNINGS_ACTIVE_OFFERS: "/delivery/earnings/active-offers",
