@@ -174,7 +174,9 @@ export const getOrders = asyncHandler(async (req, res) => {
     // Fetch orders with population
     const orders = await Order.find(query)
       .populate('userId', 'name email phone')
-      .populate('restaurantId', 'name slug')
+      // Include basic restaurant location/address details so invoices and admin UIs
+      // can show the full restaurant address.
+      .populate('restaurantId', 'name slug location.formattedAddress location.address location.city location.state location.zipCode location.pincode')
       .populate('deliveryPartnerId', 'name phone')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
@@ -326,6 +328,25 @@ export const getOrders = asyncHandler(async (req, res) => {
       // Order amount (final total)
       const orderAmount = order.pricing?.total || 0;
 
+      // Build a human‑readable restaurant address if available
+      const rawRestaurant = order.restaurantId || {};
+      // restaurantId may be populated document or string; only build address when it's an object
+      const restaurantLocation = typeof rawRestaurant === 'object' && rawRestaurant !== null
+        ? rawRestaurant.location || {}
+        : {};
+
+      const restaurantAddressParts = [];
+      if (restaurantLocation.formattedAddress) {
+        restaurantAddressParts.push(restaurantLocation.formattedAddress);
+      } else {
+        if (restaurantLocation.address) restaurantAddressParts.push(restaurantLocation.address);
+        const cityState = [restaurantLocation.city, restaurantLocation.state].filter(Boolean).join(', ');
+        const pin = restaurantLocation.zipCode || restaurantLocation.pincode;
+        const cityStatePin = [cityState, pin].filter(Boolean).join(' - ');
+        if (cityStatePin) restaurantAddressParts.push(cityStatePin);
+      }
+      const restaurantAddress = restaurantAddressParts.join(', ');
+
       return {
         sl: skip + index + 1,
         orderId: order.orderId,
@@ -336,7 +357,8 @@ export const getOrders = asyncHandler(async (req, res) => {
         customerPhone: customerPhone,
         customerEmail: order.userId?.email || '',
         restaurant: order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
-        restaurantId: order.restaurantId?.toString() || order.restaurantId || '',
+        restaurantId: order.restaurantId?.toString?.() || order.restaurantId || '',
+        restaurantAddress: restaurantAddress || null,
         // Report-specific fields
         totalItemAmount: totalItemAmount,
         itemDiscount: itemDiscount,

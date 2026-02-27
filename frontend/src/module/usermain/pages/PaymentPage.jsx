@@ -17,7 +17,9 @@ import { Input } from "@/components/ui/input"
 export default function PaymentPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const paymentMethod = searchParams.get("method") || "card"
+  // Even if someone manuallly passes ?method=cash, we force it to card since Cash on Delivery is disabled
+  const rawMethod = searchParams.get("method") || "card"
+  const paymentMethod = rawMethod === "cash" ? "card" : rawMethod
   
   const [cardNumber, setCardNumber] = useState("")
   const [cardName, setCardName] = useState("")
@@ -86,21 +88,7 @@ export default function PaymentPage() {
     localStorage.removeItem('usermain_current_order')
   }
 
-  // Auto-process Cash on Delivery
-  useEffect(() => {
-    if (paymentMethod === "cash") {
-      setIsProcessing(true)
-      setTimeout(() => {
-        saveOrder()
-        setIsProcessing(false)
-        setIsSuccess(true)
-        setTimeout(() => {
-          navigate('/usermain/orders')
-        }, 2000)
-      }, 1500)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentMethod, navigate])
+  // Cash on Delivery removed – no auto-processing needed
 
   const handleCardNumberChange = (e) => {
     let value = e.target.value.replace(/\s/g, "")

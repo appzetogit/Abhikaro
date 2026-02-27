@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input"
 
 export default function CheckoutPage() {
   const navigate = useNavigate()
-  const [paymentMethod, setPaymentMethod] = useState("card")
+  // Only online payment is allowed now
+  const [paymentMethod] = useState("card")
 
   // Get order data from localStorage (set by CartPage) or use default
   const getOrderData = () => {
@@ -65,11 +66,8 @@ export default function CheckoutPage() {
   // Save order data to localStorage before navigating to payment
   const handleProceedToPayment = () => {
     localStorage.setItem('usermain_current_order', JSON.stringify(orderSummary))
-    if (paymentMethod === "cash") {
-      navigate(`/usermain/payment?method=cash`)
-    } else {
-      navigate(`/usermain/payment?method=card`)
-    }
+    // Always go to online/card payment – Cash on Delivery disabled
+    navigate(`/usermain/payment?method=card`)
   }
 
   return (
@@ -169,37 +167,17 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* Payment Method */}
+      {/* Payment Method – only online/card available now */}
       <div className="px-4 mb-4">
         <div className="bg-white rounded-xl p-4 shadow-sm">
           <h3 className="text-sm font-bold text-gray-900 mb-3">Payment Method</h3>
           <div className="space-y-2">
-            <button
-              onClick={() => setPaymentMethod("card")}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-colors ${
-                paymentMethod === "card"
-                  ? "border-[#ff8100] bg-[#ff8100]/10"
-                  : "border-gray-200 bg-white"
-              }`}
-            >
-              <CreditCard className={`w-5 h-5 ${paymentMethod === "card" ? "text-[#ff8100]" : "text-gray-400"}`} />
-              <span className={`text-sm font-medium ${paymentMethod === "card" ? "text-[#ff8100]" : "text-gray-700"}`}>
-                Credit/Debit Card
+            <div className="w-full flex items-center gap-3 p-3 rounded-lg border-2 border-[#ff8100] bg-[#ff8100]/10">
+              <CreditCard className="w-5 h-5 text-[#ff8100]" />
+              <span className="text-sm font-medium text-[#ff8100]">
+                Online Payment
               </span>
-            </button>
-            <button
-              onClick={() => setPaymentMethod("cash")}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-colors ${
-                paymentMethod === "cash"
-                  ? "border-[#ff8100] bg-[#ff8100]/10"
-                  : "border-gray-200 bg-white"
-              }`}
-            >
-              <ShoppingBag className={`w-5 h-5 ${paymentMethod === "cash" ? "text-[#ff8100]" : "text-gray-400"}`} />
-              <span className={`text-sm font-medium ${paymentMethod === "cash" ? "text-[#ff8100]" : "text-gray-700"}`}>
-                Cash on Delivery
-              </span>
-            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -210,7 +188,7 @@ export default function CheckoutPage() {
           className="w-full bg-[#ff8100] hover:bg-[#e67300] text-white font-bold py-4 rounded-xl text-base"
           onClick={handleProceedToPayment}
         >
-          {paymentMethod === "cash" ? "Place Order" : "Proceed to Payment"}
+          Proceed to Payment
         </Button>
       </div>
 

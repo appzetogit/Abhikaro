@@ -92,7 +92,7 @@ export default function Cart() {
   const [showCoupons, setShowCoupons] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponCode, setCouponCode] = useState("")
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("razorpay") // razorpay | cash | wallet | pay_at_hotel
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("razorpay") // razorpay | wallet | pay_at_hotel (COD disabled)
   const [hasHotelReference, setHasHotelReference] = useState(false) // Track if hotel reference exists
   const [isHotelOrder, setIsHotelOrder] = useState(false) // Track if this is a hotel order
   const [roomNumber, setRoomNumber] = useState('') // Room number for pay_at_hotel
@@ -1172,33 +1172,6 @@ export default function Cart() {
       //   sessionStorage.removeItem("hotelReferenceTimestamp")
       // }
 
-      // Cash flow: order placed without online payment
-      if (selectedPaymentMethod === "cash") {
-        toast.success("Order placed with Cash on Delivery")
-        // Save lightweight order in local context so home screen tracking card can show immediately
-        try {
-          createOrder({
-            id: order.id || order._id || order.orderId,
-            orderId: order.orderId,
-            status: order.status || "confirmed",
-            restaurant: restaurantName,
-            restaurantName,
-            items: order.items || cart,
-            estimatedDeliveryTime: order.estimatedDeliveryTime || restaurantData?.estimatedDeliveryTime || 35,
-            createdAt: order.createdAt
-          })
-        } catch (e) {
-          console.warn("Failed to create local tracking order (cash):", e)
-        }
-        setPlacedOrderId(order?.orderId || order?.id || null)
-        setShowOrderSuccess(true)
-        // Notify home screen tracking card to refresh active orders
-        window.dispatchEvent(new Event('orderStatusUpdated'))
-        clearCart()
-        setIsPlacingOrder(false)
-        return
-      }
-
       // Pay at Hotel flow: order placed with payment at hotel
       if (selectedPaymentMethod === "pay_at_hotel") {
         const hotelName = localStorage.getItem("hotelReferenceName") || "Hotel"
@@ -2081,7 +2054,7 @@ export default function Cart() {
                           ? "Wallet"
                           : selectedPaymentMethod === "pay_at_hotel"
                             ? "Pay at Hotel"
-                            : "Cash on Delivery"}
+                            : "Online Payment"}
                     </p>
                   </div>
                 </div>
@@ -2103,10 +2076,9 @@ export default function Cart() {
                           <option value="razorpay">💰 Razorpay Online Payment</option>
                         </>
                       ) : (
-                        // Show all payment options for regular orders
+                        // Show online payment and wallet for regular orders (COD disabled)
                         <>
                           <option value="razorpay">💰 Razorpay</option>
-                          <option value="cash">💵 Cash on Delivery</option>
                           <option value="wallet">
                             👛 Wallet{isLoadingWallet ? ' (Loading...)' : walletBalance > 0 ? ` (₹${walletBalance})` : ' (₹0)'}
                           </option>
@@ -2201,7 +2173,9 @@ export default function Cart() {
                       ? `Pay ₹${total.toFixed(2)} online (Razorpay)`
                       : selectedPaymentMethod === "wallet"
                         ? `Pay ₹${total.toFixed(2)} from Wallet`
-                        : `Pay on delivery (COD)`}
+                        : selectedPaymentMethod === "pay_at_hotel"
+                          ? `Pay at hotel on arrival`
+                          : `Pay online`}
                   </p>
                 </div>
               </div>

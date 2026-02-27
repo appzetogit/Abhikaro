@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Search, Eye, Pencil, Trash2, ArrowUpDown, Loader2, Building2, MapPin, Phone, Mail, QrCode, FileText, Image as ImageIcon, ExternalLink, X, Plus, Upload } from "lucide-react"
+import { Search, Eye, Pencil, Trash2, ArrowUpDown, Loader2, Building2, MapPin, Phone, Mail, QrCode, FileText, Image as ImageIcon, ExternalLink, X, Plus, Upload, Download } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -21,6 +21,7 @@ export default function HotelsList() {
   const [editDialog, setEditDialog] = useState(null)
   const [updating, setUpdating] = useState(false)
   const [qrCodeDialog, setQrCodeDialog] = useState(null)
+  const [downloadingQr, setDownloadingQr] = useState(false)
   const [addDialog, setAddDialog] = useState(false)
   const [creating, setCreating] = useState(false)
   const [uploadingImages, setUploadingImages] = useState({
@@ -193,6 +194,84 @@ export default function HotelsList() {
       setQrCodeDialog(hotel)
     } else {
       toast.info("QR code not generated for this hotel yet")
+    }
+  }
+
+  const handleDownloadHotelQR = async () => {
+    if (!qrCodeDialog?.qrCode) return
+
+    try {
+      setDownloadingQr(true)
+
+      const wrapper = document.getElementById("admin-hotel-qr-code")
+      if (!wrapper) {
+        throw new Error("QR code element not found")
+      }
+
+      const svg = wrapper.querySelector("svg")
+      if (!svg) {
+        throw new Error("QR code SVG not found")
+      }
+
+      // Convert SVG to data URL
+      const svgData = new XMLSerializer().serializeToString(svg)
+      const svgBlob = new Blob([svgData], {
+        type: "image/svg+xml;charset=utf-8",
+      })
+      const svgUrl = URL.createObjectURL(svgBlob)
+
+      // Load SVG into an Image to draw on canvas
+      const img = new Image()
+      await new Promise((resolve, reject) => {
+        img.onload = resolve
+        img.onerror = reject
+        img.src = svgUrl
+      })
+
+      const canvas = document.createElement("canvas")
+      const size = 600
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext("2d")
+
+      // White background
+      ctx.fillStyle = "#FFFFFF"
+      ctx.fillRect(0, 0, size, size)
+
+      // Draw QR with padding
+      const padding = 40
+      ctx.drawImage(img, padding, padding, size - padding * 2, size - padding * 2)
+
+      // Download as PNG
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            console.error("Failed to create QR PNG blob")
+            toast.error("Failed to generate QR image. Please try again.")
+            return
+          }
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement("a")
+          link.href = url
+          const safeName = (qrCodeDialog.hotelName || "hotel")
+            .toString()
+            .replace(/[^a-z0-9\-]+/gi, "_")
+          link.download = `${safeName}-qr-code.png`
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          URL.revokeObjectURL(url)
+          URL.revokeObjectURL(svgUrl)
+          toast.success("QR code downloaded successfully")
+        },
+        "image/png",
+        1.0,
+      )
+    } catch (error) {
+      console.error("Error downloading hotel QR:", error)
+      toast.error("Failed to download QR code. Please try again.")
+    } finally {
+      setDownloadingQr(false)
     }
   }
 
@@ -891,7 +970,10 @@ export default function HotelsList() {
           </DialogHeader>
           {qrCodeDialog && qrCodeDialog.qrCode && (
             <div className="px-6 py-6">
-              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm mx-auto w-fit">
+              <div
+                id="admin-hotel-qr-code"
+                className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm mx-auto w-fit"
+              >
                 <QRCodeSVG
                   value={qrCodeDialog.qrCode}
                   size={180}
@@ -906,6 +988,26 @@ export default function HotelsList() {
                 <p className="text-xs text-slate-500 font-mono">
                   ID: {qrCodeDialog.hotelId || qrCodeDialog._id?.slice(-8) || "N/A"}
                 </p>
+              </div>
+              <div className="mt-5 flex justify-center">
+                <Button
+                  onClick={handleDownloadHotelQR}
+                  className="flex items-center gap-2"
+                  variant="outline"
+                  disabled={downloadingQr}
+                >
+                  {downloadingQr ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      Download QR
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           )}

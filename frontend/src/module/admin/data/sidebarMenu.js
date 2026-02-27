@@ -222,12 +222,6 @@ export const sidebarMenuData = [
       },
       {
         type: "link",
-        label: "Hotel Withdrawal",
-        path: "/admin/hotel-withdrawal",
-        icon: "Wallet",
-      },
-      {
-        type: "link",
         label: "Delivery boy Wallet",
         path: "/admin/delivery-boy-wallet",
         icon: "PiggyBank",

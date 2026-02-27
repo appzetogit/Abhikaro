@@ -77,6 +77,14 @@ export function useGenericTableManagement(data, title, searchFields = []) {
 
   const handlePrintOrder = async (order) => {
     try {
+      // Prefer full backend order if it's attached as originalOrder (e.g. in Order Detect Delivery),
+      // otherwise fall back to the row object itself.
+      const fullOrder = order?.originalOrder || order || {}
+
+      // Helper formatters to keep output clean and avoid encoding issues (e.g. ₹ showing as ¹)
+      const num = (v) => (v != null && !Number.isNaN(Number(v))) ? Number(v) : 0
+      const money = (v) => `Rs. ${num(v).toFixed(2)}`
+
       // Dynamic import of jsPDF and autoTable for instant PDF download
       const { default: jsPDF } = await import('jspdf')
       const { default: autoTable } = await import('jspdf-autotable')
@@ -95,18 +103,20 @@ export function useGenericTableManagement(data, title, searchFields = []) {
       // Order ID
       doc.setFontSize(12)
       doc.setTextColor(100, 100, 100)
-      const orderId = order.orderId || order.id || order.subscriptionId || 'N/A'
+      const orderId = fullOrder.orderId || fullOrder.id || fullOrder.subscriptionId || 'N/A'
       doc.text(`Order ID: ${orderId}`, 105, 28, { align: 'center' })
       
       // Date
       doc.setFontSize(10)
-      const orderDate = order.date && order.time ? `${order.date}, ${order.time}` : (order.date || new Date().toLocaleDateString())
+      const orderDate = fullOrder.date && fullOrder.time
+        ? `${fullOrder.date}, ${fullOrder.time}`
+        : (fullOrder.date || new Date().toLocaleDateString())
       doc.text(`Date: ${orderDate}`, 105, 34, { align: 'center' })
       
       let startY = 45
       
       // Customer Information
-      if (order.customerName || order.customerPhone) {
+      if (fullOrder.customerName || fullOrder.customerPhone) {
         doc.setFontSize(12)
         doc.setTextColor(30, 30, 30)
         doc.text('Customer Information', 14, startY)
@@ -114,19 +124,63 @@ export function useGenericTableManagement(data, title, searchFields = []) {
         
         doc.setFontSize(10)
         doc.setTextColor(60, 60, 60)
-        if (order.customerName) {
-          doc.text(`Name: ${order.customerName}`, 14, startY)
+        if (fullOrder.customerName) {
+          doc.text(`Name: ${fullOrder.customerName}`, 14, startY)
           startY += 6
         }
-        if (order.customerPhone) {
-          doc.text(`Phone: ${order.customerPhone}`, 14, startY)
+        if (fullOrder.customerPhone) {
+          doc.text(`Phone: ${fullOrder.customerPhone}`, 14, startY)
           startY += 6
         }
-        startY += 5
+
+        // Customer Address (from order.address)
+        const addr = fullOrder.address || {}
+        const hasAnyAddressField =
+          addr.formattedAddress ||
+          addr.street ||
+          addr.address ||
+          addr.city ||
+          addr.state ||
+          addr.zipCode
+
+        // Main address line (without additionalDetails)
+        if (hasAnyAddressField) {
+          startY += 4
+          doc.text('Address:', 14, startY)
+          startY += 6
+
+          const baseParts = [
+            addr.formattedAddress || addr.address,
+            addr.street,
+            [addr.city, addr.state, addr.zipCode].filter(Boolean).join(', ')
+          ].filter(Boolean)
+
+          const addressText = baseParts.join(', ')
+          const addressLines = doc.splitTextToSize(addressText, 170)
+          addressLines.forEach((line) => {
+            doc.text(String(line), 18, startY)
+            startY += 5
+          })
+        }
+
+        // Additional address line: ALWAYS show separately if user filled it
+        if (addr.additionalDetails) {
+          startY += 4
+          doc.text('Additional Address:', 14, startY)
+          startY += 6
+
+          const additionalLines = doc.splitTextToSize(String(addr.additionalDetails), 170)
+          additionalLines.forEach((line) => {
+            doc.text(String(line), 18, startY)
+            startY += 5
+          })
+        }
+
+        startY += 4
       }
       
       // Restaurant Information
-      if (order.restaurant) {
+      if (fullOrder.restaurant) {
         doc.setFontSize(12)
         doc.setTextColor(30, 30, 30)
         doc.text('Restaurant', 14, startY)
@@ -134,17 +188,28 @@ export function useGenericTableManagement(data, title, searchFields = []) {
         
         doc.setFontSize(10)
         doc.setTextColor(60, 60, 60)
-        doc.text(order.restaurant, 14, startY)
-        startY += 10
+        doc.text(fullOrder.restaurant, 14, startY)
+        startY += 6
+
+        // Restaurant Address (if available from backend)
+        if (fullOrder.restaurantAddress) {
+          const restLines = doc.splitTextToSize(String(fullOrder.restaurantAddress), 170)
+          restLines.forEach((line) => {
+            doc.text(String(line), 14, startY)
+            startY += 5
+          })
+        }
+
+        startY += 6
       }
       
       // Order Items Table
-      if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-        const tableData = order.items.map((item) => [
+      if (fullOrder.items && Array.isArray(fullOrder.items) && fullOrder.items.length > 0) {
+        const tableData = fullOrder.items.map((item) => [
           item.quantity || 1,
           item.name || 'Unknown Item',
-          `₹${(item.price || 0).toFixed(2)}`,
-          `₹${((item.quantity || 1) * (item.price || 0)).toFixed(2)}`
+          money(item.price),
+          money((item.quantity || 1) * (item.price || 0))
         ])
         
         autoTable(doc, {
@@ -183,28 +248,28 @@ export function useGenericTableManagement(data, title, searchFields = []) {
       }
       
       // Total Amount
-      if (order.totalAmount) {
+      if (fullOrder.totalAmount) {
         doc.setFontSize(14)
         doc.setTextColor(30, 30, 30)
         doc.setFont(undefined, 'bold')
-        const totalAmount = typeof order.totalAmount === 'number' ? order.totalAmount.toFixed(2) : order.totalAmount
-        doc.text(`Total Amount: ₹${totalAmount}`, 14, startY)
+        const totalAmount = typeof fullOrder.totalAmount === 'number' ? fullOrder.totalAmount.toFixed(2) : fullOrder.totalAmount
+        doc.text(`Total Amount: ${money(totalAmount)}`, 14, startY)
         startY += 8
       }
       
       // Payment Status
-      if (order.paymentStatus) {
+      if (fullOrder.paymentStatus) {
         doc.setFontSize(10)
         doc.setTextColor(100, 100, 100)
         doc.setFont(undefined, 'normal')
-        doc.text(`Payment Status: ${order.paymentStatus}`, 14, startY)
+        doc.text(`Payment Status: ${fullOrder.paymentStatus}`, 14, startY)
         startY += 6
       }
       
       // Order Status
-      if (order.orderStatus) {
+      if (fullOrder.orderStatus) {
         doc.setFontSize(10)
-        doc.text(`Order Status: ${order.orderStatus}`, 14, startY)
+        doc.text(`Order Status: ${fullOrder.orderStatus}`, 14, startY)
       }
       
       // Save the PDF instantly
