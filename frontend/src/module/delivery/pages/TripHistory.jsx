@@ -341,14 +341,25 @@ export default function TripHistory() {
                     <p className="text-sm text-gray-600 mt-1">{trip.restaurant || trip.restaurantName || 'Unknown Restaurant'}</p>
                     {/* Payment: Paid with method (all trips here are delivered) */}
                     {(() => {
-                      const paymentMethod = trip.paymentMethod || trip.payment?.method || 'razorpay';
+                      const paymentMethod = (trip.paymentMethod || trip.payment?.method || 'razorpay').toLowerCase();
                       const isCOD = paymentMethod === 'cash' || paymentMethod === 'cod';
-                      const methodLabel = isCOD ? 'COD' : 'Online';
+                      const isPayAtHotel = paymentMethod === 'pay_at_hotel';
+                      const badgeClasses = isPayAtHotel
+                        ? 'bg-orange-100 text-orange-700'
+                        : isCOD
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-green-100 text-green-700';
+
+                      const cashAmount = trip.cashCollectedAmount || trip.orderTotal || 0;
+
                       return (
-                        <span className={`inline-block mt-2 text-xs font-medium px-2 py-1 rounded-full ${
-                          isCOD ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
-                        }`}>
-                          Paid · {methodLabel}
+                        <span className={`inline-flex items-center gap-1 mt-2 text-xs font-medium px-2 py-1 rounded-full ${badgeClasses}`}>
+                          <span>Paid · {isPayAtHotel ? 'Pay at Hotel' : isCOD ? 'COD' : 'Online'}</span>
+                          {isPayAtHotel && cashAmount > 0 && (
+                            <span className="font-semibold">
+                              · ₹{cashAmount.toFixed ? cashAmount.toFixed(0) : cashAmount}
+                            </span>
+                          )}
                         </span>
                       );
                     })()}
@@ -369,8 +380,11 @@ export default function TripHistory() {
                   <div className="text-right">
                     <p className="text-xs text-gray-500">Earning</p>
                     <p className="text-sm font-semibold text-black mt-1">
-                      ₹{(trip.earning ?? trip.amount ?? 0).toFixed ? (trip.earning ?? trip.amount ?? 0).toFixed(0) : trip.earning ?? trip.amount ?? 0}
+                      ₹{(trip.earning ?? trip.amount ?? 0).toFixed
+                        ? (trip.earning ?? trip.amount ?? 0).toFixed(0)
+                        : trip.earning ?? trip.amount ?? 0}
                     </p>
+                    {/* Extra line optional; keeping only earning since amount is now in badge */}
                   </div>
                 </div>
               </div>

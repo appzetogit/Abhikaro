@@ -902,7 +902,7 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
               ],
             })
               .select(
-                "hotelId hotelReference pricing.total commissionBreakdown.hotel status payment.method cashCollected",
+                "hotelId hotelReference pricing.total commissionBreakdown.hotel status payment.method cashCollected hotelCashSettled",
               )
               .lean();
 
@@ -969,7 +969,15 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
           const isCashMethod =
             paymentMethod === "pay_at_hotel" || paymentMethod === "cash";
 
-          if (isCashMethod && order.cashCollected === true) {
+          // Cash collected outstanding at hotel (same logic as hotel app):
+          // include only cash/pay_at_hotel orders where hotel has collected
+          // cash but NOT yet settled to platform (hotelCashSettled !== true)
+          const isOutstandingCash =
+            isCashMethod === true &&
+            order.cashCollected === true &&
+            order.hotelCashSettled !== true;
+
+          if (isOutstandingCash) {
             stats.totalCashCollected += totalAmount;
           }
         }

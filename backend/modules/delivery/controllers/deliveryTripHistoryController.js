@@ -262,6 +262,15 @@ export const getTripHistory = asyncHandler(async (req, res) => {
         paymentMethod = 'cash';
       }
 
+      const totalAmount =
+        (order.pricing && typeof order.pricing.total === "number"
+          ? order.pricing.total
+          : 0) || 0;
+
+      const isCashPayment =
+        paymentMethod === "cash" || paymentMethod === "pay_at_hotel";
+      const cashCollectedAmount = isCashPayment ? totalAmount : 0;
+
       return {
         id: order._id.toString(),
         orderId: order.orderId,
@@ -276,6 +285,8 @@ export const getTripHistory = asyncHandler(async (req, res) => {
         payment: {
           method: paymentMethod
         },
+        orderTotal: totalAmount,
+        cashCollectedAmount,
         date: order.createdAt,
         createdAt: order.createdAt,
         deliveredAt: order.deliveredAt,
