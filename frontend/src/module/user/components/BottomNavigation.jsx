@@ -21,7 +21,7 @@ export default function BottomNavigation() {
 
   return (
     <div
-      className="md:hidden fixed bottom-3 left-0 right-0 bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-800 z-[60] shadow-lg safe-area-inset-bottom rounded-t-lg"
+      className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-800 z-[60] shadow-lg safe-area-inset-bottom"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0)' }}
     >
       <div className="flex items-center justify-around h-auto px-4 sm:px-6">
