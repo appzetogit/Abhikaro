@@ -78,7 +78,6 @@ export default function ItemDetailsPage() {
   const [imageFiles, setImageFiles] = useState(new Map()) // Track File objects by preview URL
   const [imageBase64Data, setImageBase64Data] = useState(new Map()) // Track base64 data for Flutter-selected images (key: previewUrl, value: {base64, mimeType, fileName})
   const [uploadingImages, setUploadingImages] = useState(false)
-  const [selectingImage, setSelectingImage] = useState(false) // Track if image selection is in progress
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [touchStart, setTouchStart] = useState(null)
   const [touchEnd, setTouchEnd] = useState(null)
@@ -389,154 +388,82 @@ export default function ItemDetailsPage() {
     }
   ]
 
-  // Handler for Flutter camera callback - SIMPLIFIED
+  // Handler for Flutter camera callback - Same as Onboarding.jsx
   const handleFlutterCamera = () => {
-    if (selectingImage) {
-      return
-    }
-
     if (!window.flutter_inappwebview) {
       document.getElementById('image-upload-camera')?.click()
       return
     }
 
-    setSelectingImage(true)
-    
-    // Simple timeout - 10 seconds
-    const timeoutId = setTimeout(() => {
-      setSelectingImage(false)
-      toast.error('Camera timeout. Using native file picker...')
-      document.getElementById('image-upload-camera')?.click()
-    }, 10000)
-    
-    window.flutter_inappwebview.callHandler('openCamera')
-      .then((result) => {
-        clearTimeout(timeoutId)
-        setSelectingImage(false)
+    window.flutter_inappwebview.callHandler('openCamera').then((result) => {
+      if (result && result.success && result.base64) {
+        const file = base64ToFile(
+          result.base64,
+          result.mimeType || 'image/jpeg',
+          result.fileName || `camera_${Date.now()}.jpg`
+        )
+
+        // Create preview URL and store
+        const previewUrl = URL.createObjectURL(file)
+        const newImageFilesMap = new Map(imageFiles)
+        newImageFilesMap.set(previewUrl, file)
         
-        if (!result || !result.success || !result.base64) {
-          toast.error('Image capture cancelled or failed')
-          return
-        }
-
-        try {
-          const file = base64ToFile(
-            result.base64,
-            result.mimeType || 'image/jpeg',
-            result.fileName || `camera_${Date.now()}.jpg`
-          )
-
-          const base64Size = (result.base64.length * 3) / 4
-          if (base64Size > 5 * 1024 * 1024) {
-            toast.error('Image size exceeds 5MB limit.')
-            return
-          }
-
-          const previewUrl = URL.createObjectURL(file)
-          const newImageFilesMap = new Map(imageFiles)
-          newImageFilesMap.set(previewUrl, file)
-          
-          const newBase64DataMap = new Map(imageBase64Data)
-          newBase64DataMap.set(previewUrl, {
-            base64: result.base64,
-            mimeType: result.mimeType || 'image/jpeg',
-            fileName: result.fileName || file.name
-          })
-          
-          setImages(prev => [...prev, previewUrl])
-          setImageFiles(newImageFilesMap)
-          setImageBase64Data(newBase64DataMap)
-          toast.success('Image captured successfully')
-        } catch (error) {
-          console.error('Error processing image:', error)
-          toast.error('Failed to process image')
-        }
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId)
-        setSelectingImage(false)
-        console.error('Camera handler error:', error)
-        toast.error('Using native file picker...')
-        setTimeout(() => {
-          document.getElementById('image-upload-camera')?.click()
-        }, 300)
-      })
+        // Store base64 for upload
+        const newBase64DataMap = new Map(imageBase64Data)
+        newBase64DataMap.set(previewUrl, {
+          base64: result.base64,
+          mimeType: result.mimeType || 'image/jpeg',
+          fileName: result.fileName || file.name
+        })
+        
+        setImages(prev => [...prev, previewUrl])
+        setImageFiles(newImageFilesMap)
+        setImageBase64Data(newBase64DataMap)
+        toast.success('Image captured successfully')
+      }
+    }).catch((error) => {
+      console.error('Error calling Flutter openCamera:', error)
+      toast.error('Failed to capture image from camera')
+    })
   }
 
-  // Handler for Flutter gallery callback - SIMPLIFIED
+  // Handler for Flutter gallery callback - Same as Onboarding.jsx
   const handleFlutterGallery = () => {
-    if (selectingImage) return
-
-    // If Flutter not available, use native file input
     if (!window.flutter_inappwebview) {
       document.getElementById('image-upload-gallery')?.click()
       return
     }
 
-    setSelectingImage(true)
-    
-    // Simple timeout - 10 seconds max
-    const timeoutId = setTimeout(() => {
-      setSelectingImage(false)
-      toast.error('Gallery timeout. Using native file picker...')
-      document.getElementById('image-upload-gallery')?.click()
-    }, 10000)
-    
-    window.flutter_inappwebview.callHandler('openGallery')
-      .then((result) => {
-        clearTimeout(timeoutId)
-        setSelectingImage(false) // ALWAYS reset state
+    window.flutter_inappwebview.callHandler('openGallery').then((result) => {
+      if (result && result.success && result.base64) {
+        const file = base64ToFile(
+          result.base64,
+          result.mimeType || 'image/jpeg',
+          result.fileName || `gallery_${Date.now()}.jpg`
+        )
+
+        // Create preview URL and store
+        const previewUrl = URL.createObjectURL(file)
+        const newImageFilesMap = new Map(imageFiles)
+        newImageFilesMap.set(previewUrl, file)
         
-        if (!result || !result.success || !result.base64) {
-          toast.error('Image selection cancelled')
-          return
-        }
-
-        try {
-          const file = base64ToFile(
-            result.base64,
-            result.mimeType || 'image/jpeg',
-            result.fileName || `gallery_${Date.now()}.jpg`
-          )
-
-          // Check size
-          const base64Size = (result.base64.length * 3) / 4
-          if (base64Size > 5 * 1024 * 1024) {
-            toast.error('Image size exceeds 5MB limit.')
-            return
-          }
-
-          // Create preview and store
-          const previewUrl = URL.createObjectURL(file)
-          const newImageFilesMap = new Map(imageFiles)
-          newImageFilesMap.set(previewUrl, file)
-          
-          // Store base64 for upload
-          const newBase64DataMap = new Map(imageBase64Data)
-          newBase64DataMap.set(previewUrl, {
-            base64: result.base64,
-            mimeType: result.mimeType || 'image/jpeg',
-            fileName: result.fileName || file.name
-          })
-          
-          setImages(prev => [...prev, previewUrl])
-          setImageFiles(newImageFilesMap)
-          setImageBase64Data(newBase64DataMap)
-          toast.success('Image selected successfully')
-        } catch (error) {
-          console.error('Error processing image:', error)
-          toast.error('Failed to process image')
-        }
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId)
-        setSelectingImage(false) // ALWAYS reset state
-        console.error('Gallery handler error:', error)
-        // Fallback to native
-        setTimeout(() => {
-          document.getElementById('image-upload-gallery')?.click()
-        }, 300)
-      })
+        // Store base64 for upload
+        const newBase64DataMap = new Map(imageBase64Data)
+        newBase64DataMap.set(previewUrl, {
+          base64: result.base64,
+          mimeType: result.mimeType || 'image/jpeg',
+          fileName: result.fileName || file.name
+        })
+        
+        setImages(prev => [...prev, previewUrl])
+        setImageFiles(newImageFilesMap)
+        setImageBase64Data(newBase64DataMap)
+        toast.success('Image selected successfully')
+      }
+    }).catch((error) => {
+      console.error('Error calling Flutter openGallery:', error)
+      toast.error('Failed to select image from gallery')
+    })
   }
 
   const handleImageAdd = (e) => {
@@ -1322,20 +1249,10 @@ export default function ItemDetailsPage() {
                   document.getElementById('image-upload-gallery')?.click()
                 }
               }}
-              disabled={selectingImage}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-xl text-sm font-semibold cursor-pointer hover:bg-gray-50 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-xl text-sm font-semibold cursor-pointer hover:bg-gray-50 transition-all shadow-sm active:scale-95"
             >
-              {selectingImage ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Opening...</span>
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  <span>Gallery</span>
-                </>
-              )}
+              <Upload className="w-4 h-4" />
+              <span>Gallery</span>
             </button>
 
             {/* Camera Input */}
@@ -1356,20 +1273,10 @@ export default function ItemDetailsPage() {
                   document.getElementById('image-upload-camera')?.click()
                 }
               }}
-              disabled={selectingImage}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-gray-900 to-gray-800 text-white rounded-xl text-sm font-semibold cursor-pointer hover:from-gray-800 hover:to-gray-700 transition-all shadow-md hover:shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-gray-900 to-gray-800 text-white rounded-xl text-sm font-semibold cursor-pointer hover:from-gray-800 hover:to-gray-700 transition-all shadow-md hover:shadow-lg active:scale-95"
             >
-              {selectingImage ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Opening...</span>
-                </>
-              ) : (
-                <>
-                  <Camera className="w-4 h-4" />
-                  <span>Camera</span>
-                </>
-              )}
+              <Camera className="w-4 h-4" />
+              <span>Camera</span>
             </button>
           </div>
         </div>
