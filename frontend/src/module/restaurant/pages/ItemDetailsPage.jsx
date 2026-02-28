@@ -389,210 +389,153 @@ export default function ItemDetailsPage() {
     }
   ]
 
-  // Handler for Flutter camera callback
+  // Handler for Flutter camera callback - SIMPLIFIED
   const handleFlutterCamera = () => {
-    if (!window.flutter_inappwebview) {
-      console.warn('Flutter WebView not available')
+    if (selectingImage) {
       return
     }
 
-    window.flutter_inappwebview.callHandler('openCamera').then((result) => {
-      if (result && result.success && result.base64) {
-        const file = base64ToFile(
-          result.base64,
-          result.mimeType || 'image/jpeg',
-          result.fileName || `camera_${Date.now()}.jpg`
-        )
+    if (!window.flutter_inappwebview) {
+      document.getElementById('image-upload-camera')?.click()
+      return
+    }
 
-        // Validate file size (max 5MB) - approximate check for base64
-        const base64Size = (result.base64.length * 3) / 4
-        const maxSize = 5 * 1024 * 1024 // 5MB
-        if (base64Size > maxSize) {
-          toast.error('Image size exceeds 5MB limit.')
+    setSelectingImage(true)
+    
+    // Simple timeout - 10 seconds
+    const timeoutId = setTimeout(() => {
+      setSelectingImage(false)
+      toast.error('Camera timeout. Using native file picker...')
+      document.getElementById('image-upload-camera')?.click()
+    }, 10000)
+    
+    window.flutter_inappwebview.callHandler('openCamera')
+      .then((result) => {
+        clearTimeout(timeoutId)
+        setSelectingImage(false)
+        
+        if (!result || !result.success || !result.base64) {
+          toast.error('Image capture cancelled or failed')
           return
         }
 
-        // Create preview URL and add to images
-        const previewUrl = URL.createObjectURL(file)
-        const newImageFilesMap = new Map(imageFiles)
-        newImageFilesMap.set(previewUrl, file)
-        
-        // Store base64 data for Flutter-selected images (for direct base64 upload)
-        const newBase64DataMap = new Map(imageBase64Data)
-        newBase64DataMap.set(previewUrl, {
-          base64: result.base64,
-          mimeType: result.mimeType || 'image/jpeg',
-          fileName: result.fileName || file.name
-        })
-        
-        console.log('📸 Flutter camera image added:', {
-          previewUrl,
-          fileName: file.name,
-          fileSize: file.size,
-          imageFilesMapSize: newImageFilesMap.size,
-          hasBase64Data: true
-        })
-        
-        setImages(prev => [...prev, previewUrl])
-        setImageFiles(newImageFilesMap)
-        setImageBase64Data(newBase64DataMap)
-        toast.success('Image captured successfully')
-      } else {
-        toast.error('Failed to capture image')
-      }
-    }).catch((error) => {
-      console.error('Error calling Flutter openCamera:', error)
-      toast.error('Failed to capture image from camera')
-    })
+        try {
+          const file = base64ToFile(
+            result.base64,
+            result.mimeType || 'image/jpeg',
+            result.fileName || `camera_${Date.now()}.jpg`
+          )
+
+          const base64Size = (result.base64.length * 3) / 4
+          if (base64Size > 5 * 1024 * 1024) {
+            toast.error('Image size exceeds 5MB limit.')
+            return
+          }
+
+          const previewUrl = URL.createObjectURL(file)
+          const newImageFilesMap = new Map(imageFiles)
+          newImageFilesMap.set(previewUrl, file)
+          
+          const newBase64DataMap = new Map(imageBase64Data)
+          newBase64DataMap.set(previewUrl, {
+            base64: result.base64,
+            mimeType: result.mimeType || 'image/jpeg',
+            fileName: result.fileName || file.name
+          })
+          
+          setImages(prev => [...prev, previewUrl])
+          setImageFiles(newImageFilesMap)
+          setImageBase64Data(newBase64DataMap)
+          toast.success('Image captured successfully')
+        } catch (error) {
+          console.error('Error processing image:', error)
+          toast.error('Failed to process image')
+        }
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId)
+        setSelectingImage(false)
+        console.error('Camera handler error:', error)
+        toast.error('Using native file picker...')
+        setTimeout(() => {
+          document.getElementById('image-upload-camera')?.click()
+        }, 300)
+      })
   }
 
-  // Handler for Flutter gallery callback
+  // Handler for Flutter gallery callback - SIMPLIFIED
   const handleFlutterGallery = () => {
-    // Prevent multiple simultaneous calls
-    if (selectingImage) {
-      console.warn('Image selection already in progress')
-      return
-    }
+    if (selectingImage) return
 
+    // If Flutter not available, use native file input
     if (!window.flutter_inappwebview) {
-      console.warn('Flutter WebView not available, using native file input')
-      // Fallback to native file input
       document.getElementById('image-upload-gallery')?.click()
       return
     }
 
     setSelectingImage(true)
-    console.log('🖼️ Calling Flutter openGallery handler...')
     
-    // Add timeout to detect if handler is not responding
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error('Gallery handler timeout - no response after 30 seconds'))
-      }, 30000) // 30 seconds timeout
-    })
+    // Simple timeout - 10 seconds max
+    const timeoutId = setTimeout(() => {
+      setSelectingImage(false)
+      toast.error('Gallery timeout. Using native file picker...')
+      document.getElementById('image-upload-gallery')?.click()
+    }, 10000)
     
-    const handlerPromise = window.flutter_inappwebview.callHandler('openGallery')
-    
-    Promise.race([handlerPromise, timeoutPromise])
+    window.flutter_inappwebview.callHandler('openGallery')
       .then((result) => {
-        console.log('📥 Flutter openGallery response received:', {
-          hasResult: !!result,
-          success: result?.success,
-          hasBase64: !!result?.base64,
-          base64Length: result?.base64?.length,
-          mimeType: result?.mimeType,
-          fileName: result?.fileName,
-          error: result?.error
-        })
+        clearTimeout(timeoutId)
+        setSelectingImage(false) // ALWAYS reset state
         
-        if (!result) {
-          console.error('❌ No result from Flutter openGallery')
-          toast.error('No response from gallery. Please try again.')
-          // Fallback to native file input
-          setTimeout(() => {
-            document.getElementById('image-upload-gallery')?.click()
-          }, 500)
-          return
-        }
-        
-        // Check for error in response
-        if (result.error) {
-          console.error('❌ Error in Flutter openGallery response:', result.error)
-          toast.error(`Gallery error: ${result.error}`)
-          return
-        }
-        
-        if (result.success === false || !result.success) {
-          console.error('❌ Flutter openGallery returned success: false', result)
-          toast.error('Image selection cancelled or failed')
-          return
-        }
-        
-        if (!result.base64) {
-          console.error('❌ No base64 data in Flutter openGallery response', result)
-          toast.error('Failed to get image data. Please try again.')
+        if (!result || !result.success || !result.base64) {
+          toast.error('Image selection cancelled')
           return
         }
 
         try {
-          // Validate base64 string
-          if (typeof result.base64 !== 'string' || result.base64.trim() === '') {
-            console.error('❌ Invalid base64 string')
-            toast.error('Invalid image data received. Please try again.')
-            return
-          }
-
           const file = base64ToFile(
             result.base64,
             result.mimeType || 'image/jpeg',
             result.fileName || `gallery_${Date.now()}.jpg`
           )
 
-          // Validate file size (max 5MB) - approximate check for base64
+          // Check size
           const base64Size = (result.base64.length * 3) / 4
-          const maxSize = 5 * 1024 * 1024 // 5MB
-          if (base64Size > maxSize) {
+          if (base64Size > 5 * 1024 * 1024) {
             toast.error('Image size exceeds 5MB limit.')
             return
           }
 
-          // Validate file object
-          if (!file || !(file instanceof File)) {
-            console.error('❌ Invalid file object created from base64')
-            toast.error('Failed to process image. Please try again.')
-            return
-          }
-
-          // Create preview URL and add to images
+          // Create preview and store
           const previewUrl = URL.createObjectURL(file)
           const newImageFilesMap = new Map(imageFiles)
           newImageFilesMap.set(previewUrl, file)
           
-          console.log('✅ Flutter gallery image added successfully:', {
-            previewUrl: previewUrl.substring(0, 50) + '...',
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type,
-            imageFilesMapSize: newImageFilesMap.size
+          // Store base64 for upload
+          const newBase64DataMap = new Map(imageBase64Data)
+          newBase64DataMap.set(previewUrl, {
+            base64: result.base64,
+            mimeType: result.mimeType || 'image/jpeg',
+            fileName: result.fileName || file.name
           })
           
           setImages(prev => [...prev, previewUrl])
           setImageFiles(newImageFilesMap)
+          setImageBase64Data(newBase64DataMap)
           toast.success('Image selected successfully')
-          setSelectingImage(false)
-        } catch (fileError) {
-          console.error('❌ Error processing gallery image:', fileError)
-          console.error('File error details:', {
-            message: fileError.message,
-            stack: fileError.stack,
-            base64Length: result?.base64?.length,
-            mimeType: result?.mimeType
-          })
-          toast.error('Failed to process image. Please try again.')
-          setSelectingImage(false)
+        } catch (error) {
+          console.error('Error processing image:', error)
+          toast.error('Failed to process image')
         }
       })
       .catch((error) => {
-        console.error('❌ Error calling Flutter openGallery:', error)
-        console.error('Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        })
-        
-        setSelectingImage(false)
-        
-        // Check if handler is not registered or timeout
-        if (error.message && (error.message.includes('handler') || error.message.includes('not found') || error.message.includes('timeout'))) {
-          console.warn('⚠️ Flutter gallery handler not available, falling back to native file input')
-          toast.error('Gallery handler not available. Using native file picker...')
-          // Fallback to native file input
-          setTimeout(() => {
-            document.getElementById('image-upload-gallery')?.click()
-          }, 500)
-        } else {
-          toast.error('Failed to open gallery. Please try again.')
-        }
+        clearTimeout(timeoutId)
+        setSelectingImage(false) // ALWAYS reset state
+        console.error('Gallery handler error:', error)
+        // Fallback to native
+        setTimeout(() => {
+          document.getElementById('image-upload-gallery')?.click()
+        }, 300)
       })
   }
 
