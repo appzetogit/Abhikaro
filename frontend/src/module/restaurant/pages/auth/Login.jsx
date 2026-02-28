@@ -613,20 +613,6 @@ export default function RestaurantLogin() {
           </div>
         </div>
       </div>
-
-      {/* Bottom Section - Terms and Conditions */}
-      <div className="px-6 pb-8 pt-4">
-        <div className="w-full max-w-md mx-auto">
-          <p className="text-xs text-center text-gray-600 leading-relaxed">
-            By continuing, you agree to our{" "}
-            <Link to="/restaurant/terms" className="underline hover:text-gray-800">Terms of Service</Link>
-            {" | "}
-            <Link to="/restaurant/privacy" className="underline hover:text-gray-800">Privacy Policy</Link>
-            {" | "}
-            <Link to="/restaurant/code-of-conduct" className="underline hover:text-gray-800">Code of Conduct</Link>
-          </p>
-        </div>
-      </div>
     </div>
   )
 }
