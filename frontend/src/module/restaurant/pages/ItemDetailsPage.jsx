@@ -438,22 +438,38 @@ export default function ItemDetailsPage() {
     })
   }
 
-  // Handler for Flutter gallery callback - Same as Onboarding.jsx
+  // Handler for Flutter gallery callback - EXACT same as camera handler
   const handleFlutterGallery = () => {
     if (!window.flutter_inappwebview) {
       document.getElementById('image-upload-gallery')?.click()
       return
     }
 
-    // Don't show error immediately - wait for result
+    console.log('🖼️ Calling Flutter openGallery handler...')
+    
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
+      console.log('📥 Flutter openGallery response:', result)
+      
       if (result && result.success && result.base64) {
         try {
+          console.log('✅ Gallery image received, processing...', {
+            hasBase64: !!result.base64,
+            base64Length: result.base64?.length,
+            mimeType: result.mimeType,
+            fileName: result.fileName
+          })
+          
           const file = base64ToFile(
             result.base64,
             result.mimeType || 'image/jpeg',
             result.fileName || `gallery_${Date.now()}.jpg`
           )
+
+          console.log('✅ File created from base64:', {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type
+          })
 
           // Create preview URL and store
           const previewUrl = URL.createObjectURL(file)
@@ -463,25 +479,45 @@ export default function ItemDetailsPage() {
           // Store base64 for upload - CRITICAL: Store raw base64 without any modifications
           const newBase64DataMap = new Map(imageBase64Data)
           newBase64DataMap.set(previewUrl, {
-            base64: result.base64, // Store raw base64 string
+            base64: result.base64, // Store raw base64 string - EXACTLY as received
             mimeType: result.mimeType || 'image/jpeg',
             fileName: result.fileName || file.name
+          })
+          
+          console.log('✅ Storing image data:', {
+            previewUrl: previewUrl.substring(0, 50) + '...',
+            hasBase64Data: !!newBase64DataMap.get(previewUrl)?.base64,
+            base64DataLength: newBase64DataMap.get(previewUrl)?.base64?.length
           })
           
           setImages(prev => [...prev, previewUrl])
           setImageFiles(newImageFilesMap)
           setImageBase64Data(newBase64DataMap)
+          
+          console.log('✅ Gallery image added successfully to state')
           toast.success('Image selected successfully')
         } catch (error) {
-          console.error('Error processing gallery image:', error)
+          console.error('❌ Error processing gallery image:', error)
+          console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            result: result
+          })
           toast.error('Failed to process image')
         }
       } else if (result && result.success === false) {
         // User cancelled - don't show error
-        console.log('User cancelled image selection')
+        console.log('ℹ️ User cancelled image selection')
+      } else {
+        console.warn('⚠️ Unexpected gallery response:', result)
       }
     }).catch((error) => {
-      console.error('Error calling Flutter openGallery:', error)
+      console.error('❌ Error calling Flutter openGallery:', error)
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
       // Only show error if it's not a cancellation
       if (!error.message || !error.message.includes('cancel')) {
         toast.error('Failed to select image from gallery')
@@ -706,7 +742,21 @@ export default function ItemDetailsPage() {
       // For Flutter-selected images (with base64 data), use uploadBase64 API (more reliable)
       // For native file inputs, use uploadMedia API
       const filesToUpload = Array.from(imageFiles.entries()) // Get [previewUrl, file] pairs
-      console.log('Files to upload:', filesToUpload.length, filesToUpload)
+      console.log('=== UPLOAD DEBUG ===')
+      console.log('Files to upload:', filesToUpload.length)
+      console.log('Image files map size:', imageFiles.size)
+      console.log('Base64 data map size:', imageBase64Data.size)
+      filesToUpload.forEach(([previewUrl, file], idx) => {
+        const base64Data = imageBase64Data.get(previewUrl)
+        console.log(`File ${idx + 1}:`, {
+          previewUrl: previewUrl.substring(0, 50) + '...',
+          fileName: file?.name,
+          fileSize: file?.size,
+          hasBase64: !!base64Data,
+          base64Length: base64Data?.base64?.length
+        })
+      })
+      console.log('===================')
 
       if (filesToUpload.length > 0) {
         toast.info(`Uploading ${filesToUpload.length} image(s)...`)
