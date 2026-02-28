@@ -76,6 +76,7 @@ export default function ItemDetailsPage() {
   const [selectedTags, setSelectedTags] = useState([])
   const [images, setImages] = useState([])
   const [imageFiles, setImageFiles] = useState(new Map()) // Track File objects by preview URL
+  const [imageBase64Data, setImageBase64Data] = useState(new Map()) // Track base64 data for Flutter-selected images (key: previewUrl, value: {base64, mimeType, fileName})
   const [uploadingImages, setUploadingImages] = useState(false)
   const [selectingImage, setSelectingImage] = useState(false) // Track if image selection is in progress
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
@@ -416,15 +417,25 @@ export default function ItemDetailsPage() {
         const newImageFilesMap = new Map(imageFiles)
         newImageFilesMap.set(previewUrl, file)
         
+        // Store base64 data for Flutter-selected images (for direct base64 upload)
+        const newBase64DataMap = new Map(imageBase64Data)
+        newBase64DataMap.set(previewUrl, {
+          base64: result.base64,
+          mimeType: result.mimeType || 'image/jpeg',
+          fileName: result.fileName || file.name
+        })
+        
         console.log('📸 Flutter camera image added:', {
           previewUrl,
           fileName: file.name,
           fileSize: file.size,
-          imageFilesMapSize: newImageFilesMap.size
+          imageFilesMapSize: newImageFilesMap.size,
+          hasBase64Data: true
         })
         
         setImages(prev => [...prev, previewUrl])
         setImageFiles(newImageFilesMap)
+        setImageBase64Data(newBase64DataMap)
         toast.success('Image captured successfully')
       } else {
         toast.error('Failed to capture image')
@@ -635,6 +646,14 @@ export default function ItemDetailsPage() {
     const imageToDelete = images[index]
     const newImages = images.filter((_, i) => i !== index)
     const newImageFilesMap = new Map(imageFiles)
+    const newBase64DataMap = new Map(imageBase64Data)
+    
+    // Clean up blob URL and remove from maps
+    if (imageToDelete && imageToDelete.startsWith('blob:')) {
+      URL.revokeObjectURL(imageToDelete)
+    }
+    newImageFilesMap.delete(imageToDelete)
+    newBase64DataMap.delete(imageToDelete)
 
     // Remove the file mapping and revoke the blob URL if it's a preview (new upload)
     if (imageToDelete && imageToDelete.startsWith('blob:')) {
@@ -656,6 +675,10 @@ export default function ItemDetailsPage() {
 
     setImages(newImages)
     setImageFiles(newImageFilesMap)
+    // Also remove from base64 data map
+    const newBase64DataMap = new Map(imageBase64Data)
+    newBase64DataMap.delete(imageToDelete)
+    setImageBase64Data(newBase64DataMap)
 
     // Adjust current image index after deletion
     if (newImages.length === 0) {
@@ -807,53 +830,116 @@ export default function ItemDetailsPage() {
       console.log('Existing image URLs (already uploaded):', existingImageUrls)
       console.log('Image files map:', imageFiles)
 
-      // Upload new File objects to Cloudinary (files that are blob URLs)
-      const filesToUpload = Array.from(imageFiles.values())
+      // Upload new images to Cloudinary
+      // For Flutter-selected images (with base64 data), use uploadBase64 API (more reliable)
+      // For native file inputs, use uploadMedia API
+      const filesToUpload = Array.from(imageFiles.entries()) // Get [previewUrl, file] pairs
       console.log('Files to upload:', filesToUpload.length, filesToUpload)
 
       if (filesToUpload.length > 0) {
         toast.info(`Uploading ${filesToUpload.length} image(s)...`)
         for (let i = 0; i < filesToUpload.length; i++) {
-          const file = filesToUpload[i]
+          const [previewUrl, file] = filesToUpload[i]
+          const base64Data = imageBase64Data.get(previewUrl)
+          
           try {
-            console.log(`📤 Uploading image ${i + 1}/${filesToUpload.length}:`, {
-              name: file.name,
-              size: file.size,
-              type: file.type
-            })
+            let imageUrl = null
             
-            // Validate file before upload
-            if (!file || !(file instanceof File)) {
-              console.error(`❌ Invalid file object at index ${i}:`, file)
-              throw new Error(`Invalid file object: ${file?.name || 'unknown'}`)
+            // If base64 data exists (Flutter-selected image), use uploadBase64 API
+            if (base64Data && base64Data.base64) {
+              console.log(`📤 Uploading image ${i + 1}/${filesToUpload.length} via base64:`, {
+                fileName: base64Data.fileName,
+                mimeType: base64Data.mimeType,
+                base64Length: base64Data.base64.length
+              })
+              
+              try {
+                const uploadResponse = await uploadAPI.uploadBase64(
+                  base64Data.base64,
+                  base64Data.mimeType,
+                  base64Data.fileName,
+                  { folder: 'appzeto/restaurant/menu-items' }
+                )
+                
+                console.log(`📥 Base64 upload response for image ${i + 1}:`, {
+                  success: uploadResponse?.data?.success,
+                  hasData: !!uploadResponse?.data?.data,
+                  hasUrl: !!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)
+                })
+                
+                imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
+                if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
+                  uploadedImageUrls.push(imageUrl)
+                  console.log(`✅ Successfully uploaded image ${i + 1} via base64:`, imageUrl)
+                } else {
+                  console.error('❌ Base64 upload response missing URL:', uploadResponse)
+                  throw new Error("Failed to get uploaded image URL from base64 upload response")
+                }
+              } catch (base64Error) {
+                console.error(`❌ Base64 upload failed for image ${i + 1}, trying File upload as fallback:`, base64Error)
+                // Fallback to File upload if base64 upload fails
+                if (!file || !(file instanceof File)) {
+                  throw new Error(`Base64 upload failed and no valid File object available: ${base64Error.message}`)
+                }
+                // Continue to File upload below
+              }
             }
             
-            const uploadResponse = await uploadAPI.uploadMedia(file, {
-              folder: 'appzeto/restaurant/menu-items'
-            })
-            
-            console.log(`📥 Upload response for image ${i + 1}:`, {
-              success: uploadResponse?.data?.success,
-              hasData: !!uploadResponse?.data?.data,
-              hasUrl: !!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)
-            })
-            
-            const imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
-            if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
-              uploadedImageUrls.push(imageUrl)
-              console.log(`✅ Successfully uploaded image ${i + 1}:`, imageUrl)
-            } else {
-              console.error('❌ Upload response missing URL:', uploadResponse)
-              throw new Error("Failed to get uploaded image URL from response")
+            // If base64 upload didn't happen or failed, use File upload
+            if (!imageUrl && file) {
+              console.log(`📤 Uploading image ${i + 1}/${filesToUpload.length} via File:`, {
+                name: file.name,
+                size: file.size,
+                type: file.type
+              })
+              
+              // Validate file before upload
+              if (!file || !(file instanceof File)) {
+                console.error(`❌ Invalid file object at index ${i}:`, file)
+                throw new Error(`Invalid file object: ${file?.name || 'unknown'}`)
+              }
+              
+              const uploadResponse = await uploadAPI.uploadMedia(file, {
+                folder: 'appzeto/restaurant/menu-items'
+              })
+              
+              console.log(`📥 File upload response for image ${i + 1}:`, {
+                success: uploadResponse?.data?.success,
+                hasData: !!uploadResponse?.data?.data,
+                hasUrl: !!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)
+              })
+              
+              imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
+              if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
+                uploadedImageUrls.push(imageUrl)
+                console.log(`✅ Successfully uploaded image ${i + 1} via File:`, imageUrl)
+              } else {
+                console.error('❌ File upload response missing URL:', uploadResponse)
+                throw new Error("Failed to get uploaded image URL from file upload response")
+              }
             }
+            
+            // If still no imageUrl, throw error
+            if (!imageUrl) {
+              throw new Error("Failed to upload image: No URL received from either base64 or file upload")
+            }
+            
           } catch (uploadError) {
-            console.error(`❌ Error uploading image ${i + 1} (${file?.name || 'unknown'}):`, uploadError)
+            const fileName = base64Data?.fileName || file?.name || 'image'
+            console.error(`❌ Error uploading image ${i + 1} (${fileName}):`, uploadError)
             console.error('Upload error details:', {
               message: uploadError.message,
               response: uploadError.response?.data,
-              status: uploadError.response?.status
+              status: uploadError.response?.status,
+              hasBase64: !!base64Data,
+              hasFile: !!(file && file instanceof File)
             })
-            toast.error(`Failed to upload ${file?.name || 'image'}. Please try again.`)
+            
+            // Show more detailed error message
+            const errorMessage = uploadError.response?.data?.message 
+              || uploadError.message 
+              || 'Unknown error occurred'
+            toast.error(`Failed to upload ${fileName}. ${errorMessage}`)
             setUploadingImages(false)
             return
           }
