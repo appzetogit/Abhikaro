@@ -59,11 +59,13 @@ export default function RestaurantCommission() {
     }
 
     const query = searchQuery.toLowerCase().trim()
-    return approvedRestaurants.filter(restaurant =>
-      restaurant.name?.toLowerCase().includes(query) ||
-      restaurant.restaurantId?.toLowerCase().includes(query) ||
-      restaurant.ownerName?.toLowerCase().includes(query)
-    )
+    return approvedRestaurants.filter(restaurant => {
+      const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || ''
+      return restaurantName.toLowerCase().includes(query) ||
+        restaurant.restaurantId?.toLowerCase().includes(query) ||
+        restaurant.ownerName?.toLowerCase().includes(query) ||
+        restaurant.onboarding?.step1?.ownerName?.toLowerCase().includes(query)
+    })
   }, [approvedRestaurants, searchQuery])
 
   // Fetch data on component mount
@@ -440,7 +442,10 @@ export default function RestaurantCommission() {
                         {visibleColumns.restaurant && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="text-sm font-medium text-blue-600">
-                              {commission.restaurantName || commission.restaurant?.name || '-'}
+                              {commission.restaurant?.onboarding?.step1?.restaurantName ||
+                                commission.restaurantName ||
+                                commission.restaurant?.name ||
+                                '-'}
                             </span>
                           </td>
                         )}
@@ -532,7 +537,9 @@ export default function RestaurantCommission() {
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-medium text-sm text-slate-900">{restaurant.name}</p>
+                        <p className="font-medium text-sm text-slate-900">
+                          {restaurant.onboarding?.step1?.restaurantName || restaurant.name}
+                        </p>
                         <p className="text-xs text-slate-500 mt-0.5">{restaurant.restaurantId}</p>
                       </div>
                       <Building2 className="w-4 h-4 text-slate-400" />
@@ -559,7 +566,9 @@ export default function RestaurantCommission() {
             {/* Restaurant Info */}
             {selectedRestaurant && (
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-                <p className="font-semibold text-sm text-slate-900">{selectedRestaurant.name}</p>
+                <p className="font-semibold text-sm text-slate-900">
+                  {selectedRestaurant.onboarding?.step1?.restaurantName || selectedRestaurant.name}
+                </p>
                 <p className="text-xs text-slate-600 mt-0.5">{selectedRestaurant.restaurantId}</p>
               </div>
             )}
@@ -644,7 +653,9 @@ export default function RestaurantCommission() {
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm text-slate-700">
-              Are you sure you want to delete commission for "{selectedCommission?.restaurantName || selectedCommission?.restaurant?.name}"? This action cannot be undone.
+              Are you sure you want to delete commission for "{selectedCommission?.restaurant?.onboarding?.step1?.restaurantName ||
+                selectedCommission?.restaurantName ||
+                selectedCommission?.restaurant?.name}"? This action cannot be undone.
             </p>
           </div>
           <DialogFooter>

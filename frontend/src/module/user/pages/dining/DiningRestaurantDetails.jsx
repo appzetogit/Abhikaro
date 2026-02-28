@@ -140,7 +140,7 @@ export default function DiningRestaurantDetails() {
             <div className="relative h-[45vh] w-full">
                 <img
                     src={coverImage}
-                    alt={restaurant.name}
+                    alt={restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}
                     className="w-full h-full object-cover"
                 />
                 {/* Dark Gradient Overlay */}
@@ -148,7 +148,7 @@ export default function DiningRestaurantDetails() {
 
                 {/* Content Overlay */}
                 <div className="absolute bottom-0 left-0 w-full p-5 text-white">
-                    <h1 className="text-3xl font-bold mb-1">{restaurant.name}</h1>
+                    <h1 className="text-3xl font-bold mb-1">{restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}</h1>
                     <p className="text-sm text-gray-300 line-clamp-2 max-w-[90%] mb-2">
                         {restaurant.location?.addressLine1 || restaurant.address || "Location not available"}
                     </p>

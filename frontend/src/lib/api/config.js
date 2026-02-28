@@ -455,6 +455,7 @@ export const API_ENDPOINTS = {
   // Upload / media endpoints
   UPLOAD: {
     MEDIA: "/upload/media",
+    BASE64: "/upload/base64",
   },
   // Hero Banner endpoints
   HERO_BANNER: {

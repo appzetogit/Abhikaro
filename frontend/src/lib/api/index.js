@@ -2133,6 +2133,27 @@ export const uploadAPI = {
       timeout: 60000, // 60s for large images on slow networks
     });
   },
+  /**
+   * Upload image from base64 string (for Flutter app)
+   * @param {string} base64 - Base64 encoded image string
+   * @param {string} mimeType - MIME type (e.g., 'image/jpeg')
+   * @param {string} fileName - Original file name
+   * @param {Object} options - Optional { folder }
+   */
+  uploadBase64: (base64, mimeType, fileName, options = {}) => {
+    return apiClient.post(
+      API_ENDPOINTS.UPLOAD.BASE64,
+      {
+        base64,
+        mimeType,
+        fileName,
+        folder: options.folder,
+      },
+      {
+        timeout: 60000, // 60s for large images on slow networks
+      }
+    );
+  },
 };
 
 // Export order API helper functions

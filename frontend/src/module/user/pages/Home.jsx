@@ -764,13 +764,18 @@ export default function Home() {
             ? restaurant.menuImages.map(img => img.url)
             : []
 
+          // Prefer onboarding.step2.profileImageUrl if available (more accurate)
+          const profileImageUrl = restaurant.onboarding?.step2?.profileImageUrl?.url
+            || restaurant.profileImage?.url
+            || (typeof restaurant.profileImage === 'string' ? restaurant.profileImage : null)
+
           // Use cover images first, then fallback to menu images, then profile image
           const allImages = coverImages.length > 0
             ? coverImages
             : (fallbackImages.length > 0
               ? fallbackImages
-              : (restaurant.profileImage?.url
-                ? [restaurant.profileImage.url]
+              : (profileImageUrl
+                ? [profileImageUrl]
                 : ["https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"]))
 
           // Keep single image for backward compatibility
@@ -778,7 +783,8 @@ export default function Home() {
 
           return {
             id: restaurant.restaurantId || restaurant._id,
-            name: restaurant.name,
+            // Prefer onboarding.step1.restaurantName if available (more accurate)
+            name: restaurant.onboarding?.step1?.restaurantName || restaurant.name,
             cuisine: cuisine,
             rating: restaurant.rating || 4.5,
             deliveryTime: deliveryTime,

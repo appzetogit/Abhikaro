@@ -340,8 +340,8 @@ export default function RegularOrderReport() {
               >
                 <option value="All restaurants">All restaurants</option>
                 {restaurants.map((restaurant) => (
-                  <option key={restaurant._id} value={restaurant.name}>
-                    {restaurant.name}
+                  <option key={restaurant._id} value={restaurant.onboarding?.step1?.restaurantName || restaurant.name}>
+                    {restaurant.onboarding?.step1?.restaurantName || restaurant.name}
                   </option>
                 ))}
               </select>

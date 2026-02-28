@@ -115,30 +115,42 @@ export default function CollectionDetail() {
               <Link to={`/user/restaurants/${restaurant.slug}`}>
                 <Card className="overflow-hidden h-full p-0 gap-0">
                   <div className="h-48 w-full relative overflow-hidden">
-                    <img
-                      src={restaurant.image}
-                      alt={restaurant.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      onError={(e) => {
-                        e.target.src = `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&h=600&fit=crop&q=80`
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                    <div className="absolute top-4 right-4 flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-full bg-white/90 backdrop-blur-sm hover:bg-white text-red-500"
-                        onClick={(e) => handleRemoveItem(e, restaurant.slug)}
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </Button>
-                    </div>
+                    {(() => {
+                      // Prefer onboarding.step1.restaurantName if available (more accurate)
+                      const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                      return (
+                        <>
+                          <img
+                            src={restaurant.image}
+                            alt={restaurantName}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                            onError={(e) => {
+                              e.target.src = `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&h=600&fit=crop&q=80`
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                          <div className="absolute top-4 right-4 flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="rounded-full bg-white/90 backdrop-blur-sm hover:bg-white text-red-500"
+                              onClick={(e) => handleRemoveItem(e, restaurant.slug)}
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-2">
-                      <h3 className="text-lg font-bold line-clamp-1 flex-1">{restaurant.name}</h3>
+                      {(() => {
+                        // Prefer onboarding.step1.restaurantName if available (more accurate)
+                        const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                        return <h3 className="text-lg font-bold line-clamp-1 flex-1">{restaurantName}</h3>
+                      })()}
                       <div className="flex items-center gap-1 bg-green-600 text-white px-2 py-1 rounded-lg ml-2">
                         <Star className="h-3 w-3 fill-white" />
                         <span className="text-sm font-bold">{restaurant.rating || "4.5"}</span>

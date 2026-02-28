@@ -344,7 +344,13 @@ export default function RestaurantDetails() {
           // Handle both dining restaurant and regular restaurant data structures
           const transformedRestaurant = {
             id: actualRestaurant?.restaurantId || actualRestaurant?._id || actualRestaurant?.id || apiRestaurant?.restaurantId || apiRestaurant?._id || null,
-            name: actualRestaurant?.name || apiRestaurant?.name || apiRestaurant?.restaurantName || "Unknown Restaurant",
+            // Prefer onboarding.step1.restaurantName if available (more accurate)
+            name: actualRestaurant?.onboarding?.step1?.restaurantName 
+              || apiRestaurant?.onboarding?.step1?.restaurantName
+              || actualRestaurant?.name 
+              || apiRestaurant?.name 
+              || apiRestaurant?.restaurantName 
+              || "Unknown Restaurant",
             cuisine: (actualRestaurant?.cuisines && Array.isArray(actualRestaurant.cuisines) && actualRestaurant.cuisines.length > 0)
               ? actualRestaurant.cuisines[0]
               : (apiRestaurant?.cuisines && Array.isArray(apiRestaurant.cuisines) && apiRestaurant.cuisines.length > 0)
@@ -356,8 +362,13 @@ export default function RestaurantDetails() {
             distance: calculatedDistance || actualRestaurant?.distance || apiRestaurant?.distance || actualRestaurant?.distanceFromUser || apiRestaurant?.distanceFromUser || "1.2 km",
             location: formattedAddress,
             locationObject: locationObj, // Store full location object for reference
-            image: actualRestaurant?.profileImage?.url
+            // Prefer onboarding.step2.profileImageUrl if available (more accurate)
+            image: actualRestaurant?.onboarding?.step2?.profileImageUrl?.url
+              || apiRestaurant?.onboarding?.step2?.profileImageUrl?.url
+              || actualRestaurant?.profileImage?.url
               || apiRestaurant?.profileImage?.url
+              || (typeof actualRestaurant?.profileImage === 'string' ? actualRestaurant.profileImage : null)
+              || (typeof apiRestaurant?.profileImage === 'string' ? apiRestaurant.profileImage : null)
               || actualRestaurant?.profileImage
               || apiRestaurant?.profileImage
               || (Array.isArray(actualRestaurant?.menuImages) && actualRestaurant.menuImages.length > 0
@@ -399,7 +410,12 @@ export default function RestaurantDetails() {
               closingTime: "22:00",
             },
             cuisines: Array.isArray(apiRestaurant?.cuisines) ? apiRestaurant.cuisines : [],
-            profileImage: apiRestaurant?.profileImage || null,
+            // Prefer onboarding.step2.profileImageUrl if available
+            profileImage: apiRestaurant?.onboarding?.step2?.profileImageUrl?.url
+              || (typeof apiRestaurant?.profileImage === 'string' ? apiRestaurant.profileImage : null)
+              || apiRestaurant?.profileImage?.url
+              || apiRestaurant?.profileImage
+              || null,
             menuImages: Array.isArray(apiRestaurant?.menuImages) ? apiRestaurant.menuImages : [],
             // Menu sections for display (will be populated from menu API)
             menuSections: [],
@@ -1005,7 +1021,12 @@ export default function RestaurantDetails() {
         deliveryTime: restaurant.deliveryTime || restaurant.estimatedDeliveryTime || "",
         distance: restaurant.distance || "",
         priceRange: restaurant.priceRange || "",
-        image: restaurant.profileImageUrl?.url || restaurant.image || ""
+        image: restaurant?.onboarding?.step2?.profileImageUrl?.url
+          || restaurant?.profileImageUrl?.url
+          || restaurant?.profileImage?.url
+          || (typeof restaurant?.profileImage === 'string' ? restaurant.profileImage : null)
+          || restaurant?.image
+          || ""
       })
       toast.success("Restaurant added to collection")
     }

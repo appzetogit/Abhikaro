@@ -51,7 +51,7 @@ export default function FoodsList() {
                       priority: "Normal", // Default priority
                       status: item.isAvailable !== false && item.approvalStatus !== 'rejected',
                       restaurantId: restaurantId,
-                      restaurantName: restaurant.name || "Unknown Restaurant",
+                      restaurantName: restaurant.onboarding?.step1?.restaurantName || restaurant.name || "Unknown Restaurant",
                       sectionName: section.name || "Unknown Section",
                       price: item.price || 0,
                       foodType: item.foodType || "Non-Veg",
@@ -74,7 +74,7 @@ export default function FoodsList() {
                           priority: "Normal", // Default priority
                           status: item.isAvailable !== false && item.approvalStatus !== 'rejected',
                           restaurantId: restaurantId,
-                          restaurantName: restaurant.name || "Unknown Restaurant",
+                          restaurantName: restaurant.onboarding?.step1?.restaurantName || restaurant.name || "Unknown Restaurant",
                           sectionName: section.name || "Unknown Section",
                           subsectionName: subsection.name || "Unknown Subsection",
                           price: item.price || 0,

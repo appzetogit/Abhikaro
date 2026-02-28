@@ -294,7 +294,9 @@ export default function DiningRestaurants() {
           {/* Restaurant Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
             {filteredRestaurants.map((restaurant, index) => {
-              const restaurantSlug = restaurant.name.toLowerCase().replace(/\s+/g, "-")
+              // Prefer onboarding.step1.restaurantName if available (more accurate)
+              const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+              const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
               const favorite = isFavorite(restaurantSlug)
 
               const handleToggleFavorite = (e) => {
@@ -305,7 +307,7 @@ export default function DiningRestaurants() {
                 } else {
                   addFavorite({
                     slug: restaurantSlug,
-                    name: restaurant.name,
+                    name: restaurantName,
                     cuisine: restaurant.cuisine,
                     rating: restaurant.rating,
                     deliveryTime: restaurant.deliveryTime,
@@ -322,7 +324,7 @@ export default function DiningRestaurants() {
                     <div className="relative h-48 sm:h-56 md:h-60 w-full overflow-hidden rounded-t-2xl">
                       <img
                         src={restaurant.image}
-                        alt={restaurant.name}
+                        alt={restaurantName}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         onError={(e) => {
                           e.target.src = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"
@@ -368,7 +370,7 @@ export default function DiningRestaurants() {
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="flex-1 min-w-0">
                           <h3 className="text-lg sm:text-xl font-bold text-gray-900 line-clamp-1">
-                            {restaurant.name}
+                            {restaurantName}
                           </h3>
                         </div>
                         <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 rounded-lg flex items-center gap-1">

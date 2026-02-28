@@ -231,8 +231,9 @@ export default function PointOfSale() {
   const filteredRestaurants = restaurants.filter(restaurant => {
     if (!searchQuery.trim()) return true
     const query = searchQuery.toLowerCase()
+    const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || ''
     return (
-      restaurant.name?.toLowerCase().includes(query) ||
+      restaurantName.toLowerCase().includes(query) ||
       restaurant.restaurantId?.toLowerCase().includes(query) ||
       restaurant._id?.toLowerCase().includes(query)
     )
@@ -243,7 +244,8 @@ export default function PointOfSale() {
     setSelectedRestaurant(restaurantId)
     const selected = restaurants.find(r => r._id === restaurantId)
     if (selected) {
-      setSearchQuery(`${selected.name} (${selected.restaurantId || selected._id})`)
+      const restaurantName = selected.onboarding?.step1?.restaurantName || selected.name || 'Restaurant'
+      setSearchQuery(`${restaurantName} (${selected.restaurantId || selected._id})`)
     }
     setShowSearchResults(false)
   }
@@ -271,7 +273,7 @@ export default function PointOfSale() {
 
   const getSelectedRestaurantName = () => {
     const restaurant = restaurants.find(r => r._id === selectedRestaurant)
-    return restaurant?.name || 'Select Restaurant'
+    return restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || 'Select Restaurant'
   }
 
   return (
@@ -313,23 +315,26 @@ export default function PointOfSale() {
                 {/* Search Results Dropdown */}
                 {showSearchResults && filteredRestaurants.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-white border border-[#e3e6ef] rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {filteredRestaurants.map(restaurant => (
-                      <div
-                        key={restaurant._id}
-                        onClick={() => handleRestaurantSelect(restaurant._id)}
-                        className="px-4 py-3 hover:bg-[#f9fafc] cursor-pointer border-b border-[#e3e6ef] last:border-b-0 transition-colors"
-                      >
-                          <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-[#334257]">{restaurant.name}</p>
-                            <p className="text-xs text-[#8a94aa]">ID: {restaurant.restaurantId || restaurant._id}</p>
+                    {filteredRestaurants.map(restaurant => {
+                      const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                      return (
+                        <div
+                          key={restaurant._id}
+                          onClick={() => handleRestaurantSelect(restaurant._id)}
+                          className="px-4 py-3 hover:bg-[#f9fafc] cursor-pointer border-b border-[#e3e6ef] last:border-b-0 transition-colors"
+                        >
+                            <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-[#334257]">{restaurantName}</p>
+                              <p className="text-xs text-[#8a94aa]">ID: {restaurant.restaurantId || restaurant._id}</p>
+                            </div>
+                            {selectedRestaurant === restaurant._id && (
+                              <div className="w-2 h-2 bg-[#006fbd] rounded-full"></div>
+                            )}
                           </div>
-                          {selectedRestaurant === restaurant._id && (
-                            <div className="w-2 h-2 bg-[#006fbd] rounded-full"></div>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
                 
@@ -359,17 +364,21 @@ export default function PointOfSale() {
                     setSelectedRestaurant(e.target.value)
                     const selected = restaurants.find(r => r._id === e.target.value)
                     if (selected) {
-                      setSearchQuery(`${selected.name} (${selected.restaurantId || selected._id})`)
+                      const restaurantName = selected.onboarding?.step1?.restaurantName || selected.name || 'Restaurant'
+                      setSearchQuery(`${restaurantName} (${selected.restaurantId || selected._id})`)
                     }
                   }}
                         className="w-full h-11 rounded-md border border-[#e3e6ef] bg-white px-3 pr-10 text-sm text-[#4a5671] focus:outline-none focus:ring-1 focus:ring-[#006fbd]"
                       >
                   <option value="">Select Restaurant</option>
-                  {restaurants.map(restaurant => (
-                    <option key={restaurant._id} value={restaurant._id}>
-                      {restaurant.name} ({restaurant.restaurantId || restaurant._id})
-                          </option>
-                        ))}
+                  {restaurants.map(restaurant => {
+                    const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                    return (
+                      <option key={restaurant._id} value={restaurant._id}>
+                        {restaurantName} ({restaurant.restaurantId || restaurant._id})
+                      </option>
+                    )
+                  })}
                       </select>
                       <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400 text-xs">
                         ▼

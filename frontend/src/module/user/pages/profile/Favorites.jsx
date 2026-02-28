@@ -159,7 +159,7 @@ export default function Favorites() {
                   <CardContent className="p-3 space-y-2">
                     <div>
                       <CardTitle className="text-sm font-bold mb-0.5 line-clamp-1">
-                        {restaurant.name}
+                        {restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}
                       </CardTitle>
                       <p className="text-xs text-muted-foreground font-medium line-clamp-1">
                         {restaurant.cuisine}

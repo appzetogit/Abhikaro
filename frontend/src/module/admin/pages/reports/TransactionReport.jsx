@@ -212,7 +212,9 @@ export default function TransactionReport() {
               >
                 <option value="All restaurants">All restaurants</option>
                 {restaurants.map(restaurant => (
-                  <option key={restaurant._id} value={restaurant.name}>{restaurant.name}</option>
+                  <option key={restaurant._id} value={restaurant.onboarding?.step1?.restaurantName || restaurant.name}>
+                    {restaurant.onboarding?.step1?.restaurantName || restaurant.name}
+                  </option>
                 ))}
               </select>
               <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />

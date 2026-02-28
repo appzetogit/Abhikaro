@@ -1584,6 +1584,13 @@ export const getRestaurants = asyncHandler(async (req, res) => {
       .limit(parseInt(limit))
       .lean();
 
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    restaurants.forEach(restaurant => {
+      if (restaurant.onboarding?.step1?.restaurantName) {
+        restaurant.name = restaurant.onboarding.step1.restaurantName;
+      }
+    });
+
     // Get total count
     const total = await Restaurant.countDocuments(query);
 
@@ -1749,7 +1756,9 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
       const searchConditions = {
         $or: [
           { name: { $regex: search.trim(), $options: "i" } },
+          { "onboarding.step1.restaurantName": { $regex: search.trim(), $options: "i" } },
           { ownerName: { $regex: search.trim(), $options: "i" } },
+          { "onboarding.step1.ownerName": { $regex: search.trim(), $options: "i" } },
           { ownerPhone: { $regex: search.trim(), $options: "i" } },
           { phone: { $regex: search.trim(), $options: "i" } },
           { email: { $regex: search.trim(), $options: "i" } },
@@ -1883,6 +1892,9 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
 
     // Format response to match frontend expectations
     const formattedRequests = restaurants.map((restaurant, index) => {
+      // Fix restaurant name: Prefer onboarding.step1.restaurantName if available
+      const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || "N/A";
+      
       // Get zone from location
       let zone = "All over the World";
       if (restaurant.location?.area) {
@@ -1900,7 +1912,7 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
       return {
         _id: restaurant._id.toString(),
         sl: skip + index + 1,
-        restaurantName: restaurant.name || "N/A",
+        restaurantName: restaurantName,
         restaurantImage:
           restaurant.profileImage?.url ||
           restaurant.onboarding?.step2?.profileImageUrl?.url ||

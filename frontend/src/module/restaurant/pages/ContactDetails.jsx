@@ -38,10 +38,25 @@ export default function ContactDetails() {
         const data = response?.data?.data?.restaurant || response?.data?.restaurant
         if (data) {
           setOwnerData({
-            name: data.ownerName || data.name || "",
-            phone: data.ownerPhone || data.primaryContactNumber || data.phone || "",
-            email: data.ownerEmail || data.email || "",
-            photo: data.profileImage?.url || null
+            // CRITICAL: Check onboarding.step1 FIRST, as it has the correct data
+            // data.ownerName might be "Restaurant 6911" (wrong), so we must prefer onboarding
+            name: data.onboarding?.step1?.ownerName 
+              || data.ownerName 
+              || "",
+            phone: data.onboarding?.step1?.ownerPhone
+              || data.ownerPhone 
+              || data.onboarding?.step1?.primaryContactNumber
+              || data.primaryContactNumber 
+              || data.phone 
+              || "",
+            email: data.onboarding?.step1?.ownerEmail
+              || data.ownerEmail 
+              || data.email 
+              || "",
+            photo: data.onboarding?.step2?.profileImageUrl?.url
+              || data.profileImage?.url 
+              || (typeof data.profileImage === 'string' ? data.profileImage : null)
+              || null
           })
         }
       } catch (error) {

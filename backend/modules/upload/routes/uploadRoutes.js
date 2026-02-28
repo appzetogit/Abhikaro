@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { uploadMiddleware } from '../../../shared/utils/cloudinaryService.js';
-import { uploadSingleMedia } from '../controllers/uploadController.js';
+import { uploadSingleMedia, uploadBase64Media } from '../controllers/uploadController.js';
 import jwtService from '../../auth/services/jwtService.js';
 import User from '../../auth/models/User.js';
 import Admin from '../../admin/models/Admin.js';
@@ -163,6 +163,14 @@ router.post(
     });
   },
   uploadSingleMedia
+);
+
+// POST /api/upload/base64 - Upload image from base64 string (for Flutter app)
+// Accepts JSON body with base64, mimeType, fileName, and optional folder
+router.post(
+  '/base64',
+  authenticateFlexible,
+  uploadBase64Media
 );
 
 export default router;

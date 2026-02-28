@@ -125,7 +125,11 @@ export default function RestaurantNavbar({
   }
 
   // Get restaurant name (use prop if provided, otherwise use fetched data)
-  const restaurantName = propRestaurantName || restaurantData?.name || "Restaurant"
+  // Prefer onboarding.step1.restaurantName if available (more accurate)
+  const restaurantName = propRestaurantName 
+    || restaurantData?.onboarding?.step1?.restaurantName 
+    || restaurantData?.name 
+    || "Restaurant"
 
   const [location, setLocation] = useState("")
 

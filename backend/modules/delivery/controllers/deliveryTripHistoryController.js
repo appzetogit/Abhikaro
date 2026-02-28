@@ -148,16 +148,19 @@ export const getTripHistory = asyncHandler(async (req, res) => {
 
         const restaurants = await Restaurant.find({
           $or: restaurantQueries
-        }).select('restaurantId name _id').lean();
+        }).select('restaurantId name _id onboarding').lean();
 
         restaurants.forEach(rest => {
+          // Fix restaurant name: Prefer onboarding.step1.restaurantName if available
+          const restaurantName = rest.onboarding?.step1?.restaurantName || rest.name;
+          
           // Map by restaurantId string
           if (rest.restaurantId) {
-            restaurantNameMap.set(rest.restaurantId, rest.name);
+            restaurantNameMap.set(rest.restaurantId, restaurantName);
           }
           // Also map by _id string
           if (rest._id) {
-            restaurantNameMap.set(rest._id.toString(), rest.name);
+            restaurantNameMap.set(rest._id.toString(), restaurantName);
           }
         });
       } catch (e) {

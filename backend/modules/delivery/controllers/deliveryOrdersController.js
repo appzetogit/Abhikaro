@@ -63,10 +63,17 @@ export const getOrders = asyncHandler(async (req, res) => {
       .limit(parseInt(limit))
       .populate(
         "restaurantId",
-        "name slug profileImage address location phone ownerPhone",
+        "name slug profileImage address location phone ownerPhone onboarding",
       )
       .populate("userId", "name phone")
       .lean();
+
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    orders.forEach(order => {
+      if (order.restaurantId && order.restaurantId.onboarding?.step1?.restaurantName) {
+        order.restaurantId.name = order.restaurantId.onboarding.step1.restaurantName;
+      }
+    });
 
     // Resolve payment method for each order (COD vs Online)
     const ordersWithPayment = await Promise.all(

@@ -374,9 +374,16 @@ export const getPublicOffers = asyncHandler(async (req, res) => {
     const offers = await Offer.find({
       status: 'active',
     })
-      .populate('restaurant', 'name restaurantId slug profileImage rating estimatedDeliveryTime distance')
+      .populate('restaurant', 'name restaurantId slug profileImage rating estimatedDeliveryTime distance onboarding')
       .sort({ createdAt: -1 })
       .lean();
+    
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    offers.forEach(offer => {
+      if (offer.restaurant?.onboarding?.step1?.restaurantName) {
+        offer.restaurant.name = offer.restaurant.onboarding.step1.restaurantName;
+      }
+    });
     
     console.log(`[PUBLIC-OFFERS] Found ${offers.length} active offers`);
 

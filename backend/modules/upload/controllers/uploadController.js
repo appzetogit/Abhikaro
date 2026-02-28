@@ -67,4 +67,80 @@ export const uploadSingleMedia = async (req, res) => {
   }
 };
 
+/**
+ * Upload image from base64 string (for Flutter app)
+ * Accepts base64 string, converts to buffer, and uploads to Cloudinary
+ */
+export const uploadBase64Media = async (req, res) => {
+  try {
+    // Initialize Cloudinary if not already initialized
+    await initializeCloudinary();
+
+    const { base64, mimeType, fileName, folder } = req.body;
+
+    if (!base64) {
+      return errorResponse(res, 400, 'Base64 string is required');
+    }
+
+    // Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
+    const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+    
+    // Convert base64 to buffer
+    let buffer;
+    try {
+      buffer = Buffer.from(base64Data, 'base64');
+    } catch (error) {
+      return errorResponse(res, 400, 'Invalid base64 string');
+    }
+
+    if (buffer.length === 0) {
+      return errorResponse(res, 400, 'Base64 string is empty or invalid');
+    }
+
+    const uploadFolder = folder || 'appzeto/uploads';
+    const fileMimeType = mimeType || 'image/jpeg';
+    const fileOriginalName = fileName || `image_${Date.now()}.jpg`;
+
+    console.log('📤 Uploading base64 image to Cloudinary:', {
+      fileName: fileOriginalName,
+      mimeType: fileMimeType,
+      bufferSize: buffer.length,
+      folder: uploadFolder
+    });
+
+    const result = await uploadToCloudinary(buffer, {
+      folder: uploadFolder,
+      resource_type: 'auto',
+      context: { alt: fileOriginalName, caption: fileOriginalName }
+    });
+
+    if (!result || !result.secure_url) {
+      throw new Error('Cloudinary upload failed: No secure_url in response');
+    }
+
+    console.log('✅ Base64 image uploaded successfully:', {
+      url: result.secure_url,
+      publicId: result.public_id,
+      resourceType: result.resource_type
+    });
+
+    return successResponse(res, 200, 'Image uploaded successfully', {
+      url: result.secure_url,
+      publicId: result.public_id,
+      resourceType: result.resource_type,
+      bytes: result.bytes,
+      format: result.format
+    });
+  } catch (error) {
+    console.error('❌ Base64 upload error:', {
+      message: error.message,
+      stack: error.stack,
+      errorType: error.constructor.name
+    });
+    
+    const errorMessage = error.message || 'Failed to upload image';
+    return errorResponse(res, 500, `Image upload failed: ${errorMessage}`);
+  }
+};
+
 

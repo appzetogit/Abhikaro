@@ -86,11 +86,23 @@ export default function RestaurantsList() {
           // Map backend data to frontend format
           const restaurantsData = response.data.data.restaurants || response.data.data || []
           
-          const mappedRestaurants = restaurantsData.map((restaurant, index) => ({
+          const mappedRestaurants = restaurantsData.map((restaurant, index) => {
+            // Prefer onboarding.step1.restaurantName if available (more accurate)
+            // Fallback to restaurant.name if onboarding name not available
+            // This fixes cases where restaurant was created with default name like "Restaurant 6911"
+            const restaurantName = restaurant.onboarding?.step1?.restaurantName 
+              || restaurant.name 
+              || "N/A";
+            
+          return {
             id: restaurant._id || restaurant.id || index + 1,
             _id: restaurant._id, // Preserve original _id for API calls
-            name: restaurant.name || "N/A",
-            ownerName: restaurant.ownerName || "N/A",
+            name: restaurantName,
+            // Prefer onboarding step1 ownerName for owner info column
+            ownerName:
+              restaurant.onboarding?.step1?.ownerName ||
+              restaurant.ownerName ||
+              "N/A",
             ownerPhone: restaurant.ownerPhone || restaurant.phone || "N/A",
             ownerEmail:
               restaurant.ownerEmail ||
@@ -110,12 +122,19 @@ export default function RestaurantsList() {
             status: restaurant.isActive !== false, // Default to true if not set
             rating: restaurant.ratings?.average || restaurant.rating || 0,
             logo:
+              // Prefer top-level profileImage (object with url or direct string)
               restaurant.profileImage?.url ||
+              (typeof restaurant.profileImage === "string"
+                ? restaurant.profileImage
+                : null) ||
+              // Fallback to onboarding step2 profileImageUrl
+              restaurant.onboarding?.step2?.profileImageUrl?.url ||
               restaurant.logo ||
               "https://via.placeholder.com/40",
             // Preserve original restaurant data for details modal
             originalData: restaurant,
-          }))
+          };
+          })
           
           setRestaurants(mappedRestaurants)
         } else {
@@ -648,7 +667,7 @@ export default function RestaurantsList() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center flex-shrink-0">
-                              <img
+                          <img
                                 src={restaurant.logo}
                                 alt={restaurant.name}
                                 className="w-full h-full object-cover"
@@ -801,7 +820,10 @@ export default function RestaurantsList() {
                     </div>
                     <div className="flex-1">
                       <h3 className="text-2xl font-bold text-slate-900 mb-2">
-                        {restaurantDetails?.name || selectedRestaurant?.name || "N/A"}
+                        {restaurantDetails?.onboarding?.step1?.restaurantName ||
+                          restaurantDetails?.name ||
+                          selectedRestaurant?.name ||
+                          "N/A"}
                       </h3>
                       <div className="flex items-center gap-4 flex-wrap">
                         {(restaurantDetails?.ratings?.average || selectedRestaurant?.originalData?.ratings?.average) && (
@@ -830,7 +852,12 @@ export default function RestaurantsList() {
                           <div>
                             <p className="text-xs text-slate-500">Owner Name</p>
                             <p className="text-sm font-medium text-slate-900">
-                              {restaurantDetails?.ownerName || selectedRestaurant?.ownerName || selectedRestaurant?.originalData?.ownerName || "N/A"}
+                              {/* Prefer onboarding step1 ownerName, then current ownerName */}
+                              {restaurantDetails?.onboarding?.step1?.ownerName ||
+                                restaurantDetails?.ownerName ||
+                                selectedRestaurant?.ownerName ||
+                                selectedRestaurant?.originalData?.ownerName ||
+                                "N/A"}
                             </p>
                           </div>
                         </div>
@@ -843,12 +870,20 @@ export default function RestaurantsList() {
                             </p>
                           </div>
                         </div>
-                        {restaurantDetails?.ownerEmail && (
+                        {(restaurantDetails?.ownerEmail ||
+                          restaurantDetails?.onboarding?.step1?.ownerEmail ||
+                          selectedRestaurant?.originalData?.ownerEmail) && (
                           <div className="flex items-center gap-3">
                             <Mail className="w-5 h-5 text-slate-400" />
                             <div>
                               <p className="text-xs text-slate-500">Email</p>
-                              <p className="text-sm font-medium text-slate-900">{restaurantDetails.ownerEmail}</p>
+                              <p className="text-sm font-medium text-slate-900">
+                                {/* Prefer onboarding ownerEmail if it's a real email (not auto-generated phone-based) */}
+                                {restaurantDetails?.onboarding?.step1?.ownerEmail ||
+                                  restaurantDetails?.ownerEmail ||
+                                  selectedRestaurant?.originalData?.ownerEmail ||
+                                  ""}
+                              </p>
                             </div>
                           </div>
                         )}

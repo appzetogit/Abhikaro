@@ -81,8 +81,8 @@ export default function OutletInfo() {
         if (data) {
           setRestaurantData(data)
           
-          // Set restaurant name
-          setRestaurantName(data.name || "")
+          // Set restaurant name - Prefer onboarding.step1.restaurantName if available (more accurate)
+          setRestaurantName(data.onboarding?.step1?.restaurantName || data.name || "")
           
           // Set restaurant ID
           setRestaurantId(data.restaurantId || data.id || "")

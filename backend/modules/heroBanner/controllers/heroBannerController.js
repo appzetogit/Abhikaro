@@ -1256,9 +1256,16 @@ export const getAllTop10Restaurants = async (req, res) => {
 export const getTop10Restaurants = async (req, res) => {
   try {
     const restaurants = await Top10Restaurant.find({ isActive: true })
-      .populate('restaurant', 'name restaurantId slug profileImage coverImages menuImages rating estimatedDeliveryTime distance offer featuredDish featuredPrice')
+      .populate('restaurant', 'name restaurantId slug profileImage coverImages menuImages rating estimatedDeliveryTime distance offer featuredDish featuredPrice onboarding')
       .sort({ rank: 1, order: 1 })
       .lean();
+
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    restaurants.forEach(item => {
+      if (item.restaurant?.onboarding?.step1?.restaurantName) {
+        item.restaurant.name = item.restaurant.onboarding.step1.restaurantName;
+      }
+    });
 
     return successResponse(res, 200, 'Top 10 restaurants retrieved successfully', {
       restaurants: restaurants.map(r => ({
@@ -1491,9 +1498,16 @@ export const getAllGourmetRestaurants = async (req, res) => {
 export const getGourmetRestaurants = async (req, res) => {
   try {
     const restaurants = await GourmetRestaurant.find({ isActive: true })
-      .populate('restaurant', 'name restaurantId slug profileImage coverImages menuImages rating estimatedDeliveryTime distance offer featuredDish featuredPrice')
+      .populate('restaurant', 'name restaurantId slug profileImage coverImages menuImages rating estimatedDeliveryTime distance offer featuredDish featuredPrice onboarding')
       .sort({ order: 1, createdAt: -1 })
       .lean();
+
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    restaurants.forEach(item => {
+      if (item.restaurant?.onboarding?.step1?.restaurantName) {
+        item.restaurant.name = item.restaurant.onboarding.step1.restaurantName;
+      }
+    });
 
     return successResponse(res, 200, 'Gourmet restaurants retrieved successfully', {
       restaurants: restaurants.map(r => ({

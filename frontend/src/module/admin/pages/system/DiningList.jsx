@@ -39,7 +39,7 @@ export default function DiningList() {
                     const mappedRestaurants = restaurantsData.map((restaurant, index) => ({
                         id: restaurant._id || restaurant.id || index + 1,
                         _id: restaurant._id,
-                        name: restaurant.name || "N/A",
+                        name: restaurant.onboarding?.step1?.restaurantName || restaurant.name || "N/A",
                         ownerName: restaurant.ownerName || "N/A",
                         ownerPhone: restaurant.ownerPhone || restaurant.phone || "N/A",
                         zone: restaurant.location?.area || restaurant.location?.city || restaurant.zone || "N/A",
@@ -99,7 +99,7 @@ export default function DiningList() {
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase().trim()
             result = result.filter(restaurant =>
-                restaurant.name.toLowerCase().includes(query) ||
+                (restaurant.onboarding?.step1?.restaurantName || restaurant.name || '').toLowerCase().includes(query) ||
                 restaurant.ownerName.toLowerCase().includes(query) ||
                 restaurant.ownerPhone.includes(query)
             )
@@ -300,13 +300,13 @@ export default function DiningList() {
                                                             <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
                                                                 <img
                                                                     src={restaurant.logo}
-                                                                    alt={restaurant.name}
+                                                                    alt={restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}
                                                                     className="w-full h-full object-cover"
                                                                     onError={(e) => { e.target.src = "https://via.placeholder.com/40" }}
                                                                 />
                                                             </div>
                                                             <div className="flex flex-col">
-                                                                <span className="text-sm font-medium text-slate-900">{restaurant.name}</span>
+                                                                <span className="text-sm font-medium text-slate-900">{restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}</span>
                                                                 <span className="text-xs text-slate-500">#{formatRestaurantId(restaurant.originalData?.restaurantId || restaurant._id)}</span>
                                                             </div>
                                                         </div>

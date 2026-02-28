@@ -119,7 +119,7 @@ export default function TableBooking() {
                     </button>
                     <div className="text-center">
                         <h1 className="text-2xl font-bold text-gray-900">Book a table</h1>
-                        <p className="text-gray-500 font-medium">{restaurant.name}</p>
+                        <p className="text-gray-500 font-medium">{restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}</p>
                     </div>
                 </div>
             </div>

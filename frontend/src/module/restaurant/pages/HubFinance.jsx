@@ -65,7 +65,15 @@ export default function HubFinance() {
   useEffect(() => {
     // Use restaurant data from financeData if available, otherwise fetch separately
     if (financeData?.restaurant) {
-      setRestaurantData(financeData.restaurant)
+      // Ensure onboarding data is prioritized when setting restaurantData
+      const restaurant = financeData.restaurant
+      setRestaurantData({
+        // Prefer onboarding.step1.restaurantName if available (more accurate)
+        name: restaurant.onboarding?.step1?.restaurantName || restaurant.name,
+        restaurantId: restaurant.restaurantId || restaurant._id,
+        address: restaurant.location?.address || restaurant.location?.formattedAddress || restaurant.address || '',
+        onboarding: restaurant.onboarding // Include onboarding data for header display
+      })
     } else {
       const fetchRestaurantData = async () => {
         try {
@@ -73,9 +81,11 @@ export default function HubFinance() {
           const data = response?.data?.data?.restaurant || response?.data?.restaurant || response?.data?.data
           if (data) {
             setRestaurantData({
-              name: data.name,
+              // Prefer onboarding.step1.restaurantName if available (more accurate)
+              name: data.onboarding?.step1?.restaurantName || data.name,
               restaurantId: data.restaurantId || data._id,
-              address: data.location?.address || data.location?.formattedAddress || data.address || ''
+              address: data.location?.address || data.location?.formattedAddress || data.address || '',
+              onboarding: data.onboarding // Include onboarding data for header display
             })
           }
         } catch (error) {
@@ -239,7 +249,10 @@ export default function HubFinance() {
 
   // Prepare report data from real finance data
   const getReportData = () => {
-    const restaurantName = financeData?.restaurant?.name || "Restaurant"
+    // Prefer onboarding.step1.restaurantName if available (more accurate)
+    const restaurantName = financeData?.restaurant?.onboarding?.step1?.restaurantName
+      || financeData?.restaurant?.name
+      || "Restaurant"
     const restaurantId = financeData?.restaurant?.restaurantId || "N/A"
     const currentCycle = financeData?.currentCycle || {}
     
@@ -683,7 +696,11 @@ export default function HubFinance() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
                 <p className="text-lg font-bold text-gray-900 truncate">
-                  {restaurantData?.name || financeData?.restaurant?.name || "Restaurant"}
+                  {restaurantData?.onboarding?.step1?.restaurantName 
+                    || financeData?.restaurant?.onboarding?.step1?.restaurantName
+                    || restaurantData?.name 
+                    || financeData?.restaurant?.name 
+                    || "Restaurant"}
                 </p>
                 <ChevronDown className="w-4 h-4 text-gray-600 flex-shrink-0" />
               </div>

@@ -313,9 +313,11 @@ export default function Feedback() {
                              `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random`
 
             // Get outlet/restaurant name
-            const outlet = order.restaurantName || 
-                          (restaurantData?.name) ||
-                          'Restaurant'
+            // Prefer onboarding.step1.restaurantName if available (more accurate)
+            const outlet = order.restaurantName 
+              || restaurantData?.onboarding?.step1?.restaurantName
+              || restaurantData?.name 
+              || 'Restaurant'
 
             // Get rating if available (from order.review or order.rating)
             const rating = order.review?.rating || 

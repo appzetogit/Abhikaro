@@ -73,7 +73,8 @@ export default function HubMenu() {
   const addonFileInputRef = useRef(null)
 
   // Restaurant info - fetch from backend
-  const restaurantName = restaurantData?.name || ""
+  // Prefer onboarding.step1.restaurantName if available (more accurate)
+  const restaurantName = restaurantData?.onboarding?.step1?.restaurantName || restaurantData?.name || ""
   const restaurantExpertise = restaurantData?.cuisines?.length > 0
     ? restaurantData.cuisines.join(", ")
     : ""

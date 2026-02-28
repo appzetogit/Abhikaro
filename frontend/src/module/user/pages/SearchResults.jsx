@@ -267,11 +267,16 @@ export default function SearchResults() {
                 : []
               
               // Use backend images only - no fallback placeholder
+              // Prefer onboarding.step2.profileImageUrl if available (more accurate)
+              const profileImageUrl = restaurant.onboarding?.step2?.profileImageUrl?.url
+                || restaurant.profileImage?.url
+                || (typeof restaurant.profileImage === 'string' ? restaurant.profileImage : null)
+              
               const allImages = coverImages.length > 0 
                 ? coverImages 
                 : (fallbackImages.length > 0
                     ? fallbackImages
-                    : (restaurant.profileImage?.url ? [restaurant.profileImage.url] : []))
+                    : (profileImageUrl ? [profileImageUrl] : []))
               
               const image = allImages[0] || null // Will be handled in UI
               const restaurantId = restaurant.restaurantId || restaurant._id
@@ -286,7 +291,8 @@ export default function SearchResults() {
               
               return {
                 id: restaurantId,
-                name: restaurant.name,
+                // Prefer onboarding.step1.restaurantName if available (more accurate)
+                name: restaurant.onboarding?.step1?.restaurantName || restaurant.name,
                 cuisine: cuisine,
                 rating: restaurant.rating || null, // Use backend rating or null
                 deliveryTime: deliveryTime,

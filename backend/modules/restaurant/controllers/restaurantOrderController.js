@@ -240,6 +240,21 @@ export const getRestaurantOrderById = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "Order not found");
     }
 
+    // Fix restaurant name: If order.restaurantName is incorrect, fetch from restaurant
+    // This ensures correct name even if order was created with old restaurant name
+    if (order.restaurantName && order.restaurantName.includes("Restaurant ") && /Restaurant \d+/.test(order.restaurantName)) {
+      try {
+        const restaurantDoc = await Restaurant.findById(restaurant._id).select("name onboarding.step1.restaurantName").lean();
+        if (restaurantDoc?.onboarding?.step1?.restaurantName) {
+          order.restaurantName = restaurantDoc.onboarding.step1.restaurantName;
+        } else if (restaurantDoc?.name && !restaurantDoc.name.includes("Restaurant ") || !/Restaurant \d+/.test(restaurantDoc.name)) {
+          order.restaurantName = restaurantDoc.name;
+        }
+      } catch (err) {
+        console.warn("Could not fix restaurant name in order:", err.message);
+      }
+    }
+
     // Use Payment collection as source of truth for payment status (order.payment may be stale)
     const paymentRecord = await Payment.findOne({ orderId: order._id }).select("status method").lean();
     if (paymentRecord && String(paymentRecord.status).toLowerCase() === "completed") {

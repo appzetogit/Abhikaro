@@ -166,3 +166,6 @@
 [2026-02-26T09:40:00.275Z] Checking Specific Commission for RestaurantId: 6999568d56eb99e2b9b32d52
 [2026-02-26T09:40:00.357Z] Found Commission: YES
 [2026-02-26T09:40:00.358Z] Comm Data: {"type":"percentage","value":30}
+[2026-02-28T11:18:16.556Z] Checking Specific Commission for RestaurantId: 69a2953227388a642ad05496
+[2026-02-28T11:18:16.601Z] Found Commission: NO
+[2026-02-28T11:18:16.634Z] Any Commission Exists? NO

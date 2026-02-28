@@ -1221,8 +1221,15 @@ export const getRestaurantReport = asyncHandler(async (req, res) => {
 
     // Get all restaurants matching the query
     const restaurants = await Restaurant.find(restaurantQuery)
-      .select('_id restaurantId name profileImage rating totalRatings isActive')
+      .select('_id restaurantId name profileImage rating totalRatings isActive onboarding')
       .lean();
+    
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    restaurants.forEach(restaurant => {
+      if (restaurant.onboarding?.step1?.restaurantName) {
+        restaurant.name = restaurant.onboarding.step1.restaurantName;
+      }
+    });
 
     console.log(`📊 Found ${restaurants.length} restaurants`);
 
@@ -1350,10 +1357,13 @@ export const getRestaurantReport = asyncHandler(async (req, res) => {
           return `₹${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         };
 
+        // Fix restaurant name: Prefer onboarding.step1.restaurantName if available
+        const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant';
+        
         return {
           sl: 0, // Will be set in frontend
           id: restaurantId,
-          restaurantName: restaurant.name,
+          restaurantName: restaurantName,
           icon: restaurant.profileImage?.url || restaurant.profileImage || null,
           totalFood,
           totalOrder,

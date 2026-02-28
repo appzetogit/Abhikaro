@@ -157,12 +157,16 @@ export const upsertOnboarding = async (req, res) => {
     const finalCompletedSteps = onboarding.completedSteps || completedSteps;
 
     // Update restaurant schema when step1 is completed (basic info)
-    if (finalCompletedSteps >= 1 && step1) {
+    // Always update if step1 is provided, regardless of completedSteps
+    // This ensures name and other step1 data are always synced
+    if (step1) {
       console.log(
-        "🔄 Step1 completed, updating restaurant schema with step1 data...",
+        "🔄 Step1 data provided, updating restaurant schema with step1 data...",
       );
       try {
         const updateData = {};
+        // Always update name if restaurantName is provided (even if it's the same)
+        // This fixes cases where restaurant was created with default name like "Restaurant 6911"
         if (step1.restaurantName) {
           updateData.name = step1.restaurantName;
         }
@@ -183,12 +187,19 @@ export const upsertOnboarding = async (req, res) => {
         }
 
         if (Object.keys(updateData).length > 0) {
-          await Restaurant.findByIdAndUpdate(restaurantId, {
-            $set: updateData,
-          });
+          const updated = await Restaurant.findByIdAndUpdate(
+            restaurantId,
+            { $set: updateData },
+            { new: true }
+          );
           console.log(
             "✅ Restaurant schema updated with step1 data:",
-            Object.keys(updateData),
+            {
+              updatedFields: Object.keys(updateData),
+              oldName: existingRestaurant?.name,
+              newName: updated?.name,
+              restaurantName: step1.restaurantName,
+            }
           );
         }
       } catch (step1UpdateError) {
@@ -216,10 +227,19 @@ export const upsertOnboarding = async (req, res) => {
       try {
         const updateData = {};
         if (step2.profileImageUrl) {
-          updateData.profileImage = step2.profileImageUrl;
+          // Handle both object {url, publicId} and string URL
+          updateData.profileImage = typeof step2.profileImageUrl === 'string' 
+            ? step2.profileImageUrl 
+            : (step2.profileImageUrl.url || step2.profileImageUrl);
         }
         if (step2.menuImageUrls !== undefined) {
-          updateData.menuImages = step2.menuImageUrls; // Update even if empty array
+          // Ensure menuImageUrls is an array and extract URLs if objects
+          const menuImages = Array.isArray(step2.menuImageUrls) 
+            ? step2.menuImageUrls.map(img => 
+                typeof img === 'string' ? img : (img.url || img)
+              )
+            : [];
+          updateData.menuImages = menuImages;
         }
         if (step2.cuisines !== undefined) {
           updateData.cuisines = step2.cuisines; // Update even if empty array

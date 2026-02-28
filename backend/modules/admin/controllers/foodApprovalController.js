@@ -21,7 +21,7 @@ const logger = winston.createLogger({
 export const getPendingFoodApprovals = asyncHandler(async (req, res) => {
   try {
     const menus = await Menu.find({ isActive: true })
-      .populate('restaurant', 'name restaurantId')
+      .populate('restaurant', 'name restaurantId onboarding')
       .lean();
 
     const pendingRequests = [];
@@ -29,6 +29,9 @@ export const getPendingFoodApprovals = asyncHandler(async (req, res) => {
     // Iterate through all menus and extract pending items
     for (const menu of menus) {
       if (!menu.restaurant) continue;
+
+      // Fix restaurant name: Prefer onboarding.step1.restaurantName if available
+      const restaurantName = menu.restaurant.onboarding?.step1?.restaurantName || menu.restaurant.name || 'Restaurant';
 
       // Check items in sections
       for (const section of menu.sections || []) {
@@ -40,7 +43,7 @@ export const getPendingFoodApprovals = asyncHandler(async (req, res) => {
               itemName: item.name,
               category: item.category || '',
               restaurantId: menu.restaurant.restaurantId,
-              restaurantName: menu.restaurant.name,
+              restaurantName: restaurantName,
               restaurantMongoId: menu.restaurant._id,
               sectionName: section.name,
               sectionId: section.id,
@@ -67,7 +70,7 @@ export const getPendingFoodApprovals = asyncHandler(async (req, res) => {
                 itemName: item.name,
                 category: item.category || '',
                 restaurantId: menu.restaurant.restaurantId,
-                restaurantName: menu.restaurant.name,
+                restaurantName: restaurantName,
                 restaurantMongoId: menu.restaurant._id,
                 sectionName: section.name,
                 sectionId: section.id,
@@ -98,7 +101,7 @@ export const getPendingFoodApprovals = asyncHandler(async (req, res) => {
             category: 'Add-on',
             type: 'addon', // Mark as addon
             restaurantId: menu.restaurant.restaurantId,
-            restaurantName: menu.restaurant.name,
+            restaurantName: restaurantName,
             restaurantMongoId: menu.restaurant._id,
             price: addon.price,
             description: addon.description,

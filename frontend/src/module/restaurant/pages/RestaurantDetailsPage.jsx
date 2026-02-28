@@ -155,7 +155,10 @@ export default function RestaurantDetailsPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between mb-2">
                 <h2 className="text-xl md:text-2xl font-bold text-gray-900">
-                  {restaurantData.restaurantName?.english || "Hungry Puppets"}
+                  {restaurantData.onboarding?.step1?.restaurantName 
+                    || restaurantData.restaurantName?.english 
+                    || restaurantData.name 
+                    || "Restaurant"}
                 </h2>
                 <motion.button
                   whileHover={{ scale: 1.1 }}

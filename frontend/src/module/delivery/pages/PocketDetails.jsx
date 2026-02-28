@@ -203,11 +203,14 @@ export default function PocketDetails() {
   }
 
   // Get restaurant name from order
+  // Prefer onboarding.step1.restaurantName if available (more accurate)
   const getRestaurantName = (order) => {
     return (
       order.restaurant ||
       order.restaurantName ||
+      order.restaurantId?.onboarding?.step1?.restaurantName ||
       order.restaurantId?.name ||
+      order.restaurant?.onboarding?.step1?.restaurantName ||
       order.restaurant?.name ||
       "Restaurant"
     )

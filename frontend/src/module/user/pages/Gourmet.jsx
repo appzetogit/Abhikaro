@@ -117,7 +117,9 @@ export default function Gourmet() {
               </div>
             ) : (
               gourmetRestaurants.map((restaurant) => {
-                const restaurantSlug = restaurant.slug || restaurant.name?.toLowerCase().replace(/\s+/g, "-") || ""
+                // Prefer onboarding.step1.restaurantName if available (more accurate)
+                const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-") || ""
                 const restaurantId = restaurant._id || restaurant.restaurantId || restaurant.id
                 const isFavorite = favorites.has(restaurantId)
 
@@ -130,11 +132,16 @@ export default function Gourmet() {
                   ? restaurant.menuImages.map(img => img.url || img).filter(Boolean)
                   : []
                 
+                // Prefer onboarding.step2.profileImageUrl if available
+                const profileImageUrl = restaurant.onboarding?.step2?.profileImageUrl?.url
+                  || restaurant.profileImage?.url
+                  || (typeof restaurant.profileImage === 'string' ? restaurant.profileImage : null)
+                
                 const restaurantImage = coverImages.length > 0
                   ? coverImages[0]
                   : (menuImages.length > 0
                       ? menuImages[0]
-                      : (restaurant.profileImage?.url || restaurant.image || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"))
+                      : (profileImageUrl || restaurant.image || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"))
 
                 return (
                   <Link key={restaurantId} to={`/user/restaurants/${restaurantSlug}`}>
@@ -143,7 +150,7 @@ export default function Gourmet() {
                       <div className="relative h-44 sm:h-52 md:h-56 w-full overflow-hidden rounded-t-2xl">
                         <img
                           src={restaurantImage}
-                          alt={restaurant.name}
+                          alt={restaurantName}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           onError={(e) => {
                             // Fallback to placeholder if image fails
@@ -172,7 +179,7 @@ export default function Gourmet() {
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="flex-1 min-w-0">
                             <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 line-clamp-1">
-                              {restaurant.name}
+                              {restaurantName}
                             </h3>
                           </div>
                           <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 rounded-lg flex items-center gap-1">

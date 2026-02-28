@@ -577,9 +577,11 @@ export default function MenuAdd() {
   const filteredRestaurants = restaurants.filter((restaurant) => {
     const q = searchQuery.trim().toLowerCase()
     if (!q) return true
+    const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || ''
     return (
-      restaurant.name?.toLowerCase().includes(q) ||
-      restaurant.ownerName?.toLowerCase().includes(q)
+      restaurantName.toLowerCase().includes(q) ||
+      restaurant.ownerName?.toLowerCase().includes(q) ||
+      restaurant.onboarding?.step1?.ownerName?.toLowerCase().includes(q)
     )
   })
 
@@ -635,9 +637,11 @@ export default function MenuAdd() {
                       : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                   }`}
                 >
-                  <div className="font-semibold text-gray-900">{restaurant.name}</div>
+                  <div className="font-semibold text-gray-900">
+                    {restaurant.onboarding?.step1?.restaurantName || restaurant.name}
+                  </div>
                   <div className="text-sm text-gray-600 mt-1">
-                    Owner: {restaurant.ownerName || "N/A"}
+                    Owner: {restaurant.onboarding?.step1?.ownerName || restaurant.ownerName || "N/A"}
                   </div>
                   {restaurant.location?.area && (
                     <div className="text-xs text-gray-500 mt-1">

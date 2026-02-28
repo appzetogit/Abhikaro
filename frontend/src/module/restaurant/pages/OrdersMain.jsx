@@ -606,6 +606,7 @@ export default function OrdersMain() {
   const [orderToCancel, setOrderToCancel] = useState(null)
   const audioRef = useRef(null)
   const shownOrdersRef = useRef(new Set()) // Track orders already shown in popup
+  const [currentRestaurantData, setCurrentRestaurantData] = useState(null)
   const [restaurantStatus, setRestaurantStatus] = useState({
     isActive: null,
     rejectionReason: null,
@@ -634,6 +635,8 @@ export default function OrdersMain() {
         const response = await restaurantAPI.getCurrentRestaurant()
         const restaurant = response?.data?.data?.restaurant || response?.data?.restaurant
         if (restaurant) {
+          // Store restaurant data for receipt generation
+          setCurrentRestaurantData(restaurant)
           setRestaurantStatus({
             isActive: restaurant.isActive,
             rejectionReason: restaurant.rejectionReason || null,
@@ -703,6 +706,8 @@ export default function OrdersMain() {
       const response = await restaurantAPI.getCurrentRestaurant()
       const restaurant = response?.data?.data?.restaurant || response?.data?.restaurant
       if (restaurant) {
+        // Store restaurant data for receipt generation
+        setCurrentRestaurantData(restaurant)
         setRestaurantStatus({
           isActive: restaurant.isActive,
           rejectionReason: restaurant.rejectionReason || null,
@@ -814,7 +819,10 @@ export default function OrdersMain() {
               orderId: latestConfirmedOrder.orderId,
               orderMongoId: latestConfirmedOrder._id,
               restaurantId: latestConfirmedOrder.restaurantId,
-              restaurantName: latestConfirmedOrder.restaurantName,
+              // Prefer onboarding.step1.restaurantName if available (more accurate)
+              restaurantName: latestConfirmedOrder.restaurantId?.onboarding?.step1?.restaurantName
+                || latestConfirmedOrder.restaurantName
+                || 'Restaurant',
               items: latestConfirmedOrder.items || [],
               total: latestConfirmedOrder.pricing?.total || 0,
               customerAddress: latestConfirmedOrder.address,
@@ -1116,9 +1124,17 @@ export default function OrdersMain() {
                             orderForPrint.customerAddress || 
                             {}
     
+    // Get restaurant name - prefer order.restaurantName (set by backend), fallback to current restaurant data
+    const restaurantName = orderForPrint.restaurantName
+      || orderForPrint.restaurantId?.onboarding?.step1?.restaurantName
+      || (typeof orderForPrint.restaurantId === 'object' && orderForPrint.restaurantId?.onboarding?.step1?.restaurantName)
+      || currentRestaurantData?.onboarding?.step1?.restaurantName
+      || currentRestaurantData?.name
+      || 'Restaurant'
+    
     const orderToPrintData = {
       orderId: orderForPrint.orderId || orderForPrint.orderMongoId || 'N/A',
-      restaurantName: orderForPrint.restaurantName || 'Restaurant',
+      restaurantName: restaurantName,
       items: orderForPrint.items || [],
       total: orderForPrint.pricing?.total || orderForPrint.total || 0,
       customerAddress: customerAddress,
@@ -1772,7 +1788,9 @@ export default function OrdersMain() {
                       {(popupOrder || newOrder)?.orderId || '#Order'}
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {(popupOrder || newOrder)?.restaurantName || 'Restaurant'}
+                      {(popupOrder || newOrder)?.restaurantId?.onboarding?.step1?.restaurantName
+                        || (popupOrder || newOrder)?.restaurantName
+                        || 'Restaurant'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

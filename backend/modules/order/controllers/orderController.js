@@ -322,7 +322,9 @@ export const createOrder = async (req, res) => {
 
     assignedRestaurantId =
       restaurant._id?.toString() || restaurant.restaurantId;
-    assignedRestaurantName = restaurant.name;
+    // Prefer onboarding.step1.restaurantName if available (more accurate)
+    // This ensures correct names are used even if restaurant was created with default name
+    assignedRestaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name;
 
     // Validate variant selection for items with variations
     const menu = await Menu.findOne({ restaurant: restaurant._id }).lean();

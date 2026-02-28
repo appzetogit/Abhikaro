@@ -230,6 +230,91 @@ export default function RestaurantOnboarding() {
   })
 
 
+  // Helper function to convert base64 to File object
+  const base64ToFile = (base64String, mimeType, fileName) => {
+    // Remove data URL prefix if present
+    const base64Data = base64String.includes(',') ? base64String.split(',')[1] : base64String;
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mimeType });
+    return new File([blob], fileName, { type: mimeType });
+  };
+
+  // Check if running in Flutter WebView
+  const isFlutterApp = () => {
+    return !!(window.flutter_inappwebview || window.webkit?.messageHandlers);
+  };
+
+  // Handler for Flutter camera callback
+  const handleFlutterCamera = (imageType, isMultiple = false) => {
+    if (!window.flutter_inappwebview) {
+      console.warn('Flutter WebView not available');
+      return;
+    }
+
+    window.flutter_inappwebview.callHandler('openCamera').then((result) => {
+      if (result && result.success && result.base64) {
+        const file = base64ToFile(
+          result.base64,
+          result.mimeType || 'image/jpeg',
+          result.fileName || `camera_${Date.now()}.jpg`
+        );
+
+        if (imageType === 'menuImages') {
+          setStep2((prev) => ({ ...prev, menuImages: [...(prev.menuImages || []), file] }));
+        } else if (imageType === 'profileImage') {
+          setStep2((prev) => ({ ...prev, profileImage: file }));
+        } else if (imageType === 'panImage') {
+          setStep3((prev) => ({ ...prev, panImage: file }));
+        } else if (imageType === 'gstImage') {
+          setStep3((prev) => ({ ...prev, gstImage: file }));
+        } else if (imageType === 'fssaiImage') {
+          setStep3((prev) => ({ ...prev, fssaiImage: file }));
+        }
+      }
+    }).catch((error) => {
+      console.error('Error calling Flutter openCamera:', error);
+      toast.error('Failed to capture image from camera');
+    });
+  };
+
+  // Handler for Flutter gallery callback
+  const handleFlutterGallery = (imageType, isMultiple = false) => {
+    if (!window.flutter_inappwebview) {
+      console.warn('Flutter WebView not available');
+      return;
+    }
+
+    window.flutter_inappwebview.callHandler('openGallery').then((result) => {
+      if (result && result.success && result.base64) {
+        const file = base64ToFile(
+          result.base64,
+          result.mimeType || 'image/jpeg',
+          result.fileName || `gallery_${Date.now()}.jpg`
+        );
+
+        if (imageType === 'menuImages') {
+          setStep2((prev) => ({ ...prev, menuImages: [...(prev.menuImages || []), file] }));
+        } else if (imageType === 'profileImage') {
+          setStep2((prev) => ({ ...prev, profileImage: file }));
+        } else if (imageType === 'panImage') {
+          setStep3((prev) => ({ ...prev, panImage: file }));
+        } else if (imageType === 'gstImage') {
+          setStep3((prev) => ({ ...prev, gstImage: file }));
+        } else if (imageType === 'fssaiImage') {
+          setStep3((prev) => ({ ...prev, fssaiImage: file }));
+        }
+      }
+    }).catch((error) => {
+      console.error('Error calling Flutter openGallery:', error);
+      toast.error('Failed to select image from gallery');
+    });
+  };
+
   // Load from localStorage on mount and check URL parameter
   useEffect(() => {
     // Check if step is specified in URL (from OTP login redirect)
@@ -1215,13 +1300,20 @@ export default function RestaurantOnboarding() {
               </div>
             </div>
             <div className="flex gap-2">
-              <label
-                htmlFor="menuImagesCameraInput"
+              <button
+                type="button"
+                onClick={() => {
+                  if (isFlutterApp()) {
+                    handleFlutterCamera('menuImages', true);
+                  } else {
+                    document.getElementById('menuImagesCameraInput')?.click();
+                  }
+                }}
                 className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
               >
                 <ImageIcon className="w-4 h-4" />
                 <span>Camera</span>
-              </label>
+              </button>
             <input
               id="menuImagesCameraInput"
               type="file"
@@ -1236,13 +1328,20 @@ export default function RestaurantOnboarding() {
                   e.target.value = ""
                 }}
               />
-              <label
-                htmlFor="menuImagesInput"
+              <button
+                type="button"
+                onClick={() => {
+                  if (isFlutterApp()) {
+                    handleFlutterGallery('menuImages', true);
+                  } else {
+                    document.getElementById('menuImagesInput')?.click();
+                  }
+                }}
                 className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
               >
                 <Upload className="w-4.5 h-4.5" />
                 <span>Gallery</span>
-              </label>
+              </button>
               <input
                 id="menuImagesInput"
                 type="file"
@@ -1352,13 +1451,20 @@ export default function RestaurantOnboarding() {
 
           </div>
           <div className="flex gap-2">
-            <label
-              htmlFor="profileImageCameraInput"
+            <button
+              type="button"
+              onClick={() => {
+                if (isFlutterApp()) {
+                  handleFlutterCamera('profileImage', false);
+                } else {
+                  document.getElementById('profileImageCameraInput')?.click();
+                }
+              }}
               className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
             >
               <ImageIcon className="w-4 h-4" />
               <span>Camera</span>
-            </label>
+            </button>
             <input
               id="profileImageCameraInput"
               type="file"
@@ -1371,13 +1477,20 @@ export default function RestaurantOnboarding() {
                 e.target.value = ""
               }}
             />
-            <label
-              htmlFor="profileImageInput"
+            <button
+              type="button"
+              onClick={() => {
+                if (isFlutterApp()) {
+                  handleFlutterGallery('profileImage', false);
+                } else {
+                  document.getElementById('profileImageInput')?.click();
+                }
+              }}
               className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
             >
               <Upload className="w-4.5 h-4.5" />
               <span>Gallery</span>
-            </label>
+            </button>
             <input
               id="profileImageInput"
               type="file"
@@ -1524,13 +1637,20 @@ export default function RestaurantOnboarding() {
           )}
 
           <div className="mt-2 flex gap-2">
-            <label
-              htmlFor="panImageCameraInput"
+            <button
+              type="button"
+              onClick={() => {
+                if (isFlutterApp()) {
+                  handleFlutterCamera('panImage', false);
+                } else {
+                  document.getElementById('panImageCameraInput')?.click();
+                }
+              }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
             >
               <ImageIcon className="w-4 h-4" />
               <span>Camera</span>
-            </label>
+            </button>
             <input
               id="panImageCameraInput"
               type="file"
@@ -1542,13 +1662,20 @@ export default function RestaurantOnboarding() {
                 e.target.value = ""
               }}
             />
-            <label
-              htmlFor="panImageInput"
+            <button
+              type="button"
+              onClick={() => {
+                if (isFlutterApp()) {
+                  handleFlutterGallery('panImage', false);
+                } else {
+                  document.getElementById('panImageInput')?.click();
+                }
+              }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
             >
               <Upload className="w-4 h-4" />
               <span>Gallery</span>
-            </label>
+            </button>
             <input
               id="panImageInput"
               type="file"
@@ -1604,14 +1731,89 @@ export default function RestaurantOnboarding() {
               className="bg-white text-sm"
               placeholder="Registered address"
             />
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(e) =>
-                setStep3({ ...step3, gstImage: e.target.files?.[0] || null })
-              }
-              className="bg-white text-sm"
-            />
+            <div>
+              <Label className="text-xs text-gray-700">GST image</Label>
+              {/* GST image preview (if selected or already uploaded) */}
+              {step3.gstImage && (
+                <div className="mt-2 w-28 h-16 rounded-md overflow-hidden bg-gray-100 border border-gray-200 flex items-center justify-center">
+                  {(() => {
+                    let imageSrc = null
+
+                    if (step3.gstImage instanceof File) {
+                      imageSrc = URL.createObjectURL(step3.gstImage)
+                    } else if (step3.gstImage?.url) {
+                      imageSrc = step3.gstImage.url
+                    } else if (typeof step3.gstImage === "string") {
+                      imageSrc = step3.gstImage
+                    }
+
+                    return imageSrc ? (
+                      <img
+                        src={imageSrc}
+                        alt="GST preview"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-[10px] text-gray-500 px-2 text-center">
+                        Preview not available
+                      </span>
+                    )
+                  })()}
+                </div>
+              )}
+
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isFlutterApp()) {
+                      handleFlutterCamera('gstImage', false);
+                    } else {
+                      document.getElementById('gstImageCameraInput')?.click();
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                  <span>Camera</span>
+                </button>
+                <input
+                  id="gstImageCameraInput"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    setStep3({ ...step3, gstImage: e.target.files?.[0] || null })
+                    e.target.value = ""
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isFlutterApp()) {
+                      handleFlutterGallery('gstImage', false);
+                    } else {
+                      document.getElementById('gstImageInput')?.click();
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Gallery</span>
+                </button>
+                <input
+                  id="gstImageInput"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    setStep3({ ...step3, gstImage: e.target.files?.[0] || null })
+                    e.target.value = ""
+                  }}
+                />
+              </div>
+            </div>
           </div>
         )}
       </section>
@@ -1705,13 +1907,20 @@ export default function RestaurantOnboarding() {
         )}
 
         <div className="mt-2 flex gap-2">
-          <label
-            htmlFor="fssaiImageCameraInput"
+          <button
+            type="button"
+            onClick={() => {
+              if (isFlutterApp()) {
+                handleFlutterCamera('fssaiImage', false);
+              } else {
+                document.getElementById('fssaiImageCameraInput')?.click();
+              }
+            }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
           >
             <ImageIcon className="w-4 h-4" />
             <span>Camera</span>
-          </label>
+          </button>
           <input
             id="fssaiImageCameraInput"
             type="file"
@@ -1723,13 +1932,20 @@ export default function RestaurantOnboarding() {
               e.target.value = ""
             }}
           />
-          <label
-            htmlFor="fssaiImageInput"
+          <button
+            type="button"
+            onClick={() => {
+              if (isFlutterApp()) {
+                handleFlutterGallery('fssaiImage', false);
+              } else {
+                document.getElementById('fssaiImageInput')?.click();
+              }
+            }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
           >
             <Upload className="w-4 h-4" />
             <span>Gallery</span>
-          </label>
+          </button>
           <input
             id="fssaiImageInput"
             type="file"

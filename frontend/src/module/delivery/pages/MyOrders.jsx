@@ -194,7 +194,13 @@ export default function MyOrders() {
   const filteredOrders = orders.filter(order => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
-    const restaurantName = (order.restaurantName || order.restaurantId?.name || '').toLowerCase()
+    // Prefer onboarding.step1.restaurantName if available (more accurate)
+    const restaurantName = (
+      order.restaurantName 
+      || order.restaurantId?.onboarding?.step1?.restaurantName
+      || order.restaurantId?.name 
+      || ''
+    ).toLowerCase()
     const itemNames = (order.items || []).map(item => item.name?.toLowerCase() || '').join(' ')
     return restaurantName.includes(query) || itemNames.includes(query)
   })
@@ -281,7 +287,11 @@ export default function MyOrders() {
         ) : (
           <div className="space-y-4">
             {filteredOrders.map((order) => {
-              const restaurantName = order.restaurantName || order.restaurantId?.name || 'Restaurant'
+              // Prefer onboarding.step1.restaurantName if available (more accurate)
+              const restaurantName = order.restaurantName 
+                || order.restaurantId?.onboarding?.step1?.restaurantName
+                || order.restaurantId?.name 
+                || 'Restaurant'
               const restaurantLocation = getRestaurantLocation(order)
               const restaurantImage = getRestaurantImage(order)
               const orderDate = formatOrderDate(order.createdAt)

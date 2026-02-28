@@ -292,7 +292,12 @@ export default function AllOrdersPage() {
                     'Address not available'
     
     // Get restaurant name
-    const restaurantName = restaurantData?.name || order.restaurantId?.name || 'Restaurant'
+    // Prefer onboarding.step1.restaurantName if available (more accurate)
+    const restaurantName = restaurantData?.onboarding?.step1?.restaurantName 
+      || restaurantData?.name 
+      || order.restaurantId?.onboarding?.step1?.restaurantName
+      || order.restaurantId?.name 
+      || 'Restaurant'
     
     // Get customer name
     const customerName = order.userId?.name || order.customerName || 'Customer'

@@ -89,12 +89,14 @@ export const getApprovedRestaurants = asyncHandler(async (req, res) => {
       isActive: true,
     };
 
-    // Search filter
+    // Search filter - include onboarding.step1.restaurantName for search
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
+        { "onboarding.step1.restaurantName": { $regex: search, $options: "i" } },
         { restaurantId: { $regex: search, $options: "i" } },
         { ownerName: { $regex: search, $options: "i" } },
+        { "onboarding.step1.ownerName": { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
       ];
@@ -107,15 +109,22 @@ export const getApprovedRestaurants = asyncHandler(async (req, res) => {
     // Get total count
     const total = await Restaurant.countDocuments(query);
 
-    // Get restaurants
+    // Get restaurants - include onboarding field for name fix
     const restaurants = await Restaurant.find(query)
       .select(
-        "_id name restaurantId ownerName email phone isActive approvedAt businessModel",
+        "_id name restaurantId ownerName email phone isActive approvedAt businessModel onboarding",
       )
       .sort({ approvedAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
       .lean();
+
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    restaurants.forEach(restaurant => {
+      if (restaurant.onboarding?.step1?.restaurantName) {
+        restaurant.name = restaurant.onboarding.step1.restaurantName;
+      }
+    });
 
     // Check which restaurants already have commission setup
     const restaurantIds = restaurants.map((r) => r._id);

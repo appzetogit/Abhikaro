@@ -109,7 +109,7 @@ export default function TableBookingConfirmation() {
                                 <MapPin className="w-5 h-5 text-red-500" />
                             </div>
                             <div>
-                                <p className="font-bold text-gray-900">{restaurant.name}</p>
+                                <p className="font-bold text-gray-900">{restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}</p>
                                 <p className="text-gray-500 text-xs mt-0.5 line-clamp-1">
                                     {typeof restaurant.location === 'string'
                                         ? restaurant.location

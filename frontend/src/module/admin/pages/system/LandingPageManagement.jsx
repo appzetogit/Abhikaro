@@ -368,7 +368,8 @@ export default function LandingPageManagement() {
   const filteredRestaurantsForModal = allRestaurants.filter(restaurant => {
     if (!restaurantSearchQuery.trim()) return true
     const query = restaurantSearchQuery.toLowerCase()
-    return restaurant.name?.toLowerCase().includes(query) ||
+    const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || ''
+    return restaurantName.toLowerCase().includes(query) ||
            restaurant.restaurantId?.toLowerCase().includes(query)
   })
 
@@ -1407,11 +1408,14 @@ export default function LandingPageManagement() {
                           <div className="mt-2 pt-2 border-t border-slate-200">
                             <p className="text-xs text-slate-600 mb-1">Linked Restaurants ({banner.linkedRestaurants.length}):</p>
                             <div className="flex flex-wrap gap-1">
-                              {banner.linkedRestaurants.slice(0, 3).map((restaurant) => (
-                                <span key={restaurant._id || restaurant} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                                  {restaurant.name || 'Restaurant'}
-                                </span>
-                              ))}
+                              {banner.linkedRestaurants.slice(0, 3).map((restaurant) => {
+                                const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                                return (
+                                  <span key={restaurant._id || restaurant} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                                    {restaurantName}
+                                  </span>
+                                )
+                              })}
                               {banner.linkedRestaurants.length > 3 && (
                                 <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">
                                   +{banner.linkedRestaurants.length - 3} more
@@ -1706,11 +1710,14 @@ export default function LandingPageManagement() {
                         <option value="">Select a restaurant...</option>
                         {allRestaurants
                           .filter(r => !top10Restaurants.some(tr => tr.restaurant?._id === r._id))
-                          .map((restaurant) => (
-                            <option key={restaurant._id} value={restaurant._id}>
-                              {restaurant.name}
-                            </option>
-                          ))}
+                          .map((restaurant) => {
+                            const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                            return (
+                              <option key={restaurant._id} value={restaurant._id}>
+                                {restaurantName}
+                              </option>
+                            )
+                          })}
                       </select>
                     </div>
                     <div>
@@ -1815,11 +1822,14 @@ export default function LandingPageManagement() {
                         <option value="">Select a restaurant...</option>
                         {allRestaurants
                           .filter(r => !gourmetRestaurants.some(gr => gr.restaurant?._id === r._id))
-                          .map((restaurant) => (
-                            <option key={restaurant._id} value={restaurant._id}>
-                              {restaurant.name}
-                            </option>
-                          ))}
+                          .map((restaurant) => {
+                            const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                            return (
+                              <option key={restaurant._id} value={restaurant._id}>
+                                {restaurantName}
+                              </option>
+                            )
+                          })}
                       </select>
                     </div>
                     <Button 
@@ -1987,33 +1997,45 @@ export default function LandingPageManagement() {
                             
                             {/* Restaurant Image */}
                             <div className="flex-shrink-0">
-                              {profileImageUrl ? (
-                                <img
-                                  src={profileImageUrl}
-                                  alt={restaurant.name}
-                                  className="w-16 h-16 rounded-xl object-cover border-2 border-slate-200"
-                                  onError={(e) => {
-                                    e.target.style.display = 'none'
-                                    e.target.nextSibling.style.display = 'flex'
-                                  }}
-                                />
-                              ) : null}
-                              <div 
-                                className={`w-16 h-16 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-lg ${
-                                  profileImageUrl ? 'hidden' : 'flex'
-                                }`}
-                              >
-                                {restaurant.name?.charAt(0)?.toUpperCase() || 'R'}
-                              </div>
+                              {(() => {
+                                const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+                                return (
+                                  <>
+                                    {profileImageUrl ? (
+                                      <img
+                                        src={profileImageUrl}
+                                        alt={restaurantName}
+                                        className="w-16 h-16 rounded-xl object-cover border-2 border-slate-200"
+                                        onError={(e) => {
+                                          e.target.style.display = 'none'
+                                          e.target.nextSibling.style.display = 'flex'
+                                        }}
+                                      />
+                                    ) : null}
+                                    <div 
+                                      className={`w-16 h-16 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-lg ${
+                                        profileImageUrl ? 'hidden' : 'flex'
+                                      }`}
+                                    >
+                                      {restaurantName.charAt(0)?.toUpperCase() || 'R'}
+                                    </div>
+                                  </>
+                                )
+                              })()}
                             </div>
                             
                             {/* Restaurant Info */}
                             <div className="flex-1 min-w-0">
-                              <h3 className={`font-semibold text-base mb-1 ${
-                                isSelected ? 'text-blue-900' : 'text-slate-900'
-                              }`}>
-                                {restaurant.name || 'Unnamed Restaurant'}
-                              </h3>
+                              {(() => {
+                                const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Unnamed Restaurant'
+                                return (
+                                  <h3 className={`font-semibold text-base mb-1 ${
+                                    isSelected ? 'text-blue-900' : 'text-slate-900'
+                                  }`}>
+                                    {restaurantName}
+                                  </h3>
+                                )
+                              })()}
                               <p className="text-sm text-slate-500 truncate">
                                 ID: {restaurant.restaurantId || restaurant._id}
                               </p>

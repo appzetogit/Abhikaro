@@ -259,6 +259,16 @@ export const getRestaurants = async (req, res) => {
       .skip(parseInt(offset))
       .lean();
     
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    // This ensures correct names are shown even if restaurant was created with default name
+    restaurants = restaurants.map(restaurant => {
+      // Update name from onboarding if available
+      if (restaurant.onboarding?.step1?.restaurantName) {
+        restaurant.name = restaurant.onboarding.step1.restaurantName;
+      }
+      return restaurant;
+    });
+    
     // Calculate and add distance to each restaurant if user coordinates provided
     if (useGeospatialQuery && userLat && userLng) {
       restaurants = restaurants.map(restaurant => {
@@ -372,6 +382,11 @@ export const getRestaurantById = async (req, res) => {
       return errorResponse(res, 404, 'Restaurant not found');
     }
 
+    // Fix restaurant name: Prefer onboarding.step1.restaurantName if available
+    if (restaurant.onboarding?.step1?.restaurantName) {
+      restaurant.name = restaurant.onboarding.step1.restaurantName;
+    }
+
     return successResponse(res, 200, 'Restaurant retrieved successfully', {
       restaurant,
     });
@@ -391,6 +406,11 @@ export const getRestaurantByOwner = async (req, res) => {
 
     if (!restaurant) {
       return errorResponse(res, 404, 'Restaurant not found');
+    }
+
+    // Fix restaurant name: Prefer onboarding.step1.restaurantName if available
+    if (restaurant.onboarding?.step1?.restaurantName) {
+      restaurant.name = restaurant.onboarding.step1.restaurantName;
     }
 
     return successResponse(res, 200, 'Restaurant retrieved successfully', {
@@ -461,10 +481,19 @@ export const createRestaurantFromOnboarding = async (onboardingData, restaurantI
     // Update step2 data - always update even if empty arrays
     if (step2) {
       if (step2.profileImageUrl) {
-        existing.profileImage = step2.profileImageUrl;
+        // Handle both object {url, publicId} and string URL
+        existing.profileImage = typeof step2.profileImageUrl === 'string' 
+          ? step2.profileImageUrl 
+          : (step2.profileImageUrl.url || step2.profileImageUrl);
       }
       if (step2.menuImageUrls) {
-        existing.menuImages = step2.menuImageUrls; // Update even if empty array
+        // Ensure menuImageUrls is an array and extract URLs if objects
+        const menuImages = Array.isArray(step2.menuImageUrls) 
+          ? step2.menuImageUrls.map(img => 
+              typeof img === 'string' ? img : (img.url || img)
+            )
+          : [];
+        existing.menuImages = menuImages;
       }
       if (step2.cuisines) {
         existing.cuisines = step2.cuisines; // Update even if empty array
@@ -1010,6 +1039,14 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
       .select('-owner -createdAt -updatedAt')
       .lean()
       .limit(100); // Limit to first 100 restaurants for performance
+
+    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    restaurants = restaurants.map(restaurant => {
+      if (restaurant.onboarding?.step1?.restaurantName) {
+        restaurant.name = restaurant.onboarding.step1.restaurantName;
+      }
+      return restaurant;
+    });
 
     // Note: We show all restaurants regardless of zone. Zone-based filtering is removed.
     // Users in any zone will see all restaurants.

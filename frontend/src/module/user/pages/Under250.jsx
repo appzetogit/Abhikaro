@@ -386,11 +386,13 @@ export default function Under250() {
   }
 
   const handleItemClick = (item, restaurant) => {
+    // Prefer onboarding.step1.restaurantName if available (more accurate)
+    const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
     const itemWithRestaurant = {
       ...item,
-      restaurant: restaurant.name,
+      restaurant: restaurantName,
       restaurantId: restaurant._id || restaurant.restaurantId || restaurant.id,
-      description: item.description || `${item.name} from ${restaurant.name}`,
+      description: item.description || `${item.name} from ${restaurantName}`,
       customisable: item.customisable || false,
       notEligibleForCoupons: item.notEligibleForCoupons || false,
     }
@@ -554,14 +556,16 @@ export default function Under250() {
           </div>
         ) : (
           sortedAndFilteredRestaurants.map((restaurant) => {
-            const restaurantSlug = restaurant.slug || restaurant.name.toLowerCase().replace(/\s+/g, "-")
+            // Prefer onboarding.step1.restaurantName if available (more accurate)
+            const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
+            const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
             return (
               <section key={restaurant.id} className="pt-4 sm:pt-6 md:pt-8 lg:pt-10">
                 {/* Restaurant Header */}
                 <div className="flex items-start justify-between mb-3 md:mb-4 lg:mb-6">
                   <div className="flex-1">
                     <h3 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-900 dark:text-white mb-1 md:mb-2">
-                      {restaurant.name}
+                      {restaurantName}
                     </h3>
                     <div className="flex items-center gap-2 text-sm md:text-base lg:text-lg text-gray-500 dark:text-gray-400">
                       <Clock className="h-4 w-4 md:h-5 md:w-5 lg:h-6 lg:w-6" strokeWidth={1.5} />

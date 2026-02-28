@@ -1113,11 +1113,20 @@ export const registerFcmToken = asyncHandler(async (req, res) => {
 
 export const getCurrentRestaurant = asyncHandler(async (req, res) => {
   // Restaurant is attached by authenticate middleware
+  // Fix restaurant name: Prefer onboarding.step1.restaurantName if available
+  const restaurantName = req.restaurant.onboarding?.step1?.restaurantName || req.restaurant.name || 'Restaurant';
+  
+  // Fix owner details: Prefer onboarding.step1 if available (more accurate)
+  // This ensures correct owner name/email/phone even if main fields are outdated
+  const ownerName = req.restaurant.onboarding?.step1?.ownerName || req.restaurant.ownerName || '';
+  const ownerEmail = req.restaurant.onboarding?.step1?.ownerEmail || req.restaurant.ownerEmail || '';
+  const ownerPhone = req.restaurant.onboarding?.step1?.ownerPhone || req.restaurant.ownerPhone || '';
+  
   return successResponse(res, 200, "Restaurant retrieved successfully", {
     restaurant: {
       id: req.restaurant._id,
       restaurantId: req.restaurant.restaurantId,
-      name: req.restaurant.name,
+      name: restaurantName,
       email: req.restaurant.email,
       phone: req.restaurant.phone,
       phoneVerified: req.restaurant.phoneVerified,
@@ -1125,9 +1134,9 @@ export const getCurrentRestaurant = asyncHandler(async (req, res) => {
       profileImage: req.restaurant.profileImage,
       isActive: req.restaurant.isActive,
       onboarding: req.restaurant.onboarding,
-      ownerName: req.restaurant.ownerName,
-      ownerEmail: req.restaurant.ownerEmail,
-      ownerPhone: req.restaurant.ownerPhone,
+      ownerName: ownerName,
+      ownerEmail: ownerEmail,
+      ownerPhone: ownerPhone,
       // Include additional restaurant details
       cuisines: req.restaurant.cuisines,
       openDays: req.restaurant.openDays,

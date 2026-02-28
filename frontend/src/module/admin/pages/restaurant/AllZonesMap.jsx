@@ -430,7 +430,7 @@ export default function AllZonesMap() {
         position: { lat, lng },
         map: map,
         icon: restaurantIcon,
-        title: restaurant.name || "Restaurant",
+        title: restaurant.onboarding?.step1?.restaurantName || restaurant.name || "Restaurant",
         zIndex: 1000, // Show above zones
       })
 
@@ -439,7 +439,7 @@ export default function AllZonesMap() {
         content: `
           <div style="padding: 12px; min-width: 200px;">
             <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1e293b;">
-              ${restaurant.name || 'Unnamed Restaurant'}
+              ${restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Unnamed Restaurant'}
             </h3>
             <div style="font-size: 13px; color: #64748b; line-height: 1.6;">
               ${restaurant.location?.formattedAddress || restaurant.location?.address || restaurant.location?.area || 'Location not specified'}

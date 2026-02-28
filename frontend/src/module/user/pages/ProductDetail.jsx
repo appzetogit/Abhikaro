@@ -428,7 +428,7 @@ export default function ProductDetail() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg md:text-xl lg:text-2xl font-bold">
-                      {restaurant.name}
+                      {restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}
                     </h3>
                     <p className="text-sm md:text-base text-muted-foreground">{restaurant.cuisine}</p>
                   </div>

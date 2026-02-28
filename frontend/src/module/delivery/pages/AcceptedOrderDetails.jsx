@@ -91,7 +91,13 @@ export default function AcceptedOrderDetails() {
   const items = order?.items || []
   const customerName = order?.userId?.name || (typeof order?.userId === 'object' && order?.userId?.name) || 'Customer'
   const customerAddress = order?.address?.formattedAddress || [order?.address?.street, order?.address?.city, order?.address?.state].filter(Boolean).join(', ') || '—'
-  const restaurantName = order?.restaurantId?.name || (typeof order?.restaurantId === 'object' && order?.restaurantId?.name) || 'Restaurant'
+  // Prefer onboarding.step1.restaurantName if available (more accurate)
+  const restaurantName = order?.restaurantName
+    || order?.restaurantId?.onboarding?.step1?.restaurantName
+    || order?.restaurantId?.name 
+    || (typeof order?.restaurantId === 'object' && order?.restaurantId?.onboarding?.step1?.restaurantName)
+    || (typeof order?.restaurantId === 'object' && order?.restaurantId?.name) 
+    || 'Restaurant'
   const restaurantAddress = order?.restaurantId?.address ? (typeof order.restaurantId.address === 'string' ? order.restaurantId.address : [order.restaurantId.address?.street, order.restaurantId.address?.city].filter(Boolean).join(', ')) : '—'
   const paymentMethodDisplay = order?.paymentMethod === 'cash' || order?.payment?.method === 'cash' ? 'Cash' : 'Online'
 

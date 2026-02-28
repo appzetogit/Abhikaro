@@ -543,9 +543,11 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       },
       pastCycles: pastCyclesData,
       restaurant: {
-        name: restaurant.name || 'Restaurant',
+        // Prefer onboarding.step1.restaurantName if available (more accurate)
+        name: restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant',
         restaurantId: restaurant.restaurantId || restaurantId,
-        address: restaurant.location?.address || restaurant.location?.formattedAddress || ''
+        address: restaurant.location?.address || restaurant.location?.formattedAddress || '',
+        onboarding: restaurant.onboarding // Include onboarding data for frontend
       }
     });
   } catch (error) {

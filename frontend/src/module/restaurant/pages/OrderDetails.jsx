@@ -119,11 +119,28 @@ export default function OrderDetails() {
   const [orderData, setOrderData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [restaurantData, setRestaurantData] = useState(null)
   
   // Toast state
   const [showToast, setShowToast] = useState(false)
   const [toastMessage, setToastMessage] = useState("")
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
+
+  // Fetch restaurant data for fallback
+  useEffect(() => {
+    const fetchRestaurantData = async () => {
+      try {
+        const response = await restaurantAPI.getCurrentRestaurant()
+        const data = response?.data?.data?.restaurant || response?.data?.restaurant
+        if (data) {
+          setRestaurantData(data)
+        }
+      } catch (error) {
+        console.error("Error fetching restaurant data:", error)
+      }
+    }
+    fetchRestaurantData()
+  }, [])
 
   // Fetch order data from API
   useEffect(() => {
@@ -137,13 +154,21 @@ export default function OrderDetails() {
         if (response.data?.success && response.data.data?.order) {
           const order = response.data.data.order
           
+          // Get restaurant name - prefer order.restaurantName (set by backend), fallback to current restaurant data
+          const restaurantName = order.restaurantName 
+            || order.restaurantId?.onboarding?.step1?.restaurantName
+            || order.restaurantId?.name
+            || restaurantData?.onboarding?.step1?.restaurantName
+            || restaurantData?.name
+            || 'Restaurant'
+          
           // Transform API order data to match component structure
           const transformedOrder = {
             id: order.orderId || order._id,
             status: order.status?.toUpperCase() || 'PENDING',
             date: new Date(order.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
             time: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-            restaurant: order.restaurantName || 'Restaurant',
+            restaurant: restaurantName,
             address: order.address?.street || order.address?.city || 'Address not available',
             additionalAddress: order.address?.additionalDetails || order.address?.additionalAddress || '', // Additional address details
             customer: {
@@ -222,7 +247,7 @@ export default function OrderDetails() {
     if (orderId) {
       fetchOrder()
     }
-  }, [orderId])
+  }, [orderId, restaurantData]) // Include restaurantData as dependency
 
   // Lenis smooth scrolling
   useEffect(() => {

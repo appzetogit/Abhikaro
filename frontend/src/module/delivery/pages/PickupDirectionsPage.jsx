@@ -401,7 +401,7 @@ export default function PickupDirectionsPage() {
                 position={[restaurant.lat, restaurant.lng]}
                 icon={createCustomIcon('#ff8100', '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>')}
               >
-                <Popup>{restaurant.name}</Popup>
+                <Popup>{restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}</Popup>
               </Marker>
             ))}
 
@@ -512,7 +512,7 @@ export default function PickupDirectionsPage() {
                           <div className="bg-gray-700 rounded px-2 py-1 inline-block mb-2">
                             <span className="text-white text-xs font-medium">Pick up {index + 1}</span>
                           </div>
-                          <h3 className="text-white font-bold text-lg mb-1">{restaurant.name}</h3>
+                          <h3 className="text-white font-bold text-lg mb-1">{restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}</h3>
                           <p className="text-white/70 text-sm">{restaurant.address}</p>
                         </div>
                       </div>
