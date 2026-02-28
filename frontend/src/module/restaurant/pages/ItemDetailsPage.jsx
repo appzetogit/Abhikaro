@@ -440,14 +440,35 @@ export default function ItemDetailsPage() {
 
   // Handler for Flutter gallery callback - EXACT same as camera handler
   const handleFlutterGallery = () => {
+    console.log('🖼️ Gallery button clicked')
+    console.log('Flutter available:', !!window.flutter_inappwebview)
+    
+    // If Flutter not available, use native file input immediately
     if (!window.flutter_inappwebview) {
-      document.getElementById('image-upload-gallery')?.click()
+      console.log('⚠️ Flutter not available, using native file input')
+      const galleryInput = document.getElementById('image-upload-gallery')
+      if (galleryInput) {
+        galleryInput.click()
+      } else {
+        console.error('❌ Gallery input element not found!')
+        toast.error('Gallery input not found. Please refresh the page.')
+      }
       return
     }
 
     console.log('🖼️ Calling Flutter openGallery handler...')
     
+    // Add timeout - if handler doesn't respond in 3 seconds, use native fallback
+    const timeoutId = setTimeout(() => {
+      console.warn('⚠️ Gallery handler timeout, using native file input')
+      const galleryInput = document.getElementById('image-upload-gallery')
+      if (galleryInput) {
+        galleryInput.click()
+      }
+    }, 3000)
+    
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
+      clearTimeout(timeoutId)
       console.log('📥 Flutter openGallery response:', result)
       
       if (result && result.success && result.base64) {
@@ -509,18 +530,29 @@ export default function ItemDetailsPage() {
         // User cancelled - don't show error
         console.log('ℹ️ User cancelled image selection')
       } else {
-        console.warn('⚠️ Unexpected gallery response:', result)
+        console.warn('⚠️ Unexpected gallery response, using native fallback:', result)
+        // Fallback to native if response is unexpected
+        const galleryInput = document.getElementById('image-upload-gallery')
+        if (galleryInput) {
+          galleryInput.click()
+        }
       }
     }).catch((error) => {
+      clearTimeout(timeoutId)
       console.error('❌ Error calling Flutter openGallery:', error)
       console.error('Error details:', {
         message: error.message,
         stack: error.stack,
         name: error.name
       })
-      // Only show error if it's not a cancellation
-      if (!error.message || !error.message.includes('cancel')) {
-        toast.error('Failed to select image from gallery')
+      
+      // Always fallback to native file input on error
+      console.log('🔄 Falling back to native file input')
+      const galleryInput = document.getElementById('image-upload-gallery')
+      if (galleryInput) {
+        galleryInput.click()
+      } else {
+        toast.error('Failed to open gallery. Please refresh the page.')
       }
     })
   }
@@ -742,21 +774,36 @@ export default function ItemDetailsPage() {
       // For Flutter-selected images (with base64 data), use uploadBase64 API (more reliable)
       // For native file inputs, use uploadMedia API
       const filesToUpload = Array.from(imageFiles.entries()) // Get [previewUrl, file] pairs
-      console.log('=== UPLOAD DEBUG ===')
-      console.log('Files to upload:', filesToUpload.length)
+      
+      // DETAILED LOGGING FOR LIVE SERVER DEBUGGING
+      console.log('========================================')
+      console.log('=== IMAGE UPLOAD DEBUG START ===')
+      console.log('Total images in state:', images.length)
+      console.log('Existing image URLs:', existingImageUrls.length, existingImageUrls)
+      console.log('Files to upload count:', filesToUpload.length)
       console.log('Image files map size:', imageFiles.size)
       console.log('Base64 data map size:', imageBase64Data.size)
+      console.log('---')
       filesToUpload.forEach(([previewUrl, file], idx) => {
         const base64Data = imageBase64Data.get(previewUrl)
-        console.log(`File ${idx + 1}:`, {
-          previewUrl: previewUrl.substring(0, 50) + '...',
-          fileName: file?.name,
-          fileSize: file?.size,
-          hasBase64: !!base64Data,
-          base64Length: base64Data?.base64?.length
-        })
+        console.log(`📎 File ${idx + 1}/${filesToUpload.length}:`)
+        console.log(`   Preview URL: ${previewUrl.substring(0, 60)}...`)
+        console.log(`   File Name: ${file?.name || 'N/A'}`)
+        console.log(`   File Size: ${file?.size || 'N/A'} bytes`)
+        console.log(`   File Type: ${file?.type || 'N/A'}`)
+        console.log(`   Has Base64 Data: ${!!base64Data}`)
+        if (base64Data) {
+          console.log(`   Base64 Length: ${base64Data.base64?.length || 0}`)
+          console.log(`   Base64 MimeType: ${base64Data.mimeType || 'N/A'}`)
+          console.log(`   Base64 FileName: ${base64Data.fileName || 'N/A'}`)
+          console.log(`   Base64 Preview: ${base64Data.base64?.substring(0, 50) || 'N/A'}...`)
+        } else {
+          console.log(`   ⚠️ NO BASE64 DATA - Will use File upload`)
+        }
+        console.log('---')
       })
-      console.log('===================')
+      console.log('=== IMAGE UPLOAD DEBUG END ===')
+      console.log('========================================')
 
       if (filesToUpload.length > 0) {
         toast.info(`Uploading ${filesToUpload.length} image(s)...`)
@@ -769,19 +816,32 @@ export default function ItemDetailsPage() {
             
             // If base64 data exists (Flutter-selected image), use uploadBase64 API
             if (base64Data && base64Data.base64) {
-              console.log(`📤 Uploading image ${i + 1}/${filesToUpload.length} via base64:`, {
-                fileName: base64Data.fileName,
-                mimeType: base64Data.mimeType,
-                base64Length: base64Data.base64.length,
-                base64Preview: base64Data.base64.substring(0, 50) + '...'
-              })
+              console.log('========================================')
+              console.log(`📤 UPLOADING IMAGE ${i + 1}/${filesToUpload.length} VIA BASE64`)
+              console.log(`   File Name: ${base64Data.fileName || 'N/A'}`)
+              console.log(`   Mime Type: ${base64Data.mimeType || 'image/jpeg'}`)
+              console.log(`   Base64 Length: ${base64Data.base64.length}`)
+              console.log(`   Base64 Preview: ${base64Data.base64.substring(0, 50)}...`)
+              console.log(`   Preview URL: ${previewUrl.substring(0, 60)}...`)
               
               try {
                 // Ensure base64 string is clean (no data URL prefix)
                 let cleanBase64 = base64Data.base64
-                if (cleanBase64.includes(',')) {
+                const hadPrefix = cleanBase64.includes(',')
+                if (hadPrefix) {
                   cleanBase64 = cleanBase64.split(',')[1]
+                  console.log(`   ✅ Removed data URL prefix (original: ${base64Data.base64.length}, cleaned: ${cleanBase64.length})`)
+                } else {
+                  console.log(`   ✅ Base64 is already clean (no prefix)`)
                 }
+                
+                console.log(`   📤 Calling uploadAPI.uploadBase64...`)
+                console.log(`   Parameters:`, {
+                  base64Length: cleanBase64.length,
+                  mimeType: base64Data.mimeType || 'image/jpeg',
+                  fileName: base64Data.fileName || `image_${Date.now()}.jpg`,
+                  folder: 'appzeto/restaurant/menu-items'
+                })
                 
                 const uploadResponse = await uploadAPI.uploadBase64(
                   cleanBase64, // Send clean base64 without data URL prefix
@@ -790,28 +850,41 @@ export default function ItemDetailsPage() {
                   { folder: 'appzeto/restaurant/menu-items' }
                 )
                 
-                console.log(`📥 Base64 upload response for image ${i + 1}:`, {
-                  success: uploadResponse?.data?.success,
-                  hasData: !!uploadResponse?.data?.data,
-                  hasUrl: !!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url),
-                  responseData: uploadResponse?.data
-                })
+                console.log(`   📥 Upload API Response Received:`)
+                console.log(`   Response Status: ${uploadResponse?.status || 'N/A'}`)
+                console.log(`   Response Success: ${uploadResponse?.data?.success || 'N/A'}`)
+                console.log(`   Has Data: ${!!uploadResponse?.data?.data}`)
+                console.log(`   Has URL: ${!!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)}`)
+                console.log(`   Full Response:`, JSON.stringify(uploadResponse?.data, null, 2))
                 
                 imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
                 if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
                   uploadedImageUrls.push(imageUrl)
-                  console.log(`✅ Successfully uploaded image ${i + 1} via base64:`, imageUrl)
+                  console.log(`   ✅ SUCCESS! Image URL received: ${imageUrl}`)
+                  console.log(`   ✅ Total uploaded URLs so far: ${uploadedImageUrls.length}`)
+                  console.log('========================================')
                 } else {
-                  console.error('❌ Base64 upload response missing URL:', uploadResponse)
+                  console.error(`   ❌ ERROR: No URL in response!`)
+                  console.error(`   Response data:`, uploadResponse?.data)
+                  console.error(`   Response structure:`, {
+                    hasData: !!uploadResponse?.data,
+                    hasDataData: !!uploadResponse?.data?.data,
+                    hasUrl: !!(uploadResponse?.data?.data?.url),
+                    hasDirectUrl: !!(uploadResponse?.data?.url),
+                    fullResponse: uploadResponse
+                  })
                   throw new Error("Failed to get uploaded image URL from base64 upload response")
                 }
               } catch (base64Error) {
-                console.error(`❌ Base64 upload failed for image ${i + 1}:`, base64Error)
-                console.error('Base64 error details:', {
-                  message: base64Error.message,
-                  response: base64Error.response?.data,
-                  status: base64Error.response?.status
-                })
+                console.error('========================================')
+                console.error(`❌ BASE64 UPLOAD FAILED FOR IMAGE ${i + 1}`)
+                console.error(`   Error Message: ${base64Error.message}`)
+                console.error(`   Error Type: ${base64Error.constructor.name}`)
+                console.error(`   Response Status: ${base64Error.response?.status || 'N/A'}`)
+                console.error(`   Response Data:`, base64Error.response?.data)
+                console.error(`   Full Error:`, base64Error)
+                console.error(`   Stack:`, base64Error.stack)
+                console.error('========================================')
                 // Fallback to File upload if base64 upload fails
                 if (!file || !(file instanceof File)) {
                   throw new Error(`Base64 upload failed and no valid File object available: ${base64Error.message}`)
@@ -823,34 +896,55 @@ export default function ItemDetailsPage() {
             
             // If base64 upload didn't happen or failed, use File upload
             if (!imageUrl && file) {
-              console.log(`📤 Uploading image ${i + 1}/${filesToUpload.length} via File:`, {
-                name: file.name,
-                size: file.size,
-                type: file.type
-              })
+              console.log('========================================')
+              console.log(`📤 UPLOADING IMAGE ${i + 1}/${filesToUpload.length} VIA FILE`)
+              console.log(`   File Name: ${file.name || 'N/A'}`)
+              console.log(`   File Size: ${file.size || 'N/A'} bytes`)
+              console.log(`   File Type: ${file.type || 'N/A'}`)
+              console.log(`   Preview URL: ${previewUrl.substring(0, 60)}...`)
               
               // Validate file before upload
               if (!file || !(file instanceof File)) {
-                console.error(`❌ Invalid file object at index ${i}:`, file)
+                console.error(`   ❌ Invalid file object!`)
+                console.error(`   File object:`, file)
                 throw new Error(`Invalid file object: ${file?.name || 'unknown'}`)
               }
+              
+              console.log(`   📤 Calling uploadAPI.uploadMedia...`)
+              console.log(`   Parameters:`, {
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type,
+                folder: 'appzeto/restaurant/menu-items'
+              })
               
               const uploadResponse = await uploadAPI.uploadMedia(file, {
                 folder: 'appzeto/restaurant/menu-items'
               })
               
-              console.log(`📥 File upload response for image ${i + 1}:`, {
-                success: uploadResponse?.data?.success,
-                hasData: !!uploadResponse?.data?.data,
-                hasUrl: !!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)
-              })
+              console.log(`   📥 Upload API Response Received:`)
+              console.log(`   Response Status: ${uploadResponse?.status || 'N/A'}`)
+              console.log(`   Response Success: ${uploadResponse?.data?.success || 'N/A'}`)
+              console.log(`   Has Data: ${!!uploadResponse?.data?.data}`)
+              console.log(`   Has URL: ${!!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)}`)
+              console.log(`   Full Response:`, JSON.stringify(uploadResponse?.data, null, 2))
               
               imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
               if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
                 uploadedImageUrls.push(imageUrl)
-                console.log(`✅ Successfully uploaded image ${i + 1} via File:`, imageUrl)
+                console.log(`   ✅ SUCCESS! Image URL received: ${imageUrl}`)
+                console.log(`   ✅ Total uploaded URLs so far: ${uploadedImageUrls.length}`)
+                console.log('========================================')
               } else {
-                console.error('❌ File upload response missing URL:', uploadResponse)
+                console.error(`   ❌ ERROR: No URL in response!`)
+                console.error(`   Response data:`, uploadResponse?.data)
+                console.error(`   Response structure:`, {
+                  hasData: !!uploadResponse?.data,
+                  hasDataData: !!uploadResponse?.data?.data,
+                  hasUrl: !!(uploadResponse?.data?.data?.url),
+                  hasDirectUrl: !!(uploadResponse?.data?.url),
+                  fullResponse: uploadResponse
+                })
                 throw new Error("Failed to get uploaded image URL from file upload response")
               }
             }
@@ -862,14 +956,27 @@ export default function ItemDetailsPage() {
             
           } catch (uploadError) {
             const fileName = base64Data?.fileName || file?.name || 'image'
-            console.error(`❌ Error uploading image ${i + 1} (${fileName}):`, uploadError)
-            console.error('Upload error details:', {
-              message: uploadError.message,
-              response: uploadError.response?.data,
-              status: uploadError.response?.status,
-              hasBase64: !!base64Data,
-              hasFile: !!(file && file instanceof File)
-            })
+            console.error('========================================')
+            console.error(`❌ UPLOAD ERROR FOR IMAGE ${i + 1}`)
+            console.error(`   File Name: ${fileName}`)
+            console.error(`   Error Message: ${uploadError.message}`)
+            console.error(`   Error Type: ${uploadError.constructor.name}`)
+            console.error(`   Has Base64 Data: ${!!base64Data}`)
+            if (base64Data) {
+              console.error(`   Base64 Length: ${base64Data.base64?.length || 0}`)
+              console.error(`   Base64 MimeType: ${base64Data.mimeType || 'N/A'}`)
+            }
+            console.error(`   Has File Object: ${!!(file && file instanceof File)}`)
+            if (file) {
+              console.error(`   File Name: ${file.name || 'N/A'}`)
+              console.error(`   File Size: ${file.size || 'N/A'}`)
+              console.error(`   File Type: ${file.type || 'N/A'}`)
+            }
+            console.error(`   Response Status: ${uploadError.response?.status || 'N/A'}`)
+            console.error(`   Response Data:`, uploadError.response?.data)
+            console.error(`   Full Error Object:`, uploadError)
+            console.error(`   Stack Trace:`, uploadError.stack)
+            console.error('========================================')
             
             // Show more detailed error message
             const errorMessage = uploadError.response?.data?.message 
@@ -881,9 +988,15 @@ export default function ItemDetailsPage() {
           }
         }
         
-        console.log(`✅ All ${filesToUpload.length} image(s) uploaded successfully`)
+        console.log('========================================')
+        console.log(`✅ ALL ${filesToUpload.length} IMAGE(S) UPLOADED SUCCESSFULLY`)
+        console.log(`   Uploaded URLs:`, uploadedImageUrls)
+        console.log('========================================')
       } else {
-        console.log('ℹ️ No new files to upload (all images are already uploaded URLs)')
+        console.log('========================================')
+        console.log('ℹ️ NO NEW FILES TO UPLOAD')
+        console.log(`   All images are already uploaded URLs: ${existingImageUrls.length}`)
+        console.log('========================================')
       }
 
       // Combine existing URLs and newly uploaded URLs
@@ -898,23 +1011,36 @@ export default function ItemDetailsPage() {
         self.indexOf(url) === index // Remove duplicates
       )
 
-      // Debug: Log image URLs
-      console.log('=== IMAGE UPLOAD SUMMARY ===')
-      console.log('Existing image URLs:', existingImageUrls.length, existingImageUrls)
-      console.log('Newly uploaded URLs:', uploadedImageUrls.length, uploadedImageUrls)
-      console.log('Total image URLs to save:', allImageUrls.length, allImageUrls)
-      console.log('All image URLs details:', allImageUrls.map((url, idx) => ({
+      // DETAILED LOGGING FOR LIVE SERVER
+      console.log('========================================')
+      console.log('=== FINAL IMAGE URLS SUMMARY ===')
+      console.log(`   Total images in state: ${images.length}`)
+      console.log(`   Existing URLs: ${existingImageUrls.length}`, existingImageUrls)
+      console.log(`   Uploaded URLs: ${uploadedImageUrls.length}`, uploadedImageUrls)
+      console.log(`   All Image URLs (combined): ${allImageUrls.length}`, allImageUrls)
+      console.log('   URL Validation Details:', allImageUrls.map((url, idx) => ({
         index: idx,
         url: url,
         isValid: url && typeof url === 'string' && url.trim() !== '' && (url.startsWith('http://') || url.startsWith('https://'))
       })))
-      console.log('==========================')
+      console.log('========================================')
       
       // CRITICAL: Ensure we have at least one valid image URL if images were uploaded
       if (images.length > 0 && allImageUrls.length === 0) {
-        console.error('❌ ERROR: Images were added but no valid URLs to save!')
-        console.error('Images state:', images)
-        console.error('Image files map:', Array.from(imageFiles.entries()))
+        console.error('========================================')
+        console.error('❌ CRITICAL ERROR: Images were added but no valid URLs to save!')
+        console.error(`   Images in state: ${images.length}`)
+        console.error(`   Existing URLs: ${existingImageUrls.length}`)
+        console.error(`   Uploaded URLs: ${uploadedImageUrls.length}`)
+        console.error(`   All Image URLs: ${allImageUrls.length}`)
+        console.error('   Images state:', images)
+        console.error('   Image files map:', Array.from(imageFiles.entries()))
+        console.error('   Base64 data map:', Array.from(imageBase64Data.entries()).map(([url, data]) => ({
+          url: url.substring(0, 50) + '...',
+          hasBase64: !!data.base64,
+          base64Length: data.base64?.length
+        })))
+        console.error('========================================')
         toast.error('Failed to process images. Please try adding images again.')
         setUploadingImages(false)
         return
