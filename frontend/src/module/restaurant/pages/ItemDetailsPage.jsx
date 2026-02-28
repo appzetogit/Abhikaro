@@ -397,33 +397,44 @@ export default function ItemDetailsPage() {
 
     window.flutter_inappwebview.callHandler('openCamera').then((result) => {
       if (result && result.success && result.base64) {
-        const file = base64ToFile(
-          result.base64,
-          result.mimeType || 'image/jpeg',
-          result.fileName || `camera_${Date.now()}.jpg`
-        )
+        try {
+          const file = base64ToFile(
+            result.base64,
+            result.mimeType || 'image/jpeg',
+            result.fileName || `camera_${Date.now()}.jpg`
+          )
 
-        // Create preview URL and store
-        const previewUrl = URL.createObjectURL(file)
-        const newImageFilesMap = new Map(imageFiles)
-        newImageFilesMap.set(previewUrl, file)
-        
-        // Store base64 for upload
-        const newBase64DataMap = new Map(imageBase64Data)
-        newBase64DataMap.set(previewUrl, {
-          base64: result.base64,
-          mimeType: result.mimeType || 'image/jpeg',
-          fileName: result.fileName || file.name
-        })
-        
-        setImages(prev => [...prev, previewUrl])
-        setImageFiles(newImageFilesMap)
-        setImageBase64Data(newBase64DataMap)
-        toast.success('Image captured successfully')
+          // Create preview URL and store
+          const previewUrl = URL.createObjectURL(file)
+          const newImageFilesMap = new Map(imageFiles)
+          newImageFilesMap.set(previewUrl, file)
+          
+          // Store base64 for upload - CRITICAL: Store raw base64 without any modifications
+          const newBase64DataMap = new Map(imageBase64Data)
+          newBase64DataMap.set(previewUrl, {
+            base64: result.base64, // Store raw base64 string
+            mimeType: result.mimeType || 'image/jpeg',
+            fileName: result.fileName || file.name
+          })
+          
+          setImages(prev => [...prev, previewUrl])
+          setImageFiles(newImageFilesMap)
+          setImageBase64Data(newBase64DataMap)
+          toast.success('Image captured successfully')
+        } catch (error) {
+          console.error('Error processing camera image:', error)
+          toast.error('Failed to process image')
+        }
+      } else if (result && result.success === false) {
+        // User cancelled - don't show error
+        console.log('User cancelled image capture')
       }
     }).catch((error) => {
       console.error('Error calling Flutter openCamera:', error)
-      toast.error('Failed to capture image from camera')
+      // Only show error if it's not a cancellation
+      if (!error.message || !error.message.includes('cancel')) {
+        toast.error('Failed to capture image from camera')
+      }
     })
   }
 
@@ -434,35 +445,47 @@ export default function ItemDetailsPage() {
       return
     }
 
+    // Don't show error immediately - wait for result
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
       if (result && result.success && result.base64) {
-        const file = base64ToFile(
-          result.base64,
-          result.mimeType || 'image/jpeg',
-          result.fileName || `gallery_${Date.now()}.jpg`
-        )
+        try {
+          const file = base64ToFile(
+            result.base64,
+            result.mimeType || 'image/jpeg',
+            result.fileName || `gallery_${Date.now()}.jpg`
+          )
 
-        // Create preview URL and store
-        const previewUrl = URL.createObjectURL(file)
-        const newImageFilesMap = new Map(imageFiles)
-        newImageFilesMap.set(previewUrl, file)
-        
-        // Store base64 for upload
-        const newBase64DataMap = new Map(imageBase64Data)
-        newBase64DataMap.set(previewUrl, {
-          base64: result.base64,
-          mimeType: result.mimeType || 'image/jpeg',
-          fileName: result.fileName || file.name
-        })
-        
-        setImages(prev => [...prev, previewUrl])
-        setImageFiles(newImageFilesMap)
-        setImageBase64Data(newBase64DataMap)
-        toast.success('Image selected successfully')
+          // Create preview URL and store
+          const previewUrl = URL.createObjectURL(file)
+          const newImageFilesMap = new Map(imageFiles)
+          newImageFilesMap.set(previewUrl, file)
+          
+          // Store base64 for upload - CRITICAL: Store raw base64 without any modifications
+          const newBase64DataMap = new Map(imageBase64Data)
+          newBase64DataMap.set(previewUrl, {
+            base64: result.base64, // Store raw base64 string
+            mimeType: result.mimeType || 'image/jpeg',
+            fileName: result.fileName || file.name
+          })
+          
+          setImages(prev => [...prev, previewUrl])
+          setImageFiles(newImageFilesMap)
+          setImageBase64Data(newBase64DataMap)
+          toast.success('Image selected successfully')
+        } catch (error) {
+          console.error('Error processing gallery image:', error)
+          toast.error('Failed to process image')
+        }
+      } else if (result && result.success === false) {
+        // User cancelled - don't show error
+        console.log('User cancelled image selection')
       }
     }).catch((error) => {
       console.error('Error calling Flutter openGallery:', error)
-      toast.error('Failed to select image from gallery')
+      // Only show error if it's not a cancellation
+      if (!error.message || !error.message.includes('cancel')) {
+        toast.error('Failed to select image from gallery')
+      }
     })
   }
 
@@ -525,29 +548,8 @@ export default function ItemDetailsPage() {
     newImageFilesMap.delete(imageToDelete)
     newBase64DataMap.delete(imageToDelete)
 
-    // Remove the file mapping and revoke the blob URL if it's a preview (new upload)
-    if (imageToDelete && imageToDelete.startsWith('blob:')) {
-      newImageFilesMap.delete(imageToDelete)
-      URL.revokeObjectURL(imageToDelete)
-      console.log('Deleted preview image (blob URL):', imageToDelete)
-    } else if (imageToDelete && (imageToDelete.startsWith('http://') || imageToDelete.startsWith('https://'))) {
-      // For already uploaded images, we need to remove from imageFiles map if it exists
-      // Find and remove the file entry if it exists
-      for (const [previewUrl, file] of newImageFilesMap.entries()) {
-        // This shouldn't happen for HTTP URLs, but just in case
-        if (previewUrl === imageToDelete) {
-          newImageFilesMap.delete(previewUrl)
-          URL.revokeObjectURL(previewUrl)
-        }
-      }
-      console.log('Deleted uploaded image (HTTP URL):', imageToDelete)
-    }
-
     setImages(newImages)
     setImageFiles(newImageFilesMap)
-    // Also remove from base64 data map
-    const newBase64DataMap = new Map(imageBase64Data)
-    newBase64DataMap.delete(imageToDelete)
     setImageBase64Data(newBase64DataMap)
 
     // Adjust current image index after deletion
@@ -720,21 +722,29 @@ export default function ItemDetailsPage() {
               console.log(`📤 Uploading image ${i + 1}/${filesToUpload.length} via base64:`, {
                 fileName: base64Data.fileName,
                 mimeType: base64Data.mimeType,
-                base64Length: base64Data.base64.length
+                base64Length: base64Data.base64.length,
+                base64Preview: base64Data.base64.substring(0, 50) + '...'
               })
               
               try {
+                // Ensure base64 string is clean (no data URL prefix)
+                let cleanBase64 = base64Data.base64
+                if (cleanBase64.includes(',')) {
+                  cleanBase64 = cleanBase64.split(',')[1]
+                }
+                
                 const uploadResponse = await uploadAPI.uploadBase64(
-                  base64Data.base64,
-                  base64Data.mimeType,
-                  base64Data.fileName,
+                  cleanBase64, // Send clean base64 without data URL prefix
+                  base64Data.mimeType || 'image/jpeg',
+                  base64Data.fileName || `image_${Date.now()}.jpg`,
                   { folder: 'appzeto/restaurant/menu-items' }
                 )
                 
                 console.log(`📥 Base64 upload response for image ${i + 1}:`, {
                   success: uploadResponse?.data?.success,
                   hasData: !!uploadResponse?.data?.data,
-                  hasUrl: !!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)
+                  hasUrl: !!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url),
+                  responseData: uploadResponse?.data
                 })
                 
                 imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
@@ -746,11 +756,17 @@ export default function ItemDetailsPage() {
                   throw new Error("Failed to get uploaded image URL from base64 upload response")
                 }
               } catch (base64Error) {
-                console.error(`❌ Base64 upload failed for image ${i + 1}, trying File upload as fallback:`, base64Error)
+                console.error(`❌ Base64 upload failed for image ${i + 1}:`, base64Error)
+                console.error('Base64 error details:', {
+                  message: base64Error.message,
+                  response: base64Error.response?.data,
+                  status: base64Error.response?.status
+                })
                 // Fallback to File upload if base64 upload fails
                 if (!file || !(file instanceof File)) {
                   throw new Error(`Base64 upload failed and no valid File object available: ${base64Error.message}`)
                 }
+                console.log(`🔄 Falling back to File upload for image ${i + 1}`)
                 // Continue to File upload below
               }
             }
