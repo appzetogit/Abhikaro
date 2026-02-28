@@ -22,6 +22,25 @@ import api from "@/lib/api"
 import { restaurantAPI, uploadAPI } from "@/lib/api"
 import { toast } from "sonner"
 
+// Utility to detect if running in Flutter WebView
+const isFlutterApp = () => {
+  return typeof window !== 'undefined' && window.flutter_inappwebview
+}
+
+// Convert base64 string to File object
+const base64ToFile = (base64, mimeType, fileName) => {
+  // Remove data URL prefix if present
+  const base64Data = base64.includes(',') ? base64.split(',')[1] : base64
+  const byteCharacters = atob(base64Data)
+  const byteNumbers = new Array(byteCharacters.length)
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i)
+  }
+  const byteArray = new Uint8Array(byteNumbers)
+  const blob = new Blob([byteArray], { type: mimeType || 'image/jpeg' })
+  return new File([blob], fileName || `image_${Date.now()}.jpg`, { type: mimeType || 'image/jpeg' })
+}
+
 export default function ItemDetailsPage() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -368,6 +387,100 @@ export default function ItemDetailsPage() {
     }
   ]
 
+  // Handler for Flutter camera callback
+  const handleFlutterCamera = () => {
+    if (!window.flutter_inappwebview) {
+      console.warn('Flutter WebView not available')
+      return
+    }
+
+    window.flutter_inappwebview.callHandler('openCamera').then((result) => {
+      if (result && result.success && result.base64) {
+        const file = base64ToFile(
+          result.base64,
+          result.mimeType || 'image/jpeg',
+          result.fileName || `camera_${Date.now()}.jpg`
+        )
+
+        // Validate file size (max 5MB) - approximate check for base64
+        const base64Size = (result.base64.length * 3) / 4
+        const maxSize = 5 * 1024 * 1024 // 5MB
+        if (base64Size > maxSize) {
+          toast.error('Image size exceeds 5MB limit.')
+          return
+        }
+
+        // Create preview URL and add to images
+        const previewUrl = URL.createObjectURL(file)
+        const newImageFilesMap = new Map(imageFiles)
+        newImageFilesMap.set(previewUrl, file)
+        
+        console.log('📸 Flutter camera image added:', {
+          previewUrl,
+          fileName: file.name,
+          fileSize: file.size,
+          imageFilesMapSize: newImageFilesMap.size
+        })
+        
+        setImages(prev => [...prev, previewUrl])
+        setImageFiles(newImageFilesMap)
+        toast.success('Image captured successfully')
+      } else {
+        toast.error('Failed to capture image')
+      }
+    }).catch((error) => {
+      console.error('Error calling Flutter openCamera:', error)
+      toast.error('Failed to capture image from camera')
+    })
+  }
+
+  // Handler for Flutter gallery callback
+  const handleFlutterGallery = () => {
+    if (!window.flutter_inappwebview) {
+      console.warn('Flutter WebView not available')
+      return
+    }
+
+    window.flutter_inappwebview.callHandler('openGallery').then((result) => {
+      if (result && result.success && result.base64) {
+        const file = base64ToFile(
+          result.base64,
+          result.mimeType || 'image/jpeg',
+          result.fileName || `gallery_${Date.now()}.jpg`
+        )
+
+        // Validate file size (max 5MB) - approximate check for base64
+        const base64Size = (result.base64.length * 3) / 4
+        const maxSize = 5 * 1024 * 1024 // 5MB
+        if (base64Size > maxSize) {
+          toast.error('Image size exceeds 5MB limit.')
+          return
+        }
+
+        // Create preview URL and add to images
+        const previewUrl = URL.createObjectURL(file)
+        const newImageFilesMap = new Map(imageFiles)
+        newImageFilesMap.set(previewUrl, file)
+        
+        console.log('🖼️ Flutter gallery image added:', {
+          previewUrl,
+          fileName: file.name,
+          fileSize: file.size,
+          imageFilesMapSize: newImageFilesMap.size
+        })
+        
+        setImages(prev => [...prev, previewUrl])
+        setImageFiles(newImageFilesMap)
+        toast.success('Image selected successfully')
+      } else {
+        toast.error('Failed to select image')
+      }
+    }).catch((error) => {
+      console.error('Error calling Flutter openGallery:', error)
+      toast.error('Failed to select image from gallery')
+    })
+  }
+
   const handleImageAdd = (e) => {
     const files = Array.from(e.target.files)
 
@@ -599,25 +712,52 @@ export default function ItemDetailsPage() {
         for (let i = 0; i < filesToUpload.length; i++) {
           const file = filesToUpload[i]
           try {
-            console.log(`Uploading image ${i + 1}/${filesToUpload.length}:`, file.name)
+            console.log(`📤 Uploading image ${i + 1}/${filesToUpload.length}:`, {
+              name: file.name,
+              size: file.size,
+              type: file.type
+            })
+            
+            // Validate file before upload
+            if (!file || !(file instanceof File)) {
+              console.error(`❌ Invalid file object at index ${i}:`, file)
+              throw new Error(`Invalid file object: ${file?.name || 'unknown'}`)
+            }
+            
             const uploadResponse = await uploadAPI.uploadMedia(file, {
               folder: 'appzeto/restaurant/menu-items'
             })
+            
+            console.log(`📥 Upload response for image ${i + 1}:`, {
+              success: uploadResponse?.data?.success,
+              hasData: !!uploadResponse?.data?.data,
+              hasUrl: !!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)
+            })
+            
             const imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
-            if (imageUrl) {
+            if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
               uploadedImageUrls.push(imageUrl)
-              console.log(`Successfully uploaded image ${i + 1}:`, imageUrl)
+              console.log(`✅ Successfully uploaded image ${i + 1}:`, imageUrl)
             } else {
-              console.error('Upload response:', uploadResponse)
-              throw new Error("Failed to get uploaded image URL")
+              console.error('❌ Upload response missing URL:', uploadResponse)
+              throw new Error("Failed to get uploaded image URL from response")
             }
           } catch (uploadError) {
-            console.error(`Error uploading image ${i + 1} (${file.name}):`, uploadError)
-            toast.error(`Failed to upload ${file.name}. Please try again.`)
+            console.error(`❌ Error uploading image ${i + 1} (${file?.name || 'unknown'}):`, uploadError)
+            console.error('Upload error details:', {
+              message: uploadError.message,
+              response: uploadError.response?.data,
+              status: uploadError.response?.status
+            })
+            toast.error(`Failed to upload ${file?.name || 'image'}. Please try again.`)
             setUploadingImages(false)
             return
           }
         }
+        
+        console.log(`✅ All ${filesToUpload.length} image(s) uploaded successfully`)
+      } else {
+        console.log('ℹ️ No new files to upload (all images are already uploaded URLs)')
       }
 
       // Combine existing URLs and newly uploaded URLs
@@ -637,7 +777,22 @@ export default function ItemDetailsPage() {
       console.log('Existing image URLs:', existingImageUrls.length, existingImageUrls)
       console.log('Newly uploaded URLs:', uploadedImageUrls.length, uploadedImageUrls)
       console.log('Total image URLs to save:', allImageUrls.length, allImageUrls)
+      console.log('All image URLs details:', allImageUrls.map((url, idx) => ({
+        index: idx,
+        url: url,
+        isValid: url && typeof url === 'string' && url.trim() !== '' && (url.startsWith('http://') || url.startsWith('https://'))
+      })))
       console.log('==========================')
+      
+      // CRITICAL: Ensure we have at least one valid image URL if images were uploaded
+      if (images.length > 0 && allImageUrls.length === 0) {
+        console.error('❌ ERROR: Images were added but no valid URLs to save!')
+        console.error('Images state:', images)
+        console.error('Image files map:', Array.from(imageFiles.entries()))
+        toast.error('Failed to process images. Please try adding images again.')
+        setUploadingImages(false)
+        return
+      }
 
       // Get current menu
       const menuResponse = await restaurantAPI.getMenu()
@@ -756,6 +911,7 @@ export default function ItemDetailsPage() {
         nameArabic: "",
         image: allImageUrls.length > 0 ? allImageUrls[0] : "",
         images: allImageUrls.length > 0 ? allImageUrls : [], // Multiple images support - all Cloudinary URLs (ensure it's always an array)
+        // CRITICAL: Ensure images is always an array, never undefined or null
         category: category,
         rating: itemData?.rating || 0.0,
         reviews: itemData?.reviews || 0,
@@ -814,8 +970,31 @@ export default function ItemDetailsPage() {
       console.log('Images array type:', Array.isArray(itemDataToSave.images) ? 'Array' : typeof itemDataToSave.images)
       console.log('Images array:', itemDataToSave.images)
       console.log('Images count:', itemDataToSave.images?.length)
+      console.log('Image (single):', itemDataToSave.image)
       console.log('PhotoCount:', itemDataToSave.photoCount)
+      console.log('All image URLs that should be saved:', allImageUrls)
       console.log('Full itemDataToSave:', JSON.stringify(itemDataToSave, null, 2))
+      
+      // CRITICAL: Verify images are being set correctly before saving
+      if (!Array.isArray(itemDataToSave.images)) {
+        console.error('❌ ERROR: itemDataToSave.images is not an array!', itemDataToSave.images)
+        itemDataToSave.images = allImageUrls.length > 0 ? allImageUrls : []
+      }
+      if (itemDataToSave.images.length !== allImageUrls.length) {
+        console.error('❌ ERROR: Images count mismatch!', {
+          itemDataToSaveImages: itemDataToSave.images.length,
+          allImageUrls: allImageUrls.length
+        })
+        itemDataToSave.images = allImageUrls
+      }
+      
+      // Ensure image field is also set correctly
+      if (allImageUrls.length > 0 && !itemDataToSave.image) {
+        itemDataToSave.image = allImageUrls[0]
+      }
+      
+      console.log('✅ Final itemDataToSave.images after validation:', itemDataToSave.images)
+      console.log('✅ Final itemDataToSave.image after validation:', itemDataToSave.image)
 
       // Verify sections structure
       console.log('Sections being sent:', sections.length, 'sections')
@@ -1001,13 +1180,20 @@ export default function ItemDetailsPage() {
               className="hidden"
               id="image-upload-gallery"
             />
-            <label
-              htmlFor="image-upload-gallery"
+            <button
+              type="button"
+              onClick={() => {
+                if (isFlutterApp()) {
+                  handleFlutterGallery()
+                } else {
+                  document.getElementById('image-upload-gallery')?.click()
+                }
+              }}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-xl text-sm font-semibold cursor-pointer hover:bg-gray-50 transition-all shadow-sm active:scale-95"
             >
               <Upload className="w-4 h-4" />
               <span>Gallery</span>
-            </label>
+            </button>
 
             {/* Camera Input */}
             <input
@@ -1018,13 +1204,20 @@ export default function ItemDetailsPage() {
               className="hidden"
               id="image-upload-camera"
             />
-            <label
-              htmlFor="image-upload-camera"
+            <button
+              type="button"
+              onClick={() => {
+                if (isFlutterApp()) {
+                  handleFlutterCamera()
+                } else {
+                  document.getElementById('image-upload-camera')?.click()
+                }
+              }}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-gray-900 to-gray-800 text-white rounded-xl text-sm font-semibold cursor-pointer hover:from-gray-800 hover:to-gray-700 transition-all shadow-md hover:shadow-lg active:scale-95"
             >
               <Camera className="w-4 h-4" />
               <span>Camera</span>
-            </label>
+            </button>
           </div>
         </div>
 

@@ -1144,7 +1144,7 @@ export default function HubMenu() {
                         )}
                       </div>
                       <div className="flex items-start gap-2">
-                        {addon.images && addon.images.length > 0 && addon.images[0] && (
+                        {addon.images && addon.images.length > 0 && addon.images[0] && addon.images[0].trim() !== '' ? (
                           <img
                             src={addon.images[0]}
                             alt={addon.name}
@@ -1153,7 +1153,7 @@ export default function HubMenu() {
                               e.target.style.display = 'none'
                             }}
                           />
-                        )}
+                        ) : null}
                         <div className="flex flex-col gap-2">
                           {addon.approvalStatus === 'rejected' && (
                             <button
@@ -1294,11 +1294,17 @@ export default function HubMenu() {
 
                               {/* Right: Image */}
                               <div className="relative">
-                                <img
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="w-20 h-20 rounded-lg object-cover"
-                                />
+                                {item.image && item.image.trim() !== '' ? (
+                                  <img
+                                    src={item.image}
+                                    alt={item.name}
+                                    className="w-20 h-20 rounded-lg object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-20 h-20 rounded-lg bg-gray-200 flex items-center justify-center">
+                                    <Camera className="w-6 h-6 text-gray-400" />
+                                  </div>
+                                )}
                                 <div className="absolute bottom-1 right-1 bg-black/60 rounded-full p-1">
                                   <div className="flex items-center gap-1">
                                     <Camera className="w-3 h-3 text-white" />
@@ -2018,11 +2024,17 @@ export default function HubMenu() {
                                 }}
                                 className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
                               >
-                                <img
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="w-16 h-16 rounded-lg object-cover"
-                                />
+                                {item.image && item.image.trim() !== '' ? (
+                                  <img
+                                    src={item.image}
+                                    alt={item.name}
+                                    className="w-16 h-16 rounded-lg object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-16 h-16 rounded-lg bg-gray-200 flex items-center justify-center shrink-0">
+                                    <Camera className="w-5 h-5 text-gray-400" />
+                                  </div>
+                                )}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
                                     <div
