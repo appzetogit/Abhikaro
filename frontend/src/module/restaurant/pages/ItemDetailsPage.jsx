@@ -438,11 +438,41 @@ export default function ItemDetailsPage() {
   const handleFlutterGallery = () => {
     if (!window.flutter_inappwebview) {
       console.warn('Flutter WebView not available')
+      toast.error('Flutter WebView not available. Please use web browser.')
       return
     }
 
+    console.log('🖼️ Calling Flutter openGallery handler...')
+    
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
-      if (result && result.success && result.base64) {
+      console.log('📥 Flutter openGallery response:', {
+        hasResult: !!result,
+        success: result?.success,
+        hasBase64: !!result?.base64,
+        base64Length: result?.base64?.length,
+        mimeType: result?.mimeType,
+        fileName: result?.fileName
+      })
+      
+      if (!result) {
+        console.error('❌ No result from Flutter openGallery')
+        toast.error('No response from gallery. Please try again.')
+        return
+      }
+      
+      if (result.success === false || !result.success) {
+        console.error('❌ Flutter openGallery returned success: false', result)
+        toast.error('Image selection cancelled or failed')
+        return
+      }
+      
+      if (!result.base64) {
+        console.error('❌ No base64 data in Flutter openGallery response', result)
+        toast.error('Failed to get image data. Please try again.')
+        return
+      }
+
+      try {
         const file = base64ToFile(
           result.base64,
           result.mimeType || 'image/jpeg',
@@ -457,27 +487,47 @@ export default function ItemDetailsPage() {
           return
         }
 
+        // Validate file object
+        if (!file || !(file instanceof File)) {
+          console.error('❌ Invalid file object created from base64')
+          toast.error('Failed to process image. Please try again.')
+          return
+        }
+
         // Create preview URL and add to images
         const previewUrl = URL.createObjectURL(file)
         const newImageFilesMap = new Map(imageFiles)
         newImageFilesMap.set(previewUrl, file)
         
-        console.log('🖼️ Flutter gallery image added:', {
-          previewUrl,
+        console.log('✅ Flutter gallery image added successfully:', {
+          previewUrl: previewUrl.substring(0, 50) + '...',
           fileName: file.name,
           fileSize: file.size,
+          fileType: file.type,
           imageFilesMapSize: newImageFilesMap.size
         })
         
         setImages(prev => [...prev, previewUrl])
         setImageFiles(newImageFilesMap)
         toast.success('Image selected successfully')
-      } else {
-        toast.error('Failed to select image')
+      } catch (fileError) {
+        console.error('❌ Error processing gallery image:', fileError)
+        toast.error('Failed to process image. Please try again.')
       }
     }).catch((error) => {
-      console.error('Error calling Flutter openGallery:', error)
-      toast.error('Failed to select image from gallery')
+      console.error('❌ Error calling Flutter openGallery:', error)
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
+      
+      // Check if handler is not registered
+      if (error.message && error.message.includes('handler') || error.message && error.message.includes('not found')) {
+        toast.error('Gallery handler not found. Please check Flutter code.')
+      } else {
+        toast.error('Failed to open gallery. Please try again.')
+      }
     })
   }
 

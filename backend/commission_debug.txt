@@ -169,3 +169,6 @@
 [2026-02-28T11:18:16.556Z] Checking Specific Commission for RestaurantId: 69a2953227388a642ad05496
 [2026-02-28T11:18:16.601Z] Found Commission: NO
 [2026-02-28T11:18:16.634Z] Any Commission Exists? NO
+[2026-02-28T13:54:13.361Z] Checking Specific Commission for RestaurantId: 69a2d30f3684b07e810e4e4c
+[2026-02-28T13:54:13.396Z] Found Commission: NO
+[2026-02-28T13:54:13.430Z] Any Commission Exists? NO
