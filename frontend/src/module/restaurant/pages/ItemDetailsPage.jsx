@@ -77,6 +77,7 @@ export default function ItemDetailsPage() {
   const [images, setImages] = useState([])
   const [imageFiles, setImageFiles] = useState(new Map()) // Track File objects by preview URL
   const [uploadingImages, setUploadingImages] = useState(false)
+  const [selectingImage, setSelectingImage] = useState(false) // Track if image selection is in progress
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [touchStart, setTouchStart] = useState(null)
   const [touchEnd, setTouchEnd] = useState(null)
@@ -436,99 +437,152 @@ export default function ItemDetailsPage() {
 
   // Handler for Flutter gallery callback
   const handleFlutterGallery = () => {
-    if (!window.flutter_inappwebview) {
-      console.warn('Flutter WebView not available')
-      toast.error('Flutter WebView not available. Please use web browser.')
+    // Prevent multiple simultaneous calls
+    if (selectingImage) {
+      console.warn('Image selection already in progress')
       return
     }
 
+    if (!window.flutter_inappwebview) {
+      console.warn('Flutter WebView not available, using native file input')
+      // Fallback to native file input
+      document.getElementById('image-upload-gallery')?.click()
+      return
+    }
+
+    setSelectingImage(true)
     console.log('🖼️ Calling Flutter openGallery handler...')
     
-    window.flutter_inappwebview.callHandler('openGallery').then((result) => {
-      console.log('📥 Flutter openGallery response:', {
-        hasResult: !!result,
-        success: result?.success,
-        hasBase64: !!result?.base64,
-        base64Length: result?.base64?.length,
-        mimeType: result?.mimeType,
-        fileName: result?.fileName
-      })
-      
-      if (!result) {
-        console.error('❌ No result from Flutter openGallery')
-        toast.error('No response from gallery. Please try again.')
-        return
-      }
-      
-      if (result.success === false || !result.success) {
-        console.error('❌ Flutter openGallery returned success: false', result)
-        toast.error('Image selection cancelled or failed')
-        return
-      }
-      
-      if (!result.base64) {
-        console.error('❌ No base64 data in Flutter openGallery response', result)
-        toast.error('Failed to get image data. Please try again.')
-        return
-      }
-
-      try {
-        const file = base64ToFile(
-          result.base64,
-          result.mimeType || 'image/jpeg',
-          result.fileName || `gallery_${Date.now()}.jpg`
-        )
-
-        // Validate file size (max 5MB) - approximate check for base64
-        const base64Size = (result.base64.length * 3) / 4
-        const maxSize = 5 * 1024 * 1024 // 5MB
-        if (base64Size > maxSize) {
-          toast.error('Image size exceeds 5MB limit.')
-          return
-        }
-
-        // Validate file object
-        if (!file || !(file instanceof File)) {
-          console.error('❌ Invalid file object created from base64')
-          toast.error('Failed to process image. Please try again.')
-          return
-        }
-
-        // Create preview URL and add to images
-        const previewUrl = URL.createObjectURL(file)
-        const newImageFilesMap = new Map(imageFiles)
-        newImageFilesMap.set(previewUrl, file)
-        
-        console.log('✅ Flutter gallery image added successfully:', {
-          previewUrl: previewUrl.substring(0, 50) + '...',
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type,
-          imageFilesMapSize: newImageFilesMap.size
+    // Add timeout to detect if handler is not responding
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Gallery handler timeout - no response after 30 seconds'))
+      }, 30000) // 30 seconds timeout
+    })
+    
+    const handlerPromise = window.flutter_inappwebview.callHandler('openGallery')
+    
+    Promise.race([handlerPromise, timeoutPromise])
+      .then((result) => {
+        console.log('📥 Flutter openGallery response received:', {
+          hasResult: !!result,
+          success: result?.success,
+          hasBase64: !!result?.base64,
+          base64Length: result?.base64?.length,
+          mimeType: result?.mimeType,
+          fileName: result?.fileName,
+          error: result?.error
         })
         
-        setImages(prev => [...prev, previewUrl])
-        setImageFiles(newImageFilesMap)
-        toast.success('Image selected successfully')
-      } catch (fileError) {
-        console.error('❌ Error processing gallery image:', fileError)
-        toast.error('Failed to process image. Please try again.')
-      }
-    }).catch((error) => {
-      console.error('❌ Error calling Flutter openGallery:', error)
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
+        if (!result) {
+          console.error('❌ No result from Flutter openGallery')
+          toast.error('No response from gallery. Please try again.')
+          // Fallback to native file input
+          setTimeout(() => {
+            document.getElementById('image-upload-gallery')?.click()
+          }, 500)
+          return
+        }
+        
+        // Check for error in response
+        if (result.error) {
+          console.error('❌ Error in Flutter openGallery response:', result.error)
+          toast.error(`Gallery error: ${result.error}`)
+          return
+        }
+        
+        if (result.success === false || !result.success) {
+          console.error('❌ Flutter openGallery returned success: false', result)
+          toast.error('Image selection cancelled or failed')
+          return
+        }
+        
+        if (!result.base64) {
+          console.error('❌ No base64 data in Flutter openGallery response', result)
+          toast.error('Failed to get image data. Please try again.')
+          return
+        }
+
+        try {
+          // Validate base64 string
+          if (typeof result.base64 !== 'string' || result.base64.trim() === '') {
+            console.error('❌ Invalid base64 string')
+            toast.error('Invalid image data received. Please try again.')
+            return
+          }
+
+          const file = base64ToFile(
+            result.base64,
+            result.mimeType || 'image/jpeg',
+            result.fileName || `gallery_${Date.now()}.jpg`
+          )
+
+          // Validate file size (max 5MB) - approximate check for base64
+          const base64Size = (result.base64.length * 3) / 4
+          const maxSize = 5 * 1024 * 1024 // 5MB
+          if (base64Size > maxSize) {
+            toast.error('Image size exceeds 5MB limit.')
+            return
+          }
+
+          // Validate file object
+          if (!file || !(file instanceof File)) {
+            console.error('❌ Invalid file object created from base64')
+            toast.error('Failed to process image. Please try again.')
+            return
+          }
+
+          // Create preview URL and add to images
+          const previewUrl = URL.createObjectURL(file)
+          const newImageFilesMap = new Map(imageFiles)
+          newImageFilesMap.set(previewUrl, file)
+          
+          console.log('✅ Flutter gallery image added successfully:', {
+            previewUrl: previewUrl.substring(0, 50) + '...',
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            imageFilesMapSize: newImageFilesMap.size
+          })
+          
+          setImages(prev => [...prev, previewUrl])
+          setImageFiles(newImageFilesMap)
+          toast.success('Image selected successfully')
+          setSelectingImage(false)
+        } catch (fileError) {
+          console.error('❌ Error processing gallery image:', fileError)
+          console.error('File error details:', {
+            message: fileError.message,
+            stack: fileError.stack,
+            base64Length: result?.base64?.length,
+            mimeType: result?.mimeType
+          })
+          toast.error('Failed to process image. Please try again.')
+          setSelectingImage(false)
+        }
       })
-      
-      // Check if handler is not registered
-      if (error.message && error.message.includes('handler') || error.message && error.message.includes('not found')) {
-        toast.error('Gallery handler not found. Please check Flutter code.')
-      } else {
-        toast.error('Failed to open gallery. Please try again.')
-      }
-    })
+      .catch((error) => {
+        console.error('❌ Error calling Flutter openGallery:', error)
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        })
+        
+        setSelectingImage(false)
+        
+        // Check if handler is not registered or timeout
+        if (error.message && (error.message.includes('handler') || error.message.includes('not found') || error.message.includes('timeout'))) {
+          console.warn('⚠️ Flutter gallery handler not available, falling back to native file input')
+          toast.error('Gallery handler not available. Using native file picker...')
+          // Fallback to native file input
+          setTimeout(() => {
+            document.getElementById('image-upload-gallery')?.click()
+          }, 500)
+        } else {
+          toast.error('Failed to open gallery. Please try again.')
+        }
+      })
   }
 
   const handleImageAdd = (e) => {
@@ -1239,10 +1293,20 @@ export default function ItemDetailsPage() {
                   document.getElementById('image-upload-gallery')?.click()
                 }
               }}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-xl text-sm font-semibold cursor-pointer hover:bg-gray-50 transition-all shadow-sm active:scale-95"
+              disabled={selectingImage}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-xl text-sm font-semibold cursor-pointer hover:bg-gray-50 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-4 h-4" />
-              <span>Gallery</span>
+              {selectingImage ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Opening...</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  <span>Gallery</span>
+                </>
+              )}
             </button>
 
             {/* Camera Input */}
@@ -1263,10 +1327,20 @@ export default function ItemDetailsPage() {
                   document.getElementById('image-upload-camera')?.click()
                 }
               }}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-gray-900 to-gray-800 text-white rounded-xl text-sm font-semibold cursor-pointer hover:from-gray-800 hover:to-gray-700 transition-all shadow-md hover:shadow-lg active:scale-95"
+              disabled={selectingImage}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-gray-900 to-gray-800 text-white rounded-xl text-sm font-semibold cursor-pointer hover:from-gray-800 hover:to-gray-700 transition-all shadow-md hover:shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Camera className="w-4 h-4" />
-              <span>Camera</span>
+              {selectingImage ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Opening...</span>
+                </>
+              ) : (
+                <>
+                  <Camera className="w-4 h-4" />
+                  <span>Camera</span>
+                </>
+              )}
             </button>
           </div>
         </div>
