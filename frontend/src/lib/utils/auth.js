@@ -97,13 +97,11 @@ export function getCurrentUserRole(module = null) {
   if (module) {
     const token = getModuleToken(module);
     if (!token) return null;
-    
-    if (isTokenExpired(token)) {
-      // Token expired, clear it
-      clearModuleAuth(module);
-      return null;
-    }
-    
+
+    // NOTE:
+    // Don't auto-clear expired tokens here. Access token expiry should be
+    // handled by the axios refresh-token flow so that the user stays
+    // logged in as long as the refresh token is valid.
     return getRoleFromToken(token);
   }
   
@@ -112,7 +110,7 @@ export function getCurrentUserRole(module = null) {
   const modules = ['user', 'restaurant', 'delivery', 'admin'];
   for (const mod of modules) {
     const token = getModuleToken(mod);
-    if (token && !isTokenExpired(token)) {
+    if (token) {
       return getRoleFromToken(token);
     }
   }
@@ -128,12 +126,10 @@ export function getCurrentUserRole(module = null) {
 export function isModuleAuthenticated(module) {
   const token = getModuleToken(module);
   if (!token) return false;
-  
-  if (isTokenExpired(token)) {
-    clearModuleAuth(module);
-    return false;
-  }
-  
+
+  // Don't auto-logout on access token expiry here. Let the axios response
+  // interceptor handle 401s by calling the appropriate refresh-token API.
+  // If refresh also fails, the interceptor will clear auth data and redirect.
   return true;
 }
 

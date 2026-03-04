@@ -433,6 +433,21 @@ restaurantSchema.pre("save", async function (next) {
     }
   }
 
+  // FINAL SAFETY: If geoLocation exists but does NOT have valid coordinates,
+  // remove it so Mongo's 2dsphere index doesn't throw "Can't extract geo keys".
+  if (this.location && this.location.geoLocation) {
+    const coords = this.location.geoLocation.coordinates;
+    const validCoords =
+      Array.isArray(coords) &&
+      coords.length === 2 &&
+      typeof coords[0] === 'number' &&
+      typeof coords[1] === 'number';
+
+    if (!validCoords) {
+      this.location.geoLocation = undefined;
+    }
+  }
+
   next();
 });
 

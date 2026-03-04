@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AuthRedirect from "@/components/AuthRedirect"
 import UserLayout from "./UserLayout"
+import UserPreventRedirect from "./UserPreventRedirect"
 import { Suspense, lazy } from "react"
 import Loader from "@/components/Loader"
 
@@ -100,7 +101,7 @@ export default function UserRouter() {
       <Routes>
         <Route element={<UserLayout />}>
           {/* Home & Discovery */}
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<UserPreventRedirect><Home /></UserPreventRedirect>} />
           <Route path="/dining" element={<Dining />} />
           <Route path="/dining/restaurants" element={<DiningRestaurants />} />
           <Route path="/dining/:category" element={<DiningCategory />} />

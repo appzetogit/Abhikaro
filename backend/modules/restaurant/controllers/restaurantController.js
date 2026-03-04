@@ -131,7 +131,7 @@ export const getRestaurants = async (req, res) => {
       longitude // User's longitude - CRITICAL for geospatial queries
     } = req.query;
     
-    // Optional: Zone-based filtering - if zoneId is provided, validate and filter by zone
+    // Optional: Zone-based filtering - if zoneId is provided, validate and (later) filter by zone
     let userZone = null;
     if (zoneId) {
       // Validate zone exists and is active
@@ -295,6 +295,19 @@ export const getRestaurants = async (req, res) => {
         const aDist = a.distanceInKm !== null ? a.distanceInKm : Infinity;
         const bDist = b.distanceInKm !== null ? b.distanceInKm : Infinity;
         return aDist - bDist;
+      });
+    }
+
+    // If a valid userZone is provided, STRICTLY filter restaurants to only those
+    // whose pin lies inside that zone polygon. This ensures users only see
+    // restaurants that actually serve their current delivery zone.
+    if (userZone && Array.isArray(userZone.coordinates) && userZone.coordinates.length >= 3) {
+      restaurants = restaurants.filter(restaurant => {
+        const loc = restaurant.location || {};
+        const lat = loc.latitude;
+        const lng = loc.longitude;
+        if (!lat || !lng) return false;
+        return isPointInZone(lat, lng, userZone.coordinates);
       });
     }
     
@@ -1034,7 +1047,7 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
       }
     };
 
-    // Get all active restaurants - Show ALL restaurants regardless of zone
+    // Get all active restaurants
     let restaurants = await Restaurant.find({ isActive: true })
       .select('-owner -createdAt -updatedAt')
       .lean()
@@ -1048,8 +1061,18 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
       return restaurant;
     });
 
-    // Note: We show all restaurants regardless of zone. Zone-based filtering is removed.
-    // Users in any zone will see all restaurants.
+    // If a valid userZone is provided, STRICTLY filter restaurants to only those
+    // whose pin lies inside that zone polygon. This keeps the list limited to
+    // restaurants that actually belong to the user's current delivery zone.
+    if (userZone && Array.isArray(userZone.coordinates) && userZone.coordinates.length >= 3) {
+      restaurants = restaurants.filter(restaurant => {
+        const loc = restaurant.location || {};
+        const lat = loc.latitude;
+        const lng = loc.longitude;
+        if (!lat || !lng) return false;
+        return isPointInZone(lat, lng, userZone.coordinates);
+      });
+    }
 
     // Process restaurants in parallel (batch processing for better performance)
     const batchSize = 10; // Process 10 restaurants at a time

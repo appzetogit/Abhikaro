@@ -460,7 +460,12 @@ export default function SignIn() {
 
       let message = "Google sign-in failed. Please try again."
 
-      if (errorCode === "auth/configuration-not-found") {
+      // This happens when another auth popup/redirect was already in progress,
+      // or the user closed/restarted the popup. It's not a real failure, so we
+      // just ignore it and avoid showing an error toast.
+      if (errorCode === "auth/cancelled-popup-request") {
+        return
+      } else if (errorCode === "auth/configuration-not-found") {
         message = "Firebase configuration error. Please ensure your domain is authorized in Firebase Console. Current domain: " + window.location.hostname
       } else if (errorCode === "auth/operation-not-allowed") {
         message = "This sign-in method is disabled. Please enable it in the Firebase Console."
@@ -705,6 +710,7 @@ export default function SignIn() {
             <button
               type="button"
               onClick={handleGoogleSignIn}
+              disabled={isLoading}
               className="w-12 h-12 md:w-14 md:h-14 rounded-full border border-gray-300 dark:border-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-all hover:shadow-md active:scale-95"
               aria-label="Sign in with Google"
             >
