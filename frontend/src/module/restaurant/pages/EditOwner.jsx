@@ -89,17 +89,7 @@ export default function EditOwner() {
         if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
           console.error("Error fetching restaurant data:", error)
         }
-        // Fallback to localStorage
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY)
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            setOwnerData(parsed)
-            setFormData(parsed)
-          }
-        } catch (e) {
-          console.error("Error loading owner data from localStorage:", e)
-        }
+        // If backend is unreachable, keep default empty owner data and let form show empty fields
       } finally {
         setLoading(false)
       }
@@ -178,13 +168,6 @@ export default function EditOwner() {
       const response = await restaurantAPI.updateProfile(updatePayload)
       
       if (response?.data?.success) {
-        // Save to localStorage as backup
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(formData))
-        } catch (e) {
-          console.error("Error saving to localStorage:", e)
-        }
-        
         // Dispatch event to notify parent page
         window.dispatchEvent(new Event("ownerDataUpdated"))
         
@@ -227,16 +210,8 @@ export default function EditOwner() {
         console.warn("Firebase logout failed, continuing with cleanup:", firebaseError)
       }
 
-      // Clear restaurant module authentication data
+      // Clear restaurant module authentication data and related localStorage
       clearModuleAuth("restaurant")
-      
-      // Clear all restaurant-related localStorage data
-      localStorage.removeItem(STORAGE_KEY)
-      localStorage.removeItem("restaurant_onboarding")
-      localStorage.removeItem("restaurant_accessToken")
-      localStorage.removeItem("restaurant_authenticated")
-      localStorage.removeItem("restaurant_user")
-      localStorage.removeItem("restaurant_invited_users")
       
       // Clear sessionStorage
       sessionStorage.removeItem("restaurantAuthData")

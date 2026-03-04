@@ -2,6 +2,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { API_BASE_URL } from "./config.js";
 import { getRoleFromToken, clearModuleAuth, getModuleToken } from "../utils/auth.js";
+import { getNetworkStatus } from "../utils/networkStatus.js";
 
 // Network error tracking to prevent spam
 const networkErrorState = {
@@ -258,6 +259,25 @@ apiClient.interceptors.request.use(
             "[API Interceptor] Added Authorization header for FormData request",
           );
         }
+      }
+    }
+
+    // Block write requests when network is slow or offline so that
+    // we never \"fake save\" anything in the frontend or localStorage.
+    const method = (config.method || "get").toLowerCase();
+    const isWriteMethod = ["post", "put", "patch", "delete"].includes(method);
+
+    if (isWriteMethod) {
+      const status = getNetworkStatus();
+      if (status === "offline" || status === "slow") {
+        const message =
+          status === "offline"
+            ? "Network is offline. Data is NOT saved to the server. Please check your connection and try again."
+            : "Network is very slow. Data is NOT saved to the server. Please try again on a stable connection.";
+
+        const error = new Error(message);
+        error.code = status === "offline" ? "NETWORK_OFFLINE" : "NETWORK_SLOW";
+        return Promise.reject(error);
       }
     }
 

@@ -121,42 +121,11 @@ export default function FeedNavbar({ className = "" }) {
 
     // Update backend with location if available
     try {
-      // Try to get current location from localStorage or geolocation
+      // Try to get current location from geolocation
       let latitude = null;
       let longitude = null;
-      
-      // Check localStorage first
-      try {
-        const savedLocation = localStorage.getItem('deliveryBoyLastLocation');
-        if (savedLocation) {
-          const location = JSON.parse(savedLocation);
-          if (Array.isArray(location) && location.length === 2) {
-            let [lat, lng] = location;
-            
-            // Validate and check for coordinate swap
-            if (typeof lat === 'number' && typeof lng === 'number' &&
-                lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-              // Check if coordinates might be swapped (lat in lng range for India)
-              const mightBeSwapped = (lat >= 68 && lat <= 98 && lng >= 8 && lng <= 38);
-              
-              if (mightBeSwapped) {
-                console.warn('⚠️ Saved coordinates might be swapped in FeedNavbar - correcting:', {
-                  original: [lat, lng],
-                  corrected: [lng, lat]
-                });
-                [latitude, longitude] = [lng, lat];
-              } else {
-                [latitude, longitude] = [lat, lng];
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Error reading location from localStorage:', err);
-      }
-      
-      // If no saved location, try to get current location
-      if ((!latitude || !longitude) && navigator.geolocation) {
+
+      if (navigator.geolocation) {
         try {
           const position = await new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {

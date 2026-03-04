@@ -62,18 +62,9 @@ export default function ContactDetails() {
       } catch (error) {
         // Only log error if it's not a network/timeout error (backend might be down/slow)
         if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
-        console.error("Error fetching restaurant data:", error)
+          console.error("Error fetching restaurant data:", error)
         }
-        // Fallback to localStorage
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY)
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            setOwnerData(parsed)
-          }
-        } catch (e) {
-          console.error("Error loading owner data from localStorage:", e)
-        }
+        // If backend is unreachable, keep default empty owner data and let UI show \"N/A\"
       } finally {
         setLoading(false)
       }
@@ -160,26 +151,6 @@ export default function ContactDetails() {
     window.addEventListener("invitesUpdated", handleStaffUpdate)
     return () => {
       window.removeEventListener("invitesUpdated", handleStaffUpdate)
-    }
-  }, [])
-
-  // Listen for owner data updates
-  useEffect(() => {
-    const handleOwnerDataUpdate = () => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        if (saved) {
-          const parsed = JSON.parse(saved)
-          setOwnerData(parsed)
-        }
-      } catch (error) {
-        console.error("Error loading updated owner data:", error)
-      }
-    }
-
-    window.addEventListener("ownerDataUpdated", handleOwnerDataUpdate)
-    return () => {
-      window.removeEventListener("ownerDataUpdated", handleOwnerDataUpdate)
     }
   }, [])
 

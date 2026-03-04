@@ -27,8 +27,6 @@ import { Input } from "@/components/ui/input"
 import { restaurantAPI } from "@/lib/api"
 import { toast } from "sonner"
 
-const CUISINES_STORAGE_KEY = "restaurant_cuisines"
-
 export default function OutletInfo() {
   const navigate = useNavigate()
   
@@ -96,22 +94,11 @@ export default function OutletInfo() {
           const formattedAddress = formatAddress(data.location)
           setAddress(formattedAddress)
           
-          // Format cuisines
+          // Format cuisines - always rely on backend data
           if (data.cuisines && Array.isArray(data.cuisines) && data.cuisines.length > 0) {
             setCuisineTags(data.cuisines.join(", "))
           } else {
-            // Load from localStorage as fallback
-            try {
-              const saved = localStorage.getItem(CUISINES_STORAGE_KEY)
-              if (saved) {
-                const parsed = JSON.parse(saved)
-                if (Array.isArray(parsed) && parsed.length) {
-                  setCuisineTags(parsed.join(", "))
-                }
-              }
-            } catch (error) {
-              console.error("Error loading cuisines from storage:", error)
-            }
+            setCuisineTags("")
           }
           
           // Set images
@@ -187,32 +174,6 @@ export default function OutletInfo() {
     return () => {
       lenis.destroy()
     }
-  }, [])
-
-  // Load cuisines from localStorage
-  useEffect(() => {
-    const loadCuisines = () => {
-      try {
-        const saved = localStorage.getItem(CUISINES_STORAGE_KEY)
-        if (saved) {
-          const parsed = JSON.parse(saved)
-          if (Array.isArray(parsed) && parsed.length) {
-            setCuisineTags(parsed.join(", "))
-          }
-        }
-      } catch (error) {
-        console.error("Error loading cuisines from storage:", error)
-      }
-    }
-
-    loadCuisines()
-
-    const handleUpdate = () => {
-      loadCuisines()
-    }
-
-    window.addEventListener("cuisinesUpdated", handleUpdate)
-    return () => window.removeEventListener("cuisinesUpdated", handleUpdate)
   }, [])
 
   // Handle profile image replacement

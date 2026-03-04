@@ -451,8 +451,7 @@ export default function ExploreMore() {
       // Clear restaurant module authentication data
       clearModuleAuth("restaurant")
 
-      // Clear any onboarding data from localStorage
-      localStorage.removeItem("restaurant_onboarding")
+      // Clear restaurant auth data from localStorage
       localStorage.removeItem("restaurant_accessToken")
       localStorage.removeItem("restaurant_authenticated")
       localStorage.removeItem("restaurant_user")
@@ -471,7 +470,6 @@ export default function ExploreMore() {
       // Even if there's an error, we should still clear local data and logout
       console.error("Error during logout:", error)
       clearModuleAuth("restaurant")
-      localStorage.removeItem("restaurant_onboarding")
       localStorage.removeItem("restaurant_accessToken")
       localStorage.removeItem("restaurant_authenticated")
       localStorage.removeItem("restaurant_user")
@@ -513,9 +511,6 @@ export default function ExploreMore() {
       // Clear auth for all modules (admin, restaurant, delivery, user)
       clearAuthData()
 
-      // Clear any onboarding data from localStorage
-      localStorage.removeItem("restaurant_onboarding")
-
       // Clear sessionStorage for all modules
       sessionStorage.removeItem("restaurantAuthData")
       sessionStorage.removeItem("adminAuthData")
@@ -536,7 +531,6 @@ export default function ExploreMore() {
       // Even if there's an error, we should still clear local data and logout
       console.error("Error during logout from all devices:", error)
       clearAuthData()
-      localStorage.removeItem("restaurant_onboarding")
       sessionStorage.removeItem("restaurantAuthData")
       sessionStorage.removeItem("adminAuthData")
       sessionStorage.removeItem("deliveryAuthData")

@@ -1544,61 +1544,6 @@ export default function DeliveryHome() {
 
   // Get rider location - App open होते ही location fetch करें
   useEffect(() => {
-    // First, check if we have saved location in localStorage (for refresh handling)
-    const savedLocation = localStorage.getItem('deliveryBoyLastLocation')
-    if (savedLocation) {
-      try {
-        const parsed = JSON.parse(savedLocation)
-        if (parsed && Array.isArray(parsed) && parsed.length === 2) {
-          const [lat, lng] = parsed
-
-          // Validate saved coordinates
-          if (typeof lat === 'number' && typeof lng === 'number' &&
-            lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-            // Check if coordinates might be swapped (common issue)
-            // If lat > 90 or lng > 180, they're definitely swapped
-            // If lat is in lng range (68-98 for India) and lng is in lat range (8-38), they might be swapped
-            const mightBeSwapped = (lat >= 68 && lat <= 98 && lng >= 8 && lng <= 38)
-
-            if (mightBeSwapped) {
-              console.warn('⚠️ Saved coordinates might be swapped - correcting:', {
-                original: [lat, lng],
-                corrected: [lng, lat],
-                note: 'Swapping lat/lng based on India coordinate ranges'
-              })
-              // Swap coordinates
-              const correctedLocation = [lng, lat]
-              setRiderLocation(correctedLocation)
-              lastLocationRef.current = correctedLocation
-              routeHistoryRef.current = [{
-                lat: correctedLocation[0],
-                lng: correctedLocation[1]
-              }]
-              // Update localStorage with corrected coordinates
-              localStorage.setItem('deliveryBoyLastLocation', JSON.stringify(correctedLocation))
-              console.log('✅ Corrected and saved location:', correctedLocation)
-            } else {
-              setRiderLocation(parsed)
-              lastLocationRef.current = parsed
-              routeHistoryRef.current = [{
-                lat: parsed[0],
-                lng: parsed[1]
-              }]
-              console.log('📍 Restored location from localStorage:', {
-                location: parsed,
-                format: "[lat, lng]",
-                validated: true
-              })
-            }
-          } else {
-            console.warn('⚠️ Invalid saved coordinates in localStorage:', parsed)
-          }
-        }
-      } catch (e) {
-        console.warn('⚠️ Error parsing saved location:', e)
-      }
-    }
-
     if (navigator.geolocation) {
       // Get current position first - App open होते ही location लें
       console.log('📍 Fetching current location on app open...')
@@ -1709,9 +1654,6 @@ export default function DeliveryHome() {
             lng: smoothedLocation[1]
           }]
 
-          // Save location to localStorage
-          localStorage.setItem('deliveryBoyLastLocation', JSON.stringify(smoothedLocation))
-
           setRiderLocation(smoothedLocation)
           lastLocationRef.current = smoothedLocation
 
@@ -1740,56 +1682,49 @@ export default function DeliveryHome() {
         (error) => {
           console.warn("⚠️ Error getting current location:", error)
           // Don't use default location - retry after delay
-          // Check if we have saved location from localStorage
-          const savedLoc = localStorage.getItem('deliveryBoyLastLocation')
-          if (!savedLoc) {
-            // No saved location, retry after 3 seconds
-            setTimeout(() => {
-              if (navigator.geolocation) {
-                console.log('🔄 Retrying location fetch...')
-                navigator.geolocation.getCurrentPosition(
-                  (position) => {
-                    const lat = position.coords.latitude
-                    const lng = position.coords.longitude
-                    if (typeof lat === 'number' && typeof lng === 'number' &&
-                      !isNaN(lat) && !isNaN(lng) &&
-                      lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-                      const newLocation = [lat, lng]
-                      setRiderLocation(newLocation)
-                      lastLocationRef.current = newLocation
-                      smoothedLocationRef.current = newLocation
-                      lastValidLocationRef.current = newLocation
-                      locationHistoryRef.current = [newLocation]
-                      localStorage.setItem('deliveryBoyLastLocation', JSON.stringify(newLocation))
-                      console.log('✅ Location obtained on retry:', newLocation)
+          // Retry after 3 seconds
+          setTimeout(() => {
+            if (navigator.geolocation) {
+              console.log('🔄 Retrying location fetch...')
+              navigator.geolocation.getCurrentPosition(
+                (position) => {
+                  const lat = position.coords.latitude
+                  const lng = position.coords.longitude
+                  if (typeof lat === 'number' && typeof lng === 'number' &&
+                    !isNaN(lat) && !isNaN(lng) &&
+                    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                    const newLocation = [lat, lng]
+                    setRiderLocation(newLocation)
+                    lastLocationRef.current = newLocation
+                    smoothedLocationRef.current = newLocation
+                    lastValidLocationRef.current = newLocation
+                    locationHistoryRef.current = [newLocation]
+                    console.log('✅ Location obtained on retry:', newLocation)
 
-                      // Recenter map if already initialized, otherwise it will initialize when location is set
-                      if (window.deliveryMapInstance) {
-                        window.deliveryMapInstance.setCenter({ lat, lng })
-                        window.deliveryMapInstance.setZoom(18)
-                        console.log('📍 Recentered map to GPS location')
+                    // Recenter map if already initialized, otherwise it will initialize when location is set
+                    if (window.deliveryMapInstance) {
+                      window.deliveryMapInstance.setCenter({ lat, lng })
+                      window.deliveryMapInstance.setZoom(18)
+                      console.log('📍 Recentered map to GPS location')
 
-                        // Update bike marker
-                        if (bikeMarkerRef.current) {
-                          bikeMarkerRef.current.setPosition({ lat, lng })
-                        } else if (window.deliveryMapInstance) {
-                          createOrUpdateBikeMarker(lat, lng, null, true)
-                        }
+                      // Update bike marker
+                      if (bikeMarkerRef.current) {
+                        bikeMarkerRef.current.setPosition({ lat, lng })
+                      } else if (window.deliveryMapInstance) {
+                        createOrUpdateBikeMarker(lat, lng, null, true)
                       }
                     }
-                  },
-                  (err) => {
-                    console.warn("⚠️ Retry also failed:", err)
-                    // Show toast to user to enable location
-                    toast.error('Location access required. Please enable location permissions.')
-                  },
-                  { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-                )
-              }
-            }, 3000)
-          } else {
-            console.log('📍 Using saved location from previous session')
-          }
+                  }
+                },
+                (err) => {
+                  console.warn("⚠️ Retry also failed:", err)
+                  // Show toast to user to enable location
+                  toast.error('Location access required. Please enable location permissions.')
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+              )
+            }
+          }, 3000)
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       )
@@ -1910,9 +1845,6 @@ export default function DeliveryHome() {
               lng: newLocation[1]
             }]
 
-            // Save to localStorage
-            localStorage.setItem('deliveryBoyLastLocation', JSON.stringify(newLocation))
-
             // Update marker with correct location
             if (window.deliveryMapInstance) {
               const [lat, lng] = newLocation
@@ -1995,9 +1927,6 @@ export default function DeliveryHome() {
         if (routeHistoryRef.current.length > 1000) {
           routeHistoryRef.current.shift()
         }
-
-        // Save smoothed location to localStorage
-        localStorage.setItem('deliveryBoyLastLocation', JSON.stringify(smoothedLocation))
 
         // Update live tracking polyline for any active route (pickup or delivery)
         const currentDirectionsResponse = directionsResponseRef.current;
@@ -2983,23 +2912,6 @@ export default function DeliveryHome() {
                 }
               } else {
                 console.warn('⚠️ Main map not ready, will show route when map loads');
-              }
-
-              // Save accepted order to localStorage for refresh handling
-              try {
-                const activeOrderData = {
-                  orderId: restaurantInfo.id || restaurantInfo.orderId,
-                  restaurantInfo: restaurantInfo,
-                  // Don't save directionsResponse - Google Maps objects can't be serialized to JSON
-                  // Route will be recalculated on restore using Directions API
-                  routeCoordinates: routeCoordinates, // Save coordinates for fallback polyline
-                  acceptedAt: new Date().toISOString(),
-                  hasDirectionsAPI: !!directionsResultForMap // Flag to indicate we should recalculate with Directions API
-                };
-                localStorage.setItem('deliveryActiveOrder', JSON.stringify(activeOrderData));
-                console.log('💾 Saved active order to localStorage for refresh handling');
-              } catch (storageError) {
-                console.error('❌ Error saving active order to localStorage:', storageError);
               }
 
               // Don't show Reached Pickup popup here - it will be shown when order becomes ready via WebSocket
@@ -4489,23 +4401,6 @@ export default function DeliveryHome() {
         return;
       }
 
-      // Check if order is already in localStorage (accepted order)
-      try {
-        const activeOrderData = localStorage.getItem('deliveryActiveOrder');
-        if (activeOrderData) {
-          const activeOrder = JSON.parse(activeOrderData);
-          const activeOrderId = activeOrder.orderId || activeOrder.restaurantInfo?.id || activeOrder.restaurantInfo?.orderId;
-          if (activeOrderId === orderId) {
-            console.log('⚠️ Order already accepted (found in localStorage), ignoring notification:', orderId);
-            acceptedOrderIdsRef.current.add(orderId);
-            clearNewOrder();
-            return;
-          }
-        }
-      } catch (e) {
-        // Ignore localStorage errors
-      }
-
       console.log('📦 New order received from Socket.IO:', newOrder)
 
       // Transform newOrder data to match selectedRestaurant format
@@ -5341,25 +5236,6 @@ export default function DeliveryHome() {
           // Use current rider location
           initialCenter = { lat: riderLocation[0], lng: riderLocation[1] };
           console.log('📍 Using current rider location for map center:', initialCenter);
-        } else {
-          // Try to get from localStorage (saved location from previous session)
-          const savedLocation = localStorage.getItem('deliveryBoyLastLocation');
-          if (savedLocation) {
-            try {
-              const parsed = JSON.parse(savedLocation);
-              if (parsed && Array.isArray(parsed) && parsed.length === 2) {
-                const [lat, lng] = parsed;
-                // Validate coordinates
-                if (typeof lat === 'number' && typeof lng === 'number' &&
-                  lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-                  initialCenter = { lat, lng };
-                  console.log('📍 Using saved location from localStorage for map center:', initialCenter);
-                }
-              }
-            } catch (e) {
-              console.warn('⚠️ Error parsing saved location:', e);
-            }
-          }
         }
 
         // If still no location, use default India center so map always loads.
@@ -5523,26 +5399,6 @@ export default function DeliveryHome() {
               // Marker exists but is detached from map (after navigation) – reattach it
               console.log('📍 Re-attaching existing bike marker to map after tiles loaded');
               bikeMarkerRef.current.setMap(map);
-            }
-          } else {
-            // Try to get location from localStorage if current location not available
-            const savedLocation = localStorage.getItem('deliveryBoyLastLocation');
-            if (savedLocation) {
-              try {
-                const parsed = JSON.parse(savedLocation);
-                if (parsed && Array.isArray(parsed) && parsed.length === 2) {
-                  const [lat, lng] = parsed;
-                  if (!bikeMarkerRef.current) {
-                    console.log('📍 Creating bike marker from saved location after tiles loaded:', { lat, lng });
-                    createOrUpdateBikeMarker(lat, lng, null, false);
-                  } else if (bikeMarkerRef.current.getMap() === null) {
-                    console.log('📍 Re-attaching existing bike marker from saved location after tiles loaded');
-                    bikeMarkerRef.current.setMap(map);
-                  }
-                }
-              } catch (e) {
-                console.warn('⚠️ Error using saved location:', e);
-              }
             }
           }
 
@@ -6019,38 +5875,6 @@ export default function DeliveryHome() {
       }
 
       // Marker will be updated by Firebase listener as new GPS data arrives
-    } else {
-      // Try to get location from localStorage if current location not available
-      const savedLocation = localStorage.getItem('deliveryBoyLastLocation')
-      if (savedLocation && !bikeMarkerRef.current) {
-        try {
-          const parsed = JSON.parse(savedLocation)
-          if (parsed && Array.isArray(parsed) && parsed.length === 2) {
-            const [lat, lng] = parsed
-
-            // Validate and check for coordinate swap
-            if (typeof lat === 'number' && typeof lng === 'number' &&
-              lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-              const mightBeSwapped = (lat >= 68 && lat <= 98 && lng >= 8 && lng <= 38)
-              const finalLat = mightBeSwapped ? lng : lat
-              const finalLng = mightBeSwapped ? lat : lng
-
-              console.log('📍 Creating bike marker from saved location (online status effect):', {
-                location: [finalLat, finalLng],
-                format: "[lat, lng]"
-              })
-
-              createOrUpdateBikeMarker(finalLat, finalLng, null, false)
-            } else {
-              console.warn('⚠️ Invalid saved coordinates:', parsed)
-            }
-          }
-        } catch (e) {
-          console.warn('⚠️ Error using saved location:', e)
-        }
-      } else if (!savedLocation) {
-        console.warn('⚠️ Cannot create bike marker - invalid rider location and no saved location');
-      }
     }
   }, [isOnline, riderLocation, showHomeSections])
 
@@ -6075,24 +5899,6 @@ export default function DeliveryHome() {
           console.log('📍 Safeguard: Re-attaching bike marker to map');
           bikeMarkerRef.current.setMap(window.deliveryMapInstance);
           bikeMarkerRef.current.setPosition({ lat, lng });
-        }
-      } else {
-        // Try saved location if current location not available
-        const savedLocation = localStorage.getItem('deliveryBoyLastLocation');
-        if (savedLocation && !bikeMarkerRef.current) {
-          try {
-            const parsed = JSON.parse(savedLocation);
-            if (parsed && Array.isArray(parsed) && parsed.length === 2) {
-              const [lat, lng] = parsed;
-              if (typeof lat === 'number' && typeof lng === 'number' &&
-                lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-                console.log('📍 Safeguard: Creating bike marker from saved location');
-                createOrUpdateBikeMarker(lat, lng, null, false);
-              }
-            }
-          } catch (e) {
-            // Ignore parse errors
-          }
         }
       }
 
@@ -7152,152 +6958,9 @@ export default function DeliveryHome() {
 
   // Restore active order from localStorage on page load/refresh
   useEffect(() => {
-    const restoreActiveOrder = async () => {
-      try {
-        const savedOrder = localStorage.getItem('deliveryActiveOrder');
-        if (!savedOrder) {
-          console.log('📦 No active order found in localStorage');
-          return;
-        }
-
-        const activeOrderData = JSON.parse(savedOrder);
-        console.log('📦 Found active order in localStorage:', activeOrderData);
-
-        // Get order ID from saved data
-        const orderId = activeOrderData.orderId || activeOrderData.restaurantInfo?.id || activeOrderData.restaurantInfo?.orderId;
-
-        if (!orderId) {
-          console.log('⚠️ No order ID found in saved data, removing from localStorage');
-          localStorage.removeItem('deliveryActiveOrder');
-          setSelectedRestaurant(null);
-          return;
-        }
-
-        // Verify order still exists in database before restoring
-        try {
-          console.log('🔍 Verifying order exists in database:', orderId);
-          const orderResponse = await deliveryAPI.getOrderDetails(orderId);
-
-          if (!orderResponse.data?.success || !orderResponse.data?.data) {
-            console.log('⚠️ Order not found in database, removing from localStorage');
-            localStorage.removeItem('deliveryActiveOrder');
-            setSelectedRestaurant(null);
-            return;
-          }
-
-          const order = orderResponse.data.data;
-
-          // Check if order is cancelled or deleted
-          if (order.status === 'cancelled' || order.status === 'delivered') {
-            console.log(`⚠️ Order is ${order.status}, removing from localStorage`);
-            localStorage.removeItem('deliveryActiveOrder');
-            setSelectedRestaurant(null);
-            return;
-          }
-
-          // Check if order is still assigned to current delivery partner
-          // (This check will be done by backend, but we can verify here too)
-          console.log('✅ Order verified in database, restoring...');
-        } catch (verifyError) {
-          // If order doesn't exist (404) or any other error, clear localStorage
-          console.log('⚠️ Error verifying order or order not found:', verifyError.response?.status || verifyError.message);
-          if (verifyError.response?.status === 404 || verifyError.response?.status === 403) {
-            console.log('⚠️ Order not found or not assigned, removing from localStorage');
-            localStorage.removeItem('deliveryActiveOrder');
-            setSelectedRestaurant(null);
-            return;
-          }
-          // For other errors (network, etc.), still try to restore but log warning
-          console.warn('⚠️ Could not verify order, but restoring anyway:', verifyError.message);
-        }
-
-        // Check if order is still valid (not too old - e.g., within 24 hours)
-        const acceptedAt = new Date(activeOrderData.acceptedAt);
-        const hoursSinceAccepted = (Date.now() - acceptedAt.getTime()) / (1000 * 60 * 60);
-        if (hoursSinceAccepted > 24) {
-          console.log('⚠️ Active order is too old, removing from localStorage');
-          localStorage.removeItem('deliveryActiveOrder');
-          setSelectedRestaurant(null);
-          return;
-        }
-
-        // Restore selectedRestaurant state
-        if (activeOrderData.restaurantInfo) {
-          setSelectedRestaurant(activeOrderData.restaurantInfo);
-          console.log('✅ Restored selectedRestaurant from localStorage');
-        }
-
-        // Wait for map to be ready
-        const waitForMap = () => {
-          if (!window.deliveryMapInstance || !window.google || !window.google.maps) {
-            setTimeout(waitForMap, 200);
-            return;
-          }
-
-          console.log('🗺️ Map ready, restoring route...');
-
-          // Recalculate route using Directions API (preferred) or use saved coordinates (fallback)
-          // Don't restore directionsResponse from localStorage - Google Maps objects can't be serialized
-          if (activeOrderData.restaurantInfo && activeOrderData.restaurantInfo.lat && activeOrderData.restaurantInfo.lng && riderLocation && riderLocation.length === 2) {
-            // Try to recalculate with Directions API first (if flag indicates we had Directions API before)
-            if (activeOrderData.hasDirectionsAPI) {
-              console.log('🔄 Recalculating route with Directions API for restored order...');
-              calculateRouteWithDirectionsAPI(
-                riderLocation,
-                { lat: activeOrderData.restaurantInfo.lat, lng: activeOrderData.restaurantInfo.lng }
-              ).then(result => {
-                if (result && result.routes && result.routes.length > 0) {
-                  setDirectionsResponse(result);
-                  directionsResponseRef.current = result; // Store in ref for callbacks
-                  console.log('✅ Route recalculated with Directions API and restored');
-
-                  // Initialize live tracking polyline for restored route
-                  if (riderLocation && riderLocation.length === 2) {
-                    updateLiveTrackingPolyline(result, riderLocation);
-                  }
-                } else {
-                  // Fallback to coordinates if Directions API fails
-                  if (activeOrderData.routeCoordinates && activeOrderData.routeCoordinates.length > 0) {
-                    setRoutePolyline(activeOrderData.routeCoordinates);
-                    console.log('✅ Using fallback route coordinates from localStorage');
-                  }
-                }
-              }).catch(err => {
-                console.error('❌ Error recalculating route with Directions API:', err);
-                // Fallback to coordinates
-                if (activeOrderData.routeCoordinates && activeOrderData.routeCoordinates.length > 0) {
-                  setRoutePolyline(activeOrderData.routeCoordinates);
-                  console.log('✅ Using fallback route coordinates from localStorage');
-                }
-              });
-            } else if (activeOrderData.routeCoordinates && activeOrderData.routeCoordinates.length > 0) {
-              // Use saved coordinates if we don't have Directions API flag
-              setRoutePolyline(activeOrderData.routeCoordinates);
-              console.log('✅ Restored route polyline from localStorage');
-            }
-          } else if (activeOrderData.routeCoordinates && activeOrderData.routeCoordinates.length > 0) {
-            // Fallback: Use coordinates if restaurant info or rider location not available
-            setRoutePolyline(activeOrderData.routeCoordinates);
-            console.log('✅ Restored route polyline from localStorage (fallback)');
-          }
-        };
-
-        waitForMap();
-      } catch (error) {
-        console.error('❌ Error restoring active order:', error);
-        // Clear localStorage and state if there's an error
-        localStorage.removeItem('deliveryActiveOrder');
-        setSelectedRestaurant(null);
-        setShowReachedDropPopup(false);
-        setShowOrderDeliveredAnimation(false);
-        setShowCustomerReviewPopup(false);
-        setShowPaymentPage(false);
-      }
-    };
-
-    restoreActiveOrder();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Run only on mount - calculateRouteWithDirectionsAPI is stable
+    // Active order is no longer restored from localStorage. After refresh,
+    // any ongoing trip will be determined from backend APIs or fresh notifications.
+  }, [])
 
   // Ensure polyline is displayed when map becomes ready and there's an active route
   useEffect(() => {
@@ -7397,7 +7060,6 @@ export default function DeliveryHome() {
   // Utility function to clear order data when order is deleted or cancelled
   const clearOrderData = useCallback(() => {
     console.log('🧹 Clearing order data...');
-    localStorage.removeItem('deliveryActiveOrder');
     setSelectedRestaurant(null);
     setShowReachedDropPopup(false);
     setShowOrderDeliveredAnimation(false);
@@ -8344,8 +8006,6 @@ export default function DeliveryHome() {
       if (!showPaymentPage && !showCustomerReviewPopup && !showOrderDeliveredAnimation && selectedRestaurant) {
         console.log('✅ Order is delivered and payment completed, clearing selectedRestaurant')
         setSelectedRestaurant(null)
-        localStorage.removeItem('deliveryActiveOrder')
-        localStorage.removeItem('activeOrder')
         if (typeof clearNewOrder === 'function') {
           clearNewOrder()
         }
@@ -9696,9 +9356,6 @@ export default function DeliveryHome() {
                     const [prevLat, prevLng] = lastLocationRef.current
                     heading = calculateHeading(prevLat, prevLng, latitude, longitude)
                   }
-
-                  // Save location to localStorage (for refresh handling)
-                  localStorage.setItem('deliveryBoyLastLocation', JSON.stringify(newLocation))
 
                   // Update route history
                   if (lastLocationRef.current) {
@@ -12068,10 +11725,6 @@ export default function DeliveryHome() {
 
                   // Clear selected restaurant/order to prevent showing popups for delivered order
                   setSelectedRestaurant(null)
-
-                  // CRITICAL: Clear active order from localStorage to prevent it from showing again
-                  localStorage.removeItem('deliveryActiveOrder')
-                  localStorage.removeItem('activeOrder')
 
                   // Clear newOrder from notifications hook (if available)
                   if (typeof clearNewOrder === 'function') {

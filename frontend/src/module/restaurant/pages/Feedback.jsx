@@ -6,8 +6,6 @@ import { DateRangeCalendar } from "@/components/ui/date-range-calendar"
 import BottomNavOrders from "../components/BottomNavOrders"
 import { restaurantAPI } from "@/lib/api"
 
-const REVIEWS_STORAGE_KEY = "restaurant_reviews_data"
-
 const tabs = [
   { id: "complaints", label: "Complaints" },
   { id: "reviews", label: "Reviews" },
@@ -369,15 +367,6 @@ export default function Feedback() {
         })
 
         setReviews(transformedReviews)
-        
-        // Save to localStorage for offline access
-        try {
-          if (typeof window !== "undefined") {
-            localStorage.setItem(REVIEWS_STORAGE_KEY, JSON.stringify(transformedReviews))
-          }
-    } catch (error) {
-      console.error("Error saving reviews to storage:", error)
-    }
       } catch (error) {
         console.error("Error fetching reviews:", error)
         // Keep existing reviews on error
@@ -465,20 +454,6 @@ export default function Feedback() {
     setSelectedReview(prev => prev ? { ...prev, reply: replyText.trim() } : null)
     setReplyText("")
     setIsReviewModalOpen(false)
-      
-      // Save to localStorage
-      try {
-        if (typeof window !== "undefined") {
-          const updatedReviews = reviews.map(review =>
-            review.id === selectedReview.id
-              ? { ...review, reply: replyText.trim() }
-              : review
-          )
-          localStorage.setItem(REVIEWS_STORAGE_KEY, JSON.stringify(updatedReviews))
-        }
-      } catch (error) {
-        console.error("Error saving reply to storage:", error)
-      }
     } catch (error) {
       console.error("Error sending reply:", error)
     }

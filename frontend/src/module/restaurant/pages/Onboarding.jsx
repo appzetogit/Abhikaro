@@ -33,72 +33,6 @@ const cuisinesOptions = [
 
 const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-const ONBOARDING_STORAGE_KEY = "restaurant_onboarding_data"
-
-// Helper functions for localStorage
-const saveOnboardingToLocalStorage = (step1, step2, step3, step4, currentStep) => {
-  try {
-    // Convert File objects to a serializable format (we'll store file names/paths if available)
-    const serializableStep2 = {
-      ...step2,
-      menuImages: step2.menuImages.map((file) => {
-        if (file instanceof File) {
-          return { name: file.name, size: file.size, type: file.type }
-        }
-        return file
-      }),
-      profileImage: step2.profileImage instanceof File
-        ? { name: step2.profileImage.name, size: step2.profileImage.size, type: step2.profileImage.type }
-        : step2.profileImage,
-    }
-
-    const serializableStep3 = {
-      ...step3,
-      panImage: step3.panImage instanceof File
-        ? { name: step3.panImage.name, size: step3.panImage.size, type: step3.panImage.type }
-        : step3.panImage,
-      gstImage: step3.gstImage instanceof File
-        ? { name: step3.gstImage.name, size: step3.gstImage.size, type: step3.gstImage.type }
-        : step3.gstImage,
-      fssaiImage: step3.fssaiImage instanceof File
-        ? { name: step3.fssaiImage.name, size: step3.fssaiImage.size, type: step3.fssaiImage.type }
-        : step3.fssaiImage,
-    }
-
-    const dataToSave = {
-      step1,
-      step2: serializableStep2,
-      step3: serializableStep3,
-      step4: step4 || {},
-      currentStep,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(dataToSave))
-  } catch (error) {
-    console.error("Failed to save onboarding data to localStorage:", error)
-  }
-}
-
-const loadOnboardingFromLocalStorage = () => {
-  try {
-    const stored = localStorage.getItem(ONBOARDING_STORAGE_KEY)
-    if (stored) {
-      return JSON.parse(stored)
-    }
-  } catch (error) {
-    console.error("Failed to load onboarding data from localStorage:", error)
-  }
-  return null
-}
-
-const clearOnboardingFromLocalStorage = () => {
-  try {
-    localStorage.removeItem(ONBOARDING_STORAGE_KEY)
-  } catch (error) {
-    console.error("Failed to clear onboarding data from localStorage:", error)
-  }
-}
-
 // Helper function to convert "HH:mm" string to Date object
 const stringToTime = (timeString) => {
   if (!timeString || !timeString.includes(":")) {
@@ -315,7 +249,7 @@ export default function RestaurantOnboarding() {
     });
   };
 
-  // Load from localStorage on mount and check URL parameter
+  // On mount, only respect URL step param or backend onboarding data (no localStorage)
   useEffect(() => {
     // Check if step is specified in URL (from OTP login redirect)
     const stepParam = searchParams.get("step")
@@ -325,74 +259,7 @@ export default function RestaurantOnboarding() {
         setStep(stepNum)
       }
     }
-
-    const localData = loadOnboardingFromLocalStorage()
-    if (localData) {
-      if (localData.step1) {
-        setStep1({
-          restaurantName: localData.step1.restaurantName || "",
-          ownerName: localData.step1.ownerName || "",
-          ownerEmail: localData.step1.ownerEmail || "",
-          ownerPhone: localData.step1.ownerPhone || "",
-          primaryContactNumber: localData.step1.primaryContactNumber || "",
-          location: {
-            addressLine1: localData.step1.location?.addressLine1 || "",
-            addressLine2: localData.step1.location?.addressLine2 || "",
-            area: localData.step1.location?.area || "",
-            city: localData.step1.location?.city || "",
-            landmark: localData.step1.location?.landmark || "",
-          },
-        })
-      }
-      if (localData.step2) {
-        setStep2({
-          menuImages: localData.step2.menuImages || [],
-          profileImage: localData.step2.profileImage || null,
-          cuisines: localData.step2.cuisines || [],
-          openingTime: localData.step2.openingTime || "",
-          closingTime: localData.step2.closingTime || "",
-          openDays: localData.step2.openDays || [],
-        })
-      }
-      if (localData.step3) {
-        setStep3({
-          panNumber: localData.step3.panNumber || "",
-          nameOnPan: localData.step3.nameOnPan || "",
-          panImage: localData.step3.panImage || null,
-          gstRegistered: localData.step3.gstRegistered || false,
-          gstNumber: localData.step3.gstNumber || "",
-          gstLegalName: localData.step3.gstLegalName || "",
-          gstAddress: localData.step3.gstAddress || "",
-          gstImage: localData.step3.gstImage || null,
-          fssaiNumber: localData.step3.fssaiNumber || "",
-          fssaiExpiry: localData.step3.fssaiExpiry || "",
-          fssaiImage: localData.step3.fssaiImage || null,
-          accountNumber: localData.step3.accountNumber || "",
-          confirmAccountNumber: localData.step3.confirmAccountNumber || "",
-          ifscCode: localData.step3.ifscCode || "",
-          accountHolderName: localData.step3.accountHolderName || "",
-          accountType: localData.step3.accountType || "",
-        })
-      }
-      if (localData.step4) {
-        setStep4({
-          estimatedDeliveryTime: localData.step4.estimatedDeliveryTime || "",
-          featuredDish: localData.step4.featuredDish || "",
-          featuredPrice: localData.step4.featuredPrice || "",
-          offer: localData.step4.offer || "",
-        })
-      }
-      // Only set step from localStorage if URL doesn't have a step parameter
-      if (localData.currentStep && !stepParam) {
-        setStep(localData.currentStep)
-      }
-    }
   }, [searchParams])
-
-  // Save to localStorage whenever step data changes
-  useEffect(() => {
-    saveOnboardingToLocalStorage(step1, step2, step3, step4, step)
-  }, [step1, step2, step3, step4, step])
 
   useEffect(() => {
     const fetchData = async () => {

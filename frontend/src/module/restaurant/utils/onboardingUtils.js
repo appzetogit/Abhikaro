@@ -1,7 +1,5 @@
 import { api } from "@/lib/api"
 
-const ONBOARDING_STORAGE_KEY = "restaurant_onboarding_data"
-
 // Helper function to check if a step is complete
 const isStepComplete = (stepData, stepNumber) => {
   if (!stepData) return false
@@ -101,17 +99,7 @@ export const checkOnboardingStatus = async () => {
     // No onboarding data, start from step 1
     return 1
   } catch (err) {
-    // If API call fails, check localStorage
-    try {
-      const localData = localStorage.getItem(ONBOARDING_STORAGE_KEY)
-      if (localData) {
-        const parsed = JSON.parse(localData)
-        return parsed.currentStep || 1
-      }
-    } catch (localErr) {
-      console.error("Failed to check localStorage:", localErr)
-    }
-    // Default to step 1 if everything fails
+    // If API call fails, default to step 1
     return 1
   }
 }

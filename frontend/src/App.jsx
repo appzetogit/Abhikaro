@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AuthRedirect from "@/components/AuthRedirect"
+import NetworkStatusBanner from "@/components/NetworkStatusBanner"
+import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
 
 import { Suspense, lazy } from "react"
 import Loader from "@/components/Loader"
@@ -141,7 +143,9 @@ function UserPathRedirect() {
 export default function App() {
   return (
     <Suspense fallback={<Loader />}>
-      <Routes>
+      <NetworkStatusProvider>
+        <NetworkStatusBanner />
+        <Routes>
         <Route path="/user" element={<Navigate to="/" replace />} />
         <Route path="/user/*" element={<UserPathRedirect />} />
 
@@ -926,6 +930,7 @@ export default function App() {
           element={<UserRouter />}
         />
       </Routes>
+      </NetworkStatusProvider>
     </Suspense>
   )
 }
