@@ -112,6 +112,11 @@ export const verifyOTP = asyncHandler(async (req, res) => {
     const findQuery = buildPhoneQuery(normalizedPhone);
     hotel = await Hotel.findOne(findQuery);
 
+    // For OTP storage we currently always generate with purpose "login"
+    // even when later using it for registration. To avoid "Invalid or expired OTP"
+    // when purpose === "register", we verify against the "login" purpose record.
+    const otpVerificationPurpose = purpose === "register" ? "login" : purpose;
+
     if (purpose === "register") {
       // Registration flow
       if (hotel) {
@@ -131,7 +136,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
 
       // Verify OTP before creating hotel
-      await otpService.verifyOTP(phone, otp, purpose, null);
+      await otpService.verifyOTP(phone, otp, otpVerificationPurpose, null);
 
       const hotelData = {
         phone: normalizedPhone,
@@ -246,7 +251,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
 
       // Verify OTP
-      await otpService.verifyOTP(phone, otp, purpose, null);
+      await otpService.verifyOTP(phone, otp, otpVerificationPurpose, null);
 
       // Allow login if active OR in development mode
       if (!hotel.isActive && process.env.NODE_ENV !== "development") {

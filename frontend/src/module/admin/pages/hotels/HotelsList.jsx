@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { uploadToCloudinary } from "@/lib/utils/cloudinary"
+import qrPosterTemplate from "@/assets/qrcode.png"
 
 export default function HotelsList() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -335,6 +336,116 @@ export default function HotelsList() {
     } catch (error) {
       console.error("Error downloading hotel QR:", error)
       toast.error("Failed to download QR code. Please try again.")
+    } finally {
+      setDownloadingQr(false)
+    }
+  }
+
+  const handleDownloadHotelQRTemplate = async () => {
+    if (!qrCodeDialog?.qrCode || !qrCodeDialog?.hotelName) return
+
+    try {
+      setDownloadingQr(true)
+
+      // Get the SVG element (current QR)
+      const wrapper = document.getElementById("admin-hotel-qr-code")
+      if (!wrapper) {
+        throw new Error("QR code element not found")
+      }
+
+      const svg = wrapper.querySelector("svg")
+      if (!svg) {
+        throw new Error("QR code SVG not found")
+      }
+
+      // Convert SVG to data URL
+      const svgData = new XMLSerializer().serializeToString(svg)
+      const svgBlob = new Blob([svgData], {
+        type: "image/svg+xml;charset=utf-8",
+      })
+      const svgUrl = URL.createObjectURL(svgBlob)
+
+      // Load SVG into image
+      const qrImage = new Image()
+      await new Promise((resolve, reject) => {
+        qrImage.onload = resolve
+        qrImage.onerror = reject
+        qrImage.src = svgUrl
+      })
+
+      // Load poster template
+      const templateImage = new Image()
+      templateImage.src = qrPosterTemplate
+
+      await new Promise((resolve, reject) => {
+        templateImage.onload = resolve
+        templateImage.onerror = reject
+      })
+
+      const canvas = document.createElement("canvas")
+      const posterWidth = templateImage.width
+      const posterHeight = templateImage.height
+      canvas.width = posterWidth
+      canvas.height = posterHeight
+      const ctx = canvas.getContext("2d")
+
+      // Background template
+      ctx.drawImage(templateImage, 0, 0, posterWidth, posterHeight)
+
+      // Text styling
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
+      ctx.fillStyle = "#DC2626"
+
+      // "Welcome To"
+      ctx.font =
+        "bold " + Math.round(posterHeight * 0.032) + "px Arial, sans-serif"
+      const welcomeY = posterHeight * 0.09
+      ctx.fillText("Welcome To", posterWidth / 2, welcomeY)
+
+      // Hotel name
+      ctx.font =
+        "bold " + Math.round(posterHeight * 0.055) + "px Arial, sans-serif"
+      const hotelNameY = welcomeY + posterHeight * 0.06
+      ctx.fillText(qrCodeDialog.hotelName || "Hotel", posterWidth / 2, hotelNameY)
+
+      // QR placement
+      const qrSize = posterWidth * 0.45
+      const qrX = posterWidth * 0.1
+      const qrY = posterHeight * 0.45
+
+      // White box behind QR
+      ctx.fillStyle = "#FFFFFF"
+      ctx.fillRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40)
+
+      // Draw QR
+      ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
+
+      // Download
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            throw new Error("Failed to create image blob")
+          }
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement("a")
+          link.href = url
+          const safeName = (qrCodeDialog.hotelName || "hotel")
+            .toString()
+            .replace(/[^a-z0-9\-]+/gi, "_")
+          link.download = `${safeName}-qr-code-poster-${qrCodeDialog.hotelId || qrCodeDialog._id || ""}.png`
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          URL.revokeObjectURL(url)
+          URL.revokeObjectURL(svgUrl)
+          toast.success("QR code poster downloaded successfully!")
+        },
+        "image/png",
+      )
+    } catch (error) {
+      console.error("Error downloading hotel QR poster:", error)
+      toast.error("Failed to download QR poster. Please try again.")
     } finally {
       setDownloadingQr(false)
     }
@@ -1506,7 +1617,7 @@ export default function HotelsList() {
                   ID: {qrCodeDialog.hotelId || qrCodeDialog._id?.slice(-8) || "N/A"}
                 </p>
               </div>
-              <div className="mt-5 flex justify-center">
+              <div className="mt-5 flex justify-center gap-3">
                 <Button
                   onClick={handleDownloadHotelQR}
                   className="flex items-center gap-2"
@@ -1522,6 +1633,23 @@ export default function HotelsList() {
                     <>
                       <Download className="w-4 h-4" />
                       Download QR
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleDownloadHotelQRTemplate}
+                  className="flex items-center gap-2 bg-[#ff8100] hover:bg-[#ff8100]/90 text-white"
+                  disabled={downloadingQr}
+                >
+                  {downloadingQr ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Preparing...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      Download Template
                     </>
                   )}
                 </Button>
