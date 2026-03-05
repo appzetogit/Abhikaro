@@ -186,6 +186,44 @@ export const createHotelWithdrawalRequest = asyncHandler(async (req, res) => {
     return errorResponse(res, 401, "Unauthorized");
   }
 
+  // Check if all required KYC documents are uploaded
+  const requiredDocuments = [
+    "aadharCardFront",
+    "aadharCardBack",
+    "panCardFront",
+    "panCardBack",
+    "hotelAddressVerifyDocumentFront",
+    "bankPassbookFront",
+  ];
+
+  const missingDocuments = [];
+  for (const docField of requiredDocuments) {
+    if (!hotel[docField] || !hotel[docField].url) {
+      missingDocuments.push(docField);
+    }
+  }
+
+  if (missingDocuments.length > 0) {
+    return errorResponse(
+      res,
+      400,
+      "Please upload all required KYC documents before requesting withdrawal. Missing: " +
+        missingDocuments
+          .map((doc) => {
+            const labels = {
+              aadharCardFront: "Aadhar Card Front",
+              aadharCardBack: "Aadhar Card Back",
+              panCardFront: "PAN Card Front",
+              panCardBack: "PAN Card Back",
+              hotelAddressVerifyDocumentFront: "Hotel Address Verify Document",
+              bankPassbookFront: "Bank Passbook/Check",
+            };
+            return labels[doc] || doc;
+          })
+          .join(", "),
+    );
+  }
+
   const { error, value } = hotelWithdrawalSchema.validate(req.body);
   if (error) {
     return errorResponse(res, 400, error.details[0].message);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Building2, Phone, Mail, MapPin, Upload, X, LogOut, QrCode, Download, Loader2 } from "lucide-react"
+import { Building2, Phone, Mail, MapPin, Upload, X, LogOut, QrCode, Download, Loader2, ChevronDown, ChevronUp } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
@@ -32,6 +32,23 @@ export default function HotelProfile() {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [downloadingQR, setDownloadingQR] = useState(false)
   const [standRequestStatus, setStandRequestStatus] = useState("none")
+  const [uploadingDocs, setUploadingDocs] = useState({
+    aadharCardFront: false,
+    aadharCardBack: false,
+    panCardFront: false,
+    panCardBack: false,
+    hotelAddressVerifyDocumentFront: false,
+    bankPassbookFront: false,
+  })
+  const [documents, setDocuments] = useState({
+    aadharCardFront: null,
+    aadharCardBack: null,
+    panCardFront: null,
+    panCardBack: null,
+    hotelAddressVerifyDocumentFront: null,
+    bankPassbookFront: null,
+  })
+  const [documentsExpanded, setDocumentsExpanded] = useState(false)
 
   // QR code is generated only once and stored in database
 
@@ -61,6 +78,14 @@ export default function HotelProfile() {
           })
           setProfileImage(hotelData.profileImage)
           setStandRequestStatus(hotelData.standRequestStatus || "none")
+          setDocuments({
+            aadharCardFront: hotelData.aadharCardFront || null,
+            aadharCardBack: hotelData.aadharCardBack || null,
+            panCardFront: hotelData.panCardFront || null,
+            panCardBack: hotelData.panCardBack || null,
+            hotelAddressVerifyDocumentFront: hotelData.hotelAddressVerifyDocumentFront || null,
+            bankPassbookFront: hotelData.bankPassbookFront || null,
+          })
           
           // Check if QR code already exists
           if (hotelData.qrCode) {
@@ -101,12 +126,118 @@ export default function HotelProfile() {
 
     setUploading(true)
     try {
-      const result = await uploadToCloudinary(file)
+      // Upload to Cloudinary via backend Multer with proper folder structure
+      const result = await uploadToCloudinary(file, {
+        folder: `appzeto/hotel-profiles/${hotel?.hotelId || hotel?._id || 'temp'}`,
+      })
       setProfileImage(result)
     } catch (error) {
       console.error("Error uploading image:", error)
+      toast.error(error?.response?.data?.message || "Failed to upload image")
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleDocumentUpload = async (type, file) => {
+    if (!file) return
+
+    // Ensure documents section is expanded to show uploaded image
+    if (!documentsExpanded) {
+      setDocumentsExpanded(true)
+    }
+
+    setUploadingDocs((prev) => ({ ...prev, [type]: true }))
+    try {
+      // Upload to Cloudinary via backend Multer with proper folder structure
+      const result = await uploadToCloudinary(file, {
+        folder: `appzeto/hotel-kyc-documents/${hotel?.hotelId || hotel?._id || 'temp'}`,
+      })
+      
+      // Ensure result has proper structure with url and publicId
+      const documentData = {
+        url: result.url || result.secure_url,
+        publicId: result.publicId || result.public_id || null,
+      }
+      
+      if (!documentData.url) {
+        throw new Error("No URL returned from upload service")
+      }
+      
+      // Update state immediately to show uploaded image
+      const updatedDocuments = { ...documents, [type]: documentData }
+      setDocuments(updatedDocuments)
+      
+      // Save immediately to backend database
+      const updateResponse = await hotelAPI.updateProfile({
+        [type]: documentData,
+      })
+      
+      // Verify the update was successful
+      if (updateResponse.data?.success || updateResponse.data?.data?.hotel) {
+        toast.success("Document uploaded successfully")
+        
+        // Refresh hotel data from database to ensure consistency
+        const response = await hotelAPI.getCurrentHotel()
+        if (response.data?.success && response.data.data?.hotel) {
+          const hotelData = response.data.data.hotel
+          setHotel(hotelData)
+          
+          // Update documents state with fresh data from database
+          const freshDocuments = {
+            aadharCardFront: hotelData.aadharCardFront || null,
+            aadharCardBack: hotelData.aadharCardBack || null,
+            panCardFront: hotelData.panCardFront || null,
+            panCardBack: hotelData.panCardBack || null,
+            hotelAddressVerifyDocumentFront: hotelData.hotelAddressVerifyDocumentFront || null,
+            bankPassbookFront: hotelData.bankPassbookFront || null,
+          }
+          setDocuments(freshDocuments)
+        }
+      } else {
+        throw new Error("Failed to save document to database")
+      }
+    } catch (error) {
+      console.error("Error uploading document:", error)
+      toast.error(error?.response?.data?.message || "Failed to upload document")
+      // Revert state on error
+      setDocuments(documents)
+    } finally {
+      setUploadingDocs((prev) => ({ ...prev, [type]: false }))
+    }
+  }
+
+  const handleRemoveDocument = async (type) => {
+    const previousDocument = documents[type]
+    const updatedDocuments = { ...documents, [type]: null }
+    setDocuments(updatedDocuments)
+    
+    // Save immediately to backend database
+    try {
+      await hotelAPI.updateProfile({
+        [type]: null,
+      })
+      
+      toast.success("Document removed successfully")
+      
+      // Refresh hotel data from database
+      const response = await hotelAPI.getCurrentHotel()
+      if (response.data?.success && response.data.data?.hotel) {
+        setHotel(response.data.data.hotel)
+        setDocuments({
+          aadharCardFront: response.data.data.hotel.aadharCardFront || null,
+          aadharCardBack: response.data.data.hotel.aadharCardBack || null,
+          panCardFront: response.data.data.hotel.panCardFront || null,
+          panCardBack: response.data.data.hotel.panCardBack || null,
+          hotelAddressVerifyDocumentFront: response.data.data.hotel.hotelAddressVerifyDocumentFront || null,
+          bankPassbookFront: response.data.data.hotel.bankPassbookFront || null,
+        })
+      }
+    } catch (error) {
+      console.error("Error removing document:", error)
+      toast.error(error?.response?.data?.message || "Failed to remove document")
+      // Revert on error
+      setDocuments(documents)
     }
   }
 
@@ -116,16 +247,27 @@ export default function HotelProfile() {
       const updateData = {
         ...formData,
         profileImage,
+        ...documents,
       }
       await hotelAPI.updateProfile(updateData)
       setEditing(false)
+      toast.success("Profile updated successfully")
       // Refresh hotel data
       const response = await hotelAPI.getCurrentHotel()
       if (response.data?.success && response.data.data?.hotel) {
         setHotel(response.data.data.hotel)
+        setDocuments({
+          aadharCardFront: response.data.data.hotel.aadharCardFront || null,
+          aadharCardBack: response.data.data.hotel.aadharCardBack || null,
+          panCardFront: response.data.data.hotel.panCardFront || null,
+          panCardBack: response.data.data.hotel.panCardBack || null,
+          hotelAddressVerifyDocumentFront: response.data.data.hotel.hotelAddressVerifyDocumentFront || null,
+          bankPassbookFront: response.data.data.hotel.bankPassbookFront || null,
+        })
       }
     } catch (error) {
       console.error("Error updating profile:", error)
+      toast.error("Failed to update profile")
     } finally {
       setUploading(false)
     }
@@ -394,6 +536,14 @@ export default function HotelProfile() {
                       address: hotel.address || "",
                     })
                     setProfileImage(hotel.profileImage)
+                    setDocuments({
+                      aadharCardFront: hotel.aadharCardFront || null,
+                      aadharCardBack: hotel.aadharCardBack || null,
+                      panCardFront: hotel.panCardFront || null,
+                      panCardBack: hotel.panCardBack || null,
+                      hotelAddressVerifyDocumentFront: hotel.hotelAddressVerifyDocumentFront || null,
+                      bankPassbookFront: hotel.bankPassbookFront || null,
+                    })
                   }}
                   variant="outline"
                 >
@@ -529,6 +679,305 @@ export default function HotelProfile() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* KYC Documents Section */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <button
+            onClick={() => setDocumentsExpanded(!documentsExpanded)}
+            className="w-full flex items-center justify-between mb-4"
+          >
+            <h2 className="text-lg font-semibold text-gray-900">KYC Documents</h2>
+            {documentsExpanded ? (
+              <ChevronUp className="h-5 w-5 text-gray-600" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-gray-600" />
+            )}
+          </button>
+          {documentsExpanded && (
+            <>
+              <p className="text-sm text-gray-600 mb-4">
+                Please upload all required documents to enable withdrawal functionality.
+              </p>
+              <div className="space-y-6">
+            {/* Aadhar Card Front */}
+            <div>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                Aadhar Card Front *
+              </Label>
+              {documents.aadharCardFront?.url ? (
+                <div className="relative">
+                  <img
+                    src={documents.aadharCardFront.url}
+                    alt="Aadhar Card Front"
+                    className="w-full h-32 object-cover rounded-lg border"
+                  />
+                  <button
+                    onClick={() => handleRemoveDocument("aadharCardFront")}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 ${uploadingDocs.aadharCardFront ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {uploadingDocs.aadharCardFront ? (
+                    <>
+                      <Loader2 className="h-6 w-6 text-gray-400 mb-2 animate-spin" />
+                      <span className="text-sm text-gray-500">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-500">Upload Aadhar Card Front</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={(e) =>
+                      e.target.files[0] &&
+                      handleDocumentUpload("aadharCardFront", e.target.files[0])
+                    }
+                    disabled={uploadingDocs.aadharCardFront}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* Aadhar Card Back */}
+            <div>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                Aadhar Card Back *
+              </Label>
+              {documents.aadharCardBack?.url ? (
+                <div className="relative">
+                  <img
+                    src={documents.aadharCardBack.url}
+                    alt="Aadhar Card Back"
+                    className="w-full h-32 object-cover rounded-lg border"
+                  />
+                  <button
+                    onClick={() => handleRemoveDocument("aadharCardBack")}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 ${uploadingDocs.aadharCardBack ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {uploadingDocs.aadharCardBack ? (
+                    <>
+                      <Loader2 className="h-6 w-6 text-gray-400 mb-2 animate-spin" />
+                      <span className="text-sm text-gray-500">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-500">Upload Aadhar Card Back</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={(e) =>
+                      e.target.files[0] &&
+                      handleDocumentUpload("aadharCardBack", e.target.files[0])
+                    }
+                    disabled={uploadingDocs.aadharCardBack}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* PAN Card Front */}
+            <div>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                PAN Card Front *
+              </Label>
+              {documents.panCardFront?.url ? (
+                <div className="relative">
+                  <img
+                    src={documents.panCardFront.url}
+                    alt="PAN Card Front"
+                    className="w-full h-32 object-cover rounded-lg border"
+                  />
+                  <button
+                    onClick={() => handleRemoveDocument("panCardFront")}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 ${uploadingDocs.panCardFront ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {uploadingDocs.panCardFront ? (
+                    <>
+                      <Loader2 className="h-6 w-6 text-gray-400 mb-2 animate-spin" />
+                      <span className="text-sm text-gray-500">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-500">Upload PAN Card Front</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={(e) =>
+                      e.target.files[0] &&
+                      handleDocumentUpload("panCardFront", e.target.files[0])
+                    }
+                    disabled={uploadingDocs.panCardFront}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* PAN Card Back */}
+            <div>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                PAN Card Back *
+              </Label>
+              {documents.panCardBack?.url ? (
+                <div className="relative">
+                  <img
+                    src={documents.panCardBack.url}
+                    alt="PAN Card Back"
+                    className="w-full h-32 object-cover rounded-lg border"
+                  />
+                  <button
+                    onClick={() => handleRemoveDocument("panCardBack")}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 ${uploadingDocs.panCardBack ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {uploadingDocs.panCardBack ? (
+                    <>
+                      <Loader2 className="h-6 w-6 text-gray-400 mb-2 animate-spin" />
+                      <span className="text-sm text-gray-500">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-500">Upload PAN Card Back</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={(e) =>
+                      e.target.files[0] &&
+                      handleDocumentUpload("panCardBack", e.target.files[0])
+                    }
+                    disabled={uploadingDocs.panCardBack}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* Hotel Address Verify Document Front */}
+            <div>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                Hotel Address Verify Document Front *
+              </Label>
+              {documents.hotelAddressVerifyDocumentFront?.url ? (
+                <div className="relative">
+                  <img
+                    src={documents.hotelAddressVerifyDocumentFront.url}
+                    alt="Hotel Address Verify Document"
+                    className="w-full h-32 object-cover rounded-lg border"
+                  />
+                  <button
+                    onClick={() => handleRemoveDocument("hotelAddressVerifyDocumentFront")}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 ${uploadingDocs.hotelAddressVerifyDocumentFront ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {uploadingDocs.hotelAddressVerifyDocumentFront ? (
+                    <>
+                      <Loader2 className="h-6 w-6 text-gray-400 mb-2 animate-spin" />
+                      <span className="text-sm text-gray-500">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-500">Upload Hotel Address Verify Document</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={(e) =>
+                      e.target.files[0] &&
+                      handleDocumentUpload("hotelAddressVerifyDocumentFront", e.target.files[0])
+                    }
+                    disabled={uploadingDocs.hotelAddressVerifyDocumentFront}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* Bank Passbook Front */}
+            <div>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                Check/Bank Passbook Front *
+              </Label>
+              {documents.bankPassbookFront?.url ? (
+                <div className="relative">
+                  <img
+                    src={documents.bankPassbookFront.url}
+                    alt="Bank Passbook"
+                    className="w-full h-32 object-cover rounded-lg border"
+                  />
+                  <button
+                    onClick={() => handleRemoveDocument("bankPassbookFront")}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 ${uploadingDocs.bankPassbookFront ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {uploadingDocs.bankPassbookFront ? (
+                    <>
+                      <Loader2 className="h-6 w-6 text-gray-400 mb-2 animate-spin" />
+                      <span className="text-sm text-gray-500">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-500">Upload Check/Bank Passbook</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={(e) =>
+                      e.target.files[0] &&
+                      handleDocumentUpload("bankPassbookFront", e.target.files[0])
+                    }
+                    disabled={uploadingDocs.bankPassbookFront}
+                  />
+                </label>
+              )}
+            </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* QR Code Section */}

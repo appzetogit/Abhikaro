@@ -85,6 +85,31 @@ const hotelSchema = new mongoose.Schema(
       url: String,
       publicId: String,
     },
+    // KYC Documents for withdrawal
+    aadharCardFront: {
+      url: String,
+      publicId: String,
+    },
+    aadharCardBack: {
+      url: String,
+      publicId: String,
+    },
+    panCardFront: {
+      url: String,
+      publicId: String,
+    },
+    panCardBack: {
+      url: String,
+      publicId: String,
+    },
+    hotelAddressVerifyDocumentFront: {
+      url: String,
+      publicId: String,
+    },
+    bankPassbookFront: {
+      url: String,
+      publicId: String,
+    },
     qrCode: {
       type: String,
       default: null, // Store QR code data (JSON string)

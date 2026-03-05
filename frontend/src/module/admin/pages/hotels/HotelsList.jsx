@@ -29,6 +29,14 @@ export default function HotelsList() {
     rentProof: false,
     cancelledChecks: false,
   })
+  const [uploadingKyc, setUploadingKyc] = useState({
+    aadharCardFront: false,
+    aadharCardBack: false,
+    panCardFront: false,
+    panCardBack: false,
+    hotelAddressVerifyDocumentFront: false,
+    bankPassbookFront: false,
+  })
   const [newHotelData, setNewHotelData] = useState({
     hotelName: "",
     email: "",
@@ -119,6 +127,55 @@ export default function HotelsList() {
     }
   }
 
+  const handleKycUpload = async (field, file) => {
+    if (!editDialog || !file) return
+
+    setUploadingKyc((prev) => ({ ...prev, [field]: true }))
+    try {
+      // Upload to Cloudinary via backend
+      const result = await uploadToCloudinary(file, {
+        folder: `appzeto/hotel-kyc-documents/${editDialog.hotelId || editDialog._id}`,
+      })
+
+      const documentData = {
+        url: result.url || result.secure_url,
+        publicId: result.publicId || result.public_id || null,
+      }
+
+      if (!documentData.url) {
+        throw new Error("No URL returned from upload service")
+      }
+
+      // Update on backend
+      await adminAPI.updateHotel(editDialog._id, {
+        [field]: documentData,
+      })
+
+      // Update local edit dialog state
+      const updatedEdit = {
+        ...editDialog,
+        [field]: documentData,
+      }
+      setEditDialog(updatedEdit)
+
+      // Update hotels list
+      setHotels((prev) =>
+        prev.map((h) =>
+          h._id === editDialog._id ? { ...h, [field]: documentData } : h,
+        ),
+      )
+
+      toast.success("Document updated successfully")
+    } catch (err) {
+      console.error("Error updating KYC document:", err)
+      toast.error(
+        err?.response?.data?.message || "Failed to update document",
+      )
+    } finally {
+      setUploadingKyc((prev) => ({ ...prev, [field]: false }))
+    }
+  }
+
   const handleDelete = async (hotel) => {
     setDeleteConfirmDialog(hotel)
   }
@@ -153,6 +210,14 @@ export default function HotelsList() {
       aadharCardImage: hotel.aadharCardImage || null,
       hotelRentProofImage: hotel.hotelRentProofImage || null,
       cancelledCheckImages: hotel.cancelledCheckImages || [],
+      // KYC documents uploaded from hotel app
+      aadharCardFront: hotel.aadharCardFront || null,
+      aadharCardBack: hotel.aadharCardBack || null,
+      panCardFront: hotel.panCardFront || null,
+      panCardBack: hotel.panCardBack || null,
+      hotelAddressVerifyDocumentFront:
+        hotel.hotelAddressVerifyDocumentFront || null,
+      bankPassbookFront: hotel.bankPassbookFront || null,
     })
   }
 
@@ -383,11 +448,6 @@ export default function HotelsList() {
     }
     if (!newHotelData.address.trim()) errors.address = "Address is required"
     if (!newHotelData.phone.trim()) errors.phone = "Phone is required"
-    if (!newHotelImages.aadharCardImage) errors.aadharCard = "Aadhar card image is required"
-    if (!newHotelImages.hotelRentProofImage) errors.rentProof = "Hotel rent proof image is required"
-    if (newHotelImages.cancelledCheckImages.length === 0) {
-      errors.cancelledChecks = "At least one cancelled check image is required"
-    }
 
     setFormErrors(errors)
     return Object.keys(errors).length === 0
@@ -409,16 +469,10 @@ export default function HotelsList() {
         address: newHotelData.address.trim(),
         phone: newHotelData.phone.trim(),
         isActive: newHotelData.isActive,
-        aadharCardImage: newHotelImages.aadharCardImage,
-        hotelRentProofImage: newHotelImages.hotelRentProofImage,
-        cancelledCheckImages: newHotelImages.cancelledCheckImages,
       }
 
       console.log("📤 Creating hotel with data:", {
         ...hotelData,
-        aadharCardImage: hotelData.aadharCardImage ? "✓" : "✗",
-        hotelRentProofImage: hotelData.hotelRentProofImage ? "✓" : "✗",
-        cancelledCheckImages: hotelData.cancelledCheckImages?.length || 0,
       })
 
       const response = await adminAPI.createHotel(hotelData)
@@ -829,7 +883,7 @@ export default function HotelsList() {
                     </div>
                   )}
 
-                  {/* Aadhar Card Image */}
+                  {/* Aadhar Card Image (old single image field) */}
                   {editDialog.aadharCardImage?.url && (
                     <div className="bg-white rounded-lg p-2 border border-slate-200 hover:border-blue-300 transition-colors">
                       <Label className="text-xs font-medium text-slate-600 mb-1.5 block">Aadhar Card</Label>
@@ -854,6 +908,462 @@ export default function HotelsList() {
                         </a>
                       </div>
                     </div>
+                  )}
+
+                  {/* KYC Documents from hotel app */}
+                  {/* Aadhar Front (Hotel App KYC) */}
+                  {editDialog.aadharCardFront?.url ? (
+                    <div className="bg-white rounded-lg p-2 border border-slate-200 hover:border-blue-300 transition-colors">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        Aadhar Card Front (Hotel)
+                      </Label>
+                      <div className="relative">
+                        <img
+                          src={editDialog.aadharCardFront.url}
+                          alt="Aadhar Front"
+                          className="w-full h-20 object-cover rounded border border-slate-200 cursor-pointer"
+                          onClick={() =>
+                            window.open(editDialog.aadharCardFront.url, "_blank")
+                          }
+                          onError={(e) => {
+                            e.target.style.display = "none"
+                          }}
+                        />
+                        <a
+                          href={editDialog.aadharCardFront.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-1 right-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                      <label className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 border border-slate-300 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-50">
+                        <Upload className="w-3 h-3" />
+                        <span>
+                          {uploadingKyc.aadharCardFront ? "Uploading..." : "Change"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          disabled={uploadingKyc.aadharCardFront}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleKycUpload("aadharCardFront", file)
+                              e.target.value = ""
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="bg-white rounded-lg p-2 border border-dashed border-slate-300 hover:border-blue-300 transition-colors flex flex-col items-center justify-center cursor-pointer">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        Aadhar Card Front (Hotel)
+                      </Label>
+                      <Upload className="w-4 h-4 text-slate-400 mb-1" />
+                      <span className="text-[11px] text-slate-500">
+                        {uploadingKyc.aadharCardFront ? "Uploading..." : "Upload"}
+                      </span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        disabled={uploadingKyc.aadharCardFront}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleKycUpload("aadharCardFront", file)
+                            e.target.value = ""
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  {/* Aadhar Back (Hotel App KYC) */}
+                  {editDialog.aadharCardBack?.url ? (
+                    <div className="bg-white rounded-lg p-2 border border-slate-200 hover:border-blue-300 transition-colors">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        Aadhar Card Back (Hotel)
+                      </Label>
+                      <div className="relative">
+                        <img
+                          src={editDialog.aadharCardBack.url}
+                          alt="Aadhar Back"
+                          className="w-full h-20 object-cover rounded border border-slate-200 cursor-pointer"
+                          onClick={() =>
+                            window.open(editDialog.aadharCardBack.url, "_blank")
+                          }
+                          onError={(e) => {
+                            e.target.style.display = "none"
+                          }}
+                        />
+                        <a
+                          href={editDialog.aadharCardBack.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-1 right-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                      <label className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 border border-slate-300 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-50">
+                        <Upload className="w-3 h-3" />
+                        <span>
+                          {uploadingKyc.aadharCardBack ? "Uploading..." : "Change"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          disabled={uploadingKyc.aadharCardBack}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleKycUpload("aadharCardBack", file)
+                              e.target.value = ""
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="bg-white rounded-lg p-2 border border-dashed border-slate-300 hover:border-blue-300 transition-colors flex flex-col items-center justify-center cursor-pointer">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        Aadhar Card Back (Hotel)
+                      </Label>
+                      <Upload className="w-4 h-4 text-slate-400 mb-1" />
+                      <span className="text-[11px] text-slate-500">
+                        {uploadingKyc.aadharCardBack ? "Uploading..." : "Upload"}
+                      </span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        disabled={uploadingKyc.aadharCardBack}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleKycUpload("aadharCardBack", file)
+                            e.target.value = ""
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  {/* PAN Front (Hotel App KYC) */}
+                  {editDialog.panCardFront?.url ? (
+                    <div className="bg-white rounded-lg p-2 border border-slate-200 hover:border-blue-300 transition-colors">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        PAN Card Front (Hotel)
+                      </Label>
+                      <div className="relative">
+                        <img
+                          src={editDialog.panCardFront.url}
+                          alt="PAN Front"
+                          className="w-full h-20 object-cover rounded border border-slate-200 cursor-pointer"
+                          onClick={() =>
+                            window.open(editDialog.panCardFront.url, "_blank")
+                          }
+                          onError={(e) => {
+                            e.target.style.display = "none"
+                          }}
+                        />
+                        <a
+                          href={editDialog.panCardFront.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-1 right-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                      <label className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 border border-slate-300 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-50">
+                        <Upload className="w-3 h-3" />
+                        <span>
+                          {uploadingKyc.panCardFront ? "Uploading..." : "Change"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          disabled={uploadingKyc.panCardFront}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleKycUpload("panCardFront", file)
+                              e.target.value = ""
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="bg-white rounded-lg p-2 border border-dashed border-slate-300 hover:border-blue-300 transition-colors flex flex-col items-center justify-center cursor-pointer">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        PAN Card Front (Hotel)
+                      </Label>
+                      <Upload className="w-4 h-4 text-slate-400 mb-1" />
+                      <span className="text-[11px] text-slate-500">
+                        {uploadingKyc.panCardFront ? "Uploading..." : "Upload"}
+                      </span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        disabled={uploadingKyc.panCardFront}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleKycUpload("panCardFront", file)
+                            e.target.value = ""
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  {/* PAN Back (Hotel App KYC) */}
+                  {editDialog.panCardBack?.url ? (
+                    <div className="bg-white rounded-lg p-2 border border-slate-200 hover:border-blue-300 transition-colors">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        PAN Card Back (Hotel)
+                      </Label>
+                      <div className="relative">
+                        <img
+                          src={editDialog.panCardBack.url}
+                          alt="PAN Back"
+                          className="w-full h-20 object-cover rounded border border-slate-200 cursor-pointer"
+                          onClick={() =>
+                            window.open(editDialog.panCardBack.url, "_blank")
+                          }
+                          onError={(e) => {
+                            e.target.style.display = "none"
+                          }}
+                        />
+                        <a
+                          href={editDialog.panCardBack.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-1 right-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                      <label className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 border border-slate-300 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-50">
+                        <Upload className="w-3 h-3" />
+                        <span>
+                          {uploadingKyc.panCardBack ? "Uploading..." : "Change"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          disabled={uploadingKyc.panCardBack}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleKycUpload("panCardBack", file)
+                              e.target.value = ""
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="bg-white rounded-lg p-2 border border-dashed border-slate-300 hover:border-blue-300 transition-colors flex flex-col items-center justify-center cursor-pointer">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        PAN Card Back (Hotel)
+                      </Label>
+                      <Upload className="w-4 h-4 text-slate-400 mb-1" />
+                      <span className="text-[11px] text-slate-500">
+                        {uploadingKyc.panCardBack ? "Uploading..." : "Upload"}
+                      </span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        disabled={uploadingKyc.panCardBack}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleKycUpload("panCardBack", file)
+                            e.target.value = ""
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  {/* Address Proof (Hotel App KYC) */}
+                  {editDialog.hotelAddressVerifyDocumentFront?.url ? (
+                    <div className="bg-white rounded-lg p-2 border border-slate-200 hover:border-blue-300 transition-colors">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        Hotel Address Proof (Front)
+                      </Label>
+                      <div className="relative">
+                        <img
+                          src={editDialog.hotelAddressVerifyDocumentFront.url}
+                          alt="Address Proof"
+                          className="w-full h-20 object-cover rounded border border-slate-200 cursor-pointer"
+                          onClick={() =>
+                            window.open(
+                              editDialog.hotelAddressVerifyDocumentFront.url,
+                              "_blank",
+                            )
+                          }
+                          onError={(e) => {
+                            e.target.style.display = "none"
+                          }}
+                        />
+                        <a
+                          href={editDialog.hotelAddressVerifyDocumentFront.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-1 right-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                      <label className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 border border-slate-300 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-50">
+                        <Upload className="w-3 h-3" />
+                        <span>
+                          {uploadingKyc.hotelAddressVerifyDocumentFront
+                            ? "Uploading..."
+                            : "Change"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          disabled={uploadingKyc.hotelAddressVerifyDocumentFront}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleKycUpload(
+                                "hotelAddressVerifyDocumentFront",
+                                file,
+                              )
+                              e.target.value = ""
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="bg-white rounded-lg p-2 border border-dashed border-slate-300 hover:border-blue-300 transition-colors flex flex-col items-center justify-center cursor-pointer">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        Hotel Address Proof (Front)
+                      </Label>
+                      <Upload className="w-4 h-4 text-slate-400 mb-1" />
+                      <span className="text-[11px] text-slate-500">
+                        {uploadingKyc.hotelAddressVerifyDocumentFront
+                          ? "Uploading..."
+                          : "Upload"}
+                      </span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        disabled={uploadingKyc.hotelAddressVerifyDocumentFront}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleKycUpload(
+                              "hotelAddressVerifyDocumentFront",
+                              file,
+                            )
+                            e.target.value = ""
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  {/* Bank Passbook / Cheque (Hotel App KYC) */}
+                  {editDialog.bankPassbookFront?.url ? (
+                    <div className="bg-white rounded-lg p-2 border border-slate-200 hover:border-blue-300 transition-colors">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        Bank Passbook / Cancelled Cheque (Front)
+                      </Label>
+                      <div className="relative">
+                        <img
+                          src={editDialog.bankPassbookFront.url}
+                          alt="Bank Passbook"
+                          className="w-full h-20 object-cover rounded border border-slate-200 cursor-pointer"
+                          onClick={() =>
+                            window.open(editDialog.bankPassbookFront.url, "_blank")
+                          }
+                          onError={(e) => {
+                            e.target.style.display = "none"
+                          }}
+                        />
+                        <a
+                          href={editDialog.bankPassbookFront.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-1 right-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                      <label className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 border border-slate-300 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-50">
+                        <Upload className="w-3 h-3" />
+                        <span>
+                          {uploadingKyc.bankPassbookFront
+                            ? "Uploading..."
+                            : "Change"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          disabled={uploadingKyc.bankPassbookFront}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleKycUpload("bankPassbookFront", file)
+                              e.target.value = ""
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="bg-white rounded-lg p-2 border border-dashed border-slate-300 hover:border-blue-300 transition-colors flex flex-col items-center justify-center cursor-pointer">
+                      <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                        Bank Passbook / Cancelled Cheque (Front)
+                      </Label>
+                      <Upload className="w-4 h-4 text-slate-400 mb-1" />
+                      <span className="text-[11px] text-slate-500">
+                        {uploadingKyc.bankPassbookFront
+                          ? "Uploading..."
+                          : "Upload"}
+                      </span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        disabled={uploadingKyc.bankPassbookFront}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleKycUpload("bankPassbookFront", file)
+                            e.target.value = ""
+                          }
+                        }}
+                      />
+                    </label>
                   )}
 
                   {/* Hotel Rent Proof Image */}
@@ -917,10 +1427,17 @@ export default function HotelsList() {
                   )}
 
                   {/* No Documents Message */}
-                  {!editDialog.profileImage?.url && 
-                   !editDialog.aadharCardImage?.url && 
-                   !editDialog.hotelRentProofImage?.url && 
-                   (!editDialog.cancelledCheckImages || editDialog.cancelledCheckImages.length === 0) && (
+                  {!editDialog.profileImage?.url &&
+                   !editDialog.aadharCardImage?.url &&
+                   !editDialog.hotelRentProofImage?.url &&
+                   (!editDialog.cancelledCheckImages ||
+                     editDialog.cancelledCheckImages.length === 0) &&
+                   !editDialog.aadharCardFront?.url &&
+                   !editDialog.aadharCardBack?.url &&
+                   !editDialog.panCardFront?.url &&
+                   !editDialog.panCardBack?.url &&
+                   !editDialog.hotelAddressVerifyDocumentFront?.url &&
+                   !editDialog.bankPassbookFront?.url && (
                     <div className="col-span-full text-center py-6 text-slate-500 text-xs">
                       <FileText className="w-6 h-6 mx-auto mb-1.5 text-slate-400" />
                       <p>No documents uploaded</p>
@@ -1105,163 +1622,6 @@ export default function HotelsList() {
                       Hotel is Active
                     </Label>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Documents Card */}
-            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-              <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <FileText className="w-3.5 h-3.5" />
-                Documents <span className="text-red-500">*</span>
-              </h3>
-              
-              <div className="space-y-3">
-                {/* Aadhar Card Image */}
-                <div>
-                  <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
-                    Aadhar Card Image <span className="text-red-500">*</span>
-                  </Label>
-                  {uploadingImages.aadharCard ? (
-                    <div className="flex flex-col items-center justify-center w-32 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50">
-                      <Loader2 className="w-5 h-5 text-blue-600 mb-1 animate-spin" />
-                      <span className="text-xs text-blue-600">Uploading...</span>
-                    </div>
-                  ) : newHotelImages.aadharCardImage?.url ? (
-                    <div className="relative inline-block">
-                      <img
-                        src={newHotelImages.aadharCardImage.url}
-                        alt="Aadhar Card"
-                        className="w-32 h-20 object-cover rounded border border-slate-200"
-                      />
-                      <button
-                        onClick={() => handleRemoveImage("aadharCard")}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center w-32 h-20 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors bg-white">
-                      <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                      <span className="text-xs text-slate-500">Upload</span>
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          if (file) {
-                            handleImageUpload("aadharCard", file)
-                            e.target.value = "" // Reset input
-                          }
-                        }}
-                        disabled={uploadingImages.aadharCard}
-                      />
-                    </label>
-                  )}
-                  {formErrors.aadharCard && (
-                    <p className="text-xs text-red-500 mt-1">{formErrors.aadharCard}</p>
-                  )}
-                </div>
-
-                {/* Hotel Rent Proof Image */}
-                <div>
-                  <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
-                    Hotel Rent Proof Image <span className="text-red-500">*</span>
-                  </Label>
-                  {uploadingImages.rentProof ? (
-                    <div className="flex flex-col items-center justify-center w-32 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50">
-                      <Loader2 className="w-5 h-5 text-blue-600 mb-1 animate-spin" />
-                      <span className="text-xs text-blue-600">Uploading...</span>
-                    </div>
-                  ) : newHotelImages.hotelRentProofImage?.url ? (
-                    <div className="relative inline-block">
-                      <img
-                        src={newHotelImages.hotelRentProofImage.url}
-                        alt="Rent Proof"
-                        className="w-32 h-20 object-cover rounded border border-slate-200"
-                      />
-                      <button
-                        onClick={() => handleRemoveImage("rentProof")}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center w-32 h-20 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors bg-white">
-                      <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                      <span className="text-xs text-slate-500">Upload</span>
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          if (file) {
-                            handleImageUpload("rentProof", file)
-                            e.target.value = "" // Reset input
-                          }
-                        }}
-                        disabled={uploadingImages.rentProof}
-                      />
-                    </label>
-                  )}
-                  {formErrors.rentProof && (
-                    <p className="text-xs text-red-500 mt-1">{formErrors.rentProof}</p>
-                  )}
-                </div>
-
-                {/* Cancelled Check Images */}
-                <div>
-                  <Label className="text-xs font-medium text-slate-600 mb-1.5 block">
-                    Cancelled Check Images <span className="text-red-500">*</span>
-                  </Label>
-                  <div className="flex flex-wrap gap-2">
-                    {newHotelImages.cancelledCheckImages.map((img, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={img.url}
-                          alt={`Check ${index + 1}`}
-                          className="w-32 h-20 object-cover rounded border border-slate-200"
-                        />
-                        <button
-                          onClick={() => handleRemoveImage("cancelledChecks", index)}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                    {uploadingImages.cancelledChecks ? (
-                      <div className="flex flex-col items-center justify-center w-32 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50">
-                        <Loader2 className="w-5 h-5 text-blue-600 mb-1 animate-spin" />
-                        <span className="text-xs text-blue-600">Uploading...</span>
-                      </div>
-                    ) : newHotelImages.cancelledCheckImages.length < 3 && (
-                      <label className="flex flex-col items-center justify-center w-32 h-20 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors bg-white">
-                        <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                        <span className="text-xs text-slate-500">Upload</span>
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="image/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0]
-                            if (file) {
-                              handleImageUpload("cancelledChecks", file)
-                              e.target.value = "" // Reset input
-                            }
-                          }}
-                          disabled={uploadingImages.cancelledChecks}
-                        />
-                      </label>
-                    )}
-                  </div>
-                  {formErrors.cancelledChecks && (
-                    <p className="text-xs text-red-500 mt-1">{formErrors.cancelledChecks}</p>
-                  )}
                 </div>
               </div>
             </div>

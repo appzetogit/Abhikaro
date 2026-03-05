@@ -396,6 +396,13 @@ export const getCurrentHotel = asyncHandler(async (req, res) => {
       aadharCardImage: hotel.aadharCardImage,
       hotelRentProofImage: hotel.hotelRentProofImage,
       cancelledCheckImages: hotel.cancelledCheckImages,
+      // KYC Documents for withdrawal
+      aadharCardFront: hotel.aadharCardFront,
+      aadharCardBack: hotel.aadharCardBack,
+      panCardFront: hotel.panCardFront,
+      panCardBack: hotel.panCardBack,
+      hotelAddressVerifyDocumentFront: hotel.hotelAddressVerifyDocumentFront,
+      bankPassbookFront: hotel.bankPassbookFront,
       qrCode: hotel.qrCode,
       standRequestStatus: hotel.standRequestStatus || "none",
       standRequestedAt: hotel.standRequestedAt,

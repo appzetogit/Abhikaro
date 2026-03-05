@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Upload, X } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { hotelAPI } from "@/lib/api"
 import { setAuthData as setModuleAuthData, isModuleAuthenticated } from "@/lib/utils/auth"
-import { uploadToCloudinary } from "@/lib/utils/cloudinary"
 import { loadBusinessSettings } from "@/lib/utils/businessSettings"
 
 export default function HotelOTP() {
@@ -28,16 +27,6 @@ export default function HotelOTP() {
     address: "",
   })
   const [signupErrors, setSignupErrors] = useState({})
-  const [uploadingImages, setUploadingImages] = useState({
-    aadharCard: false,
-    rentProof: false,
-    cancelledChecks: false,
-  })
-  const [images, setImages] = useState({
-    aadharCardImage: null,
-    hotelRentProofImage: null,
-    cancelledCheckImages: [],
-  })
 
   // Load business settings (title and favicon)
   useEffect(() => {
@@ -253,44 +242,6 @@ export default function HotelOTP() {
     inputRefs.current[0]?.focus()
   }
 
-  const handleImageUpload = async (type, file) => {
-    if (!file) return
-
-    setUploadingImages((prev) => ({ ...prev, [type]: true }))
-    try {
-      const result = await uploadToCloudinary(file)
-      if (type === "cancelledChecks") {
-        setImages((prev) => ({
-          ...prev,
-          cancelledCheckImages: [...prev.cancelledCheckImages, result],
-        }))
-      } else {
-        setImages((prev) => ({
-          ...prev,
-          [`${type}Image`]: result,
-        }))
-      }
-    } catch (err) {
-      setError(`Failed to upload ${type} image`)
-    } finally {
-      setUploadingImages((prev) => ({ ...prev, [type]: false }))
-    }
-  }
-
-  const handleRemoveImage = (type, index = null) => {
-    if (type === "cancelledChecks" && index !== null) {
-      setImages((prev) => ({
-        ...prev,
-        cancelledCheckImages: prev.cancelledCheckImages.filter((_, i) => i !== index),
-      }))
-    } else {
-      setImages((prev) => ({
-        ...prev,
-        [`${type}Image`]: null,
-      }))
-    }
-  }
-
   const validateSignupForm = () => {
     const errors = {}
     if (!signupData.hotelName.trim()) errors.hotelName = "Hotel name is required"
@@ -299,11 +250,6 @@ export default function HotelOTP() {
       errors.email = "Invalid email format"
     }
     if (!signupData.address.trim()) errors.address = "Address is required"
-    if (!images.aadharCardImage) errors.aadharCard = "Aadhar card image is required"
-    if (!images.hotelRentProofImage) errors.rentProof = "Hotel rent proof image is required"
-    if (images.cancelledCheckImages.length === 0) {
-      errors.cancelledChecks = "At least one cancelled check image is required"
-    }
 
     setSignupErrors(errors)
     return Object.keys(errors).length === 0
@@ -330,9 +276,9 @@ export default function HotelOTP() {
         signupData.hotelName,
         signupData.email,
         signupData.address,
-        images.aadharCardImage,
-        images.hotelRentProofImage,
-        images.cancelledCheckImages,
+        null,
+        null,
+        null,
       )
 
       const data = response?.data?.data || response?.data
@@ -435,122 +381,6 @@ export default function HotelOTP() {
             />
             {signupErrors.address && (
               <p className="text-sm text-red-600 mt-1">{signupErrors.address}</p>
-            )}
-          </div>
-
-          <div>
-            <Label>Aadhar Card Image *</Label>
-            {images.aadharCardImage ? (
-              <div className="mt-2 relative">
-                <img
-                  src={images.aadharCardImage.url}
-                  alt="Aadhar card"
-                  className="w-full h-48 object-cover rounded-lg"
-                />
-                <button
-                  onClick={() => handleRemoveImage("aadharCard")}
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <label className="mt-2 flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-                <Upload className="h-8 w-8 text-gray-400" />
-                <span className="text-sm text-gray-500 mt-2">Upload Aadhar Card</span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  onChange={(e) =>
-                    e.target.files[0] &&
-                    handleImageUpload("aadharCard", e.target.files[0])
-                  }
-                  disabled={uploadingImages.aadharCard}
-                />
-              </label>
-            )}
-            {signupErrors.aadharCard && (
-              <p className="text-sm text-red-600 mt-1">{signupErrors.aadharCard}</p>
-            )}
-          </div>
-
-          <div>
-            <Label>Hotel Rent & Proof Image *</Label>
-            {images.hotelRentProofImage ? (
-              <div className="mt-2 relative">
-                <img
-                  src={images.hotelRentProofImage.url}
-                  alt="Rent proof"
-                  className="w-full h-48 object-cover rounded-lg"
-                />
-                <button
-                  onClick={() => handleRemoveImage("hotelRentProof")}
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <label className="mt-2 flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-                <Upload className="h-8 w-8 text-gray-400" />
-                <span className="text-sm text-gray-500 mt-2">Upload Rent Proof</span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  onChange={(e) =>
-                    e.target.files[0] &&
-                    handleImageUpload("hotelRentProof", e.target.files[0])
-                  }
-                  disabled={uploadingImages.rentProof}
-                />
-              </label>
-            )}
-            {signupErrors.rentProof && (
-              <p className="text-sm text-red-600 mt-1">{signupErrors.rentProof}</p>
-            )}
-          </div>
-
-          <div>
-            <Label>Cancelled Check Images *</Label>
-            <div className="mt-2 space-y-2">
-              {images.cancelledCheckImages.map((img, index) => (
-                <div key={index} className="relative">
-                  <img
-                    src={img.url}
-                    alt={`Cancelled check ${index + 1}`}
-                    className="w-full h-48 object-cover rounded-lg"
-                  />
-                  <button
-                    onClick={() => handleRemoveImage("cancelledChecks", index)}
-                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-              {images.cancelledCheckImages.length === 0 && (
-                <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-                  <Upload className="h-8 w-8 text-gray-400" />
-                  <span className="text-sm text-gray-500 mt-2">
-                    Upload Cancelled Check
-                  </span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={(e) =>
-                      e.target.files[0] &&
-                      handleImageUpload("cancelledChecks", e.target.files[0])
-                    }
-                    disabled={uploadingImages.cancelledChecks}
-                  />
-                </label>
-              )}
-            </div>
-            {signupErrors.cancelledChecks && (
-              <p className="text-sm text-red-600 mt-1">{signupErrors.cancelledChecks}</p>
             )}
           </div>
 

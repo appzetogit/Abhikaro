@@ -207,6 +207,17 @@ export const updateHotel = asyncHandler(async (req, res) => {
     "phone",
     "isActive",
     "profileImage",
+    // Old document fields
+    "aadharCardImage",
+    "hotelRentProofImage",
+    "cancelledCheckImages",
+    // New KYC document fields
+    "aadharCardFront",
+    "aadharCardBack",
+    "panCardFront",
+    "panCardBack",
+    "hotelAddressVerifyDocumentFront",
+    "bankPassbookFront",
     "rejectionReason",
     "commission",
     "adminCommission",

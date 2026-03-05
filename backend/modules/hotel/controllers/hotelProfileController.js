@@ -30,6 +30,12 @@ export const updateHotelProfile = asyncHandler(async (req, res) => {
     "aadharCardImage",
     "hotelRentProofImage",
     "cancelledCheckImages",
+    "aadharCardFront",
+    "aadharCardBack",
+    "panCardFront",
+    "panCardBack",
+    "hotelAddressVerifyDocumentFront",
+    "bankPassbookFront",
     "isActive",
   ];
 

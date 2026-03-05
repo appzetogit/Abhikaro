@@ -26,6 +26,14 @@ const updateProfileSchema = Joi.object({
   aadharCardImage: imageSchema.optional().allow(null),
   hotelRentProofImage: imageSchema.optional().allow(null),
   cancelledCheckImages: Joi.array().items(imageSchema).optional(),
+  
+  // KYC Documents for withdrawal
+  aadharCardFront: imageSchema.optional().allow(null),
+  aadharCardBack: imageSchema.optional().allow(null),
+  panCardFront: imageSchema.optional().allow(null),
+  panCardBack: imageSchema.optional().allow(null),
+  hotelAddressVerifyDocumentFront: imageSchema.optional().allow(null),
+  bankPassbookFront: imageSchema.optional().allow(null),
 });
 
 router.get("/", authenticate, getHotelProfile);
