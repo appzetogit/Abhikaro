@@ -118,7 +118,7 @@ export default function CreateOffers() {
           </div>
         </div>
 
-        {/* Tab Bar */}
+        {/* Tab Bar - only Create offers (Track offers hidden as per requirement) */}
         <div className="flex border-t border-white">
           <button
             onClick={() => setActiveTab("create-offers")}
@@ -137,28 +137,12 @@ export default function CreateOffers() {
               />
             )}
           </button>
-          <button
-            onClick={() => setActiveTab("track-offers")}
-            className={`flex-1 py-3 text-sm font-medium relative ${
-              activeTab === "track-offers"
-                ? "text-blue-600"
-                : "text-gray-500"
-            }`}
-          >
-            Track offers
-            {activeTab === "track-offers" && (
-              <motion.div
-                layoutId="activeTab"
-                className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
-                initial={false}
-              />
-            )}
-          </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 px-4 py-6">
+        {/* Only Create offers tab content is used now */}
         {activeTab === "create-offers" ? (
           <>
             {/* Custom Offer Section */}

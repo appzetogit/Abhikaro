@@ -209,6 +209,7 @@ export const API_ENDPOINTS = {
     ORDER_RESEND_DELIVERY_NOTIFICATION:
       "/restaurant/orders/:id/resend-delivery-notification",
     FINANCE: "/restaurant/finance",
+    COMMISSION: "/restaurant/commission",
     WALLET: "/restaurant/wallet",
     WALLET_TRANSACTIONS: "/restaurant/wallet/transactions",
     WALLET_STATS: "/restaurant/wallet/stats",

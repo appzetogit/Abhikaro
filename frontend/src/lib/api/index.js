@@ -334,6 +334,11 @@ export const restaurantAPI = {
     return apiClient.get(API_ENDPOINTS.RESTAURANT.AUTH.ME);
   },
 
+  // Restaurant-side commission info (for current restaurant)
+  getMyCommission: () => {
+    return apiClient.get(API_ENDPOINTS.RESTAURANT.COMMISSION);
+  },
+
   reverify: () => {
     return apiClient.post(API_ENDPOINTS.RESTAURANT.AUTH.REVERIFY);
   },

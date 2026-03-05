@@ -180,6 +180,27 @@ const orderSchema = new mongoose.Schema(
         default: 0,
         min: 0,
       },
+      // Extra discount funded by admin/platform offers (e.g. category offers)
+      adminOfferDiscount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+      // Category ID from AdminCategoryManagement for which admin offer was applied
+      adminOfferCategoryId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AdminCategoryManagement",
+      },
+      // Optional label/name for the admin offer applied (e.g. "Paneer 10% OFF")
+      adminOfferName: {
+        type: String,
+      },
+      // Optional percentage for admin offer (for reporting)
+      adminOfferPercent: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
       total: {
         type: Number,
         required: true,

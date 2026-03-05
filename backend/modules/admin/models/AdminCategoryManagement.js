@@ -29,6 +29,19 @@ const adminCategoryManagementSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // Optional category-level offer percentage (0–100)
+    offerPercentage: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
+    // Optional per-user limit: how many times a user can use this category offer per day (0 = unlimited)
+    offerUsageLimitPerDay: {
+      type: Number,
+      min: 0,
+      default: 1,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Admin',

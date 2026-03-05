@@ -28,6 +28,7 @@ import {
   CheckCircle,
   Calendar,
   MapPin,
+  Percent,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { DateRangeCalendar } from "@/components/ui/date-range-calendar"
@@ -353,6 +354,7 @@ export default function ExploreMore() {
   // Restaurant data state
   const [restaurantData, setRestaurantData] = useState(null)
   const [loadingRestaurant, setLoadingRestaurant] = useState(true)
+  const [commissionInfo, setCommissionInfo] = useState(null)
 
   // Fetch restaurant data on mount
   useEffect(() => {
@@ -363,6 +365,29 @@ export default function ExploreMore() {
         const data = response?.data?.data?.restaurant || response?.data?.restaurant
         if (data) {
           setRestaurantData(data)
+
+          // Fetch commission set by admin for this restaurant (restaurant-authenticated endpoint)
+          try {
+            const commRes = await restaurantAPI.getMyCommission()
+            const payload = commRes?.data?.data || commRes?.data
+            const commissionData =
+              payload?.commission || payload?.data?.commission || null
+
+            if (commissionData?.defaultCommission) {
+              setCommissionInfo(commissionData.defaultCommission)
+            } else if (payload?.defaultCommission) {
+              setCommissionInfo(payload.defaultCommission)
+            } else {
+              setCommissionInfo(null)
+            }
+          } catch (commError) {
+            // Commission info is optional; ignore auth/not-found errors silently
+            const status = commError?.response?.status
+            if (status !== 401 && status !== 403 && status !== 404) {
+              console.error("Error fetching restaurant commission:", commError)
+            }
+            setCommissionInfo(null)
+          }
         }
       } catch (error) {
         // Only log error if it's not a network/timeout error (backend might be down/slow)
@@ -403,16 +428,37 @@ export default function ExploreMore() {
 
   // Get user data from restaurant data
   const userData = restaurantData ? {
-    name: restaurantData.ownerName || restaurantData.name || "Restaurant Owner",
-    phone: restaurantData.ownerPhone || restaurantData.phone || "N/A",
-    email: restaurantData.ownerEmail || restaurantData.email || "N/A",
+    name: restaurantData.onboarding?.step1?.ownerName
+      || restaurantData.ownerName
+      || restaurantData.name
+      || "Restaurant Owner",
+    phone: restaurantData.onboarding?.step1?.ownerPhone
+      || restaurantData.ownerPhone
+      || restaurantData.onboarding?.step1?.primaryContactNumber
+      || restaurantData.primaryContactNumber
+      || restaurantData.phone
+      || "N/A",
+    email: restaurantData.onboarding?.step1?.ownerEmail
+      || restaurantData.ownerEmail
+      || restaurantData.email
+      || "N/A",
     role: "OWNER",
-    profileImage: restaurantData.profileImage
+    profileImage:
+      restaurantData.onboarding?.step2?.profileImageUrl?.url ||
+      restaurantData.profileImage
   } : {
     name: "Loading...",
     phone: "",
     email: "",
     role: "OWNER"
+  }
+
+  // Commission text for My profile (admin-set commission)
+  let commissionText = null
+  if (commissionInfo?.type === "percentage" && commissionInfo.value != null) {
+    commissionText = `Admin commission: ${commissionInfo.value}% per order`
+  } else if (commissionInfo?.type === "amount" && commissionInfo.value != null) {
+    commissionText = `Admin commission: ₹${commissionInfo.value} per order`
   }
 
   // Get restaurant display data
@@ -687,6 +733,18 @@ export default function ExploreMore() {
   const accountingItems = [
     { id: 1, label: "Payout", icon: IndianRupee, route: "/restaurant/hub-finance" },
     { id: 2, label: "Invoices", icon: Receipt, route: "/restaurant/hub-finance?tab=invoices" },
+    {
+      id: 3,
+      label: "Check commission",
+      icon: Percent,
+      route: null,
+      subtitle: commissionInfo
+        ? `Admin commission: ${commissionInfo.type === "percentage"
+          ? `${commissionInfo.value}%`
+          : `₹${commissionInfo.value}`
+        }`
+        : "Admin commission not set",
+    },
   ]
 
   // All sections with their items
@@ -739,6 +797,13 @@ export default function ExploreMore() {
       <div className="grid grid-cols-3 gap-4">
         {items.map((item, index) => {
           const IconComponent = item.icon
+          const isCommissionCard = title === "Accounting" && item.id === 3
+          const commissionDisplay =
+            isCommissionCard && commissionInfo
+              ? commissionInfo.type === "percentage"
+                ? `${commissionInfo.value}%`
+                : `₹${commissionInfo.value}`
+              : null
           return (
             <motion.div
               key={item.id}
@@ -764,13 +829,18 @@ export default function ExploreMore() {
                 }}
                 className="w-full flex items-center justify-center p-6 bg-white rounded-lg shadow-md border-2 border-gray-200 hover:shadow-md transition-shadow duration-200 min-h-[110px]"
               >
-                <div className="relative flex items-center justify-center">
+                <div className="relative flex flex-col items-center justify-center gap-2">
                   {item.customIcon ? (
                     <div className="w-12 h-12 flex items-center justify-center">
                       <span className="text-lg font-bold text-gray-900">hp</span>
                     </div>
                   ) : (
                     <IconComponent className="w-8 h-8 text-gray-900" strokeWidth={1.5} />
+                  )}
+                  {commissionDisplay && (
+                    <span className="text-sm font-semibold text-gray-900">
+                      {commissionDisplay}
+                    </span>
                   )}
                   {item.badge && (
                     <motion.span
@@ -786,6 +856,11 @@ export default function ExploreMore() {
               </motion.button>
               <span className="text-sm text-gray-700 text-center leading-tight font-normal mt-3">
                 {item.label}
+                {item.subtitle && (
+                  <span className="block text-[11px] text-gray-500 mt-0.5">
+                    {item.subtitle}
+                  </span>
+                )}
               </span>
             </motion.div>
           )
@@ -1084,6 +1159,11 @@ export default function ExploreMore() {
                     <p className="text-sm font-bold text-gray-900 mt-2">
                       {userData.role}
                     </p>
+                    {commissionText && (
+                      <p className="text-xs text-gray-600 mt-1">
+                        {commissionText}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

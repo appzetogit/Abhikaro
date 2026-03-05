@@ -140,6 +140,8 @@ export default function RegularOrderReport() {
             itemDiscount: order.itemDiscount || 0,
             discountedAmount: order.discountedAmount || 0,
             couponDiscount: order.couponDiscount || 0,
+            adminOfferDiscount: order.adminOfferDiscount || 0,
+            adminOfferName: order.adminOfferName || "",
             referralDiscount: order.referralDiscount || 0,
             vatTax: order.vatTax || 0,
             deliveryCharge: order.deliveryCharge || 0,
@@ -180,6 +182,7 @@ export default function RegularOrderReport() {
       { key: "itemDiscount", label: "Item Discount" },
       { key: "discountedAmount", label: "Discounted Amount" },
       { key: "couponDiscount", label: "Coupon Discount" },
+      { key: "adminOfferDiscount", label: "Admin Offer Discount" },
       { key: "referralDiscount", label: "Referral Discount" },
       { key: "vatTax", label: "VAT/Tax" },
       { key: "deliveryCharge", label: "Delivery Charge" },
@@ -502,6 +505,9 @@ export default function RegularOrderReport() {
                   <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: "7%" }}>
                     Coupon Discount
                   </th>
+                  <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: "9%" }}>
+                    Admin Offer
+                  </th>
                   <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: "7%" }}>
                     Referral Discount
                   </th>
@@ -522,7 +528,7 @@ export default function RegularOrderReport() {
               <tbody className="bg-white divide-y divide-slate-100">
                 {paginatedOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-6 py-20 text-center">
+                    <td colSpan={14} className="px-6 py-20 text-center">
                       <div className="flex flex-col items-center justify-center">
                         <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                         <p className="text-sm text-slate-500">No orders match your filters</p>
@@ -555,12 +561,19 @@ export default function RegularOrderReport() {
                       <td className="px-1.5 py-1">
                         <span className="text-[10px] text-slate-700">{formatAmount(order.discountedAmount)}</span>
                       </td>
-                      <td className="px-1.5 py-1">
-                        <span className="text-[10px] text-slate-700">{formatAmount(order.couponDiscount)}</span>
-                      </td>
-                      <td className="px-1.5 py-1">
-                        <span className="text-[10px] text-slate-700">{formatAmount(order.referralDiscount)}</span>
-                      </td>
+                    <td className="px-1.5 py-1">
+                      <span className="text-[10px] text-slate-700">{formatAmount(order.couponDiscount)}</span>
+                    </td>
+                    <td className="px-1.5 py-1">
+                      <span className="text-[9px] text-slate-700">
+                        {order.adminOfferDiscount > 0
+                          ? `${formatAmount(order.adminOfferDiscount)}${order.adminOfferName ? ` (${order.adminOfferName})` : ""}`
+                          : "-"}
+                      </span>
+                    </td>
+                    <td className="px-1.5 py-1">
+                      <span className="text-[10px] text-slate-700">{formatAmount(order.referralDiscount)}</span>
+                    </td>
                       <td className="px-1.5 py-1">
                         <span className="text-[10px] text-slate-700">{formatAmount(order.vatTax)}</span>
                       </td>

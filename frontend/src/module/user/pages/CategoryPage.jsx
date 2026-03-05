@@ -75,6 +75,7 @@ export default function CategoryPage() {
               image: cat.image || foodImages[0],
               slug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'),
               type: cat.type,
+              offerPercentage: typeof cat.offerPercentage === "number" ? cat.offerPercentage : 0,
             }))
           ]
           
@@ -143,7 +144,8 @@ export default function CategoryPage() {
   }
 
   // Helper function to get ALL dishes matching a category from menu (returns array of dish info)
-  const getAllCategoryDishesFromMenu = (menu, categoryId) => {
+  // Applies both item-level discount and optional category-level offerPercentage
+  const getAllCategoryDishesFromMenu = (menu, categoryId, categoryOfferPercentage = 0) => {
     if (!menu || !menu.sections || !Array.isArray(menu.sections)) {
       return []
     }
@@ -161,14 +163,19 @@ export default function CategoryPage() {
           const itemNameLower = (item.name || '').toLowerCase()
           const itemCategoryLower = (item.category || '').toLowerCase()
           
-          if (keywords.some(keyword => 
+          if (keywords.some(keyword =>
             itemNameLower.includes(keyword) || itemCategoryLower.includes(keyword)
           )) {
-            // Calculate final price considering discounts
+            // Calculate final price considering both item discount and category offer
             const originalPrice = item.originalPrice || item.price || 0
-            const discountPercent = item.discountPercent || 0
-            const finalPrice = discountPercent > 0 
-              ? Math.round(originalPrice * (1 - discountPercent / 100))
+            const itemDiscountPercent = item.discountPercent || 0
+            const categoryDiscountPercent = typeof categoryOfferPercentage === "number" ? categoryOfferPercentage : 0
+            const totalDiscountPercent = Math.max(
+              0,
+              Math.min(100, itemDiscountPercent + categoryDiscountPercent)
+            )
+            const finalPrice = totalDiscountPercent > 0
+              ? Math.round(originalPrice * (1 - totalDiscountPercent / 100))
               : originalPrice
             
             // Get dish image (prioritize item image, then section image)
@@ -181,6 +188,9 @@ export default function CategoryPage() {
               originalPrice: originalPrice,
               itemId: item._id || item.id || `${item.name}-${finalPrice}`,
               foodType: item.foodType, // Include foodType for vegMode filtering
+              itemDiscountPercent,
+              categoryOfferPercentage: categoryDiscountPercent,
+              totalDiscountPercent,
             })
           }
         }
@@ -192,7 +202,7 @@ export default function CategoryPage() {
 
   // Helper function to get FIRST featured dish for a category from menu (for backward compatibility)
   const getCategoryDishFromMenu = (menu, categoryId) => {
-    const allDishes = getAllCategoryDishesFromMenu(menu, categoryId)
+    const allDishes = getAllCategoryDishesFromMenu(menu, categoryId, 0)
     return allDishes.length > 0 ? allDishes[0] : null
   }
 
@@ -457,6 +467,19 @@ export default function CategoryPage() {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
     let filtered = [...sourceData]
 
+    // Find current selected category offer percentage (if any)
+    const currentCategory =
+      categories && categories.length > 0
+        ? categories.find((cat) => {
+            const slug = cat.slug || cat.id
+            return slug === selectedCategory
+          })
+        : null
+    const currentCategoryOffer =
+      currentCategory && typeof currentCategory.offerPercentage === "number"
+        ? currentCategory.offerPercentage
+        : 0
+
     // Filter by category - Dynamic filtering based on menu items
     if (selectedCategory && selectedCategory !== 'all') {
       const expandedDishes = []
@@ -465,8 +488,12 @@ export default function CategoryPage() {
         if (r.menu) {
           const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
           if (hasCategoryItem) {
-            // Get ALL matching dishes for this category
-            const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
+            // Get ALL matching dishes for this category (apply category offer)
+            const categoryDishes = getAllCategoryDishesFromMenu(
+              r.menu,
+              selectedCategory,
+              currentCategoryOffer
+            )
             
             if (categoryDishes.length > 0) {
               // Create one card per dish
@@ -481,6 +508,7 @@ export default function CategoryPage() {
                   categoryDishName: dish.name,
                   categoryDishPrice: dish.price,
                   categoryDishImage: dish.image,
+                  categoryOfferPercentage: dish.categoryOfferPercentage,
                 })
               })
             } else {
@@ -547,6 +575,19 @@ export default function CategoryPage() {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
     let filtered = [...sourceData]
 
+    // Find current selected category offer percentage (if any)
+    const currentCategory =
+      categories && categories.length > 0
+        ? categories.find((cat) => {
+            const slug = cat.slug || cat.id
+            return slug === selectedCategory
+          })
+        : null
+    const currentCategoryOffer =
+      currentCategory && typeof currentCategory.offerPercentage === "number"
+        ? currentCategory.offerPercentage
+        : 0
+
     // Filter by category - Dynamic filtering based on menu items
     // If category is selected, expand restaurants into dish cards (one card per matching dish)
     if (selectedCategory && selectedCategory !== 'all') {
@@ -556,8 +597,12 @@ export default function CategoryPage() {
         if (r.menu) {
           const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
           if (hasCategoryItem) {
-            // Get ALL matching dishes for this category
-            const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
+            // Get ALL matching dishes for this category (apply category offer)
+            const categoryDishes = getAllCategoryDishesFromMenu(
+              r.menu,
+              selectedCategory,
+              currentCategoryOffer
+            )
             
             if (categoryDishes.length > 0) {
               // Create one card per dish
@@ -577,6 +622,7 @@ export default function CategoryPage() {
                   categoryDishName: dish.name,
                   categoryDishPrice: dish.price,
                   categoryDishImage: dish.image,
+                  categoryOfferPercentage: dish.categoryOfferPercentage,
                 })
               })
             }
@@ -734,6 +780,11 @@ export default function CategoryPage() {
                     }`}>
                       {cat.name}
                     </span>
+                    {typeof cat.offerPercentage === "number" && cat.offerPercentage > 0 && (
+                      <span className="text-[10px] md:text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full mt-0.5">
+                        {cat.offerPercentage}% OFF
+                      </span>
+                    )}
                   </button>
                 )
               }) : (
@@ -910,9 +961,17 @@ export default function CategoryPage() {
                       <h3 className="font-semibold text-gray-900 dark:text-white text-xs md:text-sm line-clamp-1">
                         {restaurant.categoryDishName || restaurant.name}
                       </h3>
-                      <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[10px] md:text-xs">
-                        <Clock className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                        <span>{restaurant.deliveryTime || 'Not available'}</span>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[10px] md:text-xs">
+                          <Clock className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                          <span>{restaurant.deliveryTime || 'Not available'}</span>
+                        </div>
+                        {typeof restaurant.categoryOfferPercentage === "number" &&
+                          restaurant.categoryOfferPercentage > 0 && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-green-50 text-[9px] md:text-[10px] font-semibold text-green-700">
+                              Offer of {restaurant.categoryOfferPercentage}%
+                            </span>
+                          )}
                       </div>
                     </div>
                   </Link>
@@ -993,10 +1052,16 @@ export default function CategoryPage() {
                         
                         {/* Category Dish Badge - Top Left (shows category dish if available, otherwise featured dish) */}
                         {(restaurant.categoryDishName || restaurant.featuredDish) && (
-                        <div className="absolute top-3 left-3">
+                        <div className="absolute top-3 left-3 space-y-1">
                           <div className="bg-gray-800/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm md:text-base font-medium">
                               {restaurant.categoryDishName || restaurant.featuredDish} · ₹{restaurant.categoryDishPrice || restaurant.featuredPrice}
                           </div>
+                          {typeof restaurant.categoryOfferPercentage === "number" &&
+                            restaurant.categoryOfferPercentage > 0 && (
+                              <div className="inline-flex items-center bg-green-600/90 text-white text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded">
+                                Offer of {restaurant.categoryOfferPercentage}%
+                              </div>
+                            )}
                         </div>
                         )}
                         

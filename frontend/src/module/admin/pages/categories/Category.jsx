@@ -25,7 +25,9 @@ export default function Category() {
     name: "",
     image: "https://via.placeholder.com/40",
     status: true,
-    type: ""
+    type: "",
+    offerPercentage: 0,
+    offerUsageLimitPerDay: 1,
   })
   const [selectedImageFile, setSelectedImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
@@ -229,7 +231,11 @@ export default function Category() {
       name: category.name || "",
       image: category.image || "https://via.placeholder.com/40",
       status: category.status !== undefined ? category.status : true,
-      type: category.type || ""
+      type: category.type || "",
+      offerPercentage: typeof category.offerPercentage === "number" ? category.offerPercentage : 0,
+      offerUsageLimitPerDay: typeof category.offerUsageLimitPerDay === "number"
+        ? category.offerUsageLimitPerDay
+        : 1,
     })
     setSelectedImageFile(null)
     setImagePreview(category.image || null)
@@ -242,7 +248,9 @@ export default function Category() {
       name: "",
       image: "https://via.placeholder.com/40",
       status: true,
-      type: ""
+      type: "",
+      offerPercentage: 0,
+      offerUsageLimitPerDay: 1,
     })
     setSelectedImageFile(null)
     setImagePreview(null)
@@ -382,7 +390,9 @@ export default function Category() {
       name: "",
       image: "https://via.placeholder.com/40",
       status: true,
-      type: ""
+      type: "",
+      offerPercentage: 0,
+      offerUsageLimitPerDay: 1,
     })
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
@@ -399,6 +409,18 @@ export default function Category() {
       formDataToSend.append('name', formData.name)
       formDataToSend.append('type', formData.type)
       formDataToSend.append('status', formData.status.toString())
+      // Ensure a numeric string is always sent for offerPercentage
+      const offerValue =
+        formData.offerPercentage === "" || formData.offerPercentage == null
+          ? "0"
+          : String(formData.offerPercentage)
+      formDataToSend.append('offerPercentage', offerValue)
+      // Usage limit per day (0 = unlimited)
+      const usageLimitValue =
+        formData.offerUsageLimitPerDay === "" || formData.offerUsageLimitPerDay == null
+          ? "1"
+          : String(formData.offerUsageLimitPerDay)
+      formDataToSend.append("offerUsageLimitPerDay", usageLimitValue)
 
       // Add image file if selected, otherwise use existing image URL
       if (selectedImageFile) {
@@ -530,68 +552,7 @@ export default function Category() {
         </div>
       </div>
 
-      {/* Filters Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 mb-6">
-        <div className="flex flex-col gap-1.5">
-          {/* Row 1 */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <Button
-              variant="outline"
-              onClick={() => setIsFilterOpen(true)}
-              className="h-5 px-1.5 rounded-md flex items-center gap-1 whitespace-nowrap shrink-0 transition-all bg-white border border-gray-200 hover:bg-gray-50"
-            >
-              <SlidersHorizontal className="h-2.5 w-2.5" />
-              <span className="text-[10px] font-bold text-black">Filters</span>
-            </Button>
-            {[
-              { id: 'delivery-under-30', label: 'Under 30 mins' },
-              { id: 'delivery-under-45', label: 'Under 45 mins' },
-            ].map((filter) => {
-              const isActive = activeFilters.has(filter.id)
-              return (
-                <Button
-                  key={filter.id}
-                  variant="outline"
-                  onClick={() => toggleFilter(filter.id)}
-                  className={`h-5 px-1.5 rounded-md flex items-center gap-1 whitespace-nowrap shrink-0 transition-all ${
-                    isActive
-                      ? 'bg-green-600 text-white border border-green-600 hover:bg-green-600/90'
-                      : 'bg-white border border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className={`text-[10px] font-bold ${isActive ? 'text-white' : 'text-black'}`}>{filter.label}</span>
-                </Button>
-              )
-            })}
-          </div>
-          
-          {/* Row 2 */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {[
-              { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
-              { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
-            ].map((filter) => {
-              const Icon = filter.icon
-              const isActive = activeFilters.has(filter.id)
-              return (
-                <Button
-                  key={filter.id}
-                  variant="outline"
-                  onClick={() => toggleFilter(filter.id)}
-                  className={`h-5 px-1.5 rounded-md flex items-center gap-1 whitespace-nowrap shrink-0 transition-all ${
-                    isActive
-                      ? 'bg-green-600 text-white border border-green-600 hover:bg-green-600/90'
-                      : 'bg-white border border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  {Icon && <Icon className={`h-2.5 w-2.5 ${isActive ? 'text-white' : 'text-gray-900'}`} />}
-                  <span className={`text-[10px] font-bold ${isActive ? 'text-white' : 'text-black'}`}>{filter.label}</span>
-                </Button>
-              )
-            })}
-          </div>
-        </div>
-      </div>
+      {/* Filters Section - hidden in admin category page as per requirement */}
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -612,6 +573,12 @@ export default function Category() {
                   Type
                 </th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  Offer (%)
+                </th>
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  Uses / User / Day
+                </th>
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Status
                 </th>
                 <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -622,7 +589,7 @@ export default function Category() {
             <tbody className="bg-white divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
                       <p className="text-sm text-slate-500">Loading categories...</p>
@@ -631,7 +598,7 @@ export default function Category() {
                 </tr>
               ) : filteredCategories.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                       <p className="text-sm text-slate-500">No categories match your search</p>
@@ -665,6 +632,20 @@ export default function Category() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-medium text-slate-700">{category.type || 'N/A'}</span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-medium text-slate-700">
+                        {typeof category.offerPercentage === "number" && category.offerPercentage > 0
+                          ? `${category.offerPercentage}%`
+                          : "-"}
+                      </span>
+                    </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className="text-sm font-medium text-slate-700">
+                    {typeof category.offerUsageLimitPerDay === "number"
+                      ? (category.offerUsageLimitPerDay === 0 ? "Unlimited" : category.offerUsageLimitPerDay)
+                      : "1"}
+                  </span>
+                </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <button
                         onClick={() => handleToggleStatus(category.id)}
@@ -1075,6 +1056,64 @@ export default function Category() {
                         <option value="Beverages">Beverages</option>
                         <option value="Varieties">Varieties</option>
                       </select>
+                    </div>
+
+                    {/* Category Offer Percentage */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Category Offer (%) <span className="text-xs text-slate-400">(optional, 0-100)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={formData.offerPercentage}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          // Allow empty string for easier editing, backend will treat as 0
+                          if (value === "") {
+                            setFormData({ ...formData, offerPercentage: "" })
+                            return
+                          }
+                          const num = Number(value)
+                          if (Number.isNaN(num)) return
+                          if (num < 0 || num > 100) return
+                          setFormData({ ...formData, offerPercentage: num })
+                        }}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                        placeholder="e.g. 10 for 10% OFF"
+                      />
+                      <p className="text-xs text-slate-500">
+                        This is flat discount percentage that will be shown to users.
+                      </p>
+                    </div>
+
+                    {/* Category Offer Usage Limit */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Uses per user per day <span className="text-xs text-slate-400">(0 = unlimited)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={formData.offerUsageLimitPerDay}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          if (value === "") {
+                            setFormData({ ...formData, offerUsageLimitPerDay: "" })
+                            return
+                          }
+                          const num = Number(value)
+                          if (Number.isNaN(num)) return
+                          if (num < 0) return
+                          setFormData({ ...formData, offerUsageLimitPerDay: Math.floor(num) })
+                        }}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g. 1 for once per day"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">
+                        Controls how many times a single user can avail this category offer in one day.
+                      </p>
                     </div>
 
                     <div>

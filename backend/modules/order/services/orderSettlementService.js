@@ -82,55 +82,19 @@ export const calculateOrderSettlement = async (orderId) => {
 
     let restaurantCommissionData = null;
 
-    // USE PRE-CALCULATED COMMISSION BREAKDOWN IF AVAILABLE
-    if (order.commissionBreakdown) {
-      const { restaurant, admin, hotel } = order.commissionBreakdown;
-
-      // Restaurant Earning
-      restaurantEarning.netEarning = restaurant;
-      // Gross Commission = Food Price - Restaurant Net
-      restaurantEarning.commission =
-        Math.round((foodPrice - restaurant) * 100) / 100;
-      restaurantEarning.commissionPercentage =
-        order.commissionPercentages?.restaurant || 0;
-
-      // Hotel Earning (if QR)
-      if (order.hotelReference && hotel > 0) {
-        // Fetch hotel details for name/ID
-        let hotelDoc = null;
-        if (
-          mongoose.Types.ObjectId.isValid(order.hotelReference) &&
-          order.hotelReference.length === 24
-        ) {
-          hotelDoc = await Hotel.findById(order.hotelReference).lean();
-        }
-        if (!hotelDoc) {
-          // Only query by custom hotelId here to avoid CastError on _id
-          hotelDoc = await Hotel.findOne({
-            hotelId: order.hotelReference,
-          }).lean();
-        }
-
-        hotelEarning = {
-          hotelId: hotelDoc?._id || null, // Only use ObjectId if document found
-          hotelName: hotelDoc?.hotelName || order.hotelName || "Unknown Hotel",
-          commission: hotel,
-          commissionPercentage: order.commissionPercentages?.hotel || 0,
-          status: "pending",
-        };
-      }
-
-      // Admin Commission
-      // In the new flow, 'admin' in breakdown is the Net Admin Share.
-      // We set adminCommission to this value.
-      adminCommission = admin;
-
-      // adminCommissionFromHotel is no longer needed as 'admin' covers the specific share.
-      if (order.hotelReference) {
-        adminCommissionFromHotel = 0;
-      }
-    } else {
-      // FALLBACK TO LEGACY CALCULATION (If no breakdown stored)
+    /**
+     * IMPORTANT:
+     * - For direct restaurant orders, restaurant earnings MUST follow the
+     *   per‑restaurant commission setup (RestaurantCommission).
+     * - We should not reduce restaurant share because of admin‑funded offers;
+     *   that's already handled via foodPrice (subtotal - discount).
+     *
+     * To keep behaviour predictable, we always recalculate restaurant/admin
+     * commission here for direct orders using RestaurantCommission, ignoring
+     * any pre‑calculated breakdown stored on the Order.
+     */
+    if (!order.hotelReference) {
+      // DIRECT ORDER → use per‑restaurant commission rules
       restaurantCommissionData =
         await RestaurantCommission.calculateCommissionForOrder(
           restaurant._id,
@@ -154,10 +118,69 @@ export const calculateOrderSettlement = async (orderId) => {
       };
 
       adminCommission = commissionAmount;
+    } else {
+      // QR / HOTEL ORDER → keep existing breakdown behaviour (if present)
+      if (order.commissionBreakdown) {
+        const { restaurant: restNet, admin, hotel } = order.commissionBreakdown;
 
-      // Legacy QR Logic (simplified)
-      if (order.hotelReference) {
-        // ... existing legacy logic if needed, or just skip ...
+        // Restaurant Earning
+        restaurantEarning.netEarning = restNet;
+        restaurantEarning.commission =
+          Math.round((foodPrice - restNet) * 100) / 100;
+        restaurantEarning.commissionPercentage =
+          order.commissionPercentages?.restaurant || 0;
+
+        // Hotel Earning (if QR)
+        if (hotel > 0) {
+          let hotelDoc = null;
+          if (
+            mongoose.Types.ObjectId.isValid(order.hotelReference) &&
+            order.hotelReference.length === 24
+          ) {
+            hotelDoc = await Hotel.findById(order.hotelReference).lean();
+          }
+          if (!hotelDoc) {
+            hotelDoc = await Hotel.findOne({
+              hotelId: order.hotelReference,
+            }).lean();
+          }
+
+          hotelEarning = {
+            hotelId: hotelDoc?._id || null,
+            hotelName: hotelDoc?.hotelName || order.hotelName || "Unknown Hotel",
+            commission: hotel,
+            commissionPercentage: order.commissionPercentages?.hotel || 0,
+            status: "pending",
+          };
+        }
+
+        adminCommission = admin;
+        adminCommissionFromHotel = 0;
+      } else {
+        // FALLBACK legacy calculation for QR orders (rare)
+        restaurantCommissionData =
+          await RestaurantCommission.calculateCommissionForOrder(
+            restaurant._id,
+            foodPrice,
+          );
+
+        const commissionAmount =
+          Math.round(restaurantCommissionData.commission * 100) / 100;
+        const restaurantNetEarning =
+          Math.round((foodPrice - commissionAmount) * 100) / 100;
+
+        restaurantEarning = {
+          foodPrice: foodPrice,
+          commission: commissionAmount,
+          commissionPercentage:
+            restaurantCommissionData.type === "percentage"
+              ? restaurantCommissionData.value
+              : (commissionAmount / foodPrice) * 100,
+          netEarning: restaurantNetEarning,
+          status: "pending",
+        };
+
+        adminCommission = commissionAmount;
       }
     }
 

@@ -34,6 +34,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
             name: cat.name,
             image: cat.image || null,
             slug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'),
+            offerPercentage: typeof cat.offerPercentage === "number" ? cat.offerPercentage : 0,
           }))
           setCategories(categoriesArray)
           setFilteredFoods(categoriesArray)

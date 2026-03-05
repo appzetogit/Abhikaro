@@ -22,7 +22,7 @@ export const getPublicCategories = asyncHandler(async (req, res) => {
   try {
     // Only get active categories for public access
     const categories = await AdminCategoryManagement.find({ status: true })
-      .select('name image _id type')
+      .select('name image _id type offerPercentage offerUsageLimitPerDay')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -31,7 +31,15 @@ export const getPublicCategories = asyncHandler(async (req, res) => {
       name: category.name,
       image: category.image,
       type: category.type || null,
-      slug: category.name.toLowerCase().replace(/\s+/g, '-')
+      slug: category.name.toLowerCase().replace(/\s+/g, '-'),
+      offerPercentage:
+        typeof category.offerPercentage === 'number'
+          ? category.offerPercentage
+          : 0,
+      offerUsageLimitPerDay:
+        typeof category.offerUsageLimitPerDay === 'number'
+          ? category.offerUsageLimitPerDay
+          : 1,
     }));
 
     return successResponse(res, 200, 'Categories retrieved successfully', {
@@ -133,7 +141,7 @@ export const getCategoryById = asyncHandler(async (req, res) => {
  */
 export const createCategory = asyncHandler(async (req, res) => {
   try {
-    const { name, image, status, type } = req.body;
+    const { name, image, status, type, offerPercentage, offerUsageLimitPerDay } = req.body;
 
     // Validation
     if (!name || !name.trim()) {
@@ -174,6 +182,34 @@ export const createCategory = asyncHandler(async (req, res) => {
       imageUrl = image.trim();
     }
 
+    // Parse and validate offer percentage (optional)
+    let parsedOfferPercentage = 0;
+    if (offerPercentage !== undefined && offerPercentage !== null && offerPercentage !== '') {
+      const num = Number(offerPercentage);
+      if (Number.isNaN(num) || num < 0 || num > 100) {
+        return errorResponse(res, 400, 'Offer percentage must be a number between 0 and 100');
+      }
+      parsedOfferPercentage = num;
+    }
+
+    // Parse and validate offer usage limit per day (optional)
+    let parsedOfferUsageLimitPerDay = 1;
+    if (
+      offerUsageLimitPerDay !== undefined &&
+      offerUsageLimitPerDay !== null &&
+      offerUsageLimitPerDay !== ""
+    ) {
+      const num = Number(offerUsageLimitPerDay);
+      if (Number.isNaN(num) || num < 0 || !Number.isInteger(num)) {
+        return errorResponse(
+          res,
+          400,
+          "Offer usage limit must be an integer 0 or greater",
+        );
+      }
+      parsedOfferUsageLimitPerDay = num;
+    }
+
     // Create new category
     const categoryData = {
       name: name.trim(),
@@ -184,6 +220,8 @@ export const createCategory = asyncHandler(async (req, res) => {
       description: '',
       createdBy: req.user._id,
       updatedBy: req.user._id,
+      offerPercentage: parsedOfferPercentage,
+      offerUsageLimitPerDay: parsedOfferUsageLimitPerDay,
     };
 
     const category = await AdminCategoryManagement.create(categoryData);
@@ -217,7 +255,7 @@ export const createCategory = asyncHandler(async (req, res) => {
 export const updateCategory = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, image, status, type } = req.body;
+    const { name, image, status, type, offerPercentage, offerUsageLimitPerDay } = req.body;
 
     const category = await AdminCategoryManagement.findById(id);
 
@@ -260,6 +298,36 @@ export const updateCategory = asyncHandler(async (req, res) => {
     } else if (image && typeof image === 'string' && image.trim() !== '') {
       // Use provided image URL if no file is uploaded
       imageUrl = image.trim();
+    }
+
+    // Parse and validate offer percentage (optional)
+    if (offerPercentage !== undefined) {
+      if (offerPercentage === '' || offerPercentage === null) {
+        category.offerPercentage = 0;
+      } else {
+        const num = Number(offerPercentage);
+        if (Number.isNaN(num) || num < 0 || num > 100) {
+          return errorResponse(res, 400, 'Offer percentage must be a number between 0 and 100');
+        }
+        category.offerPercentage = num;
+      }
+    }
+
+    // Parse and validate offer usage limit per day (optional)
+    if (offerUsageLimitPerDay !== undefined) {
+      if (offerUsageLimitPerDay === "" || offerUsageLimitPerDay === null) {
+        category.offerUsageLimitPerDay = 1;
+      } else {
+        const num = Number(offerUsageLimitPerDay);
+        if (Number.isNaN(num) || num < 0 || !Number.isInteger(num)) {
+          return errorResponse(
+            res,
+            400,
+            "Offer usage limit must be an integer 0 or greater",
+          );
+        }
+        category.offerUsageLimitPerDay = num;
+      }
     }
 
     // Update fields

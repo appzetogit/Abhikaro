@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
-import { restaurantAPI, diningAPI } from "@/lib/api"
+import { restaurantAPI, diningAPI, adminAPI } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
@@ -84,12 +84,50 @@ export default function RestaurantDetails() {
   })
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [variantError, setVariantError] = useState(false)
+  const [categoryOffers, setCategoryOffers] = useState([])
 
   // Restaurant data state
   const [restaurant, setRestaurant] = useState(null)
   const [loadingRestaurant, setLoadingRestaurant] = useState(true)
   const [restaurantError, setRestaurantError] = useState(null)
   const fetchedRestaurantRef = useRef(false) // Track if restaurant has been fetched for current slug
+
+  // Fetch category offers (admin-side category offerPercentage) once
+  useEffect(() => {
+    const fetchCategoryOffers = async () => {
+      try {
+        const response = await adminAPI.getPublicCategories()
+        if (response.data?.success && response.data.data?.categories) {
+          const offers = response.data.data.categories
+            .filter(
+              (cat) =>
+                typeof cat.offerPercentage === "number" &&
+                cat.offerPercentage > 0
+            )
+            .map((cat) => {
+              const lowerName = (cat.name || "").toLowerCase()
+              const words = lowerName
+                .split(/[\s-]+/)
+                .filter((w) => w.length > 0)
+              return {
+                id: cat.id || cat._id,
+                name: cat.name,
+                offerPercentage: cat.offerPercentage,
+                keywords: [lowerName, ...words],
+              }
+            })
+          setCategoryOffers(offers)
+        } else {
+          setCategoryOffers([])
+        }
+      } catch (error) {
+        console.error("Error fetching category offers:", error)
+        setCategoryOffers([])
+      }
+    }
+
+    fetchCategoryOffers()
+  }, [])
 
   // Fetch restaurant data from API
   useEffect(() => {
@@ -643,6 +681,29 @@ export default function RestaurantDetails() {
 
     fetchRestaurant()
   }, [slug, zoneId, loadingZone, restaurant?.slug])
+
+  // Helper: get category offer percentage for a given menu item based on admin categories
+  const getCategoryOfferForItem = (item) => {
+    if (!item || categoryOffers.length === 0) return 0
+
+    const itemCategory = (item.category || "").toLowerCase()
+    const itemName = (item.name || "").toLowerCase()
+
+    for (const cat of categoryOffers) {
+      const keywords = cat.keywords || []
+      if (
+        keywords.some(
+          (kw) => kw && (itemCategory.includes(kw) || itemName.includes(kw)),
+        )
+      ) {
+        return typeof cat.offerPercentage === "number"
+          ? cat.offerPercentage
+          : 0
+      }
+    }
+
+    return 0
+  }
 
   // Track previous values to prevent unnecessary recalculations
   const prevCoordsRef = useRef({ userLat: null, userLng: null, restaurantLat: null, restaurantLng: null })
@@ -1696,6 +1757,7 @@ export default function RestaurantDetails() {
                           ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
                           : (quantities[item.id] || 0)
                         const isVeg = item.foodType === "Veg"
+                        const categoryOfferPercent = getCategoryOfferForItem(item)
 
                         // Debug: Log preparationTime for troubleshooting
                         if (item.preparationTime) {
@@ -1745,6 +1807,11 @@ export default function RestaurantDetails() {
                                     ? `From ₹${Math.round((item.variations || []).reduce((min, v) => Math.min(min, v.price || item.price), item.price || 0))}`
                                     : `₹${Math.round(item.price)}`}
                                 </p>
+                                {categoryOfferPercent > 0 && (
+                                  <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                                    Offer of {categoryOfferPercent}%
+                                  </span>
+                                )}
                                 {/* Preparation Time - Show if available */}
                                 {item.preparationTime && String(item.preparationTime).trim() && (
                                   <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
@@ -1802,6 +1869,11 @@ export default function RestaurantDetails() {
                               ) : (
                                 <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-2xl flex items-center justify-center">
                                   <span className="text-xs text-gray-400">No image</span>
+                                </div>
+                              )}
+                              {categoryOfferPercent > 0 && (
+                                <div className="absolute top-2 left-2 bg-black/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow-sm">
+                                  FLAT {categoryOfferPercent}% OFF
                                 </div>
                               )}
                               {quantity > 0 && !hasVariants ? (

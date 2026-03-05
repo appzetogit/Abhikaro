@@ -294,6 +294,8 @@ export const getOrders = asyncHandler(async (req, res) => {
       const deliveryFee = order.pricing?.deliveryFee || 0;
       const tax = order.pricing?.tax || 0;
       const couponCode = order.pricing?.couponCode || null;
+      const adminOfferDiscount = order.pricing?.adminOfferDiscount || 0;
+      const adminOfferName = order.pricing?.adminOfferName || null;
       
       // Get platform fee - check if it exists in pricing, otherwise get from settlement map
       let platformFee = order.pricing?.platformFee;
@@ -311,7 +313,7 @@ export const getOrders = asyncHandler(async (req, res) => {
         }
       }
       
-      // For report: itemDiscount is the discount applied to items
+      // For report: itemDiscount is the total discount applied to items
       const itemDiscount = discount;
       // Discounted amount is subtotal after discount
       const discountedAmount = Math.max(0, subtotal - discount);
@@ -364,6 +366,8 @@ export const getOrders = asyncHandler(async (req, res) => {
         itemDiscount: itemDiscount,
         discountedAmount: discountedAmount,
         couponDiscount: couponDiscount,
+        adminOfferDiscount,
+        adminOfferName,
         referralDiscount: referralDiscount,
         vatTax: vatTax,
         deliveryCharge: deliveryCharge,

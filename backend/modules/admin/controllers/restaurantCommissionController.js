@@ -41,8 +41,12 @@ export const getRestaurantCommissions = asyncHandler(async (req, res) => {
     const total = await RestaurantCommission.countDocuments(query);
 
     // Get commissions
+    // Include onboarding so we can prefer real restaurant name from onboarding.step1.restaurantName
     const commissions = await RestaurantCommission.find(query)
-      .populate("restaurant", "name restaurantId isActive email phone")
+      .populate(
+        "restaurant",
+        "name restaurantId isActive email phone onboarding",
+      )
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
       .sort({ createdAt: -1 })

@@ -14,6 +14,7 @@ export default function ZoneSetup() {
   const autocompleteInputRef = useRef(null)
   const autocompleteRef = useRef(null)
   const mapErrorCleanupRef = useRef(null) // { observer, timeouts } for unmount cleanup
+  const isMountedRef = useRef(true)
 
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("")
   const [mapLoading, setMapLoading] = useState(true)
@@ -28,6 +29,7 @@ export default function ZoneSetup() {
     fetchRestaurantData()
     loadGoogleMaps()
     return () => {
+      isMountedRef.current = false
       const cleanup = mapErrorCleanupRef.current
       if (cleanup) {
         if (cleanup.observer) cleanup.observer.disconnect()
@@ -155,25 +157,13 @@ export default function ZoneSetup() {
       const maxRetries = 100 // Wait up to 10 seconds
       
       console.log("📍 Waiting for Google Maps to load from main.jsx...")
-      while (!window.google && retries < maxRetries) {
+      while (!window.google && retries < maxRetries && isMountedRef.current) {
         await new Promise(resolve => setTimeout(resolve, 100))
         retries++
       }
 
       // Wait for mapRef to be available (retry mechanism)
-      let refRetries = 0
-      const maxRefRetries = 50 // Wait up to 5 seconds for ref
-      while (!mapRef.current && refRetries < maxRefRetries) {
-        await new Promise(resolve => setTimeout(resolve, 100))
-        refRetries++
-      }
-
-      if (!mapRef.current) {
-        console.error("❌ mapRef.current is still null after waiting")
-        setMapLoading(false)
-        alert("Failed to initialize map container. Please refresh the page.")
-        return
-      }
+      // NOTE: We no longer block on mapRef here; initializeMap will resolve the container
 
       // Use window.google only if the full Maps API is ready (Map must be a constructor)
       const googleReady = window.google?.maps && typeof window.google.maps.Map === "function"
@@ -221,8 +211,17 @@ export default function ZoneSetup() {
 
   const initializeMap = (google) => {
     try {
-      if (!mapRef.current) {
-        console.error("❌ mapRef.current is null in initializeMap")
+      // Resolve map container: prefer ref, fallback to DOM query
+      let mapContainer = mapRef.current
+      if (!mapContainer) {
+        mapContainer = document.getElementById("zone-map-container")
+        if (mapContainer) {
+          mapRef.current = mapContainer
+        }
+      }
+
+      if (!mapContainer) {
+        console.error("❌ ZoneSetup: map container not found in initializeMap")
         setMapLoading(false)
         return
       }
@@ -267,7 +266,7 @@ export default function ZoneSetup() {
         }
       }
 
-      const map = new google.maps.Map(mapRef.current, mapOptions)
+      const map = new google.maps.Map(mapContainer, mapOptions)
 
       mapInstanceRef.current = map
       console.log("✅ Map initialized successfully")
@@ -548,20 +547,14 @@ export default function ZoneSetup() {
           )}
         </div>
 
-        {/* Instructions */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-blue-900 mb-2">How to set your location:</h3>
-          <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-            <li>Search for your location using the search bar above, or</li>
-            <li>Click anywhere on the map to place a pin at that location</li>
-            <li>You can drag the pin to adjust the exact position</li>
-            <li>Click "Save Location" to save your restaurant location</li>
-          </ul>
-        </div>
-
         {/* Map Container */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden relative">
-          <div ref={mapRef} className="w-full h-[600px]" style={{ minHeight: '600px' }} />
+          <div
+            id="zone-map-container"
+            ref={mapRef}
+            className="w-full h-[600px]"
+            style={{ minHeight: "600px" }}
+          />
           {mapLoading && (
             <div className="absolute inset-0 bg-white flex items-center justify-center z-10">
               <div className="text-center">

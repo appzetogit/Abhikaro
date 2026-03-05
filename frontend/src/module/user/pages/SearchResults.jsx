@@ -55,12 +55,13 @@ export default function SearchResults() {
           
           // Transform API categories to match expected format
           const transformedCategories = [
-            { id: 'all', name: "All", image: foodImages[7] },
+            { id: 'all', name: "All", image: foodImages[7], offerPercentage: 0 },
             ...categoriesArray.map((cat) => ({
               id: cat.slug || cat.id,
               name: cat.name,
               image: cat.image || foodImages[0],
               type: cat.type,
+              offerPercentage: typeof cat.offerPercentage === "number" ? cat.offerPercentage : 0,
             }))
           ]
           

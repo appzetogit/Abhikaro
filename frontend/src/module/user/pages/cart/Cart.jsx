@@ -126,6 +126,14 @@ export default function Cart() {
   const [availableCoupons, setAvailableCoupons] = useState([])
   const [loadingCoupons, setLoadingCoupons] = useState(false)
 
+  // Category offer (admin category offerPercentage) state
+  const [categoryOffers, setCategoryOffers] = useState([])
+  const [bestCategoryOffer, setBestCategoryOffer] = useState(null) // { id, percent, name, usageLimitPerDay }
+  const [isCategoryOfferApplied, setIsCategoryOfferApplied] = useState(false)
+  const [showCategoryOfferModal, setShowCategoryOfferModal] = useState(false)
+  const categoryOfferPromptShownRef = useRef(false)
+  const [hasUsedAdminOfferToday, setHasUsedAdminOfferToday] = useState(false)
+
   // Fee settings from database (used as fallback if pricing not available)
   const [feeSettings, setFeeSettings] = useState({
     deliveryFee: 25,
@@ -134,6 +142,69 @@ export default function Cart() {
     gstRate: 5,
     deliveryFeeRanges: [], // Delivery fee ranges based on order value
   })
+
+  // Helper: increment how many times current user has used this admin offer today (stored in localStorage)
+  const markAdminOfferUsedToday = (categoryId, usageLimitPerDay) => {
+    try {
+      const userId = userProfile?.id || userProfile?._id || null
+      if (!userId || !categoryId) return
+      const today = new Date().toISOString().slice(0, 10)
+      const key = `adminOfferUsage:${userId}:${categoryId}:${today}`
+      const currentRaw = localStorage.getItem(key)
+      const currentCount = currentRaw ? parseInt(currentRaw, 10) || 0 : 0
+      const nextCount = currentCount + 1
+      localStorage.setItem(key, String(nextCount))
+
+      const limit =
+        typeof usageLimitPerDay === "number" && usageLimitPerDay >= 0
+          ? usageLimitPerDay
+          : 1
+
+      if (limit > 0 && nextCount >= limit) {
+        setHasUsedAdminOfferToday(true)
+      }
+    } catch (e) {
+      console.warn("Failed to mark admin offer used in localStorage:", e)
+    }
+  }
+
+  // Simple confetti animation for applying category offer
+  const triggerOfferConfetti = () => {
+    try {
+      const duration = 1200
+      const animationEnd = Date.now() + duration
+      const defaults = {
+        startVelocity: 35,
+        spread: 360,
+        ticks: 60,
+        zIndex: 9999,
+        scalar: 0.9,
+      }
+
+      const interval = setInterval(() => {
+        const timeLeft = animationEnd - Date.now()
+        if (timeLeft <= 0) {
+          clearInterval(interval)
+          return
+        }
+
+        const particleCount = Math.round(80 * (timeLeft / duration))
+
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: Math.random() * 0.4 + 0.1, y: 0.3 },
+        })
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: Math.random() * 0.4 + 0.5, y: 0.3 },
+        })
+      }, 250)
+    } catch (error) {
+      console.error("Error triggering offer confetti:", error)
+    }
+  }
 
 
   const cartCount = getCartCount()
@@ -639,6 +710,131 @@ export default function Cart() {
     fetchFeeSettings()
   }, [])
 
+  // Fetch admin category offers (offerPercentage) for matching flat offers
+  useEffect(() => {
+    const fetchCategoryOffers = async () => {
+      try {
+        const response = await adminAPI.getPublicCategories()
+        if (response.data?.success && response.data.data?.categories) {
+          const offers = response.data.data.categories
+            .filter(
+              (cat) =>
+                typeof cat.offerPercentage === "number" &&
+                cat.offerPercentage > 0
+            )
+            .map((cat) => {
+              const lowerName = (cat.name || "").toLowerCase()
+              const words = lowerName
+                .split(/[\s-]+/)
+                .filter((w) => w.length > 0)
+              return {
+                id: cat.id || cat._id,
+                name: cat.name,
+                offerPercentage: cat.offerPercentage,
+                usageLimitPerDay:
+                  typeof cat.offerUsageLimitPerDay === "number"
+                    ? cat.offerUsageLimitPerDay
+                    : 1,
+                keywords: [lowerName, ...words],
+              }
+            })
+          setCategoryOffers(offers)
+        } else {
+          setCategoryOffers([])
+        }
+      } catch (error) {
+        console.error("Error fetching category offers for cart:", error)
+        setCategoryOffers([])
+      }
+    }
+
+    fetchCategoryOffers()
+  }, [])
+
+  // Helper: get best matching category offer for a given cart item
+  const getCategoryOfferForCartItem = (item) => {
+    if (!item || categoryOffers.length === 0) return null
+
+    const itemCategory = (item.category || item.type || "").toLowerCase()
+    const itemName = (item.productName || item.name || "").toLowerCase()
+
+    for (const cat of categoryOffers) {
+      const keywords = cat.keywords || []
+      if (
+        keywords.some(
+          (kw) => kw && (itemCategory.includes(kw) || itemName.includes(kw)),
+        )
+      ) {
+        return {
+          id: cat.id,
+          percent:
+            typeof cat.offerPercentage === "number" ? cat.offerPercentage : 0,
+          name: cat.name,
+          usageLimitPerDay:
+            typeof cat.usageLimitPerDay === "number"
+              ? cat.usageLimitPerDay
+              : 1,
+        }
+      }
+    }
+
+    return null
+  }
+
+  // Determine best category offer present in cart and trigger popup once
+  useEffect(() => {
+    if (cart.length === 0 || categoryOffers.length === 0) {
+      setBestCategoryOffer(null)
+      setIsCategoryOfferApplied(false)
+      setShowCategoryOfferModal(false)
+      categoryOfferPromptShownRef.current = false
+      return
+    }
+
+    let best = null
+    cart.forEach((item) => {
+      const offer = getCategoryOfferForCartItem(item)
+      if (offer && offer.percent > 0) {
+        if (!best || offer.percent > best.percent) {
+          best = offer
+        }
+      }
+    })
+
+    setBestCategoryOffer(best)
+
+    // Decide whether to show offer popup based on per‑user per‑day usage limit
+    if (!best || isCategoryOfferApplied || categoryOfferPromptShownRef.current) {
+      return
+    }
+
+    try {
+      const userId = userProfile?.id || userProfile?._id || null
+      if (!userId) return
+
+      const today = new Date().toISOString().slice(0, 10)
+      const key = `adminOfferUsage:${userId}:${best.id}:${today}`
+      const raw = localStorage.getItem(key)
+      const usedCount = raw ? parseInt(raw, 10) || 0 : 0
+      const limit =
+        typeof best.usageLimitPerDay === "number" && best.usageLimitPerDay >= 0
+          ? best.usageLimitPerDay
+          : 1
+
+      if (limit > 0 && usedCount >= limit) {
+        // User has already used this offer max times today → don't show popup
+        setHasUsedAdminOfferToday(true)
+        return
+      }
+
+      setHasUsedAdminOfferToday(false)
+      setShowCategoryOfferModal(true)
+      categoryOfferPromptShownRef.current = true
+    } catch (e) {
+      console.warn("Failed to determine admin offer usage:", e)
+    }
+  }, [cart, categoryOffers, isCategoryOfferApplied, userProfile])
+
   // Calculate delivery fee based on order value ranges
   const calculateDeliveryFeeFromRanges = (orderValue) => {
     // Check if coupon provides free delivery
@@ -687,10 +883,28 @@ export default function Cart() {
   const deliveryFee = pricing?.deliveryFee ?? calculateDeliveryFeeFromRanges(subtotal)
   const platformFee = pricing?.platformFee || feeSettings.platformFee
   const gstCharges = pricing?.tax || Math.round(subtotal * (feeSettings.gstRate / 100))
-  const discount = pricing?.discount || (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
-  const totalBeforeDiscount = subtotal + deliveryFee + platformFee + gstCharges
-  const total = pricing?.total || (totalBeforeDiscount - discount)
-  const savings = pricing?.savings || (discount + (subtotal > 500 ? 32 : 0))
+
+  // Base discount from backend pricing or applied coupon (restaurant‑impacting discount)
+  const baseDiscount = pricing?.discount || (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
+
+  // Total bill before any discounts (items + delivery + platform + GST)
+  const totalBeforeAnyDiscount = subtotal + deliveryFee + platformFee + gstCharges
+
+  // Extra discount funded by admin/category offer – percentage of full bill, should NOT reduce restaurant share
+  const categoryOfferDiscount =
+    isCategoryOfferApplied && bestCategoryOffer && totalBeforeAnyDiscount > 0
+      ? (totalBeforeAnyDiscount * bestCategoryOffer.percent) / 100
+      : 0
+
+  // Total that restaurant sees (used for commission) still based on baseDiscount only
+  const totalAfterBaseDiscount = totalBeforeAnyDiscount - baseDiscount
+
+  // User actually pays after admin offer as well
+  const total = Math.max(0, totalAfterBaseDiscount - categoryOfferDiscount)
+
+  const savings =
+    (pricing?.savings || (baseDiscount + (subtotal > 500 ? 32 : 0))) +
+    categoryOfferDiscount
 
   // Restaurant name and slug from data or cart (slug for Edit navigation)
   const restaurantName = restaurantData?.name || cart[0]?.restaurant || "Restaurant"
@@ -871,18 +1085,27 @@ export default function Cart() {
         deliveryFee,
         tax: gstCharges,
         platformFee,
-        discount,
+        discount: baseDiscount, // restaurant-impacting discount only
         total,
         couponCode: appliedCoupon?.code || null
       };
       if (orderPricing.deliveryFee == null) orderPricing.deliveryFee = deliveryFee;
       const withDelivery = (orderPricing.subtotal || 0) - (orderPricing.discount || 0) + (orderPricing.deliveryFee || 0) + (orderPricing.platformFee ?? platformFee) + (orderPricing.tax ?? gstCharges);
-      if (typeof orderPricing.total !== 'number' || orderPricing.total < withDelivery - 0.5) {
-        orderPricing.total = Math.round(withDelivery);
-      }
+      // Total user pays should equal "total" (after admin offer). Override with our computed total.
+      orderPricing.total = Math.round(total);
 
       if (!orderPricing.couponCode && appliedCoupon?.code) {
         orderPricing.couponCode = appliedCoupon.code;
+      }
+
+      // Attach admin-funded offer info (category offer) so admin reports & backend know it's platform-funded
+      if (isCategoryOfferApplied && bestCategoryOffer && categoryOfferDiscount > 0) {
+        orderPricing.adminOfferDiscount = categoryOfferDiscount;
+        orderPricing.adminOfferName = bestCategoryOffer.name;
+        orderPricing.adminOfferPercent = bestCategoryOffer.percent;
+        if (bestCategoryOffer.id) {
+          orderPricing.adminOfferCategoryId = bestCategoryOffer.id;
+        }
       }
 
       // Include all cart items (main items + addons)
@@ -1152,7 +1375,7 @@ export default function Cart() {
 
       // Check wallet balance if wallet payment selected
       if (selectedPaymentMethod === "wallet" && walletBalance < total) {
-        toast.error(`Insufficient wallet balance. Required: ₹${total.toFixed(0)}, Available: ₹${walletBalance.toFixed(0)}`)
+        toast.error(`Insufficient wallet balance. Required: ₹${total.toFixed(2)}, Available: ₹${walletBalance.toFixed(2)}`)
         setIsPlacingOrder(false)
         return
       }
@@ -1189,6 +1412,9 @@ export default function Cart() {
           })
         } catch (e) {
           console.warn("Failed to create local tracking order (pay_at_hotel):", e)
+        }
+        if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
+          markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
         }
         setPlacedOrderId(order?.orderId || order?.id || null)
         setShowOrderSuccess(true)
@@ -1230,6 +1456,9 @@ export default function Cart() {
           }
         } catch (error) {
           console.error("Error refreshing wallet balance:", error)
+        }
+        if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
+          markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
         }
         return
       }
@@ -1318,6 +1547,9 @@ export default function Cart() {
                 })
               } catch (e) {
                 console.warn("Failed to create local tracking order (razorpay):", e)
+              }
+              if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
+                markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
               }
               setPlacedOrderId(order.orderId)
               setShowOrderSuccess(true)
@@ -1424,6 +1656,20 @@ export default function Cart() {
         } else if (error.response.status === 400) {
           // Bad request - validation error
           errorMessage = backendMessage
+
+          // If backend says admin offer usage limit is reached, mark it locally so popup doesn't show again
+          if (
+            backendMessage.toLowerCase().includes("already used") &&
+            backendMessage.toLowerCase().includes("offer")
+          ) {
+            if (bestCategoryOffer) {
+              markAdminOfferUsedToday(
+                bestCategoryOffer.id,
+                bestCategoryOffer.usageLimitPerDay,
+              )
+            }
+            setIsCategoryOfferApplied(false)
+          }
           toast.error(errorMessage, {
             duration: 6000,
             style: {
@@ -1956,8 +2202,8 @@ export default function Cart() {
                     <div className="text-left">
                       <div className="flex items-center gap-2 md:gap-3 flex-wrap">
                         <span className="text-sm md:text-base text-gray-800 dark:text-gray-200">Total Bill</span>
-                        <span className="text-sm md:text-base text-gray-400 dark:text-gray-500 line-through">₹{totalBeforeDiscount.toFixed(0)}</span>
-                        <span className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">₹{total.toFixed(0)}</span>
+                        <span className="text-sm md:text-base text-gray-400 dark:text-gray-500 line-through">₹{totalBeforeAnyDiscount.toFixed(2)}</span>
+                        <span className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">₹{total.toFixed(2)}</span>
                         {savings > 0 && (
                           <span className="text-xs md:text-sm bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-1.5 md:px-2 py-0.5 rounded font-medium">You saved ₹{savings}</span>
                         )}
@@ -1988,15 +2234,21 @@ export default function Cart() {
                       <span className="text-gray-600 dark:text-gray-400">GST and Restaurant Charges</span>
                       <span className="text-gray-800 dark:text-gray-200">₹{gstCharges}</span>
                     </div>
-                    {discount > 0 && (
+                    {baseDiscount > 0 && (
                       <div className="flex justify-between text-sm md:text-base text-red-600 dark:text-red-400">
                         <span>Coupon Discount</span>
-                        <span>-₹{discount}</span>
+                      <span>-₹{baseDiscount}</span>
+                      </div>
+                    )}
+                    {categoryOfferDiscount > 0 && bestCategoryOffer && (
+                      <div className="flex justify-between text-sm md:text-base text-red-600 dark:text-red-400">
+                        <span>{bestCategoryOffer.name} Offer</span>
+                        <span>-₹{categoryOfferDiscount}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm md:text-base font-semibold pt-2 md:pt-3 border-t dark:border-gray-700">
                       <span>To Pay</span>
-                      <span>₹{total.toFixed(0)}</span>
+                      <span>₹{total.toFixed(2)}</span>
                     </div>
                   </div>
                 )}
@@ -2029,15 +2281,21 @@ export default function Cart() {
                       <span className="text-gray-600 dark:text-gray-400">GST</span>
                       <span className="text-gray-800 dark:text-gray-200">₹{gstCharges}</span>
                     </div>
-                    {discount > 0 && (
+                    {baseDiscount > 0 && (
                       <div className="flex justify-between text-sm md:text-base text-red-600 dark:text-red-400">
                         <span>Discount</span>
-                        <span>-₹{discount}</span>
+                      <span>-₹{baseDiscount}</span>
+                      </div>
+                    )}
+                    {categoryOfferDiscount > 0 && bestCategoryOffer && (
+                      <div className="flex justify-between text-sm md:text-base text-red-600 dark:text-red-400">
+                        <span>{bestCategoryOffer.name} Offer</span>
+                        <span>-₹{categoryOfferDiscount}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-base md:text-lg font-bold pt-3 md:pt-4 border-t dark:border-gray-700">
                       <span>Total</span>
-                      <span className="text-green-600 dark:text-green-400">₹{total.toFixed(0)}</span>
+                      <span className="text-green-600 dark:text-green-400">₹{total.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -2066,7 +2324,7 @@ export default function Cart() {
                     </p>
                     <p className="text-sm md:text-base font-medium text-gray-800 dark:text-gray-200">
                       {selectedPaymentMethod === "razorpay"
-                        ? "Razorpay"
+                        ? "Online"
                         : selectedPaymentMethod === "wallet"
                           ? "Wallet"
                           : selectedPaymentMethod === "pay_at_hotel"
@@ -2084,18 +2342,18 @@ export default function Cart() {
                     <select
                       value={selectedPaymentMethod}
                       onChange={(e) => setSelectedPaymentMethod(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-orange-500 focus:border-transparent appearance-none"
                     >
                       {isHotelOrder ? (
                         // Show only Pay at Hotel and Razorpay for hotel orders
                         <>
                           <option value="pay_at_hotel">💳 Pay at Hotel</option>
-                          <option value="razorpay">💰 Razorpay Online Payment</option>
+                          <option value="razorpay">💰 Online Payment</option>
                         </>
                       ) : (
                         // Show online payment and wallet for regular orders (COD disabled)
                         <>
-                          <option value="razorpay">💰 Razorpay</option>
+                          <option value="razorpay">💰 Online</option>
                           <option value="wallet">
                             👛 Wallet{isLoadingWallet ? ' (Loading...)' : walletBalance > 0 ? ` (₹${walletBalance})` : ' (₹0)'}
                           </option>
@@ -2137,7 +2395,7 @@ export default function Cart() {
               >
                 {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet") && (
                   <div className="text-left mr-3 md:mr-4">
-                    <p className="text-sm md:text-base opacity-90">₹{total.toFixed(0)}</p>
+                    <p className="text-sm md:text-base opacity-90">₹{total.toFixed(2)}</p>
                     <p className="text-xs md:text-sm opacity-75">TOTAL</p>
                   </div>
                 )}
@@ -2160,6 +2418,71 @@ export default function Cart() {
           </div>
         </div>
       </div>
+
+      {/* Category Offer Apply Modal */}
+      {showCategoryOfferModal && bestCategoryOffer && (
+        <div className="fixed inset-0 z-[55] h-screen w-screen overflow-hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowCategoryOfferModal(false)}
+          />
+
+          {/* Modal Sheet */}
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl overflow-hidden"
+            style={{ animation: "slideUpModal 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}
+          >
+            <div className="px-6 py-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg md:text-xl font-bold text-gray-900">
+                  Apply {bestCategoryOffer.name} offer?
+                </h2>
+                <button
+                  onClick={() => setShowCategoryOfferModal(false)}
+                  className="p-1 rounded-full hover:bg-gray-100"
+                >
+                  <X className="h-4 w-4 text-gray-500" />
+                </button>
+              </div>
+
+              <p className="text-sm md:text-base text-gray-600 mb-4">
+                You have items from <span className="font-semibold">{bestCategoryOffer.name}</span> category in your cart.
+                Apply <span className="font-semibold">{bestCategoryOffer.percent}% FLAT OFF</span> on your total bill.
+              </p>
+
+              <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-4">
+                <p className="text-sm text-green-800 font-medium">
+                  Estimated savings: ₹{((totalBeforeAnyDiscount * bestCategoryOffer.percent) / 100).toFixed(2)}
+                </p>
+              </div>
+
+              <div className="flex gap-3 mt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 border-gray-300 text-gray-700"
+                  onClick={() => {
+                    setIsCategoryOfferApplied(false)
+                    setShowCategoryOfferModal(false)
+                  }}
+                >
+                  Not now
+                </Button>
+                <Button
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => {
+                    setIsCategoryOfferApplied(true)
+                    setShowCategoryOfferModal(false)
+                    triggerOfferConfetti()
+                  }}
+                >
+                  Apply offer
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Placing Order Modal */}
       {showPlacingOrder && (

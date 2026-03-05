@@ -94,11 +94,52 @@ export default function ItemDetailsPage() {
   const [hasVariants, setHasVariants] = useState(false)
   const [variants, setVariants] = useState([]) // Array of variants: [{ id, name, price, stock }]
 
+  // Commission model for profit preview - fetched from admin settings via restaurant API
+  const [restaurantSharePercent, setRestaurantSharePercent] = useState(70)
+  const [platformSharePercent, setPlatformSharePercent] = useState(30)
+
   const maxNameLength = 70
   const maxDescriptionLength = 1000
   const descriptionLength = itemDescription.length
   const minDescriptionLength = 5
   const nameLength = itemName.length
+
+  // Fetch restaurant commission once on mount
+  useEffect(() => {
+    const fetchCommission = async () => {
+      try {
+        const res = await restaurantAPI.getMyCommission()
+        const payload = res?.data?.data || res?.data
+        const commission =
+          payload?.commission || payload?.data?.commission || null
+
+        let platformPercent = 30
+        if (commission?.defaultCommission) {
+          const def = commission.defaultCommission
+          if (def.type === "percentage" && typeof def.value === "number") {
+            platformPercent = def.value
+          }
+        } else if (
+          payload?.defaultCommission?.type === "percentage" &&
+          typeof payload.defaultCommission.value === "number"
+        ) {
+          platformPercent = payload.defaultCommission.value
+        }
+
+        // Clamp between 0-100
+        platformPercent = Math.max(0, Math.min(100, platformPercent))
+        const restaurantPercent = 100 - platformPercent
+
+        setPlatformSharePercent(platformPercent)
+        setRestaurantSharePercent(restaurantPercent)
+      } catch (error) {
+        // If commission API fails, keep default 70/30
+        console.warn("Could not fetch restaurant commission for item profit:", error)
+      }
+    }
+
+    fetchCommission()
+  }, [])
 
   // Fetch item data from menu API when editing
   useEffect(() => {
@@ -1718,6 +1759,45 @@ export default function ItemDetailsPage() {
                     Base price will be set to minimum variant price
                   </p>
                 )}
+
+                {/* Profit preview after commission */}
+                {(() => {
+                  // Determine effective price to use
+                  let effectivePrice = 0
+
+                  if (hasVariants && Array.isArray(variants) && variants.length > 0) {
+                    const prices = variants
+                      .map((v) => Number(v.price) || 0)
+                      .filter((p) => p > 0)
+                    if (prices.length > 0) {
+                      effectivePrice = Math.min(...prices)
+                    }
+                  } else if (basePrice && !isNaN(Number(basePrice))) {
+                    effectivePrice = Number(basePrice)
+                  }
+
+                  if (!effectivePrice || effectivePrice <= 0) return null
+
+                  const restaurantProfit =
+                    (effectivePrice * restaurantSharePercent) / 100
+
+                  return (
+                    <p className="text-xs text-green-700 mt-2">
+                      Restaurant profit after{" "}
+                      <span className="font-semibold">
+                        {platformSharePercent}%
+                      </span>{" "}
+                      platform commission:{" "}
+                      <span className="font-semibold">
+                        ₹{restaurantProfit.toFixed(2)}
+                      </span>{" "}
+                      (<span className="font-semibold">
+                        {restaurantSharePercent}%
+                      </span>{" "}
+                      of item price)
+                    </p>
+                  )
+                })()}
               </div>
 
               {/* Preparation Time */}

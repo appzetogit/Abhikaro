@@ -1,11 +1,59 @@
-import Order from '../../order/models/Order.js';
-import Restaurant from '../models/Restaurant.js';
-import RestaurantCommission from '../../admin/models/RestaurantCommission.js';
-import WithdrawalRequest from '../models/WithdrawalRequest.js';
-import RestaurantWallet from '../models/RestaurantWallet.js';
-import { successResponse, errorResponse } from '../../../shared/utils/response.js';
-import asyncHandler from '../../../shared/middleware/asyncHandler.js';
-import mongoose from 'mongoose';
+import Order from "../../order/models/Order.js";
+import Restaurant from "../models/Restaurant.js";
+import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
+import WithdrawalRequest from "../models/WithdrawalRequest.js";
+import RestaurantWallet from "../models/RestaurantWallet.js";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../shared/utils/response.js";
+import asyncHandler from "../../../shared/middleware/asyncHandler.js";
+import mongoose from "mongoose";
+
+/**
+ * Get commission setup for current restaurant (for restaurant app)
+ * GET /api/restaurant/commission
+ */
+export const getRestaurantCommissionInfo = asyncHandler(async (req, res) => {
+  try {
+    const restaurantId = req.restaurant._id?.toString();
+
+    if (!restaurantId) {
+      return errorResponse(res, 500, "Restaurant ID not found");
+    }
+
+    const commission = await RestaurantCommission.findOne({
+      restaurant: restaurantId,
+      status: true,
+    })
+      .select("defaultCommission commissionRules status")
+      .lean();
+
+    if (!commission) {
+      // No commission configured yet – return sensible default so frontend can still show something
+      return successResponse(res, 200, "Restaurant commission not configured", {
+        commission: null,
+        defaultCommission: {
+          type: "percentage",
+          value: 10,
+        },
+        hasCustomCommission: false,
+      });
+    }
+
+    return successResponse(res, 200, "Restaurant commission retrieved", {
+      commission,
+      defaultCommission: commission.defaultCommission || {
+        type: "percentage",
+        value: 10,
+      },
+      hasCustomCommission: true,
+    });
+  } catch (error) {
+    console.error("Error fetching restaurant commission info:", error);
+    return errorResponse(res, 500, "Failed to fetch restaurant commission");
+  }
+});
 
 /**
  * Get restaurant finance/payout data

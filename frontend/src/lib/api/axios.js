@@ -141,6 +141,8 @@ apiClient.interceptors.request.use(
         !requestUrl.includes("/restaurant/wallet") &&
         !requestUrl.includes("/restaurant/analytics") &&
         !requestUrl.includes("/restaurant/complaints") &&
+        // NEW: commission API is a protected restaurant route (needs auth)
+        !requestUrl.includes("/restaurant/commission") &&
         (requestUrl.match(/\/restaurant\/[^/]+$/) ||
           requestUrl.match(/\/restaurant\/[^/]+\/menu/) ||
           requestUrl.match(/\/restaurant\/[^/]+\/addons/) ||
@@ -703,7 +705,14 @@ apiClient.interceptors.response.use(
         errorMessages = ["An error occurred"];
       }
 
-      // Show beautiful error toast for each error message
+      // Filter out noisy auth messages that we handle via redirects
+      errorMessages = errorMessages.filter((msg) => msg && msg !== "No token provided");
+
+      if (errorMessages.length === 0) {
+        return Promise.reject(error);
+      }
+
+      // Show beautiful error toast for each remaining error message
       errorMessages.forEach((errorMessage, index) => {
         // Add slight delay for multiple toasts to appear sequentially
         setTimeout(() => {

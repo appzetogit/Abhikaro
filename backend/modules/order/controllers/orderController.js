@@ -95,6 +95,50 @@ export const createOrder = async (req, res) => {
       });
     }
 
+    // Enforce: Admin-funded category offer usage limit per user per day
+    if (pricing.adminOfferDiscount && pricing.adminOfferDiscount > 0) {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // If we know which category offer was applied, enforce limit per category
+      if (pricing.adminOfferCategoryId) {
+        const AdminCategoryManagement = (
+          await import("../../admin/models/AdminCategoryManagement.js")
+        ).default;
+
+        const categoryDoc = await AdminCategoryManagement.findById(
+          pricing.adminOfferCategoryId,
+        )
+          .select("name offerUsageLimitPerDay")
+          .lean();
+
+        const usageLimit =
+          typeof categoryDoc?.offerUsageLimitPerDay === "number"
+            ? categoryDoc.offerUsageLimitPerDay
+            : 1;
+
+        // 0 means unlimited usage
+        if (usageLimit > 0) {
+          const existingOfferOrderCount = await Order.countDocuments({
+            userId,
+            "pricing.adminOfferCategoryId": pricing.adminOfferCategoryId,
+            createdAt: { $gte: startOfDay, $lte: endOfDay },
+          });
+
+          if (existingOfferOrderCount >= usageLimit) {
+            return res.status(400).json({
+              success: false,
+              message: `You have already used the "${
+                categoryDoc?.name || "category"
+              }" offer the maximum of ${usageLimit} time(s) today.`,
+            });
+          }
+        }
+      }
+    }
+
     // Validate room number for pay_at_hotel payment method
     if (normalizedPaymentMethod === "pay_at_hotel") {
       if (!roomNumber || String(roomNumber).trim() === "") {
@@ -160,6 +204,12 @@ export const createOrder = async (req, res) => {
         success: false,
         message: "Restaurant not found",
       });
+    }
+
+    // Normalize assignedRestaurantId/name to the actual restaurant document
+    if (restaurant && restaurant._id) {
+      assignedRestaurantId = restaurant._id;
+      assignedRestaurantName = restaurant.name || assignedRestaurantName;
     }
 
     // CRITICAL: Validate restaurant name matches
