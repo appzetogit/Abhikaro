@@ -3,6 +3,7 @@ import { successResponse, errorResponse } from '../../../shared/utils/response.j
 import Delivery from '../../delivery/models/Delivery.js';
 import DeliveryWallet from '../../delivery/models/DeliveryWallet.js';
 import BusinessSettings from '../models/BusinessSettings.js';
+import mongoose from 'mongoose';
 
 /**
  * List all delivery boys with wallet details
@@ -40,6 +41,8 @@ export const getDeliveryBoyWallets = asyncHandler(async (req, res) => {
     const bonusTotal = (wallet.joiningBonusAmount || 0) + bonusTx.reduce((s, t) => s + (t.amount || 0), 0);
     const cashCollected = Number(wallet.cashInHand) || 0;
     const remainingCashLimit = Math.max(0, availableCashLimit - cashCollected);
+    const totalBalance = Number(wallet.totalBalance) || 0;
+    const pocketBalance = totalBalance - cashCollected;
 
     rows.push({
       deliveryId: d._id,
@@ -49,7 +52,7 @@ export const getDeliveryBoyWallets = asyncHandler(async (req, res) => {
       walletId: wallet._id,
       availableCashLimit,
       remainingCashLimit,
-      pocketBalance: Number(wallet.totalBalance) || 0,
+      pocketBalance,
       cashCollected,
       totalEarning: Number(wallet.totalEarned) || 0,
       bonus: bonusTotal,
@@ -126,5 +129,75 @@ export const addWalletAdjustment = asyncHandler(async (req, res) => {
     amount: amt,
     newPocketBalance: Number(wallet.totalBalance) || 0,
     newCashCollected: Number(wallet.cashInHand) || 0
+  });
+});
+
+/**
+ * Directly edit delivery boy wallet balances (admin only)
+ * PUT /api/admin/delivery-boy-wallet/:id
+ * Body: { pocketBalance?, cashInHand? }
+ */
+export const updateWalletBalances = asyncHandler(async (req, res) => {
+  const admin = req.admin;
+  if (!admin?._id) {
+    return errorResponse(res, 401, 'Admin authentication required');
+  }
+
+  const { id } = req.params;
+  const { pocketBalance, cashInHand } = req.body || {};
+
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    return errorResponse(res, 400, 'Valid wallet ID is required');
+  }
+
+  const wallet = await DeliveryWallet.findById(id);
+  if (!wallet) {
+    return errorResponse(res, 404, 'Wallet not found');
+  }
+
+  // Validate and normalize numbers
+  const hasPocket = pocketBalance !== undefined && pocketBalance !== null && pocketBalance !== '';
+  const hasCash = cashInHand !== undefined && cashInHand !== null && cashInHand !== '';
+
+  if (!hasPocket && !hasCash) {
+    return errorResponse(res, 400, 'At least one of pocketBalance or cashInHand is required');
+  }
+
+  // Current values
+  const currentCash = Number(wallet.cashInHand) || 0;
+  const currentTotal = Number(wallet.totalBalance) || 0;
+  const currentPocket = currentTotal - currentCash;
+
+  let newPocket = currentPocket;
+  let newCash = currentCash;
+
+  if (hasPocket) {
+    const pb = Number(pocketBalance);
+    if (!Number.isFinite(pb) || pb < 0) {
+      return errorResponse(res, 400, 'pocketBalance must be a non‑negative number');
+    }
+    newPocket = pb;
+  }
+
+  if (hasCash) {
+    const ch = Number(cashInHand);
+    if (!Number.isFinite(ch) || ch < 0) {
+      return errorResponse(res, 400, 'cashInHand must be a non‑negative number');
+    }
+    newCash = ch;
+  }
+
+  // totalBalance = pocketBalance + cashInHand
+  wallet.cashInHand = newCash;
+  wallet.totalBalance = newPocket + newCash;
+
+  await wallet.save();
+
+  return successResponse(res, 200, 'Wallet balances updated successfully', {
+    walletId: wallet._id,
+    pocketBalance: Number(wallet.totalBalance) - Number(wallet.cashInHand || 0),
+    cashInHand: Number(wallet.cashInHand) || 0,
+    totalWithdrawn: Number(wallet.totalWithdrawn) || 0,
+    totalEarned: Number(wallet.totalEarned) || 0
   });
 });

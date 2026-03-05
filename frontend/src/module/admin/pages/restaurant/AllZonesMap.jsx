@@ -15,6 +15,7 @@ export default function AllZonesMap() {
   const restaurantMarkersRef = useRef([])
   const deliveryBoyMarkersRef = useRef([])
   const rotatedIconCacheRef = useRef(new Map()) // Cache for rotated bike icons
+  const hasFitBoundsRef = useRef(false) // Track if we've already auto-fit bounds
   
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("")
   const [mapLoading, setMapLoading] = useState(true)
@@ -371,8 +372,9 @@ export default function AllZonesMap() {
       })
     })
 
-    // Fit map to show all zones
-    if (zones.length > 0) {
+    // Fit map to show all zones only once (initial load)
+    if (zones.length > 0 && !hasFitBoundsRef.current) {
+      hasFitBoundsRef.current = true
       map.fitBounds(bounds)
       // Add some padding
       const padding = { top: 50, right: 50, bottom: 50, left: 50 }

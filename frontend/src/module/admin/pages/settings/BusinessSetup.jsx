@@ -14,6 +14,12 @@ export default function BusinessSetup() {
   const logoInputRef = useRef(null);
   const faviconInputRef = useRef(null);
 
+  const [withdrawSchedule, setWithdrawSchedule] = useState({
+    enabled: false,
+    dayOfWeek: 0,
+    startTime: "10:00",
+  });
+
   const [formData, setFormData] = useState({
     companyName: "",
     email: "",
@@ -47,6 +53,24 @@ export default function BusinessSetup() {
           pincode: settings.pincode || "",
           region: settings.region || "India",
         });
+
+        // Withdraw schedule (global for restaurants & hotels)
+        if (settings.withdrawSchedule) {
+          setWithdrawSchedule({
+            enabled: !!settings.withdrawSchedule.enabled,
+            dayOfWeek:
+              typeof settings.withdrawSchedule.dayOfWeek === "number"
+                ? settings.withdrawSchedule.dayOfWeek
+                : Number(settings.withdrawSchedule.dayOfWeek) || 0,
+            startTime: settings.withdrawSchedule.startTime || "10:00",
+          });
+        } else {
+          setWithdrawSchedule({
+            enabled: false,
+            dayOfWeek: 0,
+            startTime: "10:00",
+          });
+        }
 
         // Set logo and favicon previews if they exist
         if (settings.logo?.url) {
@@ -99,6 +123,10 @@ export default function BusinessSetup() {
         state: formData.state.trim(),
         pincode: formData.pincode.trim(),
         region: formData.region,
+        // Flattened withdraw schedule fields for FormData
+        withdrawScheduleEnabled: withdrawSchedule.enabled,
+        withdrawScheduleDayOfWeek: withdrawSchedule.dayOfWeek,
+        withdrawScheduleStartTime: withdrawSchedule.startTime,
       };
 
       // Prepare files
@@ -646,6 +674,83 @@ export default function BusinessSetup() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Withdraw schedule settings */}
+          <div className="px-4 py-4 border-t border-slate-100">
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <h3 className="text-sm font-semibold text-slate-900 mb-1">
+                Withdraw Settings
+              </h3>
+              <p className="text-xs text-slate-500 mb-3">
+                Control when restaurants and hotels are allowed to request withdrawals.
+              </p>
+
+              <label className="inline-flex items-center gap-2 mb-4">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={withdrawSchedule.enabled}
+                  onChange={(e) =>
+                    setWithdrawSchedule((prev) => ({
+                      ...prev,
+                      enabled: e.target.checked,
+                    }))
+                  }
+                />
+                <span className="text-xs font-medium text-slate-700">
+                  Enable scheduled withdrawals
+                </span>
+              </label>
+
+              {withdrawSchedule.enabled && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Withdraw day
+                    </label>
+                    <select
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      value={withdrawSchedule.dayOfWeek}
+                      onChange={(e) =>
+                        setWithdrawSchedule((prev) => ({
+                          ...prev,
+                          dayOfWeek: Number(e.target.value),
+                        }))
+                      }
+                    >
+                      <option value={0}>Sunday</option>
+                      <option value={1}>Monday</option>
+                      <option value={2}>Tuesday</option>
+                      <option value={3}>Wednesday</option>
+                      <option value={4}>Thursday</option>
+                      <option value={5}>Friday</option>
+                      <option value={6}>Saturday</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Withdraw start time
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      value={withdrawSchedule.startTime}
+                      onChange={(e) =>
+                        setWithdrawSchedule((prev) => ({
+                          ...prev,
+                          startTime: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-3 text-[11px] text-slate-500">
+                Note: Withdrawals will be allowed after the configured time on the selected weekday.
+              </p>
             </div>
           </div>
 

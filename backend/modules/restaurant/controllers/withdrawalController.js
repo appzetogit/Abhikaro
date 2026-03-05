@@ -7,6 +7,7 @@ import {
 } from "../../../shared/utils/response.js";
 import asyncHandler from "../../../shared/middleware/asyncHandler.js";
 import winston from "winston";
+import { isWithdrawAllowedNow } from "../../../shared/utils/withdrawSchedule.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -33,6 +34,17 @@ export const createWithdrawalRequest = asyncHandler(async (req, res) => {
 
     if (!amount || amount <= 0) {
       return errorResponse(res, 400, "Valid withdrawal amount is required");
+    }
+
+    // Enforce global withdraw schedule
+    const { allowed, nextWindowText } = await isWithdrawAllowedNow();
+    if (!allowed) {
+      return errorResponse(
+        res,
+        409,
+        nextWindowText ||
+          "Withdrawals are currently disabled by admin. Please try again later.",
+      );
     }
 
     // Get restaurant wallet

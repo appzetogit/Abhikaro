@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowDownCircle, ArrowUpCircle, IndianRupee, RefreshCw, Wallet as WalletIcon } from "lucide-react"
+import { ArrowDownCircle, ArrowUpCircle, RefreshCw, Wallet as WalletIcon, Lock } from "lucide-react"
 import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { loadBusinessSettings } from "@/lib/utils/businessSettings"
+import { toast } from "sonner"
 
 function formatCurrency(amount) {
   const num = Number(amount || 0)
@@ -88,6 +89,9 @@ export default function HotelWallet() {
   // pendingPayout is currently not shown in UI; kept for potential future use
   const pendingPayout = wallet?.pendingPayout || 0
 
+  const withdrawAllowed = wallet?.withdrawAllowed ?? true
+  const withdrawMessage = wallet?.withdrawMessage || ""
+
   const transactions = wallet?.transactions || []
 
   const recentTransactions = useMemo(() => {
@@ -142,15 +146,33 @@ export default function HotelWallet() {
               </div>
               <button
                 onClick={() => {
+                  if (!withdrawAllowed) return
                   setWithdrawAmount("")
                   setWithdrawDialogOpen(true)
                 }}
-                className="mt-auto inline-flex items-center justify-center rounded-xl bg-white text-[#ff8100] px-4 py-2 text-sm font-semibold shadow-sm hover:bg-orange-50 transition-colors"
+                disabled={!withdrawAllowed}
+                className={`mt-auto inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition-colors ${
+                  withdrawAllowed
+                    ? "bg-white text-[#ff8100] hover:bg-orange-50"
+                    : "bg-white/60 text-gray-400 cursor-not-allowed"
+                }`}
               >
-                Withdraw
+                {withdrawAllowed ? (
+                  "Withdraw"
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <Lock className="w-4 h-4" />
+                    Withdraw (Locked)
+                  </span>
+                )}
               </button>
             </div>
           </div>
+          {!withdrawAllowed && withdrawMessage && (
+            <p className="mt-2 text-[11px] text-orange-50/90 max-w-xs">
+              {withdrawMessage}
+            </p>
+          )}
         </div>
 
         {/* Stats */}
@@ -342,15 +364,23 @@ export default function HotelWallet() {
                   try {
                     setCreatingWithdrawal(true)
                     await hotelAPI.createWithdrawalRequest(amountNum)
-                    alert("Withdrawal request sent to admin successfully")
+                    toast.success("Withdrawal request sent to admin successfully")
                     setWithdrawDialogOpen(false)
                     fetchWallet(true)
                   } catch (err) {
                     console.error("Error creating withdrawal request:", err)
-                    alert(
+                    const status = err?.response?.status
+                    const msg =
                       err?.response?.data?.message ||
-                        "Failed to create withdrawal request. Please try again.",
-                    )
+                      err?.message ||
+                      "Failed to create withdrawal request. Please try again."
+                    if (status === 409) {
+                      toast.error(msg)
+                      setWithdrawDialogOpen(false)
+                      fetchWallet(true)
+                    } else {
+                      toast.error(msg)
+                    }
                   } finally {
                     setCreatingWithdrawal(false)
                   }

@@ -121,6 +121,7 @@ import {
 import {
   getDeliveryBoyWallets,
   addWalletAdjustment,
+  updateWalletBalances,
 } from "../controllers/deliveryBoyWalletController.js";
 import {
   getEmergencyHelp,
@@ -294,6 +295,7 @@ router.post("/delivery-withdrawal/:id/reject", rejectDeliveryWithdrawal);
 
 router.get("/delivery-boy-wallet", getDeliveryBoyWallets);
 router.post("/delivery-boy-wallet/adjustment", addWalletAdjustment);
+router.put("/delivery-boy-wallet/:id", updateWalletBalances);
 
 // Admin Management
 router.get("/admins", getAdmins);

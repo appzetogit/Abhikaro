@@ -1,9 +1,10 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bell, Menu, ChevronDown, Calendar, Download, ArrowRight, FileText, Wallet, X } from "lucide-react"
+import { Bell, Menu, ChevronDown, Calendar, Download, ArrowRight, FileText, Wallet, X, Lock } from "lucide-react"
 import BottomNavOrders from "../components/BottomNavOrders"
 import { restaurantAPI } from "@/lib/api"
+import { toast } from "sonner"
 
 export default function HubFinance() {
   const navigate = useNavigate()
@@ -26,6 +27,10 @@ export default function HubFinance() {
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
   const [withdrawalAmount, setWithdrawalAmount] = useState('')
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false)
+  const [withdrawWindow, setWithdrawWindow] = useState({
+    allowed: true,
+    message: "",
+  })
 
   const fetchFinanceData = useCallback(async () => {
     try {
@@ -43,10 +48,32 @@ export default function HubFinance() {
     }
   }, [])
 
+  const fetchWithdrawWindow = useCallback(async () => {
+    try {
+      const res = await restaurantAPI.getWallet()
+      const wallet =
+        res?.data?.data?.wallet || res?.data?.wallet || res?.data?.data || null
+      setWithdrawWindow({
+        allowed: wallet?.withdrawAllowed ?? true,
+        message: wallet?.withdrawMessage || "",
+      })
+    } catch (error) {
+      // If wallet API fails, don't block page; just fall back to allowing withdraw
+      setWithdrawWindow((prev) => ({
+        ...prev,
+        allowed: true,
+      }))
+      if (import.meta.env.DEV) {
+        console.error("Error fetching restaurant wallet withdraw window:", error)
+      }
+    }
+  }, [])
+
   // Fetch finance data on mount
   useEffect(() => {
     fetchFinanceData()
-  }, [fetchFinanceData])
+    fetchWithdrawWindow()
+  }, [fetchFinanceData, fetchWithdrawWindow])
 
   // Refetch when switching to Invoices & Taxes tab so data is up to date
   useEffect(() => {
@@ -135,6 +162,9 @@ export default function HubFinance() {
       year: "25"
     }
   }, [financeData])
+
+  const withdrawAllowed = withdrawWindow.allowed
+  const withdrawMessage = withdrawWindow.message
 
   const handleViewDetails = () => {
     navigate("/restaurant/finance-details")
@@ -792,12 +822,34 @@ export default function HubFinance() {
                     </p>
                     {(financeData?.currentCycle?.estimatedPayout || 0) > 0 && (
                       <button
-                        onClick={() => setShowWithdrawalModal(true)}
-                        className="w-full bg-black text-white py-3 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors mt-4"
+                        onClick={() => {
+                          if (!withdrawAllowed) return
+                          setShowWithdrawalModal(true)
+                        }}
+                        disabled={!withdrawAllowed}
+                        className={`w-full py-3 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 mt-4 transition-colors ${
+                          withdrawAllowed
+                            ? "bg-black text-white hover:bg-gray-800"
+                            : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        }`}
                       >
-                        <Wallet className="h-5 w-5" />
-                        Withdraw
+                        {withdrawAllowed ? (
+                          <>
+                            <Wallet className="h-5 w-5" />
+                            Withdraw
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="h-5 w-5" />
+                            Withdraw (Locked)
+                          </>
+                        )}
                       </button>
+                    )}
+                    {!withdrawAllowed && withdrawMessage && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        {withdrawMessage}
+                      </p>
                     )}
                   </>
                 )}
@@ -1206,17 +1258,29 @@ export default function HubFinance() {
                         setSubmittingWithdrawal(true)
                         const response = await restaurantAPI.createWithdrawalRequest(amount)
                         if (response.data?.success) {
-                          alert('Withdrawal request submitted successfully!')
+                          toast.success('Withdrawal request submitted successfully!')
                           setShowWithdrawalModal(false)
                           setWithdrawalAmount('')
                           await fetchFinanceData()
+                          await fetchWithdrawWindow()
                         } else {
-                          alert(response.data?.message || 'Failed to submit withdrawal request')
+                          const msg = response.data?.message || 'Failed to submit withdrawal request'
+                          toast.error(msg)
                         }
                       } catch (error) {
                         console.error('Error submitting withdrawal request:', error)
-                        const msg = error.response?.data?.message || error.message || 'Failed to submit withdrawal request. Please try again.'
-                        alert(msg)
+                        const status = error.response?.status
+                        const msg =
+                          error.response?.data?.message ||
+                          error.message ||
+                          'Failed to submit withdrawal request. Please try again.'
+                        if (status === 409) {
+                          toast.error(msg)
+                          setShowWithdrawalModal(false)
+                          await fetchWithdrawWindow()
+                        } else {
+                          toast.error(msg)
+                        }
                       } finally {
                         setSubmittingWithdrawal(false)
                       }

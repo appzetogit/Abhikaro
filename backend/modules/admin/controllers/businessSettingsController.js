@@ -76,6 +76,10 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       state,
       pincode,
       region,
+      // Optional: withdraw schedule fields (sent as flat form fields)
+      withdrawScheduleEnabled,
+      withdrawScheduleDayOfWeek,
+      withdrawScheduleStartTime,
       maintenanceMode,
       deliveryAssignmentMode,
     } = req.body;
@@ -105,6 +109,78 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
     if (state !== undefined) settings.state = state;
     if (pincode !== undefined) settings.pincode = pincode;
     if (region !== undefined) settings.region = region;
+
+    // Update global withdraw schedule (restaurants & hotels)
+    if (
+      withdrawScheduleEnabled !== undefined ||
+      withdrawScheduleDayOfWeek !== undefined ||
+      withdrawScheduleStartTime !== undefined
+    ) {
+      // Ensure nested object exists
+      if (!settings.withdrawSchedule) {
+        settings.withdrawSchedule = {
+          enabled: false,
+          dayOfWeek: 0,
+          startTime: "10:00",
+          timeZone: "Asia/Kolkata",
+        };
+      }
+
+      // enabled: accept "true"/"false", "1"/"0", boolean
+      if (withdrawScheduleEnabled !== undefined) {
+        const raw = String(withdrawScheduleEnabled).toLowerCase();
+        const enabled =
+          raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+        settings.withdrawSchedule.enabled = enabled;
+      }
+
+      // dayOfWeek: integer 0–6
+      if (withdrawScheduleDayOfWeek !== undefined) {
+        const day = Number(withdrawScheduleDayOfWeek);
+        if (Number.isNaN(day) || day < 0 || day > 6) {
+          return errorResponse(
+            res,
+            400,
+            "Withdraw day must be between 0 (Sunday) and 6 (Saturday)",
+          );
+        }
+        settings.withdrawSchedule.dayOfWeek = day;
+      }
+
+      // startTime: "HH:MM" 24h
+      if (withdrawScheduleStartTime !== undefined) {
+        const time = String(withdrawScheduleStartTime || "").trim();
+        if (!/^\d{1,2}:\d{2}$/.test(time)) {
+          return errorResponse(
+            res,
+            400,
+            "Withdraw time must be in HH:MM format (24-hour)",
+          );
+        }
+
+        const [hStr, mStr] = time.split(":");
+        const h = Number(hStr);
+        const m = Number(mStr);
+        if (
+          Number.isNaN(h) ||
+          Number.isNaN(m) ||
+          h < 0 ||
+          h > 23 ||
+          m < 0 ||
+          m > 59
+        ) {
+          return errorResponse(
+            res,
+            400,
+            "Withdraw time must be a valid 24-hour time",
+          );
+        }
+
+        settings.withdrawSchedule.startTime = `${h.toString().padStart(2, "0")}:${m
+          .toString()
+          .padStart(2, "0")}`;
+      }
+    }
     if (maintenanceMode !== undefined) {
       settings.maintenanceMode.isEnabled = maintenanceMode.isEnabled || false;
       if (maintenanceMode.startDate) {

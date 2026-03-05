@@ -2041,6 +2041,12 @@ export const adminAPI = {
       data,
     );
   },
+  updateDeliveryBoyWallet: (id, data) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.DELIVERY_BOY_WALLET_UPDATE.replace(":id", id),
+      data,
+    );
+  },
 
   // Delivery Emergency Help Management
   getEmergencyHelp: () => {

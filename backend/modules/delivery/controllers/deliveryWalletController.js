@@ -166,16 +166,20 @@ export const getWallet = asyncHandler(async (req, res) => {
     const bonusTransactions = transactions.filter(t => t.type === 'bonus' && t.status === 'Completed');
     const totalBonus = bonusTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
     
+    const totalBalance = Number(wallet.totalBalance) || 0;
+    const cashInHand = cashInHandForLimit;
+    const pocketBalance = totalBalance - cashInHand;
+
     const walletData = {
-      totalBalance: wallet.totalBalance || 0,
-      cashInHand: cashInHandForLimit,
+      totalBalance,
+      cashInHand,
       totalWithdrawn: wallet.totalWithdrawn || 0,
       totalEarned: wallet.totalEarned || 0,
       totalCashLimit: totalCashLimit,
-      availableCashLimit: Math.max(0, totalCashLimit - cashInHandForLimit),
+      availableCashLimit: Math.max(0, totalCashLimit - cashInHand),
       deliveryWithdrawalLimit: withdrawalLimit,
-      // Pocket balance = total balance (includes bonus, earnings, etc.)
-      pocketBalance: wallet.totalBalance || 0,
+      // Pocket balance = totalBalance - cashInHand
+      pocketBalance,
       pendingWithdrawals: pendingWithdrawals,
       joiningBonusClaimed: wallet.joiningBonusClaimed || false,
       joiningBonusAmount: wallet.joiningBonusAmount || 0,

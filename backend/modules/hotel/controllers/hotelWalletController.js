@@ -6,6 +6,7 @@ import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import HotelWallet from "../models/HotelWallet.js";
 import Order from "../../order/models/Order.js";
 import Joi from "joi";
+import { isWithdrawAllowedNow } from "../../../shared/utils/withdrawSchedule.js";
 
 /**
  * GET /api/hotel/wallet
@@ -153,6 +154,8 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 50);
 
+  const { allowed, nextWindowText } = await isWithdrawAllowedNow();
+
   const walletData = {
     hotelId: hotel.hotelId || hotel._id.toString(),
     balance: wallet.totalBalance || 0,
@@ -161,6 +164,8 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
     pendingPayout: (wallet.totalEarned || 0) - (wallet.totalWithdrawn || 0),
     transactions: recentTransactions,
     updatedAt: wallet.updatedAt || new Date().toISOString(),
+    withdrawAllowed: allowed,
+    withdrawMessage: nextWindowText || "",
   };
 
   return successResponse(res, 200, "Hotel wallet fetched successfully", {
@@ -184,6 +189,17 @@ export const createHotelWithdrawalRequest = asyncHandler(async (req, res) => {
 
   if (!hotel) {
     return errorResponse(res, 401, "Unauthorized");
+  }
+
+  // Enforce global withdraw schedule
+  const { allowed, nextWindowText } = await isWithdrawAllowedNow();
+  if (!allowed) {
+    return errorResponse(
+      res,
+      409,
+      nextWindowText ||
+        "Withdrawals are currently disabled by admin. Please try again later.",
+    );
   }
 
   // Check if all required KYC documents are uploaded

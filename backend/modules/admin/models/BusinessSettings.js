@@ -104,6 +104,30 @@ const businessSettingsSchema = new mongoose.Schema(
       enum: ["automatic", "manual"],
       default: "automatic",
     },
+    // Global withdraw schedule for restaurants & hotels
+    withdrawSchedule: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+      // 0 (Sunday) - 6 (Saturday)
+      dayOfWeek: {
+        type: Number,
+        min: 0,
+        max: 6,
+        default: 0,
+      },
+      // "HH:MM" 24-hour format, e.g. "10:00"
+      startTime: {
+        type: String,
+        default: "10:00",
+      },
+      // Optional timezone string (defaults to Asia/Kolkata when omitted)
+      timeZone: {
+        type: String,
+        default: "Asia/Kolkata",
+      },
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",

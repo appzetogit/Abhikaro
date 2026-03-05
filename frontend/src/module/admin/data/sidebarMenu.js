@@ -95,7 +95,6 @@ export const sidebarMenuData = [
           },
           { label: "Payment Failed", path: "/admin/orders/payment-failed" },
           { label: "Refunded", path: "/admin/orders/refunded" },
-          { label: "Offline Payments", path: "/admin/orders/offline-payments" },
         ],
       },
       {

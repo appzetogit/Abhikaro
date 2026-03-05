@@ -1,10 +1,14 @@
-import RestaurantWallet from '../models/RestaurantWallet.js';
-import { successResponse, errorResponse } from '../../../shared/utils/response.js';
-import asyncHandler from '../../../shared/middleware/asyncHandler.js';
-import winston from 'winston';
+import RestaurantWallet from "../models/RestaurantWallet.js";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../shared/utils/response.js";
+import asyncHandler from "../../../shared/middleware/asyncHandler.js";
+import winston from "winston";
+import { isWithdrawAllowedNow } from "../../../shared/utils/withdrawSchedule.js";
 
 const logger = winston.createLogger({
-  level: 'info',
+  level: "info",
   format: winston.format.json(),
   transports: [
     new winston.transports.Console({
@@ -28,6 +32,9 @@ export const getWallet = asyncHandler(async (req, res) => {
     // Find or create wallet
     const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurant._id);
 
+    // Check global withdraw schedule
+    const { allowed, nextWindowText } = await isWithdrawAllowedNow();
+
     // Get recent transactions (last 50)
     const recentTransactions = wallet.transactions
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -50,7 +57,9 @@ export const getWallet = asyncHandler(async (req, res) => {
         totalWithdrawn: wallet.totalWithdrawn || 0,
         pendingBalance: (wallet.totalEarned || 0) - (wallet.totalWithdrawn || 0),
         isActive: wallet.isActive,
-        lastTransactionAt: wallet.lastTransactionAt
+        lastTransactionAt: wallet.lastTransactionAt,
+        withdrawAllowed: allowed,
+        withdrawMessage: nextWindowText || '',
       },
       transactions: recentTransactions
     });
