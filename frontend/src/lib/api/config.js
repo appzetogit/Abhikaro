@@ -312,6 +312,7 @@ export const API_ENDPOINTS = {
     HOTEL_COMMISSION_STATS: "/admin/hotels-commissions/stats",
     HOTEL_BY_ID: "/admin/hotels/:id",
     RESTAURANT_STATUS: "/admin/restaurants/:id/status",
+    RESTAURANT_LOCATION: "/admin/restaurants/:id/location",
     RESTAURANT_MENU: "/admin/restaurants/:id/menu",
     RESTAURANT_REQUESTS: "/admin/restaurants/requests",
     RESTAURANT_APPROVE: "/admin/restaurants/:id/approve",

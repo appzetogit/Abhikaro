@@ -459,14 +459,14 @@ export default function ZoneSetup() {
 
       if (response?.data?.data?.restaurant) {
         setRestaurantData(response.data.data.restaurant)
-        alert("Location saved successfully!")
+        toast.success("Location saved successfully!")
         
         // FIXED: Dispatch event to notify other components that location was set
         window.dispatchEvent(new Event('restaurantLocationSet'))
         window.dispatchEvent(new Event('restaurantProfileRefresh'))
         
-        // Refresh the page to update navbar
-        window.location.reload()
+        // Redirect to order screen after successful save
+        navigate("/restaurant", { replace: true })
       } else {
         throw new Error("Failed to save location")
       }

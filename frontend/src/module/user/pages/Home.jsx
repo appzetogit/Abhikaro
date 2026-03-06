@@ -842,6 +842,15 @@ export default function Home() {
     }
   }, [zoneId])
 
+  // Sync activeFilters, sortBy, and selectedCuisine to appliedFilters
+  useEffect(() => {
+    setAppliedFilters({
+      activeFilters,
+      sortBy,
+      selectedCuisine
+    })
+  }, [activeFilters, sortBy, selectedCuisine])
+
   // Fetch restaurants when appliedFilters change
   useEffect(() => {
     fetchRestaurants(appliedFilters)

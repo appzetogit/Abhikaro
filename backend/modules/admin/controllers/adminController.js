@@ -1763,6 +1763,93 @@ export const updateRestaurantStatus = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Update Restaurant Location/Zone
+ * PUT /api/admin/restaurants/:id/location
+ */
+export const updateRestaurantLocation = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { location } = req.body;
+
+    if (!location) {
+      return errorResponse(res, 400, "Location data is required");
+    }
+
+    const restaurant = await Restaurant.findById(id);
+
+    if (!restaurant) {
+      return errorResponse(res, 404, "Restaurant not found");
+    }
+
+    // Update location
+    if (location.area !== undefined) {
+      if (!restaurant.location) {
+        restaurant.location = {};
+      }
+      restaurant.location.area = location.area;
+    }
+
+    if (location.city !== undefined) {
+      if (!restaurant.location) {
+        restaurant.location = {};
+      }
+      restaurant.location.city = location.city;
+    }
+
+    if (location.addressLine1 !== undefined) {
+      if (!restaurant.location) {
+        restaurant.location = {};
+      }
+      restaurant.location.addressLine1 = location.addressLine1;
+    }
+
+    if (location.addressLine2 !== undefined) {
+      if (!restaurant.location) {
+        restaurant.location = {};
+      }
+      restaurant.location.addressLine2 = location.addressLine2;
+    }
+
+    if (location.latitude !== undefined && location.longitude !== undefined) {
+      if (!restaurant.location) {
+        restaurant.location = {};
+      }
+      restaurant.location.latitude = location.latitude;
+      restaurant.location.longitude = location.longitude;
+      restaurant.location.coordinates = [location.longitude, location.latitude]; // GeoJSON format
+    }
+
+    if (location.formattedAddress !== undefined) {
+      if (!restaurant.location) {
+        restaurant.location = {};
+      }
+      restaurant.location.formattedAddress = location.formattedAddress;
+    }
+
+    restaurant.markModified('location');
+    await restaurant.save();
+
+    logger.info(`Restaurant location updated: ${id}`, {
+      area: restaurant.location?.area,
+      updatedBy: req.user._id,
+    });
+
+    return successResponse(res, 200, "Restaurant location updated successfully", {
+      restaurant: {
+        id: restaurant._id.toString(),
+        name: restaurant.name,
+        location: restaurant.location,
+      },
+    });
+  } catch (error) {
+    logger.error(`Error updating restaurant location: ${error.message}`, {
+      error: error.stack,
+    });
+    return errorResponse(res, 500, "Failed to update restaurant location");
+  }
+});
+
+/**
  * Get Restaurant Join Requests
  * GET /api/admin/restaurants/requests
  * Query params: status (pending, rejected), page, limit, search

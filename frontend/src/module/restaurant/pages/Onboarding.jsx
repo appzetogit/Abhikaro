@@ -349,6 +349,9 @@ export default function RestaurantOnboarding() {
     fetchData()
   }, [])
 
+  // Track if phone is verified (OTP verified) - should not be editable
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false)
+
   // Prefill verified phone from auth when empty (e.g. fresh signup) - runs after loading
   useEffect(() => {
     if (loading) return
@@ -360,6 +363,7 @@ export default function RestaurantOnboarding() {
         if (verifiedPhone) {
           const displayPhone = typeof verifiedPhone === "string" ? verifiedPhone.replace(/\D/g, "").slice(-10) : ""
           if (displayPhone) {
+            setIsPhoneVerified(true) // Phone is verified via OTP, should not be editable
             setStep1((prev) => {
               const needsPrefill = !prev.ownerPhone && !prev.primaryContactNumber
               if (!needsPrefill) return prev
@@ -467,12 +471,23 @@ export default function RestaurantOnboarding() {
     if (!step2.cuisines || step2.cuisines.length === 0) {
       errors.push("Please select at least one cuisine")
     }
-    if (!step2.openingTime?.trim()) {
-      errors.push("Opening time is required")
+    
+    // Opening/closing time validation - allow defaults, but if provided, validate
+    const openingTime = step2.openingTime?.trim() || "10:00" // Default if not set
+    const closingTime = step2.closingTime?.trim() || "22:00" // Default if not set
+    
+    // Validate that closing time is not less than opening time
+    if (openingTime && closingTime) {
+      const [openHour, openMin] = openingTime.split(":").map(Number)
+      const [closeHour, closeMin] = closingTime.split(":").map(Number)
+      const openMinutes = openHour * 60 + openMin
+      const closeMinutes = closeHour * 60 + closeMin
+      
+      if (closeMinutes < openMinutes) {
+        errors.push("Closing time should not be less than opening time")
+      }
     }
-    if (!step2.closingTime?.trim()) {
-      errors.push("Closing time is required")
-    }
+    
     if (!step2.openDays || step2.openDays.length === 0) {
       errors.push("Please select at least one open day")
     }
@@ -529,6 +544,16 @@ export default function RestaurantOnboarding() {
     }
     if (!step3.fssaiExpiry?.trim()) {
       errors.push("FSSAI expiry date is required")
+    } else {
+      // Validate FSSAI expiry date - should not be less than current date
+      const expiryDate = new Date(step3.fssaiExpiry)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0) // Reset time to start of day for comparison
+      expiryDate.setHours(0, 0, 0, 0)
+      
+      if (expiryDate < today) {
+        errors.push("FSSAI expiry date should not be less than current date")
+      }
     }
     // Validate FSSAI image - must be a File or existing URL
     if (!step3.fssaiImage) {
@@ -676,6 +701,14 @@ export default function RestaurantOnboarding() {
       ))}
     </div>
   )
+
+  // Scroll to top when step changes
+  useEffect(() => {
+    if (formContainerRef.current) {
+      formContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [step])
 
   const handleNext = async () => {
     setError("")
@@ -1051,10 +1084,21 @@ export default function RestaurantOnboarding() {
             <Label className="text-xs text-gray-700">Phone number*</Label>
             <Input
               value={step1.ownerPhone || ""}
-              onChange={(e) => setStep1({ ...step1, ownerPhone: e.target.value })}
-              className="mt-1 bg-white text-sm text-black placeholder-black"
+              onChange={(e) => {
+                if (!isPhoneVerified) {
+                  setStep1({ ...step1, ownerPhone: e.target.value })
+                }
+              }}
+              disabled={isPhoneVerified}
+              readOnly={isPhoneVerified}
+              className={`mt-1 bg-white text-sm text-black placeholder-black ${isPhoneVerified ? "bg-gray-50 cursor-not-allowed opacity-75" : ""}`}
               placeholder="+91 98XXXXXX"
             />
+            {isPhoneVerified && (
+              <p className="text-[11px] text-gray-500 mt-1">
+                Phone number verified via OTP and cannot be changed
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -1735,6 +1779,12 @@ export default function RestaurantOnboarding() {
                       const d = String(date.getDate()).padStart(2, "0")
                       setStep3({ ...step3, fssaiExpiry: `${y}-${m}-${d}` })
                     }
+                  }}
+                  disabled={(date) => {
+                    // Disable past dates - FSSAI expiry should not be less than current date
+                    const today = new Date()
+                    today.setHours(0, 0, 0, 0)
+                    return date < today
                   }}
                   initialFocus
                   className="rounded-md border border-gray-200"

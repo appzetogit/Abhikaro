@@ -121,6 +121,18 @@ export function ProfileProvider({ children }) {
         const userData = response?.data?.data?.user || response?.data?.user || response?.data
 
         if (userData) {
+          // Check if this is a different user (different user ID)
+          const previousUserId = userProfile?._id || userProfile?.id
+          const currentUserId = userData._id || userData.id
+          
+          // If logging in with a different account, clear collections
+          if (previousUserId && previousUserId !== currentUserId) {
+            setFavorites([])
+            setDishFavorites([])
+            localStorage.removeItem("userFavorites")
+            localStorage.removeItem("userDishFavorites")
+          }
+          
           setUserProfile(userData)
           const storage = sessionStorage.getItem("user_accessToken") ? sessionStorage : localStorage
           storage.setItem("user_user", JSON.stringify(userData))

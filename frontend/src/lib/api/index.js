@@ -1276,6 +1276,14 @@ export const adminAPI = {
     );
   },
 
+  // Update restaurant location/zone
+  updateRestaurantLocation: (id, data) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.RESTAURANT_LOCATION.replace(":id", id),
+      data,
+    );
+  },
+
   // Update restaurant dining settings
   updateRestaurantDiningSettings: (id, diningSettings) => {
     return apiClient.put(`/admin/restaurants/${id}/dining-settings`, {

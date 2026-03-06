@@ -141,6 +141,35 @@ export default function UserLayout() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
   }, [location.pathname, location.search, location.hash])
 
+  // Handle tab switching - restore session when tab becomes visible again
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      // When tab becomes visible again, check and restore session if needed
+      if (!document.hidden) {
+        const { isModuleAuthenticated } = await import("@/lib/utils/auth")
+        const { restoreUserSession } = await import("@/lib/utils/auth")
+        
+        // Only restore if user was authenticated but token might have expired
+        // Don't force logout if session restoration fails
+        if (!isModuleAuthenticated('user')) {
+          try {
+            await restoreUserSession()
+          } catch (error) {
+            // Silently fail - don't logout user if restore fails
+            // User might still be logged in via refresh token cookie
+            console.warn("Session restoration on tab switch failed:", error)
+          }
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
   // Note: Authentication checks and redirects are handled by ProtectedRoute components
   // UserLayout should not interfere with authentication redirects
 

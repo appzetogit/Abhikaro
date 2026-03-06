@@ -1013,6 +1013,20 @@ export default function RestaurantDetails() {
 
   // Handle bookmark click
   const handleBookmarkClick = (item) => {
+    // Check if user is logged in
+    const token = sessionStorage.getItem("user_accessToken") || localStorage.getItem("user_accessToken")
+    const isAuthenticated = sessionStorage.getItem("user_authenticated") === "true" ||
+      localStorage.getItem("user_authenticated") === "true" || !!token
+
+    if (!isAuthenticated) {
+      // Save current path to redirect back after login
+      const currentPath = window.location.pathname + window.location.search
+      sessionStorage.setItem("user_redirectPath", currentPath)
+      toast.info("Please login to save dishes")
+      navigate("/user/auth/sign-in")
+      return
+    }
+
     const restaurantId = restaurant?.restaurantId || restaurant?._id || restaurant?.id
     if (!restaurantId) {
       toast.error("Restaurant information is missing")

@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, RefreshCw } from "lucide-react"
+import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, RefreshCw, Edit, Check } from "lucide-react"
 import { adminAPI, restaurantAPI } from "../../../../lib/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { exportRestaurantsToPDF } from "../../components/restaurants/restaurantsExportUtils"
+import { toast } from "sonner"
 
 // Import icons from Dashboard-icons
 import locationIcon from "../../assets/Dashboard-icons/image1.png"
@@ -23,6 +24,10 @@ export default function RestaurantsList() {
   const [banning, setBanning] = useState(false)
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState(null) // { restaurant }
   const [deleting, setDeleting] = useState(false)
+  const [editingZone, setEditingZone] = useState(false) // { restaurantId, zone: string }
+  const [zoneInput, setZoneInput] = useState("")
+  const [updatingZone, setUpdatingZone] = useState(false)
+  const [zones, setZones] = useState([]) // Available zones for dropdown
 
   // Format Restaurant ID to REST format (e.g., REST422829)
   const formatRestaurantId = (id) => {
@@ -64,6 +69,21 @@ export default function RestaurantsList() {
     
     return `REST${lastDigits}`
   }
+
+  // Fetch available zones for dropdown
+  useEffect(() => {
+    const fetchZones = async () => {
+      try {
+        const response = await adminAPI.getZones()
+        if (response.data?.success && response.data.data?.zones) {
+          setZones(response.data.data.zones)
+        }
+      } catch (error) {
+        console.error("Error fetching zones:", error)
+      }
+    }
+    fetchZones()
+  }, [])
 
   // Fetch restaurants from backend API
   useEffect(() => {
@@ -457,6 +477,71 @@ export default function RestaurantsList() {
 
   const cancelDeleteRestaurant = () => {
     setDeleteConfirmDialog(null)
+  }
+
+  // Handle zone edit
+  const handleEditZone = (restaurant) => {
+    const currentZone = restaurantDetails?.location?.area || restaurant.zone || ""
+    setEditingZone({ restaurantId: restaurant._id || restaurant.id, restaurant })
+    setZoneInput(currentZone)
+  }
+
+  const cancelEditZone = () => {
+    setEditingZone(false)
+    setZoneInput("")
+  }
+
+  const handleUpdateZone = async () => {
+    if (!editingZone || !zoneInput.trim()) {
+      toast.error("Please enter a zone name")
+      return
+    }
+
+    try {
+      setUpdatingZone(true)
+      const restaurantId = editingZone.restaurantId
+
+      // Update restaurant location with new zone (area) using admin endpoint
+      const response = await adminAPI.updateRestaurantLocation(restaurantId, {
+        location: {
+          ...(restaurantDetails?.location || {}),
+          area: zoneInput.trim()
+        }
+      })
+
+      if (response?.data?.success) {
+        // Update local state
+        setRestaurants(prevRestaurants =>
+          prevRestaurants.map(r =>
+            (r._id === restaurantId || r.id === restaurantId)
+              ? { ...r, zone: zoneInput.trim() }
+              : r
+          )
+        )
+
+        // Update restaurant details if modal is open
+        if (restaurantDetails) {
+          setRestaurantDetails({
+            ...restaurantDetails,
+            location: {
+              ...restaurantDetails.location,
+              area: zoneInput.trim()
+            }
+          })
+        }
+
+        toast.success("Zone updated successfully")
+        setEditingZone(false)
+        setZoneInput("")
+      } else {
+        throw new Error("Failed to update zone")
+      }
+    } catch (error) {
+      console.error("Error updating zone:", error)
+      toast.error(error?.response?.data?.message || "Failed to update zone. Please try again.")
+    } finally {
+      setUpdatingZone(false)
+    }
   }
 
   // Handle export functionality
@@ -897,15 +982,77 @@ export default function RestaurantsList() {
                         {restaurantDetails?.location && (
                           <div className="flex items-start gap-3">
                             <MapPin className="w-5 h-5 text-slate-400 mt-0.5" />
-                            <div>
-                              <p className="text-xs text-slate-500">Address</p>
-                              <p className="text-sm font-medium text-slate-900">
-                                {restaurantDetails.location.addressLine1 || ""}
-                                {restaurantDetails.location.addressLine2 && `, ${restaurantDetails.location.addressLine2}`}
-                                {restaurantDetails.location.area && `, ${restaurantDetails.location.area}`}
-                                {restaurantDetails.location.city && `, ${restaurantDetails.location.city}`}
-                                {!restaurantDetails.location.addressLine1 && !restaurantDetails.location.area && !restaurantDetails.location.city && selectedRestaurant.zone}
-                              </p>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-xs text-slate-500">Address</p>
+                                {!editingZone && (
+                                  <button
+                                    onClick={() => handleEditZone(selectedRestaurant)}
+                                    className="p-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                    title="Edit Zone"
+                                  >
+                                    <Edit className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                              {editingZone && editingZone.restaurantId === (restaurantDetails._id || selectedRestaurant._id || selectedRestaurant.id) ? (
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    value={zoneInput}
+                                    onChange={(e) => setZoneInput(e.target.value)}
+                                    className="flex-1 px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    disabled={updatingZone}
+                                  >
+                                    <option value="">Select Zone</option>
+                                    {zones.map((zone) => (
+                                      <option key={zone._id || zone.id} value={zone.name || zone.zoneName}>
+                                        {zone.name || zone.zoneName}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    type="text"
+                                    value={zoneInput}
+                                    onChange={(e) => setZoneInput(e.target.value)}
+                                    placeholder="Or enter custom zone"
+                                    className="flex-1 px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    disabled={updatingZone}
+                                  />
+                                  <button
+                                    onClick={handleUpdateZone}
+                                    disabled={updatingZone || !zoneInput.trim()}
+                                    className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+                                    title="Save Zone"
+                                  >
+                                    {updatingZone ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Check className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={cancelEditZone}
+                                    disabled={updatingZone}
+                                    className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-sm font-medium text-slate-900">
+                                  {restaurantDetails.location.addressLine1 || ""}
+                                  {restaurantDetails.location.addressLine2 && `, ${restaurantDetails.location.addressLine2}`}
+                                  {restaurantDetails.location.area && `, ${restaurantDetails.location.area}`}
+                                  {restaurantDetails.location.city && `, ${restaurantDetails.location.city}`}
+                                  {!restaurantDetails.location.addressLine1 && !restaurantDetails.location.area && !restaurantDetails.location.city && selectedRestaurant.zone}
+                                </p>
+                              )}
+                              {restaurantDetails.location.area && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  Zone: <span className="font-medium">{restaurantDetails.location.area}</span>
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}
