@@ -3,6 +3,7 @@ import { successResponse, errorResponse } from '../../../shared/utils/response.j
 import { asyncHandler } from '../../../shared/middleware/asyncHandler.js';
 import mongoose from 'mongoose';
 import winston from 'winston';
+import { notifyDeliveryFromAdmin } from '../../fcm/services/pushNotificationService.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -661,6 +662,9 @@ export const updateDeliveryPartnerZone = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, 'Delivery partner not found');
     }
 
+    // Track assigned zone for notification
+    let assignedZone = null;
+
     // Validate zoneId if provided
     if (zoneId) {
       const Zone = (await import('../models/Zone.js')).default;
@@ -691,9 +695,32 @@ export const updateDeliveryPartnerZone = asyncHandler(async (req, res) => {
         zoneName: zone.name || zone.zoneName,
         updatedBy: req.user?._id
       });
+
+      assignedZone = zone;
     }
 
     await delivery.save();
+
+    // Best-effort push notification to delivery boy with zone name
+    if (assignedZone) {
+      try {
+        await notifyDeliveryFromAdmin(delivery._id.toString(), {
+          title: 'Zone Assigned',
+          body: `Aapko zone "${assignedZone.name || assignedZone.zoneName || 'Zone'}" assign kiya gaya hai.`,
+          data: {
+            type: 'zone_assignment',
+            zoneId: assignedZone._id?.toString() || zoneId,
+            zoneName: assignedZone.name || assignedZone.zoneName || 'Zone'
+          }
+        });
+      } catch (notifyError) {
+        logger.warn('Failed to send zone assignment notification:', {
+          error: notifyError.message,
+          deliveryId: delivery._id.toString(),
+          zoneId: assignedZone._id?.toString() || zoneId
+        });
+      }
+    }
 
     return successResponse(res, 200, 'Delivery partner zone updated successfully', {
       delivery: {
