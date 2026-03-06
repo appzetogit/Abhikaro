@@ -418,6 +418,10 @@ export const API_ENDPOINTS = {
     RESTAURANT_COMPLAINT_BY_ID: "/admin/restaurant-complaints/:id",
     RESTAURANT_COMPLAINT_STATUS: "/admin/restaurant-complaints/:id/status",
     RESTAURANT_COMPLAINT_NOTES: "/admin/restaurant-complaints/:id/notes",
+    // Admin & permissions management
+    ADMINS: "/admin/admins",
+    ADMIN_BY_ID: "/admin/admins/:id",
+    ADMIN_PERMISSIONS: "/admin/admin-permissions",
     // Admin push notifications
     NOTIFICATIONS_SEND_TO_USER: "/admin/notifications/send-to-user",
     NOTIFICATIONS_SEND_TO_RESTAURANT: "/admin/notifications/send-to-restaurant",

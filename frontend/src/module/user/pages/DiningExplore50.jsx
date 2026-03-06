@@ -9,99 +9,72 @@ import { useSearchOverlay, useLocationSelector } from "../components/UserLayout"
 import { useLocation as useLocationHook } from "../hooks/useLocation"
 import { useProfile } from "../context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
+import { diningAPI } from "@/lib/api"
 // Using placeholder for upto 50 off banner
 const upto50off = "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=200&fit=crop"
 
-const popularRestaurants = [
-  {
-    id: 1,
-    name: "IRIS",
-    rating: 4.3,
-    location: "Press Complex, Indore",
-    distance: "2.9 km",
-    cuisine: "Continental",
-    price: "₹1500 for two",
-    image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop",
-    offer: "Flat 30% OFF + 3 more",
-    deliveryTime: "30-35 mins",
-    featuredDish: "Pasta",
-    featuredPrice: 450,
-  },
-  {
-    id: 2,
-    name: "Skyline Rooftop",
-    rating: 4.5,
-    location: "MG Road, Indore",
-    distance: "3.2 km",
-    cuisine: "Multi-cuisine",
-    price: "₹2000 for two",
-    image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&h=600&fit=crop",
-    offer: "Flat 25% OFF + 2 more",
-    deliveryTime: "35-40 mins",
-    featuredDish: "Grilled Chicken",
-    featuredPrice: 550,
-  },
-  {
-    id: 3,
-    name: "The Grand Bistro",
-    rating: 4.7,
-    location: "Vijay Nagar, Indore",
-    distance: "1.8 km",
-    cuisine: "Continental",
-    price: "₹1800 for two",
-    image: "https://images.unsplash.com/photo-1551218808-94e220e084d2?w=800&h=600&fit=crop",
-    offer: "Flat 35% OFF + 4 more",
-    deliveryTime: "25-30 mins",
-    featuredDish: "Risotto",
-    featuredPrice: 650,
-  },
-  {
-    id: 4,
-    name: "Coastal Kitchen",
-    rating: 4.4,
-    location: "Palasia, Indore",
-    distance: "2.1 km",
-    cuisine: "Seafood",
-    price: "₹1600 for two",
-    image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&h=600&fit=crop",
-    offer: "Flat 20% OFF + 2 more",
-    deliveryTime: "28-33 mins",
-    featuredDish: "Fish Curry",
-    featuredPrice: 480,
-  },
-  {
-    id: 5,
-    name: "Garden Terrace",
-    rating: 4.6,
-    location: "Scheme 54, Indore",
-    distance: "4.5 km",
-    cuisine: "North Indian",
-    price: "₹1200 for two",
-    image: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=800&h=600&fit=crop",
-    offer: "Flat 30% OFF + 3 more",
-    deliveryTime: "40-45 mins",
-    featuredDish: "Butter Chicken",
-    featuredPrice: 380,
-  },
-  {
-    id: 6,
-    name: "Midnight Lounge",
-    rating: 4.2,
-    location: "Bhawarkua, Indore",
-    distance: "3.8 km",
-    cuisine: "Continental",
-    price: "₹2200 for two",
-    image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop",
-    offer: "Flat 25% OFF + 2 more",
-    deliveryTime: "35-40 mins",
-    featuredDish: "Steak",
-    featuredPrice: 750,
-  },
-]
+const FALLBACK_RESTAURANT_IMAGE =
+  "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"
+
+function getDiningRestaurantDisplayFields(restaurant) {
+  const restaurantName =
+    restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || "Restaurant"
+
+  const restaurantSlug =
+    restaurant?.slug || restaurant?._id || restaurantName.toLowerCase().replace(/\s+/g, "-")
+
+  const image =
+    restaurant?.profileImage?.url ||
+    restaurant?.menuImages?.[0]?.url ||
+    restaurant?.onboarding?.step2?.menuImageUrls?.[0]?.url ||
+    FALLBACK_RESTAURANT_IMAGE
+
+  const cuisineStr = Array.isArray(restaurant?.cuisines) && restaurant.cuisines.length > 0
+    ? restaurant.cuisines.join(", ")
+    : ""
+
+  const deliveryTime =
+    restaurant?.estimatedDeliveryTime ||
+    restaurant?.onboarding?.step4?.estimatedDeliveryTime ||
+    "25-30 mins"
+
+  const distance = restaurant?.distance || restaurant?.onboarding?.step4?.distance || ""
+
+  const rating =
+    typeof restaurant?.rating === "number" ? restaurant.rating : 0
+
+  const offer =
+    restaurant?.offer ||
+    restaurant?.onboarding?.step4?.offer ||
+    ""
+
+  const featuredDish =
+    restaurant?.featuredDish ||
+    restaurant?.onboarding?.step4?.featuredDish ||
+    ""
+
+  const featuredPrice =
+    restaurant?.featuredPrice ?? restaurant?.onboarding?.step4?.featuredPrice ?? null
+
+  return {
+    restaurantName,
+    restaurantSlug,
+    image,
+    cuisineStr,
+    deliveryTime,
+    distance,
+    rating,
+    offer,
+    featuredDish,
+    featuredPrice,
+  }
+}
 
 export default function DiningExplore50() {
   const navigate = useNavigate()
   const [heroSearch, setHeroSearch] = useState("")
+  const [restaurants, setRestaurants] = useState([])
+  const [restaurantsLoading, setRestaurantsLoading] = useState(true)
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [activeFilterTab, setActiveFilterTab] = useState('sort')
@@ -116,6 +89,38 @@ export default function DiningExplore50() {
   const cityName = location?.city || "Select"
   const stateName = location?.state || "Location"
 
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchDiningRestaurants = async () => {
+      try {
+        setRestaurantsLoading(true)
+        const params = {}
+        if (location?.city) {
+          params.city = location.city
+        }
+        const response = await diningAPI.getRestaurants(params)
+        const data = response?.data?.data || response?.data || []
+        if (!isMounted) return
+        setRestaurants(Array.isArray(data) ? data : [])
+      } catch (err) {
+        if (!isMounted) return
+        setRestaurants([])
+      } finally {
+        if (!isMounted) return
+        setRestaurantsLoading(false)
+      }
+    }
+
+    if (!loading) {
+      fetchDiningRestaurants()
+    }
+
+    return () => {
+      isMounted = false
+    }
+  }, [location?.city, loading])
+
   const toggleFilter = (filterId) => {
     setActiveFilters(prev => {
       const newSet = new Set(prev)
@@ -129,56 +134,63 @@ export default function DiningExplore50() {
   }
 
   const filteredRestaurants = useMemo(() => {
-    let filtered = [...popularRestaurants]
+    let filtered = [...restaurants]
 
     if (activeFilters.has('delivery-under-30')) {
       filtered = filtered.filter(r => {
-        const timeMatch = r.deliveryTime.match(/(\d+)/)
+        const { deliveryTime } = getDiningRestaurantDisplayFields(r)
+        const timeMatch = deliveryTime.match(/(\d+)/)
         return timeMatch && parseInt(timeMatch[1]) <= 30
       })
     }
     if (activeFilters.has('delivery-under-45')) {
       filtered = filtered.filter(r => {
-        const timeMatch = r.deliveryTime.match(/(\d+)/)
+        const { deliveryTime } = getDiningRestaurantDisplayFields(r)
+        const timeMatch = deliveryTime.match(/(\d+)/)
         return timeMatch && parseInt(timeMatch[1]) <= 45
       })
     }
     if (activeFilters.has('distance-under-1km')) {
       filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
+        const { distance } = getDiningRestaurantDisplayFields(r)
+        const distMatch = String(distance || "").match(/(\d+\.?\d*)/)
         return distMatch && parseFloat(distMatch[1]) <= 1.0
       })
     }
     if (activeFilters.has('distance-under-2km')) {
       filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
+        const { distance } = getDiningRestaurantDisplayFields(r)
+        const distMatch = String(distance || "").match(/(\d+\.?\d*)/)
         return distMatch && parseFloat(distMatch[1]) <= 2.0
       })
     }
     if (activeFilters.has('rating-35-plus')) {
-      filtered = filtered.filter(r => r.rating >= 3.5)
+      filtered = filtered.filter(r => (getDiningRestaurantDisplayFields(r).rating || 0) >= 3.5)
     }
     if (activeFilters.has('rating-4-plus')) {
-      filtered = filtered.filter(r => r.rating >= 4.0)
+      filtered = filtered.filter(r => (getDiningRestaurantDisplayFields(r).rating || 0) >= 4.0)
     }
     if (activeFilters.has('rating-45-plus')) {
-      filtered = filtered.filter(r => r.rating >= 4.5)
+      filtered = filtered.filter(r => (getDiningRestaurantDisplayFields(r).rating || 0) >= 4.5)
     }
 
     // Apply cuisine filter
     if (selectedCuisine) {
-      filtered = filtered.filter(r => r.cuisine.toLowerCase().includes(selectedCuisine.toLowerCase()))
+      filtered = filtered.filter(r => {
+        const { cuisineStr } = getDiningRestaurantDisplayFields(r)
+        return cuisineStr.toLowerCase().includes(selectedCuisine.toLowerCase())
+      })
     }
 
     // Apply sorting
     if (sortBy === 'rating-high') {
-      filtered.sort((a, b) => b.rating - a.rating)
+      filtered.sort((a, b) => (getDiningRestaurantDisplayFields(b).rating || 0) - (getDiningRestaurantDisplayFields(a).rating || 0))
     } else if (sortBy === 'rating-low') {
-      filtered.sort((a, b) => a.rating - b.rating)
+      filtered.sort((a, b) => (getDiningRestaurantDisplayFields(a).rating || 0) - (getDiningRestaurantDisplayFields(b).rating || 0))
     }
 
     return filtered
-  }, [activeFilters, selectedCuisine, sortBy])
+  }, [activeFilters, selectedCuisine, sortBy, restaurants])
 
   const handleLocationClick = useCallback(() => {
     openLocationSelector()
@@ -330,10 +342,29 @@ export default function DiningExplore50() {
 
           {/* Restaurant Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
-            {filteredRestaurants.map((restaurant, index) => {
-              // Prefer onboarding.step1.restaurantName if available (more accurate)
-              const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
-              const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
+            {restaurantsLoading ? (
+              <div className="col-span-full text-center py-10 text-gray-500">
+                Loading restaurants...
+              </div>
+            ) : filteredRestaurants.length === 0 ? (
+              <div className="col-span-full text-center py-10 text-gray-500">
+                No dining restaurants found.
+              </div>
+            ) : (
+              filteredRestaurants.map((restaurant) => {
+              const {
+                restaurantName,
+                restaurantSlug,
+                image,
+                cuisineStr,
+                deliveryTime,
+                distance,
+                rating,
+                offer,
+                featuredDish,
+                featuredPrice,
+              } = getDiningRestaurantDisplayFields(restaurant)
+
               const favorite = isFavorite(restaurantSlug)
 
               const handleToggleFavorite = (e) => {
@@ -345,35 +376,40 @@ export default function DiningExplore50() {
                   addFavorite({
                     slug: restaurantSlug,
                     name: restaurantName,
-                    cuisine: restaurant.cuisine,
-                    rating: restaurant.rating,
-                    deliveryTime: restaurant.deliveryTime,
-                    distance: restaurant.distance,
-                    image: restaurant.image
+                    cuisine: cuisineStr,
+                    rating,
+                    deliveryTime,
+                    distance,
+                    image
                   })
                 }
               }
 
               return (
-                <Link key={restaurant.id} to={`/user/restaurants/${restaurantSlug}`}>
+                <Link
+                  key={restaurant._id || restaurantSlug}
+                  to={`/user/dining/${restaurant?.diningSettings?.diningType || "dining"}/${restaurantSlug}`}
+                >
                   <Card className="overflow-hidden gap-0 cursor-pointer border-0 group bg-white shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-2xl">
                     {/* Image Section */}
                     <div className="relative h-48 sm:h-56 md:h-60 w-full overflow-hidden rounded-t-2xl">
                       <img
-                        src={restaurant.image}
+                        src={image}
                         alt={restaurantName}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         onError={(e) => {
-                          e.target.src = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"
+                          e.target.src = FALLBACK_RESTAURANT_IMAGE
                         }}
                       />
                       
                       {/* Featured Dish Badge - Top Left */}
-                      <div className="absolute top-3 left-3">
-                        <div className="bg-gray-800/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium">
-                          {restaurant.featuredDish} · ₹{restaurant.featuredPrice}
+                      {featuredDish && featuredPrice !== null && featuredPrice !== undefined && (
+                        <div className="absolute top-3 left-3">
+                          <div className="bg-gray-800/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium">
+                            {featuredDish} · ₹{featuredPrice}
+                          </div>
                         </div>
-                      </div>
+                      )}
                       
                       {/* Bookmark Icon - Top Right */}
                       <Button
@@ -394,7 +430,7 @@ export default function DiningExplore50() {
                             </p>
                             <div className="h-px bg-white/30 mb-2 w-24"></div>
                             <p className="text-white text-base sm:text-lg font-bold">
-                              {restaurant.offer}
+                              {offer}
                             </p>
                           </div>
                         </div>
@@ -411,7 +447,7 @@ export default function DiningExplore50() {
                           </h3>
                         </div>
                         <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 rounded-lg flex items-center gap-1">
-                          <span className="text-sm font-bold">{restaurant.rating}</span>
+                          <span className="text-sm font-bold">{rating}</span>
                           <Star className="h-3 w-3 fill-white text-white" />
                         </div>
                       </div>
@@ -419,23 +455,24 @@ export default function DiningExplore50() {
                       {/* Delivery Time & Distance */}
                       <div className="flex items-center gap-1 text-sm text-gray-500 mb-2">
                         <Clock className="h-4 w-4" strokeWidth={1.5} />
-                        <span className="font-medium">{restaurant.deliveryTime}</span>
+                        <span className="font-medium">{deliveryTime}</span>
                         <span className="mx-1">|</span>
-                        <span className="font-medium">{restaurant.distance}</span>
+                        <span className="font-medium">{distance}</span>
                       </div>
                       
                       {/* Offer Badge */}
-                      {restaurant.offer && (
+                      {offer && (
                         <div className="flex items-center gap-2 text-sm">
                           <BadgePercent className="h-4 w-4 text-blue-600" strokeWidth={2} />
-                          <span className="text-gray-700 font-medium">{restaurant.offer}</span>
+                          <span className="text-gray-700 font-medium">{offer}</span>
                         </div>
                       )}
                     </CardContent>
                   </Card>
                 </Link>
               )
-            })}
+            })
+            )}
           </div>
         </div>
         </div>

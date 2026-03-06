@@ -32,6 +32,7 @@ import {
   getAllOffers,
   getRestaurantAnalytics,
   getCustomerWalletReport,
+  getAdminPermissionsCatalog,
 } from "../controllers/adminController.js";
 import {
   getHotels,
@@ -253,8 +254,9 @@ import {
   getPublicFeeSettings,
 } from "../controllers/feeSettingsController.js";
 import zoneRoutes from "./zoneRoutes.js";
-import { authenticateAdmin } from "../middleware/adminAuth.js";
+import { authenticateAdmin, authorizeAdmin } from "../middleware/adminAuth.js";
 import { uploadMiddleware } from "../../../shared/utils/cloudinaryService.js";
+import { requirePermissions } from "../middleware/adminPermission.js";
 
 const router = express.Router();
 
@@ -298,11 +300,16 @@ router.post("/delivery-boy-wallet/adjustment", addWalletAdjustment);
 router.put("/delivery-boy-wallet/:id", updateWalletBalances);
 
 // Admin Management
-router.get("/admins", getAdmins);
-router.get("/admins/:id", getAdminById);
-router.post("/admins", createAdmin);
-router.put("/admins/:id", updateAdmin);
-router.delete("/admins/:id", deleteAdmin);
+router.get("/admins", authorizeAdmin("super_admin"), getAdmins);
+router.get("/admins/:id", authorizeAdmin("super_admin"), getAdminById);
+router.post("/admins", authorizeAdmin("super_admin"), createAdmin);
+router.put("/admins/:id", authorizeAdmin("super_admin"), updateAdmin);
+router.delete("/admins/:id", authorizeAdmin("super_admin"), deleteAdmin);
+router.get(
+  "/admin-permissions",
+  authorizeAdmin("super_admin"),
+  getAdminPermissionsCatalog,
+);
 
 // Profile Management
 router.get("/profile", getAdminProfile);
@@ -310,8 +317,16 @@ router.put("/profile", updateAdminProfile);
 
 // Settings Management
 router.put("/settings/change-password", changeAdminPassword);
-router.get("/commission-settings", getCommissionSettings);
-router.put("/commission-settings", updateCommissionSettings);
+router.get(
+  "/commission-settings",
+  requirePermissions("settings.commission_manage"),
+  getCommissionSettings,
+);
+router.put(
+  "/commission-settings",
+  requirePermissions("settings.commission_manage"),
+  updateCommissionSettings,
+);
 
 // User Management
 router.get("/users", getUsers);
@@ -335,27 +350,57 @@ router.put("/restaurants/:id/menu", updateRestaurantMenu);
 router.delete("/restaurants/:id", deleteRestaurant);
 
 // Hotel Management
-router.get("/hotels", getHotels);
-router.get("/hotels/requests", getHotelRequests);
-router.get("/hotels/stand-requests", getHotelStandRequests);
-router.post("/hotels/stand-requests/:id/approve", approveHotelStandRequest);
+router.get("/hotels", requirePermissions("hotels.view"), getHotels);
+router.get(
+  "/hotels/requests",
+  requirePermissions("hotels.view"),
+  getHotelRequests,
+);
+router.get(
+  "/hotels/stand-requests",
+  requirePermissions("hotels.view"),
+  getHotelStandRequests,
+);
+router.post(
+  "/hotels/stand-requests/:id/approve",
+  requirePermissions("hotels.edit"),
+  approveHotelStandRequest,
+);
 router.get("/hotels-commissions/stats", getHotelCommissionStats);
-router.get("/hotels/wallets", getHotelWalletOverview);
+router.get(
+  "/hotels/wallets",
+  requirePermissions("hotels.wallet_view"),
+  getHotelWalletOverview,
+);
 router.put(
   "/hotels/:id/wallet/cash-collected",
+  requirePermissions("hotels.wallet_update"),
   updateHotelCashCollected,
 );
 router.get(
   "/hotels/:id/wallet/earnings",
+  requirePermissions("hotels.wallet_view"),
   getHotelWalletOrderEarnings,
 );
-router.get("/hotel-withdrawal/requests", getHotelWithdrawalRequests);
-router.post("/hotel-withdrawal/:id/approve", approveHotelWithdrawalRequest);
-router.post("/hotel-withdrawal/:id/reject", rejectHotelWithdrawalRequest);
-router.post("/hotels", createHotel);
-router.get("/hotels/:id", getHotelById);
-router.put("/hotels/:id", updateHotel);
-router.delete("/hotels/:id", deleteHotel);
+router.get(
+  "/hotel-withdrawal/requests",
+  requirePermissions("hotels.withdrawal_approve"),
+  getHotelWithdrawalRequests,
+);
+router.post(
+  "/hotel-withdrawal/:id/approve",
+  requirePermissions("hotels.withdrawal_approve"),
+  approveHotelWithdrawalRequest,
+);
+router.post(
+  "/hotel-withdrawal/:id/reject",
+  requirePermissions("hotels.withdrawal_approve"),
+  rejectHotelWithdrawalRequest,
+);
+router.post("/hotels", requirePermissions("hotels.edit"), createHotel);
+router.get("/hotels/:id", requirePermissions("hotels.view"), getHotelById);
+router.put("/hotels/:id", requirePermissions("hotels.edit"), updateHotel);
+router.delete("/hotels/:id", requirePermissions("hotels.edit"), deleteHotel);
 
 // Category Management
 router.get("/categories", getCategories);
@@ -367,10 +412,26 @@ router.patch("/categories/:id/status", toggleCategoryStatus);
 router.patch("/categories/:id/priority", updateCategoryPriority);
 
 // Fee Settings Management (Delivery & Platform Fee)
-router.get("/fee-settings", getFeeSettings);
-router.post("/fee-settings", createOrUpdateFeeSettings);
-router.put("/fee-settings/:id", updateFeeSettings);
-router.get("/fee-settings/history", getFeeSettingsHistory);
+router.get(
+  "/fee-settings",
+  requirePermissions("settings.fee_manage"),
+  getFeeSettings,
+);
+router.post(
+  "/fee-settings",
+  requirePermissions("settings.fee_manage"),
+  createOrUpdateFeeSettings,
+);
+router.put(
+  "/fee-settings/:id",
+  requirePermissions("settings.fee_manage"),
+  updateFeeSettings,
+);
+router.get(
+  "/fee-settings/history",
+  requirePermissions("settings.fee_manage"),
+  getFeeSettingsHistory,
+);
 
 // Delivery Partner Management
 router.get("/delivery-partners/requests", getJoinRequests);
@@ -409,8 +470,16 @@ router.post("/earning-addon-history/:id/credit", creditEarningToWallet);
 router.patch("/earning-addon-history/:id/cancel", cancelEarningAddonHistory);
 
 // Environment Variables Management
-router.get("/env-variables", getEnvVariables);
-router.post("/env-variables", saveEnvVariables);
+router.get(
+  "/env-variables",
+  requirePermissions("settings.env_manage"),
+  getEnvVariables,
+);
+router.post(
+  "/env-variables",
+  requirePermissions("settings.env_manage"),
+  saveEnvVariables,
+);
 
 // Delivery Boy Commission Management
 router.get("/delivery-boy-commission", getCommissionRules);
@@ -516,18 +585,37 @@ router.put("/safety-emergency/:id/respond", respondToSafetyEmergency);
 router.delete("/safety-emergency/:id", deleteSafetyEmergency);
 
 // Order Management
-router.get("/orders", getOrders);
-router.get("/orders/searching-deliveryman", getSearchingDeliverymanOrders);
-router.get("/orders/ongoing", getOngoingOrders);
-router.get("/orders/transaction-report", getTransactionReport);
-router.get("/orders/restaurant-report", getRestaurantReport);
+router.get("/orders", requirePermissions("orders.view"), getOrders);
+router.get(
+  "/orders/searching-deliveryman",
+  requirePermissions("orders.view"),
+  getSearchingDeliverymanOrders,
+);
+router.get(
+  "/orders/ongoing",
+  requirePermissions("orders.view"),
+  getOngoingOrders,
+);
+router.get(
+  "/orders/transaction-report",
+  requirePermissions("menu.reports"),
+  getTransactionReport,
+);
+router.get(
+  "/orders/restaurant-report",
+  requirePermissions("menu.reports"),
+  getRestaurantReport,
+);
 
 // Order Refund - MUST be before /orders/:id to avoid route conflicts
 // Using explicit pattern /orders/refund/:orderId
 console.log(
   "🔧 [ROUTE REGISTRATION] Registering POST /orders/refund/:orderId route...",
 );
-router.post("/orders/refund/:orderId", async (req, res, next) => {
+router.post(
+  "/orders/refund/:orderId",
+  requirePermissions("orders.refund"),
+  async (req, res, next) => {
   console.log("🎯🎯🎯 REFUND ROUTE HIT! 🎯🎯🎯", {
     method: req.method,
     url: req.url,
@@ -540,12 +628,17 @@ router.post("/orders/refund/:orderId", async (req, res, next) => {
 
   // Call processRefund - it's already wrapped with asyncHandler
   return processRefund(req, res, next);
-});
+},
+);
 console.log(
   "✅ [ROUTE REGISTRATION] POST /orders/refund/:orderId route registered",
 );
 
-router.put("/orders/:orderId/approve-offline-payment", approveOfflinePayment);
+router.put(
+  "/orders/:orderId/approve-offline-payment",
+  requirePermissions("orders.approve_offline_payment"),
+  approveOfflinePayment,
+);
 
 // Refund Requests - MUST be registered before any catch-all routes
 // Register POST route FIRST (more specific) before GET route
@@ -558,7 +651,10 @@ console.log(
 );
 
 // Register the refund route handler directly
-router.post("/refund-requests/:orderId/process", async (req, res, next) => {
+router.post(
+  "/refund-requests/:orderId/process",
+  requirePermissions("orders.refund"),
+  async (req, res, next) => {
   console.log("🎯🎯🎯 REFUND-REQUESTS ROUTE HIT! 🎯🎯🎯", {
     method: req.method,
     url: req.url,
@@ -584,9 +680,14 @@ router.post("/refund-requests/:orderId/process", async (req, res, next) => {
 
   // Call processRefund - it's already wrapped with asyncHandler
   return processRefund(req, res, next);
-});
+},
+);
 
-router.get("/refund-requests", getRefundRequests);
+router.get(
+  "/refund-requests",
+  requirePermissions("orders.refund"),
+  getRefundRequests,
+);
 
 console.log(
   "✅ [ROUTE REGISTRATION] POST /refund-requests/:orderId/process route registered",
@@ -602,8 +703,12 @@ router.get("/reviews/:orderId", getReviewByOrderId);
 router.get("/reviews/restaurant/:restaurantId", getReviewsByRestaurant);
 
 // Get order by ID (must be last to avoid matching other routes)
-router.get("/orders/:id", getOrderById);
-router.post("/orders/:id/assign-delivery-partner", assignOrderToDeliveryPartner);
+router.get("/orders/:id", requirePermissions("orders.view"), getOrderById);
+router.post(
+  "/orders/:id/assign-delivery-partner",
+  requirePermissions("orders.assign_delivery"),
+  assignOrderToDeliveryPartner,
+);
 router.get("/delivery-partners/:id/wallet", getDeliveryPartnerWallet);
 
 // Business Settings Management

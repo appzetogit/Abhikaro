@@ -1185,6 +1185,45 @@ export const adminAPI = {
     return apiClient.get(API_ENDPOINTS.ADMIN.DASHBOARD_STATS, { params });
   },
 
+  // ===== Admin & permissions management =====
+
+  // Get list of admins (for Sub Admin Management)
+  getAdmins: (params = {}) => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.ADMINS, { params });
+  },
+
+  // Get single admin by ID
+  getAdminById: (id) => {
+    return apiClient.get(
+      API_ENDPOINTS.ADMIN.ADMIN_BY_ID.replace(":id", id),
+    );
+  },
+
+  // Create new admin / subadmin
+  createAdmin: (data) => {
+    return apiClient.post(API_ENDPOINTS.ADMIN.ADMINS, data);
+  },
+
+  // Update existing admin / subadmin
+  updateAdmin: (id, data) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.ADMIN_BY_ID.replace(":id", id),
+      data,
+    );
+  },
+
+  // Delete admin / subadmin
+  deleteAdmin: (id) => {
+    return apiClient.delete(
+      API_ENDPOINTS.ADMIN.ADMIN_BY_ID.replace(":id", id),
+    );
+  },
+
+  // Get catalog of available permissions
+  getAdminPermissions: () => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.ADMIN_PERMISSIONS);
+  },
+
   // Get users
   getUsers: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.ADMIN.USERS, { params });

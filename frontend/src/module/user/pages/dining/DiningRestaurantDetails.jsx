@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { restaurantAPI } from "@/lib/api"
+import { diningAPI } from "@/lib/api"
 import {
     ArrowLeft,
     MapPin,
@@ -34,8 +34,8 @@ export default function DiningRestaurantDetails() {
             if (!slug) return
             try {
                 setLoading(true)
-                // Try fetch by ID/Slug
-                const response = await restaurantAPI.getRestaurantById(slug)
+                // Dining details should be fetched from dining API by slug
+                const response = await diningAPI.getRestaurantBySlug(slug)
 
                 if (response.data && response.data.success) {
                     const apiRestaurant = response.data.data
@@ -55,11 +55,14 @@ export default function DiningRestaurantDetails() {
                 // FAILSAFE: If API by slug fails, let's try to get list and find match (temporary fix for development if slug isn't unique ID)
                 // In a real app, backend should support slug lookup reliably.
                 try {
-                    const listResp = await restaurantAPI.getRestaurants()
-                    if (listResp.data?.data?.restaurants) {
-                        const match = listResp.data.data.restaurants.find(r =>
-                            r.slug === slug ||
-                            r.name.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase()
+                    const listResp = await diningAPI.getRestaurants()
+                    const list = listResp?.data?.data || []
+                    if (Array.isArray(list)) {
+                        const match = list.find(r =>
+                            r?._id === slug ||
+                            r?.slug === slug ||
+                            (r?.name && r.name.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase()) ||
+                            (r?.onboarding?.step1?.restaurantName && r.onboarding.step1.restaurantName.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase())
                         )
                         if (match) {
                             const actualMatch = match?.restaurant || match

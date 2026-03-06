@@ -47,6 +47,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { sidebarMenuData } from "../data/sidebarMenu"
+import { hasPermission, isSuperAdmin } from "../utils/adminPermissions"
 import { getCachedSettings, loadBusinessSettings } from "@/lib/utils/businessSettings"
 
 // Icon mapping
@@ -217,16 +218,58 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
   const [expandedSections, setExpandedSections] = useState(getInitialExpandedState)
 
-  // Filter menu items based on search query
+  // Filter menu items based on search query AND permissions
   const filteredMenuData = useMemo(() => {
+    const filterByPermission = (item) => {
+      // Items marked onlySuperAdmin should be hidden for non-super-admins
+      if (item.onlySuperAdmin && !isSuperAdmin()) {
+        return false
+      }
+      // Super admin handled in hasPermission helper ("*" case)
+      if (item.permissionId && !hasPermission(item.permissionId)) {
+        return false
+      }
+      return true
+    }
+
+    const baseMenu = sidebarMenuData
+      .map((item) => {
+        if (item.type === "link") {
+          return filterByPermission(item) ? item : null
+        }
+
+        if (item.type === "section") {
+          const items = (item.items || []).map((subItem) => {
+            if (subItem.type === "link") {
+              return filterByPermission(subItem) ? subItem : null
+            }
+            if (subItem.type === "expandable") {
+              if (!filterByPermission(subItem)) return null
+              const subItems =
+                subItem.subItems
+                  ?.filter((si) => !si.permissionId || hasPermission(si.permissionId)) || []
+              if (subItems.length === 0) return null
+              return { ...subItem, subItems }
+            }
+            return subItem
+          }).filter(Boolean)
+
+          if (items.length === 0) return null
+          return { ...item, items }
+        }
+
+        return item
+      })
+      .filter(Boolean)
+
     if (!searchQuery.trim()) {
-      return sidebarMenuData
+      return baseMenu
     }
 
     const query = searchQuery.toLowerCase().trim()
     const filtered = []
 
-    sidebarMenuData.forEach((item) => {
+    baseMenu.forEach((item) => {
       if (item.type === "link") {
         if (item.label.toLowerCase().includes(query)) {
           filtered.push(item)

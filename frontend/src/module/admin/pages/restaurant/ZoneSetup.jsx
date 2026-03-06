@@ -1,16 +1,41 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { MapPin, Plus, Search, Edit, Trash2, Eye, Map } from "lucide-react"
+import { MapPin, Plus, Search, Edit, Trash2, Eye, Map, Users } from "lucide-react"
 import { adminAPI } from "@/lib/api"
+import { Switch } from "@/components/ui/switch"
+import { isSuperAdmin } from "../../utils/adminPermissions"
+import { toast } from "sonner"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 
 export default function ZoneSetup() {
   const navigate = useNavigate()
   const [zones, setZones] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [deliveryAssignmentMode, setDeliveryAssignmentMode] = useState("automatic")
+  const [modeLoading, setModeLoading] = useState(false)
+  const [modeSaving, setModeSaving] = useState(false)
+  const [canManageAssignment, setCanManageAssignment] = useState(false)
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false)
+  const [selectedZone, setSelectedZone] = useState(null)
+  const [deliveryPartners, setDeliveryPartners] = useState([])
+  const [deliveryLoading, setDeliveryLoading] = useState(false)
+  const [deliverySearch, setDeliverySearch] = useState("")
+  const [updatingPartnerId, setUpdatingPartnerId] = useState(null)
+
+  const isZoneModeOn = deliveryAssignmentMode === "manual"
 
   useEffect(() => {
     fetchZones()
+    setCanManageAssignment(isSuperAdmin())
+    fetchAssignmentMode()
   }, [])
 
   const fetchZones = async () => {
@@ -25,6 +50,47 @@ export default function ZoneSetup() {
       setZones([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchAssignmentMode = async () => {
+    try {
+      setModeLoading(true)
+      const response = await adminAPI.getBusinessSettings()
+      if (response.data?.success && response.data.data) {
+        const mode = response.data.data.deliveryAssignmentMode || "automatic"
+        setDeliveryAssignmentMode(mode)
+      }
+    } catch (error) {
+      console.error("Error fetching delivery assignment mode:", error)
+    } finally {
+      setModeLoading(false)
+    }
+  }
+
+  const handleToggleAssignmentMode = async (checked) => {
+    const newMode = checked ? "manual" : "automatic"
+    try {
+      setModeSaving(true)
+      setDeliveryAssignmentMode(newMode)
+      const response = await adminAPI.updateBusinessSettings({
+        deliveryAssignmentMode: newMode,
+      })
+      if (response.data?.success) {
+        toast.success(
+          newMode === "manual"
+            ? "Zone-based delivery enabled. Only riders assigned to a zone will get orders."
+            : "Nearest-delivery-boy mode enabled. Orders will go to nearby riders.",
+        )
+      }
+    } catch (error) {
+      console.error("Error updating delivery assignment mode:", error)
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to update delivery assignment mode",
+      )
+    } finally {
+      setModeSaving(false)
     }
   }
 
@@ -43,6 +109,121 @@ export default function ZoneSetup() {
     }
   }
 
+   const openAssignDialog = async (zone) => {
+     if (!isZoneModeOn) {
+       toast.error("Zone-based Delivery ON karo tab hi delivery boys assign kar sakte ho.")
+       return
+     }
+    setSelectedZone(zone)
+    setAssignDialogOpen(true)
+    try {
+      setDeliveryLoading(true)
+      const response = await adminAPI.getDeliveryPartners({
+        page: 1,
+        limit: 100,
+        isActive: true,
+        includeAvailability: true,
+      })
+      const list =
+        response.data?.data?.deliveryPartners ||
+        response.data?.deliveryPartners ||
+        []
+
+      const zoneId = (zone._id || zone.id || "").toString()
+
+      const enhanced = list.map((partner) => {
+        const zones =
+          partner.availability?.zones ||
+          partner.fullData?.availability?.zones ||
+          []
+        const hasZone = zones.some(
+          (z) => z && z.toString && z.toString() === zoneId,
+        )
+        return {
+          ...partner,
+          isAssignedToZone: hasZone,
+        }
+      })
+
+      setDeliveryPartners(enhanced)
+    } catch (error) {
+      console.error("Error loading delivery partners for zone:", error)
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to load delivery boys for this zone",
+      )
+      setDeliveryPartners([])
+    } finally {
+      setDeliveryLoading(false)
+    }
+  }
+
+  const closeAssignDialog = () => {
+    setAssignDialogOpen(false)
+    setSelectedZone(null)
+    setDeliveryPartners([])
+    setDeliverySearch("")
+    setUpdatingPartnerId(null)
+  }
+
+  const handleAssignPartnerToZone = async (partnerId) => {
+    if (!selectedZone) return
+    const zoneId = (selectedZone._id || selectedZone.id || "").toString()
+    try {
+      setUpdatingPartnerId(partnerId)
+      await adminAPI.updateDeliveryPartnerZone(partnerId, zoneId)
+
+      setDeliveryPartners((prev) =>
+        prev.map((p) =>
+          p._id === partnerId
+            ? {
+                ...p,
+                isAssignedToZone: true,
+              }
+            : p,
+        ),
+      )
+      toast.success("Delivery boy assigned to zone")
+
+      // Best-effort push notification to delivery boy with zone name
+      try {
+        await adminAPI.sendNotificationToDelivery({
+          deliveryId: partnerId,
+          title: "Zone Assigned",
+          body: `Aapko zone "${selectedZone.name || "Zone"}" assign kiya gaya hai.`,
+          data: {
+            type: "zone_assignment",
+            zoneId,
+            zoneName: selectedZone.name || "Zone",
+          },
+        })
+      } catch (notifyError) {
+        console.warn(
+          "Failed to send zone assignment notification:",
+          notifyError,
+        )
+      }
+    } catch (error) {
+      console.error("Error assigning delivery partner to zone:", error)
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to assign delivery boy to zone",
+      )
+    } finally {
+      setUpdatingPartnerId(null)
+    }
+  }
+
+  const filteredDeliveryPartners = deliveryPartners.filter((p) => {
+    if (!deliverySearch.trim()) return true
+    const q = deliverySearch.toLowerCase()
+    return (
+      p.name?.toLowerCase().includes(q) ||
+      p.phone?.toLowerCase().includes(q) ||
+      p.email?.toLowerCase().includes(q)
+    )
+  })
+
   const filteredZones = zones.filter(zone =>
     zone.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     zone.serviceLocation?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -58,11 +239,28 @@ export default function ZoneSetup() {
               <MapPin className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Zone Setup Restaurant</h1>
-              <p className="text-sm text-slate-600">Manage delivery zones for restaurants</p>
+              <h1 className="text-2xl font-bold text-slate-900">Service Zone Setup</h1>
+              <p className="text-sm text-slate-600">Manage service zones for user,delivery,restaurants</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {canManageAssignment && (
+              <div className="flex flex-col items-end gap-1 mr-2">
+                <div className="flex items-center gap-2 text-xs text-slate-700">
+                  <span>Zone-based Delivery</span>
+                  <Switch
+                    checked={deliveryAssignmentMode === "manual"}
+                    onCheckedChange={handleToggleAssignmentMode}
+                    disabled={modeLoading || modeSaving}
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 max-w-xs text-right">
+                   {isZoneModeOn
+                    ? "ON: Orders go only to delivery boys assigned to the restaurant’s zone."
+                    : "OFF: Orders go to the nearest available delivery boys."}
+                </p>
+              </div>
+            )}
             <button
               onClick={() => navigate("/admin/zone-setup/map")}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
@@ -172,12 +370,154 @@ export default function ZoneSetup() {
                       <span className="font-medium text-slate-900">{zone.coordinates.length}</span>
                     </div>
                   )}
+                   {canManageAssignment && (
+                    <div className="pt-3 mt-2 border-t border-slate-100 flex justify-end">
+                      <button
+                        type="button"
+                         onClick={() => openAssignDialog(zone)}
+                         disabled={!isZoneModeOn}
+                         className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                           isZoneModeOn
+                             ? "border-slate-300 text-slate-700 hover:bg-slate-50"
+                             : "border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed"
+                         }`}
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Assign Delivery Boys</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {canManageAssignment && (
+        <Dialog
+          open={assignDialogOpen}
+          onOpenChange={(open) =>
+            open ? setAssignDialogOpen(true) : closeAssignDialog()
+          }
+        >
+          <DialogContent className="max-w-3xl">
+            <DialogHeader className="space-y-1">
+              <DialogTitle className="text-lg font-semibold text-slate-900">
+                Assign Delivery Boys
+                {selectedZone ? ` – ${selectedZone.name || "Zone"}` : ""}
+              </DialogTitle>
+              <p className="text-sm text-slate-600">
+                Choose which delivery boys should receive orders for this zone
+                when zone-based delivery is enabled.
+              </p>
+            </DialogHeader>
+
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-slate-500">
+                  Total delivery boys:{" "}
+                  <span className="font-medium text-slate-700">
+                    {deliveryPartners.length}
+                  </span>
+                </div>
+                <Input
+                  placeholder="Search by name or phone..."
+                  value={deliverySearch}
+                  onChange={(e) => setDeliverySearch(e.target.value)}
+                  className="max-w-xs h-9"
+                />
+              </div>
+
+              <div className="border rounded-lg bg-white max-h-80 overflow-y-auto">
+                {deliveryLoading ? (
+                  <div className="flex items-center justify-center py-10 text-sm text-slate-600">
+                    <span className="mr-2">
+                      <div className="h-4 w-4 border-b-2 border-slate-500 rounded-full animate-spin" />
+                    </span>
+                    Loading delivery boys...
+                  </div>
+                ) : filteredDeliveryPartners.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-slate-600">
+                    No delivery boys found. Approve or create delivery partners first.
+                  </div>
+                ) : (
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-slate-50 text-left text-slate-500">
+                        <th className="py-2 px-3 font-medium">Delivery Boy</th>
+                        <th className="py-2 px-3 hidden md:table-cell font-medium">
+                          Phone
+                        </th>
+                        <th className="py-2 px-3 font-medium text-center">
+                          Assigned to this zone
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDeliveryPartners.map((partner) => (
+                        <tr key={partner._id} className="border-b last:border-0">
+                          <td className="py-2 px-3">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-slate-900">
+                                {partner.name || "N/A"}
+                              </span>
+                              <span className="text-xs text-slate-500 md:hidden">
+                                {partner.phone || partner.email || ""}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 hidden md:table-cell text-slate-700">
+                            {partner.phone || "N/A"}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAssignPartnerToZone(partner._id)
+                              }
+                              disabled={
+                                partner.isAssignedToZone ||
+                                updatingPartnerId === partner._id
+                              }
+                              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border ${
+                                partner.isAssignedToZone
+                                  ? "border-green-200 bg-green-50 text-green-700"
+                                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                              }`}
+                            >
+                              <Checkbox
+                                checked={partner.isAssignedToZone}
+                                className="w-3.5 h-3.5 border-2 border-slate-300 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600 mr-1"
+                                readOnly
+                              />
+                              {partner.isAssignedToZone
+                                ? "Assigned"
+                                : updatingPartnerId === partner._id
+                                ? "Assigning..."
+                                : "Assign"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={closeAssignDialog}
+                  className="px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

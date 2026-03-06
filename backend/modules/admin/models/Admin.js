@@ -1,86 +1,95 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import {
+  ADMIN_PERMISSION_IDS,
+  getDefaultAdminPermissions,
+} from '../../../shared/constants/adminPermissions.js';
 
-const adminSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true
+const adminSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+    },
+    password: {
+      type: String,
+      required: true,
+      select: false, // Don't return password by default
+    },
+    phone: {
+      type: String,
+      sparse: true,
+      trim: true,
+    },
+    phoneVerified: {
+      type: Boolean,
+      default: false,
+    },
+    profileImage: {
+      type: String,
+    },
+    permissions: {
+      type: [String],
+      default: function () {
+        // Use role-aware default permissions
+        return getDefaultAdminPermissions(this.role || 'admin');
+      },
+      validate: {
+        validator(value) {
+          // Allow empty / undefined and legacy permission values for backward compatibility.
+          // New writes are sanitized at controller level, so here we only ensure values are strings.
+          if (!value || !Array.isArray(value) || value.length === 0) {
+            return true;
+          }
+          return value.every((perm) => typeof perm === 'string');
+        },
+        message: 'Invalid permission value. Expected an array of strings.',
+      },
+    },
+    role: {
+      type: String,
+      enum: ['super_admin', 'admin', 'moderator'],
+      default: 'admin',
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    fcmtokenWeb: {
+      type: String,
+      default: null,
+    },
+    fcmtokenMobile: {
+      type: String,
+      default: null,
+    },
+    lastLogin: {
+      type: Date,
+    },
+    loginCount: {
+      type: Number,
+      default: 0,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
-  email: {
-    type: String,
-    required: true,
-    lowercase: true,
-    trim: true
+  {
+    timestamps: true,
   },
-  password: {
-    type: String,
-    required: true,
-    select: false // Don't return password by default
-  },
-  phone: {
-    type: String,
-    sparse: true,
-    trim: true
-  },
-  phoneVerified: {
-    type: Boolean,
-    default: false
-  },
-  profileImage: {
-    type: String
-  },
-  permissions: {
-    type: [String],
-    enum: [
-      'dashboard_view',
-      'admin_manage',
-      'restaurant_manage',
-      'delivery_manage',
-      'order_manage',
-      'user_manage',
-      'report_view',
-      'settings_manage',
-      'payment_manage',
-      'campaign_manage'
-    ],
-    default: ['dashboard_view'] // Default permission
-  },
-  role: {
-    type: String,
-    enum: ['super_admin', 'admin', 'moderator'],
-    default: 'admin'
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  fcmtokenWeb: {
-    type: String,
-    default: null
-  },
-  fcmtokenMobile: {
-    type: String,
-    default: null
-  },
-  lastLogin: {
-    type: Date
-  },
-  loginCount: {
-    type: Number,
-    default: 0
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
-}, {
-  timestamps: true
-});
+);
 
 // Indexes
 adminSchema.index({ email: 1 }, { unique: true });

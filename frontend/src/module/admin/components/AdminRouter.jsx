@@ -145,21 +145,56 @@ export default function AdminRouter() {
           }
         >
           {/* Dashboard */}
-          <Route path="/" element={<AdminHome />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute requiredPermission="menu.dashboard">
+                <AdminHome />
+              </ProtectedRoute>
+            }
+          />
 
 
-          <Route path="/point-of-sale" element={<PointOfSale />} />
+          <Route
+            path="/point-of-sale"
+            element={
+              <ProtectedRoute requiredPermission="menu.point_of_sale">
+                <PointOfSale />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Profile */}
           <Route path="/profile" element={<AdminProfile />} />
 
           {/* Settings */}
-          <Route path="/settings" element={<AdminSettings />} />
-          <Route path="/commission-management" element={<CommissionManagement />} />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute requiredPermission="menu.settings">
+                <AdminSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/commission-management"
+            element={
+              <ProtectedRoute requiredPermission="settings.commission_manage">
+                <CommissionManagement />
+              </ProtectedRoute>
+            }
+          />
 
           {/* ORDER MANAGEMENT */}
           {/* Orders */}
-          <Route path="orders/all" element={<OrdersPage statusKey="all" />} />
+          <Route
+            path="orders/all"
+            element={
+              <ProtectedRoute requiredPermission="orders.view">
+                <OrdersPage statusKey="all" />
+              </ProtectedRoute>
+            }
+          />
           <Route path="orders/scheduled" element={<OrdersPage statusKey="scheduled" />} />
           <Route path="orders/pending" element={<OrdersPage statusKey="pending" />} />
           <Route path="orders/accepted" element={<OrdersPage statusKey="accepted" />} />
@@ -196,7 +231,14 @@ export default function AdminRouter() {
           <Route path="restaurants/bulk-export" element={<RestaurantsBulkExport />} />
 
           {/* HOTEL MANAGEMENT */}
-          <Route path="hotels" element={<HotelsList />} />
+          <Route
+            path="hotels"
+            element={
+              <ProtectedRoute requiredPermission="menu.hotels">
+                <HotelsList />
+              </ProtectedRoute>
+            }
+          />
           <Route path="hotel-requests" element={<HotelRequests />} />
           <Route path="hotel-stand-requests" element={<HotelStandRequests />} />
           <Route path="hotels/commission" element={<HotelCommission />} />

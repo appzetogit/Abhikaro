@@ -15,6 +15,11 @@ import winston from "winston";
 import mongoose from "mongoose";
 import { uploadToCloudinary } from "../../../shared/utils/cloudinaryService.js";
 import { initializeCloudinary } from "../../../config/cloudinary.js";
+import {
+  ADMIN_PERMISSIONS,
+  sanitizeAdminPermissions,
+  getDefaultAdminPermissions,
+} from "../../../shared/constants/adminPermissions.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -970,7 +975,7 @@ export const getAdminById = asyncHandler(async (req, res) => {
  */
 export const createAdmin = asyncHandler(async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const { name, email, password, phone, role, permissions } = req.body;
 
     // Validation
     if (!name || !email || !password) {
@@ -991,11 +996,23 @@ export const createAdmin = asyncHandler(async (req, res) => {
       return errorResponse(res, 400, "Admin already exists with this email");
     }
 
+    // Determine role for the new admin – only allow admin or moderator via API
+    const allowedRoles = ["admin", "moderator"];
+    const newRole = role && allowedRoles.includes(role) ? role : "admin";
+
+    // Sanitize and default permissions
+    let sanitizedPermissions = sanitizeAdminPermissions(permissions);
+    if (!sanitizedPermissions || sanitizedPermissions.length === 0) {
+      sanitizedPermissions = getDefaultAdminPermissions(newRole);
+    }
+
     // Create new admin
     const adminData = {
       name,
       email: email.toLowerCase(),
       password,
+      role: newRole,
+      permissions: sanitizedPermissions,
       isActive: true,
       phoneVerified: false,
     };
@@ -1036,7 +1053,7 @@ export const createAdmin = asyncHandler(async (req, res) => {
 export const updateAdmin = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, isActive } = req.body;
+    const { name, email, phone, isActive, role, permissions } = req.body;
 
     const admin = await Admin.findById(id);
 
@@ -1044,9 +1061,20 @@ export const updateAdmin = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "Admin not found");
     }
 
+    const isSelfUpdate = id === req.user._id.toString();
+
     // Prevent updating own account's isActive status
-    if (id === req.user._id.toString() && isActive === false) {
+    if (isSelfUpdate && isActive === false) {
       return errorResponse(res, 400, "You cannot deactivate your own account");
+    }
+
+    // Prevent modifying another super admin via API
+    if (admin.role === "super_admin" && req.user.role !== "super_admin") {
+      return errorResponse(
+        res,
+        403,
+        "You cannot modify a super admin account via this endpoint",
+      );
     }
 
     // Update fields
@@ -1054,6 +1082,28 @@ export const updateAdmin = asyncHandler(async (req, res) => {
     if (email) admin.email = email.toLowerCase();
     if (phone !== undefined) admin.phone = phone;
     if (isActive !== undefined) admin.isActive = isActive;
+
+    // Allow changing role for non-super-admin targets (admin/moderator only)
+    if (role && admin.role !== "super_admin") {
+      const allowedRoles = ["admin", "moderator"];
+      if (!allowedRoles.includes(role)) {
+        return errorResponse(
+          res,
+          400,
+          "Invalid role. Only 'admin' and 'moderator' are allowed via this API",
+        );
+      }
+      admin.role = role;
+    }
+
+    // Update permissions when provided, with sanitization
+    if (permissions !== undefined) {
+      const sanitized = sanitizeAdminPermissions(permissions);
+      admin.permissions =
+        sanitized && sanitized.length > 0
+          ? sanitized
+          : getDefaultAdminPermissions(admin.role);
+    }
 
     await admin.save();
 
@@ -1095,6 +1145,15 @@ export const deleteAdmin = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "Admin not found");
     }
 
+    // Prevent deleting super admin via API (use direct DB change instead)
+    if (admin.role === "super_admin") {
+      return errorResponse(
+        res,
+        400,
+        "You cannot delete a super admin account via this endpoint",
+      );
+    }
+
     await Admin.deleteOne({ _id: id });
 
     logger.info(`Admin deleted: ${id}`, { deletedBy: req.user._id });
@@ -1105,6 +1164,22 @@ export const deleteAdmin = asyncHandler(async (req, res) => {
     return errorResponse(res, 500, "Failed to delete admin");
   }
 });
+
+/**
+ * Get catalog of available admin permissions
+ * GET /api/admin/admin-permissions
+ */
+export const getAdminPermissionsCatalog = asyncHandler(async (req, res) => {
+  try {
+    return successResponse(res, 200, "Admin permissions retrieved successfully", {
+      permissions: ADMIN_PERMISSIONS,
+    });
+  } catch (error) {
+    logger.error(`Error fetching admin permissions: ${error.message}`);
+    return errorResponse(res, 500, "Failed to fetch admin permissions");
+  }
+});
+
 
 /**
  * Get Current Admin Profile

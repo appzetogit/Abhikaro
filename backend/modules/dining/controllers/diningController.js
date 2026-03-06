@@ -44,17 +44,53 @@ export const getRestaurants = async (req, res) => {
   }
 };
 
-// Get single restaurant by slug
+// Get single restaurant by slug (also supports _id and name-based slug fallback)
 export const getRestaurantBySlug = async (req, res) => {
   try {
-    const restaurant = await DiningRestaurant.findOne({
-      slug: req.params.slug,
-    });
+    const slugParam = req.params.slug;
+    let actualRestaurant = null;
 
-    // If not found in GamingRestaurant, check regular Restaurant
-    let actualRestaurant = restaurant;
+    // 1. Try finding by slug in DiningRestaurant
+    actualRestaurant = await DiningRestaurant.findOne({ slug: slugParam });
+
+    // 2. Try finding by slug in Restaurant
     if (!actualRestaurant) {
-      actualRestaurant = await Restaurant.findOne({ slug: req.params.slug });
+      actualRestaurant = await Restaurant.findOne({ slug: slugParam })
+        .select('-password -refreshToken');
+    }
+
+    // 3. Try finding by _id (if slugParam looks like a valid ObjectId)
+    if (!actualRestaurant && slugParam.match(/^[0-9a-fA-F]{24}$/)) {
+      actualRestaurant = await Restaurant.findById(slugParam)
+        .select('-password -refreshToken');
+      if (!actualRestaurant) {
+        actualRestaurant = await DiningRestaurant.findById(slugParam);
+      }
+    }
+
+    // 4. Fallback: Try matching by name-derived slug
+    //    (handles case where restaurant has no slug field in DB but frontend generated one from name)
+    if (!actualRestaurant) {
+      const allDiningRestaurants = await Restaurant.find({
+        isActive: true,
+        'diningSettings.isEnabled': true
+      }).select('-password -refreshToken').lean();
+
+      actualRestaurant = allDiningRestaurants.find((r) => {
+        const name = r?.onboarding?.step1?.restaurantName || r?.name || '';
+        const generatedSlug = name.toLowerCase().replace(/\s+/g, '-');
+        return generatedSlug === slugParam;
+      });
+
+      // Also check DiningRestaurant collection by name
+      if (!actualRestaurant) {
+        const allDining = await DiningRestaurant.find({}).lean();
+        actualRestaurant = allDining.find((r) => {
+          const name = r?.name || '';
+          const generatedSlug = name.toLowerCase().replace(/\s+/g, '-');
+          return generatedSlug === slugParam;
+        });
+      }
     }
 
     if (!actualRestaurant) {

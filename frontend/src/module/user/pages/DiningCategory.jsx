@@ -218,7 +218,7 @@ export default function DiningCategory() {
               {filteredRestaurants.map((restaurant, index) => {
                 // Prefer onboarding.step1.restaurantName if available (more accurate)
                 const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
-                const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
+                const restaurantSlug = restaurant.slug || restaurant._id || restaurantName.toLowerCase().replace(/\s+/g, "-")
                 const favorite = isFavorite(restaurantSlug)
 
                 const handleToggleFavorite = (e) => {
