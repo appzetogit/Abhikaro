@@ -168,6 +168,10 @@ export default function ZoneSetup() {
 
   const handleAssignPartnerToZone = async (partnerId) => {
     if (!selectedZone) return
+    // Prevent double-clicks: if already updating this partner, ignore
+    if (updatingPartnerId === partnerId) {
+      return
+    }
     const zoneId = (selectedZone._id || selectedZone.id || "").toString()
     try {
       setUpdatingPartnerId(partnerId)

@@ -155,6 +155,11 @@ export default function DeliverymanList() {
       return
     }
 
+    // Prevent double-clicks: if already assigning, ignore
+    if (assigningZone) {
+      return
+    }
+
     try {
       setAssigningZone(true)
       // Update delivery partner with zone

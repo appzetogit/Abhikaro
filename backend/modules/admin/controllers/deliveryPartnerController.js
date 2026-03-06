@@ -15,6 +15,44 @@ const logger = winston.createLogger({
   ]
 });
 
+// In-memory cache to prevent duplicate zone assignment notifications
+// Key: `deliveryId_zoneId`, Value: timestamp when notification was sent
+const recentZoneNotifications = new Map();
+const NOTIFICATION_COOLDOWN_MS = 10000; // 10 seconds cooldown
+
+/**
+ * Check if a zone assignment notification was recently sent
+ * @param {string} deliveryId - Delivery partner ID
+ * @param {string} zoneId - Zone ID
+ * @returns {boolean} - True if notification was sent recently
+ */
+function wasNotificationSentRecently(deliveryId, zoneId) {
+  const key = `${deliveryId}_${zoneId}`;
+  const lastSent = recentZoneNotifications.get(key);
+  
+  if (!lastSent) {
+    return false;
+  }
+  
+  const timeSinceLastSent = Date.now() - lastSent;
+  return timeSinceLastSent < NOTIFICATION_COOLDOWN_MS;
+}
+
+/**
+ * Mark that a zone assignment notification was sent
+ * @param {string} deliveryId - Delivery partner ID
+ * @param {string} zoneId - Zone ID
+ */
+function markNotificationSent(deliveryId, zoneId) {
+  const key = `${deliveryId}_${zoneId}`;
+  recentZoneNotifications.set(key, Date.now());
+  
+  // Clean up old entries after cooldown period (prevent memory leak)
+  setTimeout(() => {
+    recentZoneNotifications.delete(key);
+  }, NOTIFICATION_COOLDOWN_MS + 1000);
+}
+
 /**
  * Get Delivery Partner Join Requests
  * GET /api/admin/delivery-partners/requests
@@ -725,9 +763,24 @@ export const updateDeliveryPartnerZone = asyncHandler(async (req, res) => {
     if (assignedZone) {
       try {
         const finalZoneId = assignedZone._id?.toString() || zoneId?.toString();
-        const notificationTag = `zone_assignment_${delivery._id.toString()}_${finalZoneId}`;
+        const deliveryIdStr = delivery._id.toString();
+        
+        // Check if we already sent a notification for this zone assignment recently
+        if (wasNotificationSentRecently(deliveryIdStr, finalZoneId)) {
+          logger.info(`Skipping duplicate zone assignment notification (cooldown): ${deliveryIdStr} -> ${finalZoneId}`);
+          return successResponse(res, 200, 'Delivery partner zone updated successfully', {
+            delivery: {
+              _id: deliveryIdStr,
+              name: delivery.name,
+              zoneId: zoneId,
+              zones: delivery.availability?.zones || []
+            }
+          });
+        }
 
-        await notifyDeliveryFromAdmin(delivery._id.toString(), {
+        const notificationTag = `zone_assignment_${deliveryIdStr}_${finalZoneId}`;
+
+        await notifyDeliveryFromAdmin(deliveryIdStr, {
           title: 'Zone Assigned',
           body: `Aapko zone "${assignedZone.name || assignedZone.zoneName || 'Zone'}" assign kiya gaya hai.`,
           data: {
@@ -737,6 +790,11 @@ export const updateDeliveryPartnerZone = asyncHandler(async (req, res) => {
             tag: notificationTag,
           },
         });
+
+        // Mark that we sent this notification
+        markNotificationSent(deliveryIdStr, finalZoneId);
+        
+        logger.info(`Zone assignment notification sent: ${deliveryIdStr} -> ${finalZoneId}`);
       } catch (notifyError) {
         logger.warn('Failed to send zone assignment notification:', {
           error: notifyError.message,
