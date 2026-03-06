@@ -668,13 +668,15 @@ export const updateDeliveryPartnerZone = asyncHandler(async (req, res) => {
     // Validate zoneId if provided
     if (zoneId) {
       // Normalize existing zones to string IDs for comparison
-      const existingZoneIds = (delivery.availability?.zones || []).map(z =>
-        z?.toString ? z.toString() : String(z)
+      const existingZoneIds = (delivery.availability?.zones || []).map((z) =>
+        z?.toString ? z.toString() : String(z),
       );
       const targetZoneId = zoneId.toString();
 
+      // If there are no existing zones OR the only existing zone is different,
+      // then we should update the zone and send notification.
       // If the delivery partner is already assigned ONLY to this same zone,
-      // avoid sending duplicate notification on repeated calls
+      // avoid sending duplicate notification on repeated calls.
       const isAlreadyAssignedToSameZone =
         existingZoneIds.length === 1 && existingZoneIds[0] === targetZoneId;
 
@@ -722,20 +724,24 @@ export const updateDeliveryPartnerZone = asyncHandler(async (req, res) => {
     // Best-effort push notification to delivery boy with zone name
     if (assignedZone) {
       try {
+        const finalZoneId = assignedZone._id?.toString() || zoneId?.toString();
+        const notificationTag = `zone_assignment_${delivery._id.toString()}_${finalZoneId}`;
+
         await notifyDeliveryFromAdmin(delivery._id.toString(), {
           title: 'Zone Assigned',
           body: `Aapko zone "${assignedZone.name || assignedZone.zoneName || 'Zone'}" assign kiya gaya hai.`,
           data: {
             type: 'zone_assignment',
-            zoneId: assignedZone._id?.toString() || zoneId,
-            zoneName: assignedZone.name || assignedZone.zoneName || 'Zone'
-          }
+            zoneId: finalZoneId,
+            zoneName: assignedZone.name || assignedZone.zoneName || 'Zone',
+            tag: notificationTag,
+          },
         });
       } catch (notifyError) {
         logger.warn('Failed to send zone assignment notification:', {
           error: notifyError.message,
           deliveryId: delivery._id.toString(),
-          zoneId: assignedZone._id?.toString() || zoneId
+          zoneId: assignedZone._id?.toString() || zoneId,
         });
       }
     }
