@@ -3692,7 +3692,7 @@ export default function DeliveryHome() {
 
       // Upload to Cloudinary via backend
       const uploadResponse = await uploadAPI.uploadMedia(file, {
-        folder: 'appzeto/delivery/bills'
+        folder: 'delivery/bills'
       })
 
       if (uploadResponse?.data?.success && uploadResponse?.data?.data) {

@@ -389,7 +389,7 @@ export const approveWithdrawalRequest = asyncHandler(async (req, res) => {
       // Check if it's a valid email (not the dummy one) and send
       if (
         recipientEmail &&
-        !recipientEmail.includes("@restaurant.appzeto.com")
+        !recipientEmail.includes("@restaurant.local")
       ) {
         emailService
           .sendWithdrawalStatusEmail(recipientEmail, {
@@ -534,7 +534,7 @@ export const rejectWithdrawalRequest = asyncHandler(async (req, res) => {
 
       if (
         recipientEmail &&
-        !recipientEmail.includes("@restaurant.appzeto.com")
+        !recipientEmail.includes("@restaurant.local")
       ) {
         emailService
           .sendWithdrawalStatusEmail(recipientEmail, {

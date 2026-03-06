@@ -120,9 +120,9 @@ class EmailService {
         await import("../../admin/models/BusinessSettings.js")
       ).default;
       const settings = await BusinessSettings.getSettings();
-      return settings?.companyName || "Appzeto Food";
+      return settings?.companyName || "Food Delivery";
     } catch (error) {
-      return "Appzeto Food";
+      return "Food Delivery";
     }
   }
 
@@ -141,7 +141,7 @@ class EmailService {
         process.env.SMTP_FROM ||
         smtpCreds.user ||
         process.env.SMTP_USER ||
-        "noreply@appzetofood.com";
+        "noreply@fooddelivery.com";
       const companyName = await this.getCompanyName();
       const fromName = process.env.SMTP_FROM_NAME || companyName;
 

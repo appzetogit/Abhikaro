@@ -46,7 +46,7 @@ export default function PrivacyPolicy() {
     },
     {
       title: "10. Contact Us",
-      content: "If you have any questions about this Privacy Policy, please contact us at privacy@appzetofood.com"
+      content: "If you have any questions about this Privacy Policy, please contact us at privacy@fooddelivery.com"
     }
   ]
 

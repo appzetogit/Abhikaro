@@ -4,8 +4,9 @@ import AuthRedirect from "@/components/AuthRedirect"
 import NetworkStatusBanner from "@/components/NetworkStatusBanner"
 import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
 
-import { Suspense, lazy } from "react"
+import { Suspense, lazy, useEffect } from "react"
 import Loader from "@/components/Loader"
+import { restoreUserSession } from "@/lib/utils/auth.js"
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@/module/user/components/UserRouter"))
@@ -141,6 +142,12 @@ function UserPathRedirect() {
 }
 
 export default function App() {
+  useEffect(() => {
+    // On initial app mount, try to restore user session using refresh token cookie.
+    // This keeps users logged in across app/WEBVIEW restarts on foods.abhikaro.in.
+    restoreUserSession().catch(() => {});
+  }, []);
+
   return (
     <Suspense fallback={<Loader />}>
       <NetworkStatusProvider>

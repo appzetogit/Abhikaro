@@ -1,7 +1,7 @@
 {
-  "name": "appzeto-food-backend",
+  "name": "food-backend",
   "version": "1.0.0",
-  "description": "Backend API for Appzeto Food Delivery Platform",
+  "description": "Backend API for Food Delivery Platform",
   "main": "server.js",
   "type": "module",
   "scripts": {

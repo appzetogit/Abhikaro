@@ -128,7 +128,7 @@ export default function HotelProfile() {
     try {
       // Upload to Cloudinary via backend Multer with proper folder structure
       const result = await uploadToCloudinary(file, {
-        folder: `appzeto/hotel-profiles/${hotel?.hotelId || hotel?._id || 'temp'}`,
+        folder: `hotel-profiles/${hotel?.hotelId || hotel?._id || 'temp'}`,
       })
       setProfileImage(result)
     } catch (error) {
@@ -151,7 +151,7 @@ export default function HotelProfile() {
     try {
       // Upload to Cloudinary via backend Multer with proper folder structure
       const result = await uploadToCloudinary(file, {
-        folder: `appzeto/hotel-kyc-documents/${hotel?.hotelId || hotel?._id || 'temp'}`,
+        folder: `hotel-kyc-documents/${hotel?.hotelId || hotel?._id || 'temp'}`,
       })
       
       // Ensure result has proper structure with url and publicId

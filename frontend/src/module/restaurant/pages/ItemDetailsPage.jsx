@@ -881,14 +881,14 @@ export default function ItemDetailsPage() {
                   base64Length: cleanBase64.length,
                   mimeType: base64Data.mimeType || 'image/jpeg',
                   fileName: base64Data.fileName || `image_${Date.now()}.jpg`,
-                  folder: 'appzeto/restaurant/menu-items'
+                  folder: 'restaurant/menu-items'
                 })
                 
                 const uploadResponse = await uploadAPI.uploadBase64(
                   cleanBase64, // Send clean base64 without data URL prefix
                   base64Data.mimeType || 'image/jpeg',
                   base64Data.fileName || `image_${Date.now()}.jpg`,
-                  { folder: 'appzeto/restaurant/menu-items' }
+                  { folder: 'restaurant/menu-items' }
                 )
                 
                 console.log(`   📥 Upload API Response Received:`)
@@ -956,11 +956,11 @@ export default function ItemDetailsPage() {
                 fileName: file.name,
                 fileSize: file.size,
                 fileType: file.type,
-                folder: 'appzeto/restaurant/menu-items'
+                folder: 'restaurant/menu-items'
               })
               
               const uploadResponse = await uploadAPI.uploadMedia(file, {
-                folder: 'appzeto/restaurant/menu-items'
+                folder: 'restaurant/menu-items'
               })
               
               console.log(`   📥 Upload API Response Received:`)

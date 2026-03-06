@@ -21,7 +21,7 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
       200,
       "Business settings retrieved successfully",
       {
-        companyName: settings?.companyName || "Appzeto Food",
+        companyName: settings?.companyName || "Food Delivery",
         logo: settings?.logo || { url: "", publicId: "" },
         favicon: settings?.favicon || { url: "", publicId: "" },
       },
@@ -34,7 +34,7 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
       200,
       "Business settings retrieved successfully",
       {
-        companyName: "Appzeto Food",
+        companyName: "Food Delivery",
         logo: { url: "", publicId: "" },
         favicon: { url: "", publicId: "" },
       },
@@ -238,7 +238,7 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
 
         // Upload new logo
         const logoResult = await uploadToCloudinary(logoFile.buffer, {
-          folder: "appzeto/business/logo",
+          folder: "business/logo",
           resource_type: "image",
           transformation: [
             { width: 500, height: 500, crop: "limit" },
@@ -298,7 +298,7 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
 
         // Upload new favicon
         const faviconResult = await uploadToCloudinary(faviconFile.buffer, {
-          folder: "appzeto/business/favicon",
+          folder: "business/favicon",
           resource_type: "image",
           transformation: [
             { width: 64, height: 64, crop: "limit" },

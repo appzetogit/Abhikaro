@@ -160,6 +160,65 @@ export function clearAuthData() {
 }
 
 /**
+ * Try to restore user session using refresh token cookie.
+ * - If access token already exists for user module, does nothing.
+ * - If not, calls /auth/refresh-token (cookie-based) and stores new token.
+ * - Intended to be called once on app startup (e.g. in App.jsx).
+ *
+ * This keeps users logged in across app restarts as long as the refresh
+ * token cookie is valid, even if the app process or WebView is killed.
+ *
+ * @returns {Promise<boolean>} true if session was restored, false otherwise
+ */
+export async function restoreUserSession() {
+  try {
+    // If user already has an access token, don't do anything.
+    const existingToken = getModuleToken('user');
+    if (existingToken) {
+      return false;
+    }
+
+    // Lazy-load API client to avoid circular deps
+    const { default: apiClient } = await import('../api/axios.js');
+    const { API_ENDPOINTS } = await import('../api/config.js');
+
+    // Call refresh-token endpoint; refresh token is sent via httpOnly cookie.
+    const response = await apiClient.post(
+      API_ENDPOINTS.AUTH.REFRESH_TOKEN,
+      {},
+      {
+        withCredentials: true,
+      },
+    );
+
+    const data = response?.data?.data || response?.data || {};
+    const accessToken = data.accessToken;
+    const user = data.user || null;
+
+    if (!accessToken) {
+      return false;
+    }
+
+    // Persist new access token so that subsequent requests are authenticated.
+    setAuthData('user', accessToken, user, { persistent: true });
+
+    // Notify listeners that auth has changed so UI can update.
+    try {
+      window.dispatchEvent(new Event('userAuthChanged'));
+    } catch (_) {
+      // Ignore if window is not available (e.g. SSR, tests)
+    }
+
+    return true;
+  } catch (error) {
+    // If refresh fails (e.g. no cookie, expired token), just treat as logged out.
+    // Do not throw; app will naturally show login screen where required.
+    console.warn('restoreUserSession failed:', error?.message || error);
+    return false;
+  }
+}
+
+/**
  * Set authentication data for a specific module
  * @param {string} module - Module name (admin, restaurant, delivery, user)
  * @param {string} token - Access token

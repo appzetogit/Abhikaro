@@ -162,7 +162,7 @@ export const createCategory = asyncHandler(async (req, res) => {
     // Handle image upload if file is provided (priority: file > URL string)
     if (req.file) {
       try {
-        const folder = 'appzeto/admin/categories';
+        const folder = 'admin/categories';
         const result = await uploadToCloudinary(req.file.buffer, {
           folder,
           resource_type: 'image',
@@ -280,7 +280,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
     
     if (req.file) {
       try {
-        const folder = 'appzeto/admin/categories';
+        const folder = 'admin/categories';
         const result = await uploadToCloudinary(req.file.buffer, {
           folder,
           resource_type: 'image',

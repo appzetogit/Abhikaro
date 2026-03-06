@@ -191,7 +191,7 @@ export default function DeliverySignIn() {
     <div className="max-h-screen h-screen bg-white flex flex-col">
       {/* Top Section - Logo and Badge */}
       <div className="flex flex-col items-center pt-8 pb-6 px-6">
-        {/* Appzeto Logo */}
+        {/* Logo */}
         <div>
           <h1 className="text-3xl text-black font-extrabold italic lowercase tracking-tight">
             {companyName.toLowerCase()}

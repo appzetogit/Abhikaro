@@ -401,10 +401,6 @@ app.use(helmet({
 // CORS configuration - allow multiple origins
 const allowedOrigins = [
   process.env.CORS_ORIGIN,
-  'https://foods.appzeto.com',
-  'http://foods.appzeto.com',
-  'https://foozeto.appzeto.com',
-  'http://foozeto.appzeto.com',
   'https://foods.abhikaro.in',
   'http://foods.abhikaro.in',
   'http://localhost:3000',

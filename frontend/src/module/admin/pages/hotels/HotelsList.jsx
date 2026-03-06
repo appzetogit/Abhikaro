@@ -135,7 +135,7 @@ export default function HotelsList() {
     try {
       // Upload to Cloudinary via backend
       const result = await uploadToCloudinary(file, {
-        folder: `appzeto/hotel-kyc-documents/${editDialog.hotelId || editDialog._id}`,
+        folder: `hotel-kyc-documents/${editDialog.hotelId || editDialog._id}`,
       })
 
       const documentData = {
@@ -476,7 +476,7 @@ export default function HotelsList() {
       
       // Upload to Cloudinary with hotel documents folder
       const result = await uploadToCloudinary(file, { 
-        folder: "appzeto/hotel-documents" 
+        folder: "hotel-documents" 
       })
       
       console.log(`✅ Upload result for ${type}:`, result)

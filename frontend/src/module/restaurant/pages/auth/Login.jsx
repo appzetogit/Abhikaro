@@ -407,7 +407,7 @@ export default function RestaurantLogin() {
     <div className="max-h-screen h-screen bg-white flex flex-col">
       {/* Top Section - Logo and Badge */}
       <div className="flex flex-col items-center pt-8 pb-8 px-6">
-        {/* Appzeto Logo */}
+        {/* Logo */}
         <div>
           <h1
             className="text-3xl italic md:text-4xl tracking-wide font-extrabold text-black"

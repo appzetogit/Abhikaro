@@ -402,7 +402,7 @@ export const upsertOnboarding = async (req, res) => {
         // 1. Send welcome email to Restaurant Owner
         if (
           completeRestaurant.ownerEmail &&
-          !completeRestaurant.ownerEmail.includes("@restaurant.appzeto.com")
+          !completeRestaurant.ownerEmail.includes("@restaurant.local")
         ) {
           emailService
             .sendRestaurantWelcome(

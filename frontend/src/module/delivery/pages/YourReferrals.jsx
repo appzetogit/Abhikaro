@@ -4,7 +4,7 @@ import { motion } from "framer-motion"
 import { ArrowLeft, Headphones, ArrowRight, Phone } from "lucide-react"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
 
-const STORAGE_KEY = "appzeto_food_referrals"
+const STORAGE_KEY = "food_referrals"
 
 export default function YourReferrals() {
   const navigate = useNavigate()

@@ -168,7 +168,7 @@ export default function PrivacyPolicyPage() {
                 If you have any questions about this Privacy Policy, please contact us at:
               </p>
               <p className="mt-2">
-                <strong>Email:</strong> privacy@appzetofood.com<br />
+                <strong>Email:</strong> privacy@fooddelivery.com<br />
                 <strong>Phone:</strong> +1 (555) 123-4567<br />
                 <strong>Address:</strong> 123 Food Street, City, State, ZIP Code
               </p>

@@ -42,7 +42,7 @@ async function debugCloudinary() {
     const buffer = Buffer.from("Test file content");
 
     const options = {
-      folder: "appzeto/business/logo",
+      folder: "business/logo",
       resource_type: "image",
       transformation: [
         { width: 500, height: 500, crop: "limit" },

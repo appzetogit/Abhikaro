@@ -190,7 +190,7 @@ export function Example6_PageHeader() {
       <div className="max-w-7xl mx-auto px-4 py-3">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <div className="text-xl font-bold">AppzetoFood</div>
+          <div className="text-xl font-bold">Food Delivery</div>
           
           {/* Location */}
           <div className="flex items-center gap-2">

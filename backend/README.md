@@ -1,6 +1,6 @@
-# Appzeto Food Backend API
+# Food Delivery Backend API
 
-Backend API for Appzeto Food Delivery Platform built with Node.js, Express, and MongoDB.
+Backend API for Food Delivery Platform built with Node.js, Express, and MongoDB.
 
 ## Features
 

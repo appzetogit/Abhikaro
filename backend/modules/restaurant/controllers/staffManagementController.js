@@ -44,7 +44,7 @@ export const addStaff = asyncHandler(async (req, res) => {
     if (req.file) {
       try {
         const uploadResult = await uploadToCloudinary(req.file.buffer, {
-          folder: `appzeto/restaurant/staff/${restaurantId}`,
+          folder: `restaurant/staff/${restaurantId}`,
           resource_type: 'image',
           transformation: [
             { width: 400, height: 400, crop: 'fill', gravity: 'face' }

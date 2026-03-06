@@ -399,7 +399,7 @@ restaurantSchema.pre("save", async function (next) {
 
   // Set default ownerEmail if not set and phone exists
   if (!this.ownerEmail && this.phone && !this.email) {
-    this.ownerEmail = `${this.phone.replace(/\D/g, "")}@restaurant.appzeto.com`;
+    this.ownerEmail = `${this.phone.replace(/\D/g, "")}@restaurant.local`;
   }
 
   // Set ownerEmail from email if email exists and ownerEmail not set

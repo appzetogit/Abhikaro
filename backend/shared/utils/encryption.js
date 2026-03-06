@@ -30,7 +30,7 @@ const getEncryptionKey = () => {
     return crypto.scryptSync(key, 'salt', 32);
   }
   // Fallback: generate a key from a default string (CHANGE IN PRODUCTION!)
-  return crypto.scryptSync('appzeto-food-encryption-key-change-in-production-2024', 'salt', 32);
+  return crypto.scryptSync('food-delivery-encryption-key-change-in-production-2024', 'salt', 32);
 };
 
 const ENCRYPTION_KEY = getEncryptionKey();

@@ -87,7 +87,7 @@ export async function runConnectionTests() {
   } else {
     console.error('❌ Some connection tests failed');
     console.error('💡 Make sure backend server is running:');
-    console.error('   cd appzetofood/backend && npm run dev');
+    console.error('   cd backend && npm run dev');
     console.error('💡 Backend should be running on:', BACKEND_URL);
   }
   
@@ -103,7 +103,7 @@ export function displayConnectionStatus(results) {
       type: 'error',
       title: 'Backend Connection Failed',
       message: `Cannot connect to backend server at ${BACKEND_URL}`,
-      action: 'Start backend server: cd appzetofood/backend && npm run dev'
+      action: 'Start backend server: cd backend && npm run dev'
     };
   }
   

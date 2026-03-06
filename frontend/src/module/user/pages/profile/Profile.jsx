@@ -293,7 +293,7 @@ export default function Profile() {
           </CardContent>
         </Card>
 
-        {/* Appzeto Money and Coupons - Side by Side */}
+        {/* Money and Coupons - Side by Side */}
         <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-5 mt-3 mb-3">
           <Link to="/user/wallet" className="h-full">
             <motion.div

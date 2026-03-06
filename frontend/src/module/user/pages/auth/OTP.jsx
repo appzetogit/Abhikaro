@@ -164,7 +164,9 @@ export default function OTP() {
       if (!accessToken || !user) throw new Error("Invalid response from server")
 
       sessionStorage.removeItem("userAuthData")
-      setUserAuthData("user", accessToken, user, { persistent: !!authData.rememberMe })
+      // Always persist user auth in localStorage so session survives app restarts,
+      // independent of the 'Remember me' checkbox
+      setUserAuthData("user", accessToken, user, { persistent: true })
       window.dispatchEvent(new Event("userAuthChanged"))
 
       // Register FCM token for push notifications (non-blocking)
@@ -212,7 +214,9 @@ export default function OTP() {
       if (!accessToken || !user) throw new Error("Invalid response from server")
 
       sessionStorage.removeItem("userAuthData")
-      setUserAuthData("user", accessToken, user, { persistent: !!authData.rememberMe })
+      // Always persist user auth in localStorage so session survives app restarts,
+      // independent of the 'Remember me' checkbox
+      setUserAuthData("user", accessToken, user, { persistent: true })
       window.dispatchEvent(new Event("userAuthChanged"))
 
       // Register FCM token for push notifications (non-blocking)

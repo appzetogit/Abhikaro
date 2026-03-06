@@ -16,7 +16,7 @@ export const uploadSingleMedia = async (req, res) => {
       return errorResponse(res, 400, 'File buffer is empty or invalid');
     }
 
-    const folder = req.body.folder || 'appzeto/uploads';
+    const folder = req.body.folder || 'uploads';
 
     console.log('📤 Uploading file to Cloudinary:', {
       fileName: req.file.originalname,
@@ -97,7 +97,7 @@ export const uploadBase64Media = async (req, res) => {
       return errorResponse(res, 400, 'Base64 string is empty or invalid');
     }
 
-    const uploadFolder = folder || 'appzeto/uploads';
+    const uploadFolder = folder || 'uploads';
     const fileMimeType = mimeType || 'image/jpeg';
     const fileOriginalName = fileName || `image_${Date.now()}.jpg`;
 

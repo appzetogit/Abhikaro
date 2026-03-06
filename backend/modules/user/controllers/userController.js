@@ -151,7 +151,7 @@ export const uploadProfileImage = asyncHandler(async (req, res) => {
     }
 
     // Upload to Cloudinary
-    const folder = "appzeto/user-profiles";
+    const folder = "user-profiles";
     const result = await uploadToCloudinary(req.file.buffer, {
       folder,
       resource_type: "image",

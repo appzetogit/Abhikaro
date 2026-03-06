@@ -55,7 +55,7 @@ const aboutSchema = new mongoose.Schema(
     appName: {
       type: String,
       required: true,
-      default: 'Appzeto Food',
+      default: 'Food Delivery',
       trim: true
     },
     version: {

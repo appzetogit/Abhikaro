@@ -169,7 +169,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         restaurantData.ownerPhone = normalizedPhone;
         // For phone signup, set ownerEmail to empty string or phone-based email
         restaurantData.ownerEmail =
-          email || `${normalizedPhone}@restaurant.appzeto.com`;
+          email || `${normalizedPhone}@restaurant.local`;
         // CRITICAL: Do NOT set email field for phone signups to avoid null duplicate key error
         // Email field should be completely omitted, not set to null or undefined
       }
@@ -463,7 +463,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
           restaurantData.ownerPhone = normalizedPhone;
           // For phone signup, set ownerEmail to empty string or phone-based email
           restaurantData.ownerEmail =
-            email || `${normalizedPhone}@restaurant.appzeto.com`;
+            email || `${normalizedPhone}@restaurant.local`;
           // Explicitly don't set email field for phone signups to avoid null duplicate key error
         }
         if (email) {

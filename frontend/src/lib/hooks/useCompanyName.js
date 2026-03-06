@@ -3,13 +3,13 @@ import { loadBusinessSettings, getCachedSettings, getCompanyName } from '../util
 
 /**
  * Custom hook to get company name from business settings
- * @returns {string} Company name with fallback to "Appzeto Food"
+ * @returns {string} Company name with fallback to "Food Delivery"
  */
 export const useCompanyName = () => {
   const [companyName, setCompanyName] = useState(() => {
     // Initialize with cached value if available
     const cached = getCachedSettings();
-    return cached?.companyName || 'Appzeto Food';
+    return cached?.companyName || 'Food Delivery';
   });
 
   useEffect(() => {

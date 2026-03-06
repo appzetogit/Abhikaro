@@ -727,7 +727,7 @@ export default function RestaurantOnboarding() {
         // Upload menu images if they are File objects
         for (const file of step2.menuImages.filter((f) => f instanceof File)) {
           try {
-            const uploaded = await handleUpload(file, "appzeto/restaurant/menu")
+            const uploaded = await handleUpload(file, "restaurant/menu")
             // Verify upload was successful and has valid URL
             if (!uploaded || !uploaded.url) {
               throw new Error(`Failed to upload menu image: ${file.name}`)
@@ -751,7 +751,7 @@ export default function RestaurantOnboarding() {
         let profileUpload = null
         if (step2.profileImage instanceof File) {
           try {
-            profileUpload = await handleUpload(step2.profileImage, "appzeto/restaurant/profile")
+            profileUpload = await handleUpload(step2.profileImage, "restaurant/profile")
             // Verify upload was successful and has valid URL
             if (!profileUpload || !profileUpload.url) {
               throw new Error('Failed to upload profile image')
@@ -820,7 +820,7 @@ export default function RestaurantOnboarding() {
         let panImageUpload = null
         if (step3.panImage instanceof File) {
           try {
-            panImageUpload = await handleUpload(step3.panImage, "appzeto/restaurant/pan")
+            panImageUpload = await handleUpload(step3.panImage, "restaurant/pan")
             // Verify upload was successful and has valid URL
             if (!panImageUpload || !panImageUpload.url) {
               throw new Error('Failed to upload PAN image')
@@ -847,7 +847,7 @@ export default function RestaurantOnboarding() {
         if (step3.gstRegistered) {
           if (step3.gstImage instanceof File) {
             try {
-              gstImageUpload = await handleUpload(step3.gstImage, "appzeto/restaurant/gst")
+              gstImageUpload = await handleUpload(step3.gstImage, "restaurant/gst")
               // Verify upload was successful and has valid URL
               if (!gstImageUpload || !gstImageUpload.url) {
                 throw new Error('Failed to upload GST image')
@@ -874,7 +874,7 @@ export default function RestaurantOnboarding() {
         let fssaiImageUpload = null
         if (step3.fssaiImage instanceof File) {
           try {
-            fssaiImageUpload = await handleUpload(step3.fssaiImage, "appzeto/restaurant/fssai")
+            fssaiImageUpload = await handleUpload(step3.fssaiImage, "restaurant/fssai")
             // Verify upload was successful and has valid URL
             if (!fssaiImageUpload || !fssaiImageUpload.url) {
               throw new Error('Failed to upload FSSAI image')

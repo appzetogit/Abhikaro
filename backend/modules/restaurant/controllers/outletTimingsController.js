@@ -16,7 +16,7 @@ export const getOutletTimings = asyncHandler(async (req, res) => {
   if (!outletTimings) {
     outletTimings = await OutletTimings.create({
       restaurantId,
-      outletType: 'Appzeto delivery',
+      outletType: 'Delivery',
       timings: [
         { day: 'Monday', isOpen: true, openingTime: '09:00 AM', closingTime: '10:00 PM' },
         { day: 'Tuesday', isOpen: true, openingTime: '09:00 AM', closingTime: '10:00 PM' },
@@ -57,7 +57,7 @@ export const getOutletTimingsByRestaurantId = asyncHandler(async (req, res) => {
     return successResponse(res, 200, 'Outlet timings retrieved successfully', {
       outletTimings: {
         restaurantId,
-        outletType: 'Appzeto delivery',
+        outletType: 'Delivery',
         timings: [
           { day: 'Monday', isOpen: true, openingTime: '09:00 AM', closingTime: '10:00 PM' },
           { day: 'Tuesday', isOpen: true, openingTime: '09:00 AM', closingTime: '10:00 PM' },
@@ -144,7 +144,7 @@ export const upsertOutletTimings = asyncHandler(async (req, res) => {
 
     outletTimings = await OutletTimings.create({
       restaurantId,
-      outletType: outletType || 'Appzeto delivery',
+      outletType: outletType || 'Delivery',
       timings: defaultTimings
     });
   }
@@ -174,7 +174,7 @@ export const updateDayTiming = asyncHandler(async (req, res) => {
     // Create default timings if not exists
     outletTimings = await OutletTimings.create({
       restaurantId,
-      outletType: 'Appzeto delivery',
+      outletType: 'Delivery',
       timings: [
         { day: 'Monday', isOpen: true, openingTime: '09:00 AM', closingTime: '10:00 PM' },
         { day: 'Tuesday', isOpen: true, openingTime: '09:00 AM', closingTime: '10:00 PM' },

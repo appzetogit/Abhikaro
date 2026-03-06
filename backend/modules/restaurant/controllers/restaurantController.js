@@ -702,7 +702,7 @@ export const uploadProfileImage = asyncHandler(async (req, res) => {
     }
 
     // Upload to Cloudinary
-    const folder = 'appzeto/restaurant/profile';
+    const folder = 'restaurant/profile';
     const result = await uploadToCloudinary(req.file.buffer, {
       folder,
       resource_type: 'image',
@@ -774,7 +774,7 @@ export const uploadMenuImage = asyncHandler(async (req, res) => {
     });
 
     // Upload to Cloudinary
-    const folder = 'appzeto/restaurant/menu';
+    const folder = 'restaurant/menu';
     const result = await uploadToCloudinary(req.file.buffer, {
       folder,
       resource_type: 'image',

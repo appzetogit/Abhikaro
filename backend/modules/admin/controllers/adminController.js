@@ -2594,7 +2594,7 @@ export const createRestaurant = asyncHandler(async (req, res) => {
         const base64Data = profileImage.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, "base64");
         const result = await uploadToCloudinary(buffer, {
-          folder: "appzeto/restaurant/profile",
+          folder: "restaurant/profile",
           resource_type: "image",
         });
         profileImageData = {
@@ -2620,7 +2620,7 @@ export const createRestaurant = asyncHandler(async (req, res) => {
           const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
           const buffer = Buffer.from(base64Data, "base64");
           const result = await uploadToCloudinary(buffer, {
-            folder: "appzeto/restaurant/menu",
+            folder: "restaurant/menu",
             resource_type: "image",
           });
           menuImagesData.push({
@@ -2642,7 +2642,7 @@ export const createRestaurant = asyncHandler(async (req, res) => {
         const base64Data = panImage.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, "base64");
         const result = await uploadToCloudinary(buffer, {
-          folder: "appzeto/restaurant/pan",
+          folder: "restaurant/pan",
           resource_type: "image",
         });
         panImageData = { url: result.secure_url, publicId: result.public_id };
@@ -2659,7 +2659,7 @@ export const createRestaurant = asyncHandler(async (req, res) => {
         const base64Data = gstImage.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, "base64");
         const result = await uploadToCloudinary(buffer, {
-          folder: "appzeto/restaurant/gst",
+          folder: "restaurant/gst",
           resource_type: "image",
         });
         gstImageData = { url: result.secure_url, publicId: result.public_id };
@@ -2676,7 +2676,7 @@ export const createRestaurant = asyncHandler(async (req, res) => {
         const base64Data = fssaiImage.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, "base64");
         const result = await uploadToCloudinary(buffer, {
-          folder: "appzeto/restaurant/fssai",
+          folder: "restaurant/fssai",
           resource_type: "image",
         });
         fssaiImageData = { url: result.secure_url, publicId: result.public_id };

@@ -32,7 +32,7 @@ const genderOptions = [
 // Load profile data from localStorage
 const loadProfileFromStorage = () => {
   try {
-    const stored = localStorage.getItem('appzeto_user_profile')
+    const stored = localStorage.getItem('user_profile')
     if (stored) {
       return JSON.parse(stored)
     }
@@ -45,7 +45,7 @@ const loadProfileFromStorage = () => {
 // Save profile data to localStorage
 const saveProfileToStorage = (data) => {
   try {
-    localStorage.setItem('appzeto_user_profile', JSON.stringify(data))
+    localStorage.setItem('user_profile', JSON.stringify(data))
   } catch (error) {
     console.error('Error saving profile to localStorage:', error)
   }

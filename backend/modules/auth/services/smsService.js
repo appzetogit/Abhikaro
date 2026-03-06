@@ -19,7 +19,7 @@ class SMSHubService {
   constructor() {
     this.apiKey = process.env.SMSHUB_API_KEY;
     this.apiUrl = process.env.SMSHUB_API_URL || 'https://api.smshub.com';
-    this.senderId = process.env.SMSHUB_SENDER_ID || 'APPZETO';
+    this.senderId = process.env.SMSHUB_SENDER_ID || 'FOODDL';
   }
 
   /**
@@ -29,9 +29,9 @@ class SMSHubService {
     try {
       const BusinessSettings = (await import('../../admin/models/BusinessSettings.js')).default;
       const settings = await BusinessSettings.getSettings();
-      return settings?.companyName || 'Appzeto Food';
+      return settings?.companyName || 'Food Delivery';
     } catch (error) {
-      return 'Appzeto Food';
+      return 'Food Delivery';
     }
   }
 

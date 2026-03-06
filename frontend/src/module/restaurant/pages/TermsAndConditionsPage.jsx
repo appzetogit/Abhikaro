@@ -213,7 +213,7 @@ export default function TermsAndConditionsPage() {
                 If you have any questions about these Terms and Conditions, please contact us at:
               </p>
               <p className="mt-2">
-                <strong>Email:</strong> legal@appzetofood.com<br />
+                <strong>Email:</strong> legal@fooddelivery.com<br />
                 <strong>Phone:</strong> +1 (555) 123-4567<br />
                 <strong>Address:</strong> 123 Food Street, City, State, ZIP Code
               </p>
