@@ -184,25 +184,6 @@ export default function ZoneSetup() {
         ),
       )
       toast.success("Delivery boy assigned to zone")
-
-      // Best-effort push notification to delivery boy with zone name
-      try {
-        await adminAPI.sendNotificationToDelivery({
-          deliveryId: partnerId,
-          title: "Zone Assigned",
-          body: `Aapko zone "${selectedZone.name || "Zone"}" assign kiya gaya hai.`,
-          data: {
-            type: "zone_assignment",
-            zoneId,
-            zoneName: selectedZone.name || "Zone",
-          },
-        })
-      } catch (notifyError) {
-        console.warn(
-          "Failed to send zone assignment notification:",
-          notifyError,
-        )
-      }
     } catch (error) {
       console.error("Error assigning delivery partner to zone:", error)
       toast.error(
