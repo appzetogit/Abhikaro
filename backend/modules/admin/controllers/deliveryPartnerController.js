@@ -667,36 +667,54 @@ export const updateDeliveryPartnerZone = asyncHandler(async (req, res) => {
 
     // Validate zoneId if provided
     if (zoneId) {
-      const Zone = (await import('../models/Zone.js')).default;
-      const zone = await Zone.findById(zoneId);
-      
-      if (!zone) {
-        return errorResponse(res, 404, 'Zone not found');
+      // Normalize existing zones to string IDs for comparison
+      const existingZoneIds = (delivery.availability?.zones || []).map(z =>
+        z?.toString ? z.toString() : String(z)
+      );
+      const targetZoneId = zoneId.toString();
+
+      // If the delivery partner is already assigned ONLY to this same zone,
+      // avoid sending duplicate notification on repeated calls
+      const isAlreadyAssignedToSameZone =
+        existingZoneIds.length === 1 && existingZoneIds[0] === targetZoneId;
+
+      if (!isAlreadyAssignedToSameZone) {
+        const Zone = (await import('../models/Zone.js')).default;
+        const zone = await Zone.findById(zoneId);
+        
+        if (!zone) {
+          return errorResponse(res, 404, 'Zone not found');
+        }
+
+        // Update availability.zones array (replace with single zone)
+        if (!delivery.availability) {
+          delivery.availability = {
+            isOnline: false,
+            currentLocation: {
+              type: 'Point',
+              coordinates: [0, 0]
+            },
+            zones: []
+          };
+        }
+
+        // Replace zones array with the new zone
+        delivery.availability.zones = [new mongoose.Types.ObjectId(zoneId)];
+        delivery.markModified('availability.zones');
+
+        logger.info(`Delivery partner zone updated: ${id}`, {
+          zoneId: zoneId,
+          zoneName: zone.name || zone.zoneName,
+          updatedBy: req.user?._id
+        });
+
+        assignedZone = zone;
+      } else {
+        logger.info(`Delivery partner already assigned to this zone, skipping notification: ${id}`, {
+          zoneId: zoneId,
+          updatedBy: req.user?._id
+        });
       }
-
-      // Update availability.zones array (replace with single zone)
-      if (!delivery.availability) {
-        delivery.availability = {
-          isOnline: false,
-          currentLocation: {
-            type: 'Point',
-            coordinates: [0, 0]
-          },
-          zones: []
-        };
-      }
-
-      // Replace zones array with the new zone
-      delivery.availability.zones = [new mongoose.Types.ObjectId(zoneId)];
-      delivery.markModified('availability.zones');
-
-      logger.info(`Delivery partner zone updated: ${id}`, {
-        zoneId: zoneId,
-        zoneName: zone.name || zone.zoneName,
-        updatedBy: req.user?._id
-      });
-
-      assignedZone = zone;
     }
 
     await delivery.save();
