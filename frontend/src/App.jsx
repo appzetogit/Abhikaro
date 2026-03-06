@@ -143,8 +143,20 @@ function UserPathRedirect() {
 
 export default function App() {
   useEffect(() => {
-    // On initial app mount, try to restore user session using refresh token cookie.
-    // This keeps users logged in across app/WEBVIEW restarts on foods.abhikaro.in.
+    // On initial app mount, try to restore *user* session using refresh token cookie.
+    // Restrict to user-facing routes so that admin/restaurant/delivery/hotel apps
+    // don't trigger unnecessary refresh calls or re-renders.
+    const path = window.location.pathname;
+    const isUserRoute =
+      path === "/" ||
+      path.startsWith("/usermain") ||
+      path.startsWith("/restaurants") ||
+      path.startsWith("/hotel-menu");
+
+    if (!isUserRoute) {
+      return;
+    }
+
     restoreUserSession().catch(() => {});
   }, []);
 

@@ -89,7 +89,11 @@ export function useLocation() {
         accuracy: locationPayload.accuracy
       })
 
-      // Get user ID from token (userToken already declared above)
+      // Get user ID from token for Firebase backup storage
+      const userToken =
+        localStorage.getItem("user_accessToken") ||
+        localStorage.getItem("accessToken")
+
       let userId = null
       if (userToken) {
         try {
