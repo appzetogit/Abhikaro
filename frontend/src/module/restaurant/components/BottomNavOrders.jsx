@@ -15,6 +15,7 @@ import {
 
 const ordersTabs = [
   { id: "orders", label: "Orders", icon: FileText, route: "/restaurant" },
+  { id: "dining", label: "Dining", icon: Utensils, route: "/restaurant/dining" },
   { id: "inventory", label: "Inventory", icon: Package, route: "/restaurant/inventory" },
   { id: "feedback", label: "Feedback", icon: MessageSquare, route: "/restaurant/feedback" },
   { id: "explore", label: "Explore", icon: Compass, route: "/restaurant/explore" },

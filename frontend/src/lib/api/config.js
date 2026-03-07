@@ -479,6 +479,7 @@ export const API_ENDPOINTS = {
   DINING: {
     RESTAURANTS: "/dining/restaurants",
     RESTAURANT_BY_SLUG: "/dining/restaurants/:slug",
+    RESTAURANT_OFFERS_BY_SLUG: "/dining/restaurants/:slug/offers",
     CATEGORIES: "/dining/categories",
     LIMELIGHT: "/dining/limelight",
     BANK_OFFERS: "/dining/bank-offers",
@@ -490,6 +491,10 @@ export const API_ENDPOINTS = {
     BOOKING_RESTAURANT: "/dining/bookings/restaurant/:restaurantId",
     BOOKING_STATUS: "/dining/bookings/:bookingId/status",
     BOOKING_STATUS_RESTAURANT: "/dining/bookings/:bookingId/status/restaurant",
+    BOOKING_SEND_BILL: "/dining/bookings/:bookingId/send-bill",
+    BOOKING_APPLY_COUPON: "/dining/bookings/:bookingId/apply-coupon",
+    BOOKING_CREATE_PAYMENT: "/dining/bookings/:bookingId/create-payment",
+    BOOKING_VERIFY_PAYMENT: "/dining/bookings/:bookingId/verify-payment",
     REVIEW_CREATE: "/dining/reviews",
   },
 };

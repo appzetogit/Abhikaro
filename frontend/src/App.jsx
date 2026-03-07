@@ -108,6 +108,7 @@ const ManageOutlets = lazy(() => import("@/module/restaurant/pages/ManageOutlets
 const UpdateBankDetails = lazy(() => import("@/module/restaurant/pages/UpdateBankDetails"))
 const ZoneSetup = lazy(() => import("@/module/restaurant/pages/ZoneSetup"))
 const DiningReservations = lazy(() => import("@/module/restaurant/pages/DiningReservations"))
+const DiningManagement = lazy(() => import("@/module/restaurant/pages/DiningManagement"))
 
 // Admin Module
 const AdminRouter = lazy(() => import("@/module/admin/components/AdminRouter"))
@@ -835,6 +836,14 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
               <UpdateBankDetails />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/restaurant/dining"
+          element={
+            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
+              <DiningManagement />
             </ProtectedRoute>
           }
         />

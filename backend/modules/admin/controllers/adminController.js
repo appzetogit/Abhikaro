@@ -2197,6 +2197,12 @@ export const updateRestaurantDiningSettings = asyncHandler(async (req, res) => {
       ...diningSettings,
     };
 
+    // When admin enables dining, clear pending request so restaurant no longer sees "request pending"
+    if (restaurant.diningSettings.isEnabled === true) {
+      restaurant.diningSettings.requestStatus = "none";
+      restaurant.diningSettings.lastDecisionAt = new Date();
+    }
+
     await restaurant.save();
 
     logger.info(`Restaurant dining settings updated: ${id}`, {

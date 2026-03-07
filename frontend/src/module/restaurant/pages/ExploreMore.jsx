@@ -29,6 +29,7 @@ import {
   Calendar,
   MapPin,
   Percent,
+  Utensils,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { DateRangeCalendar } from "@/components/ui/date-range-calendar"
@@ -711,6 +712,7 @@ export default function ExploreMore() {
   // Section data
   const manageOutletItems = [
     { id: 1, label: "Outlet info", icon: Info, route: "/restaurant/outlet-info" },
+    { id: 2, label: "Dining Management", icon: Utensils, route: "/restaurant/dining" },
     { id: 3, label: "Dining Reservations", icon: Calendar, route: "/restaurant/reservations" },
     { id: 4, label: "Manage staff", icon: Users, route: "/restaurant/contact-details" },
   ]

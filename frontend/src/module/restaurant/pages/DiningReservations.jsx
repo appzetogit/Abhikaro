@@ -1,16 +1,22 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
-import { Calendar, Clock, Users, Search, Filter, MessageSquare, ChevronRight, CheckCircle2, XCircle, Clock4, ArrowLeft } from "lucide-react"
+import { Calendar, Clock, Users, Search, Filter, MessageSquare, ChevronRight, CheckCircle2, XCircle, Clock4, Receipt, X } from "lucide-react"
 import { diningAPI, restaurantAPI } from "@/lib/api"
 import Loader from "@/components/Loader"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
 
 export default function DiningReservations() {
-    const navigate = useNavigate()
     const [bookings, setBookings] = useState([])
     const [loading, setLoading] = useState(true)
     const [restaurant, setRestaurant] = useState(null)
     const [searchTerm, setSearchTerm] = useState("")
+    const [statusFilter, setStatusFilter] = useState("all") // all | confirmed | checked-in | cancelled | completed | dining_completed
+    const [todayOnly, setTodayOnly] = useState(false)
+    const [showFilter, setShowFilter] = useState(false)
+    const [sendBillModal, setSendBillModal] = useState(null) // { booking }
+    const [billAmount, setBillAmount] = useState("")
+    const [billNote, setBillNote] = useState("")
+    const [sendingBill, setSendingBill] = useState(false)
 
     useEffect(() => {
         const fetchAll = async () => {
@@ -46,21 +52,63 @@ export default function DiningReservations() {
         try {
             const response = await diningAPI.updateBookingStatusRestaurant(bookingId, newStatus)
             if (response.data.success) {
-                // Update local state
                 setBookings(prev => prev.map(b =>
                     b._id === bookingId ? { ...b, status: newStatus } : b
                 ))
+                toast.success("Status updated")
             }
         } catch (error) {
             console.error("Error updating status:", error)
+            toast.error(error.response?.data?.message || "Failed to update status")
+        }
+    }
+
+    const handleSendBill = async () => {
+        if (!sendBillModal?.booking) return
+        const amount = parseFloat(billAmount)
+        if (!Number.isFinite(amount) || amount <= 0) {
+            toast.error("Enter a valid bill amount")
+            return
+        }
+        setSendingBill(true)
+        try {
+            const res = await diningAPI.sendBill(sendBillModal.booking._id, {
+                billAmount: amount,
+                note: billNote.trim() || undefined,
+            })
+            if (res.data.success) {
+                setBookings(prev => prev.map(b =>
+                    b._id === sendBillModal.booking._id ? { ...b, ...res.data.data } : b
+                ))
+                setSendBillModal(null)
+                setBillAmount("")
+                setBillNote("")
+                toast.success("Bill sent successfully")
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to send bill")
+        } finally {
+            setSendingBill(false)
         }
     }
 
     const filteredBookings = bookings
-        .filter(booking =>
-            booking.user?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            booking.bookingId?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+        .filter(booking => {
+            const term = searchTerm.trim().toLowerCase()
+            if (!term) return true
+            return (
+                booking.user?.name?.toLowerCase().includes(term) ||
+                booking.bookingId?.toLowerCase().includes(term)
+            )
+        })
+        .filter(booking => {
+            if (statusFilter === "all") return true
+            return booking.status === statusFilter
+        })
+        .filter(booking => {
+            if (!todayOnly) return true
+            return new Date(booking.date).toDateString() === new Date().toDateString()
+        })
         .sort((a, b) => b._id.localeCompare(a._id))
 
     if (loading) return <Loader />
@@ -69,21 +117,11 @@ export default function DiningReservations() {
         <div className="min-h-screen bg-slate-50 pb-20">
             {/* Header */}
             <div className="bg-white p-6 border-b sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto">
-                    {/* Back Button */}
-                    <button
-                        onClick={() => navigate(-1)}
-                        className="mb-4 flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
-                    >
-                        <ArrowLeft className="w-5 h-5" />
-                        <span className="text-sm font-medium">Back</span>
-                    </button>
-                    
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div>
-                            <h1 className="text-2xl font-bold text-slate-900">Table Reservations</h1>
-                            <p className="text-slate-500 text-sm mt-1">Manage your upcoming guest bookings</p>
-                        </div>
+                <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900">Table Reservations</h1>
+                        <p className="text-slate-500 text-sm mt-1">Manage your upcoming guest bookings</p>
+                    </div>
 
                     <div className="flex items-center gap-3">
                         <div className="relative flex-1 md:w-64">
@@ -98,10 +136,79 @@ export default function DiningReservations() {
                                 className="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:bg-white transition-all"
                             />
                         </div>
-                        <button className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">
-                            <Filter className="w-5 h-5 text-slate-600" />
-                        </button>
-                    </div>
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setShowFilter((prev) => !prev)}
+                                className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors flex items-center gap-1"
+                            >
+                                <Filter className="w-5 h-5 text-slate-600" />
+                            </button>
+                            {showFilter && (
+                                <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-100 z-40">
+                                    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                                            Filters
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setStatusFilter("all")
+                                                setTodayOnly(false)
+                                                setShowFilter(false)
+                                            }}
+                                            className="text-[11px] text-blue-600 font-semibold"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                    <div className="px-4 py-3 space-y-3">
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-500 mb-1">
+                                                Status
+                                            </p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {[
+                                                    { id: "all", label: "All" },
+                                                    { id: "confirmed", label: "Confirmed" },
+                                                    { id: "checked-in", label: "Checked-in" },
+                                                    { id: "completed", label: "Completed" },
+                                                    { id: "cancelled", label: "Cancelled" },
+                                                ].map((opt) => (
+                                                    <button
+                                                        key={opt.id}
+                                                        type="button"
+                                                        onClick={() => setStatusFilter(opt.id)}
+                                                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${statusFilter === opt.id
+                                                            ? "bg-slate-900 text-white border-slate-900"
+                                                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+                                                            }`}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-medium text-slate-600">
+                                                Only today&apos;s bookings
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setTodayOnly((prev) => !prev)}
+                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${todayOnly ? "bg-[#FD0134]" : "bg-slate-200"
+                                                    }`}
+                                            >
+                                                <span
+                                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${todayOnly ? "translate-x-4" : "translate-x-1"
+                                                        }`}
+                                                />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -122,7 +229,7 @@ export default function DiningReservations() {
                     </div>
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <div className="flex items-center gap-4">
-                            <div className="bg-green-50 p-3 rounded-xl text-green-600">
+                            <div className="bg-[#FD0134]/10 p-3 rounded-xl text-[#FD0134]">
                                 <CheckCircle2 className="w-6 h-6" />
                             </div>
                             <div>
@@ -204,20 +311,29 @@ export default function DiningReservations() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <Badge className={`rounded-lg px-2.5 py-1 ${booking.status === 'confirmed' ? 'bg-green-100 text-green-700 hover:bg-green-200' :
-                                                    booking.status === 'checked-in' ? 'bg-orange-100 text-orange-700 hover:bg-orange-200' :
-                                                        booking.status === 'completed' ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' :
-                                                            'bg-red-100 text-red-700 hover:bg-red-200'
-                                                    }`}>
-                                                    {booking.status}
-                                                </Badge>
+                                                <div className="flex flex-col gap-1">
+                                                    <Badge className={`rounded-lg px-2.5 py-1 w-fit ${booking.status === 'confirmed' ? 'bg-[#FD0134]/15 text-[#FD0134]' :
+                                                        booking.status === 'checked-in' ? 'bg-orange-100 text-orange-700' :
+                                                            booking.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                                                                booking.status === 'dining_completed' ? 'bg-violet-100 text-violet-700' :
+                                                                    'bg-red-100 text-red-700'
+                                                        }`}>
+                                                        {booking.status.replace('_', ' ')}
+                                                    </Badge>
+                                                    {booking.billStatus === 'pending' && booking.paymentStatus !== 'paid' && (
+                                                        <span className="text-[10px] text-amber-600 font-medium">Bill sent</span>
+                                                    )}
+                                                    {booking.paymentStatus === 'paid' && (
+                                                        <span className="text-[10px] text-[#FD0134] font-medium">Paid</span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex flex-wrap items-center gap-2">
                                                     {booking.status === 'confirmed' && (
                                                         <button
                                                             onClick={() => handleStatusUpdate(booking._id, 'checked-in')}
-                                                            className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition-colors"
+                                                            className="px-3 py-1.5 bg-[#FD0134] text-white text-xs font-bold rounded-lg hover:bg-[#FD0134]/90 transition-colors"
                                                         >
                                                             Check-in
                                                         </button>
@@ -228,6 +344,23 @@ export default function DiningReservations() {
                                                             className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors"
                                                         >
                                                             Check-out
+                                                        </button>
+                                                    )}
+                                                    {booking.status === 'completed' && (
+                                                        <button
+                                                            onClick={() => handleStatusUpdate(booking._id, 'dining_completed')}
+                                                            className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-700 transition-colors"
+                                                        >
+                                                            Dining completed
+                                                        </button>
+                                                    )}
+                                                    {booking.status === 'dining_completed' && booking.billStatus === 'not_sent' && booking.paymentStatus !== 'paid' && (
+                                                        <button
+                                                            onClick={() => setSendBillModal({ booking })}
+                                                            className="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-1"
+                                                        >
+                                                            <Receipt className="w-3.5 h-3.5" />
+                                                            Send Bill
                                                         </button>
                                                     )}
                                                 </div>
@@ -248,6 +381,62 @@ export default function DiningReservations() {
                     )}
                 </div>
             </div>
+
+            {/* Send Bill Modal */}
+            {sendBillModal?.booking && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !sendingBill && setSendBillModal(null)}>
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-slate-900">Send Bill</h3>
+                            <button type="button" onClick={() => !sendingBill && setSendBillModal(null)} className="p-2 rounded-lg hover:bg-slate-100">
+                                <X className="w-5 h-5 text-slate-500" />
+                            </button>
+                        </div>
+                        <p className="text-sm text-slate-600 mb-4">Booking #{sendBillModal.booking.bookingId} – {sendBillModal.booking.user?.name}</p>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Total Bill Amount (₹)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    step="0.01"
+                                    value={billAmount}
+                                    onChange={(e) => setBillAmount(e.target.value)}
+                                    placeholder="0.00"
+                                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Note (optional)</label>
+                                <textarea
+                                    value={billNote}
+                                    onChange={(e) => setBillNote(e.target.value)}
+                                    placeholder="Add a note for the guest..."
+                                    rows={2}
+                                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                                />
+                            </div>
+                        </div>
+                        <div className="mt-6 flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => !sendingBill && setSendBillModal(null)}
+                                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSendBill}
+                                disabled={sendingBill || !billAmount || parseFloat(billAmount) <= 0}
+                                className="flex-1 py-2.5 rounded-xl bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {sendingBill ? "Sending..." : "Send Bill"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

@@ -131,6 +131,8 @@ const SystemAddons = lazy(() => import("../pages/system/SystemAddons"));
 const LandingPageManagement = lazy(() => import("../pages/system/LandingPageManagement"));
 const DiningManagement = lazy(() => import("../pages/system/DiningManagement"));
 const DiningList = lazy(() => import("../pages/system/DiningList"));
+const DiningCoupons = lazy(() => import("../pages/dining/DiningCoupons"));
+const DiningEarnings = lazy(() => import("../pages/dining/DiningEarnings"));
 
 export default function AdminRouter() {
   return (
@@ -374,6 +376,8 @@ export default function AdminRouter() {
           {/* DINING MANAGEMENT */}
           <Route path="dining-management" element={<DiningManagement />} />
           <Route path="dining-list" element={<DiningList />} />
+          <Route path="dining/coupons" element={<DiningCoupons />} />
+          <Route path="dining/earnings" element={<DiningEarnings />} />
         </Route>
 
         {/* Redirect /admin to /admin/ */}

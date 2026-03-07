@@ -436,6 +436,18 @@ export const sidebarMenuData = [
         icon: "FileText",
         permissionId: "menu.promotions",
       },
+      {
+        type: "link",
+        label: "Dining Coupons",
+        path: "/admin/dining/coupons",
+        icon: "Tag",
+      },
+      {
+        type: "link",
+        label: "Dining Earnings",
+        path: "/admin/dining/earnings",
+        icon: "TrendingUp",
+      },
     ],
   },
   {

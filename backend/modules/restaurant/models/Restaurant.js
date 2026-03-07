@@ -285,11 +285,28 @@ const restaurantSchema = new mongoose.Schema(
       ref: "Admin",
       default: null,
     },
+    diningConfig: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    diningCommissionPercentage: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
     diningSettings: {
       isEnabled: {
         type: Boolean,
         default: false,
       },
+      requestStatus: {
+        type: String,
+        enum: ["none", "pending", "approved", "rejected"],
+        default: "none",
+      },
+      lastRequestAt: { type: Date, default: null },
+      lastDecisionAt: { type: Date, default: null },
       maxGuests: {
         type: Number,
         default: 6,

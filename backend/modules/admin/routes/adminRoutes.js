@@ -254,6 +254,17 @@ import {
   getFeeSettingsHistory,
   getPublicFeeSettings,
 } from "../controllers/feeSettingsController.js";
+import {
+  getDiningCoupons,
+  getDiningCouponById,
+  createDiningCoupon,
+  updateDiningCoupon,
+  deleteDiningCoupon,
+  toggleDiningCouponStatus,
+} from "../controllers/diningCouponController.js";
+import { getDiningEarnings } from "../controllers/diningEarningsController.js";
+import { updateDiningSeating } from "../../restaurant/controllers/diningManagementController.js";
+import { updateRestaurantDiningCommission } from "../controllers/diningRestaurantSettingsController.js";
 import zoneRoutes from "./zoneRoutes.js";
 import { authenticateAdmin, authorizeAdmin } from "../middleware/adminAuth.js";
 import { uploadMiddleware } from "../../../shared/utils/cloudinaryService.js";
@@ -347,6 +358,8 @@ router.post("/restaurants/:id/reverify", reverifyRestaurant);
 router.put("/restaurants/:id/status", updateRestaurantStatus);
 router.put("/restaurants/:id/location", updateRestaurantLocation);
 router.put("/restaurants/:id/dining-settings", updateRestaurantDiningSettings);
+router.patch("/restaurants/:id/dining-seating", updateDiningSeating);
+router.patch("/restaurants/:id/dining-commission", updateRestaurantDiningCommission);
 router.get("/restaurants/:id/menu", getRestaurantMenu);
 router.put("/restaurants/:id/menu", updateRestaurantMenu);
 router.delete("/restaurants/:id", deleteRestaurant);
@@ -403,6 +416,15 @@ router.post("/hotels", requirePermissions("hotels.edit"), createHotel);
 router.get("/hotels/:id", requirePermissions("hotels.view"), getHotelById);
 router.put("/hotels/:id", requirePermissions("hotels.edit"), updateHotel);
 router.delete("/hotels/:id", requirePermissions("hotels.edit"), deleteHotel);
+
+// Dining Management (coupons & earnings)
+router.get("/dining-coupons", getDiningCoupons);
+router.get("/dining-coupons/:id", getDiningCouponById);
+router.post("/dining-coupons", createDiningCoupon);
+router.put("/dining-coupons/:id", updateDiningCoupon);
+router.delete("/dining-coupons/:id", deleteDiningCoupon);
+router.patch("/dining-coupons/:id/status", toggleDiningCouponStatus);
+router.get("/dining-earnings", getDiningEarnings);
 
 // Category Management
 router.get("/categories", getCategories);

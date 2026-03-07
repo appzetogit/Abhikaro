@@ -25,7 +25,7 @@ export const createDiningCategory = async (req, res) => {
         if (!req.file) return errorResponse(res, 400, 'Image is required');
 
         const result = await uploadToCloudinary(req.file.buffer, {
-            folder: 'dining/categories',
+            folder: 'appzeto/dining/categories',
             resource_type: 'image'
         });
 
@@ -88,7 +88,7 @@ export const createDiningOfferBanner = async (req, res) => {
         if (!req.file) return errorResponse(res, 400, 'Image is required');
 
         const result = await uploadToCloudinary(req.file.buffer, {
-            folder: 'dining/offers',
+            folder: 'appzeto/dining/offers',
             resource_type: 'image'
         });
 
@@ -102,7 +102,6 @@ export const createDiningOfferBanner = async (req, res) => {
 
         await banner.save();
 
-        // Populate restaurant details for immediate display
         await banner.populate('restaurant', 'name');
 
         return successResponse(res, 201, 'Banner created successfully', { banner });
@@ -152,7 +151,7 @@ export const updateDiningOfferBanner = async (req, res) => {
             }
 
             const result = await uploadToCloudinary(req.file.buffer, {
-                folder: 'dining/offers',
+                folder: 'appzeto/dining/offers',
                 resource_type: 'image'
             });
 
@@ -171,38 +170,14 @@ export const updateDiningOfferBanner = async (req, res) => {
 };
 
 export const getActiveRestaurants = async (req, res) => {
-  try {
-    // Fetch restaurants that are active (can be extended with filters like isServiceable/isActive)
-    // Also include onboarding name so that we can show the real restaurant name in dropdowns
-    const restaurantsRaw = await Restaurant.find()
-      .select('name _id onboarding.step1.restaurantName restaurantId')
-      .lean();
-
-    const restaurants = restaurantsRaw.map((r) => {
-      const onboardingName = r?.onboarding?.step1?.restaurantName;
-      // Fallback order: onboarding name -> name -> "Restaurant {restaurantId}" -> "Restaurant"
-      const displayName =
-        onboardingName ||
-        r.name ||
-        (r.restaurantId ? `Restaurant ${r.restaurantId}` : 'Restaurant');
-
-      return {
-        _id: r._id,
-        name: displayName,
-      };
-    });
-
-    return successResponse(
-      res,
-      200,
-      'Restaurants retrieved successfully',
-      { restaurants },
-    );
-  } catch (error) {
-    console.error('Error fetching restaurants:', error);
-    return errorResponse(res, 500, 'Failed to fetch restaurants');
-  }
-};
+    try {
+        const restaurants = await Restaurant.find().select('name _id').lean();
+        return successResponse(res, 200, 'Restaurants retrieved successfully', { restaurants });
+    } catch (error) {
+        console.error('Error fetching restaurants:', error);
+        return errorResponse(res, 500, 'Failed to fetch restaurants');
+    }
+}
 
 // ==================== DINING STORIES ====================
 
@@ -223,7 +198,7 @@ export const createDiningStory = async (req, res) => {
         if (!req.file) return errorResponse(res, 400, 'Image is required');
 
         const result = await uploadToCloudinary(req.file.buffer, {
-            folder: 'dining/stories',
+            folder: 'appzeto/dining/stories',
             resource_type: 'image'
         });
 
@@ -280,7 +255,7 @@ export const updateDiningStory = async (req, res) => {
             }
 
             const result = await uploadToCloudinary(req.file.buffer, {
-                folder: 'dining/stories',
+                folder: 'appzeto/dining/stories',
                 resource_type: 'image'
             });
 

@@ -141,8 +141,11 @@ apiClient.interceptors.request.use(
         !requestUrl.includes("/restaurant/wallet") &&
         !requestUrl.includes("/restaurant/analytics") &&
         !requestUrl.includes("/restaurant/complaints") &&
-        // NEW: commission API is a protected restaurant route (needs auth)
+        // Commission and dining management are protected restaurant routes (need auth)
         !requestUrl.includes("/restaurant/commission") &&
+        !requestUrl.includes("/restaurant/dining-config") &&
+        !requestUrl.includes("/restaurant/dining-offers") &&
+        !requestUrl.includes("/restaurant/dining-menu") &&
         (requestUrl.match(/\/restaurant\/[^/]+$/) ||
           requestUrl.match(/\/restaurant\/[^/]+\/menu/) ||
           requestUrl.match(/\/restaurant\/[^/]+\/addons/) ||

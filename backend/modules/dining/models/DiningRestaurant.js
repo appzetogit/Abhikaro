@@ -17,26 +17,26 @@ const diningRestaurantSchema = new mongoose.Schema({
         required: true
     },
     distance: {
-        type: String, // Storing as string to match frontend "2.9 km" for now
+        type: String,
     },
     cuisine: {
-        type: String, // "Continental", "Multi-cuisine"
+        type: String,
     },
     price: {
-        type: String, // "₹1500 for two"
+        type: String,
     },
     image: {
-        type: String, // URL
+        type: String,
         required: true
     },
     offer: {
-        type: String, // "Flat 30% OFF + 3 more"
+        type: String,
     },
     deliveryTime: {
-        type: String, // "30-35 mins"
+        type: String,
     },
     featuredDish: {
-        type: String, // "Pasta"
+        type: String,
     },
     featuredPrice: {
         type: Number

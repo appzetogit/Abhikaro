@@ -21,6 +21,17 @@ import restaurantOrderRoutes from './routes/restaurantOrderRoutes.js';
 import outletTimingsRoutes from './routes/outletTimingsRoutes.js';
 import complaintRoutes from './routes/complaintRoutes.js';
 import { getOutletTimingsByRestaurantId } from './controllers/outletTimingsController.js';
+import {
+  getDiningConfig,
+  updateDiningConfig,
+  requestDiningEnable,
+  getDiningOffers,
+  createDiningOffer,
+  updateDiningOffer,
+  deleteDiningOffer,
+  getDiningMenu,
+  updateDiningMenuItem,
+} from './controllers/diningManagementController.js';
 
 const router = express.Router();
 
@@ -97,6 +108,17 @@ router.get('/wallet/stats', authenticate, getWalletStats);
 // Withdrawal routes (authenticated - for restaurant module)
 router.post('/withdrawal/request', authenticate, createWithdrawalRequest);
 router.get('/withdrawal/requests', authenticate, getRestaurantWithdrawalRequests);
+
+// Dining management (authenticated - for restaurant module)
+router.get('/dining-config', authenticate, getDiningConfig);
+router.patch('/dining-config', authenticate, updateDiningConfig);
+router.post('/dining-config/request-enable', authenticate, requestDiningEnable);
+router.get('/dining-offers', authenticate, getDiningOffers);
+router.post('/dining-offers', authenticate, createDiningOffer);
+router.patch('/dining-offers/:offerId', authenticate, updateDiningOffer);
+router.delete('/dining-offers/:offerId', authenticate, deleteDiningOffer);
+router.get('/dining-menu', authenticate, getDiningMenu);
+router.patch('/dining-menu/items', authenticate, updateDiningMenuItem);
 
 // Restaurant routes (public - for user module)
 router.get('/list', getRestaurants);

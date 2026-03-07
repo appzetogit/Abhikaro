@@ -6,11 +6,11 @@ const diningMustTrySchema = new mongoose.Schema({
         required: true
     },
     image: {
-        type: String, // URL
+        type: String,
         required: true
     },
     location: {
-        type: String, // "Indore"
+        type: String,
         default: "Indore"
     },
     isActive: {

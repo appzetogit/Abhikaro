@@ -1,170 +1,152 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { CheckCircle2, Calendar, Clock, Users, MapPin, Share2, Home, List } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import AnimatedPage from "../../components/AnimatedPage"
+import { Check, Calendar, Clock, Users, MapPin, Share2, Home } from "lucide-react"
 import { motion } from "framer-motion"
-import confetti from "canvas-confetti"
-import { useEffect } from "react"
+import { useState } from "react"
 
 export default function TableBookingSuccess() {
     const location = useLocation()
     const navigate = useNavigate()
     const { booking } = location.state || {}
-
-    useEffect(() => {
-        // Trigger confetti on mount
-        const duration = 3 * 1000
-        const animationEnd = Date.now() + duration
-        const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
-
-        const randomInRange = (min, max) => Math.random() * (max - min) + min
-
-        const interval = setInterval(function () {
-            const timeLeft = animationEnd - Date.now()
-
-            if (timeLeft <= 0) {
-                return clearInterval(interval)
-            }
-
-            const particleCount = 50 * (timeLeft / duration)
-            confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } })
-            confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } })
-        }, 250)
-
-        return () => clearInterval(interval)
-    }, [])
+    const [shared, setShared] = useState(false)
 
     if (!booking) {
         navigate("/dining")
         return null
     }
 
-    const formattedDate = new Date(booking.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    const formattedDate = new Date(booking.date).toLocaleDateString('en-GB', {
+        weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'
+    })
+
+    const handleShare = async () => {
+        const text = `Table booked at ${booking.restaurant?.name} – ${formattedDate} at ${booking.timeSlot}, ${booking.guests} guests. ID: ${booking.bookingId}`
+        try {
+            if (navigator.share) {
+                await navigator.share({ title: 'Booking confirmed', text })
+            } else {
+                await navigator.clipboard.writeText(text)
+                setShared(true)
+                setTimeout(() => setShared(false), 2000)
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    const restaurantImg = booking.restaurant?.image
+        || booking.restaurant?.profileImage?.url
+        || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=300&q=80"
+
+    const restaurantLocation = typeof booking.restaurant?.location === 'string'
+        ? booking.restaurant.location
+        : (booking.restaurant?.location?.formattedAddress
+            || booking.restaurant?.location?.address
+            || `${booking.restaurant?.location?.city || ''}${booking.restaurant?.location?.area ? ', ' + booking.restaurant.location.area : ''}`)
 
     return (
-        <AnimatedPage className="bg-white min-h-screen flex flex-col items-center justify-center p-6 pb-24">
-            <motion.div
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6"
-            >
-                <CheckCircle2 className="w-12 h-12 text-green-500" />
-            </motion.div>
+        <div className="min-h-screen bg-slate-50 flex flex-col">
+            <div className="flex-1 w-full max-w-sm mx-auto px-5 pt-16 pb-8 flex flex-col items-center">
 
-            <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-center space-y-2 mb-10"
-            >
-                <h1 className="text-3xl font-black text-gray-900">Seat Confirmed!</h1>
-                <p className="text-gray-500 font-medium tracking-wide italic">Your table is ready for you</p>
-                <div className="pt-2">
-                    <span className="bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest border border-blue-100">
-                        BOOKING ID: {booking.bookingId}
-                    </span>
-                </div>
-            </motion.div>
+                {/* Success */}
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="w-16 h-16 rounded-full bg-[#2B9C64] flex items-center justify-center mb-5"
+                >
+                    <Check className="w-8 h-8 text-white" strokeWidth={2.5} />
+                </motion.div>
+                <motion.h1
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="text-2xl font-bold text-slate-900 mb-1"
+                >
+                    Seat confirmed
+                </motion.h1>
+                <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.15 }}
+                    className="text-sm text-slate-500 mb-6"
+                >
+                    #{booking.bookingId}
+                </motion.p>
 
-            {/* Ticket Card */}
-            <motion.div
-                initial={{ y: 30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="w-full max-w-sm bg-slate-50 rounded-3xl border border-slate-100 overflow-hidden shadow-xl shadow-slate-200"
-            >
-                <div className="p-6 space-y-6 relative">
-                    {/* Circle cutouts for ticket look */}
-                    <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-white rounded-full border border-slate-100"></div>
-                    <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-white rounded-full border border-slate-100"></div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-2xl bg-white border border-slate-100 flex-shrink-0 p-1">
-                            <img
-                                src={booking.restaurant?.image || booking.restaurant?.profileImage?.url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=150&q=80"}
-                                className="w-full h-full object-cover rounded-xl"
-                                alt="restaurant"
-                            />
-                        </div>
-                        <div className="min-w-0">
-                            <h2 className="font-black text-lg text-gray-900 truncate">{booking.restaurant?.name || "The Great Indian Restaurant"}</h2>
-                            <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3" />
-                                <span className="truncate">
-                                    {typeof booking.restaurant?.location === 'string'
-                                        ? booking.restaurant.location
-                                        : (booking.restaurant?.location?.formattedAddress || booking.restaurant?.location?.address || `${booking.restaurant?.location?.city || ''}${booking.restaurant?.location?.area ? ', ' + booking.restaurant.location.area : ''}`)}
-                                </span>
+                {/* Card */}
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="w-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8"
+                >
+                    <div className="p-4 flex items-center gap-3 border-b border-slate-100">
+                        <img
+                            src={restaurantImg}
+                            alt=""
+                            className="w-12 h-12 rounded-xl object-cover bg-slate-100"
+                        />
+                        <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-slate-900 truncate">{booking.restaurant?.name || "Restaurant"}</p>
+                            <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 truncate">
+                                <MapPin className="w-3 h-3 flex-shrink-0" />
+                                {restaurantLocation || "—"}
                             </p>
                         </div>
+                        <button
+                            onClick={handleShare}
+                            className="p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                            aria-label="Share"
+                        >
+                            {shared ? <span className="text-xs text-[#2B9C64] font-medium">Copied</span> : <Share2 className="w-4 h-4" />}
+                        </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 py-6 border-y border-dashed border-slate-200">
-                        <div className="space-y-1">
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Date</p>
-                            <div className="flex items-center gap-2 font-bold text-gray-800">
-                                <Calendar className="w-4 h-4 text-red-500" />
-                                <span>{formattedDate}</span>
-                            </div>
+                    <div className="p-4 space-y-3">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-slate-500 flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-slate-400" />
+                                {formattedDate}
+                            </span>
+                            <span className="text-slate-500 flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-slate-400" />
+                                {booking.timeSlot}
+                            </span>
                         </div>
-                        <div className="space-y-1">
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Time</p>
-                            <div className="flex items-center gap-2 font-bold text-gray-800">
-                                <Clock className="w-4 h-4 text-red-500" />
-                                <span>{booking.timeSlot}</span>
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Guests</p>
-                            <div className="flex items-center gap-2 font-bold text-gray-800">
-                                <Users className="w-4 h-4 text-red-500" />
-                                <span>{booking.guests} People</span>
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Status</p>
-                            <div className="bg-green-500 text-white px-2 py-0.5 rounded-lg text-xs font-bold w-fit">
-                                CONFIRMED
-                            </div>
+                        <div className="flex justify-between text-sm">
+                            <span className="text-slate-500 flex items-center gap-2">
+                                <Users className="w-4 h-4 text-slate-400" />
+                                {booking.guests} guests
+                            </span>
+                            <span className="text-xs font-medium text-[#2B9C64] bg-[#2B9C64]/10 px-2 py-0.5 rounded">Confirmed</span>
                         </div>
                     </div>
+                </motion.div>
 
-                    <div className="flex items-center justify-between text-indigo-600">
-                        <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></div>
-                            <span className="font-bold text-sm">10% Cashback with Tastizo Pay</span>
-                        </div>
-                        <Share2 className="w-5 h-5 cursor-pointer hover:scale-110 transition-transform" />
-                    </div>
-                </div>
-            </motion.div>
-
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.6 }}
-                className="mt-12 w-full max-w-sm space-y-3"
-            >
-                <Button
-                    onClick={() => navigate("/bookings")}
-                    className="w-full h-14 bg-red-500 hover:bg-red-600 text-white font-bold text-lg rounded-2xl shadow-xl shadow-red-100 flex items-center justify-center gap-2"
+                {/* Actions */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="w-full space-y-3"
                 >
-                    <List className="w-5 h-5" />
-                    View My Bookings
-                </Button>
-                <Button
-                    onClick={() => navigate("/")}
-                    variant="outline"
-                    className="w-full h-14 bg-white border-2 border-slate-100 text-slate-600 font-bold text-lg rounded-2xl hover:bg-slate-50 flex items-center justify-center gap-2"
-                >
-                    <Home className="w-5 h-5" />
-                    Go to Home
-                </Button>
-            </motion.div>
+                    <button
+                        onClick={() => navigate("/bookings")}
+                        className="w-full h-12 rounded-xl bg-[#2B9C64] text-white font-semibold flex items-center justify-center gap-2 hover:bg-[#258555] active:scale-[0.99] transition-all"
+                    >
+                        View my bookings
+                    </button>
+                    <button
+                        onClick={() => navigate("/")}
+                        className="w-full h-12 rounded-xl border border-slate-200 text-slate-700 font-medium flex items-center justify-center gap-2 hover:bg-slate-50 active:scale-[0.99] transition-all"
+                    >
+                        <Home className="w-4 h-4" />
+                        Go to home
+                    </button>
+                </motion.div>
 
-            <p className="fixed bottom-10 text-[10px] font-bold text-slate-300 uppercase tracking-widest px-10 text-center">
-                Show this ticket at the restaurant for a smooth entry
-            </p>
-        </AnimatedPage>
+                <p className="mt-8 text-xs text-slate-400 text-center">
+                    Show this at the restaurant for entry
+                </p>
+            </div>
+        </div>
     )
 }

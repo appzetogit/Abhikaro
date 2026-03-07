@@ -470,6 +470,35 @@ export const restaurantAPI = {
     );
   },
 
+  // Dining management (restaurant)
+  getDiningConfig: () => {
+    return apiClient.get("/restaurant/dining-config");
+  },
+  updateDiningConfig: (data) => {
+    return apiClient.patch("/restaurant/dining-config", data);
+  },
+  requestDiningEnable: () => {
+    return apiClient.post("/restaurant/dining-config/request-enable");
+  },
+  getDiningOffers: () => {
+    return apiClient.get("/restaurant/dining-offers");
+  },
+  createDiningOffer: (data) => {
+    return apiClient.post("/restaurant/dining-offers", data);
+  },
+  updateDiningOffer: (offerId, data) => {
+    return apiClient.patch(`/restaurant/dining-offers/${offerId}`, data);
+  },
+  deleteDiningOffer: (offerId) => {
+    return apiClient.delete(`/restaurant/dining-offers/${offerId}`);
+  },
+  getDiningMenu: () => {
+    return apiClient.get("/restaurant/dining-menu");
+  },
+  updateDiningMenuItem: (data) => {
+    return apiClient.patch("/restaurant/dining-menu/items", data);
+  },
+
   // Get orders
   getOrders: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.RESTAURANT.ORDERS, { params });
@@ -1291,6 +1320,13 @@ export const adminAPI = {
     });
   },
 
+  // Update restaurant dining commission (%)
+  updateRestaurantDiningCommission: (id, diningCommissionPercentage) => {
+    return apiClient.patch(`/admin/restaurants/${id}/dining-commission`, {
+      diningCommissionPercentage,
+    });
+  },
+
   // Get restaurant menu (Admin)
   getRestaurantMenu: (id) => {
     return apiClient.get(
@@ -1309,6 +1345,30 @@ export const adminAPI = {
   // Get dining categories
   getDiningCategories: () => {
     return apiClient.get("/admin/dining/categories");
+  },
+
+  // Dining coupons (admin)
+  getDiningCoupons: (params = {}) => {
+    return apiClient.get("/admin/dining-coupons", { params });
+  },
+  getDiningCouponById: (id) => {
+    return apiClient.get(`/admin/dining-coupons/${id}`);
+  },
+  createDiningCoupon: (payload) => {
+    return apiClient.post("/admin/dining-coupons", payload);
+  },
+  updateDiningCoupon: (id, payload) => {
+    return apiClient.put(`/admin/dining-coupons/${id}`, payload);
+  },
+  deleteDiningCoupon: (id) => {
+    return apiClient.delete(`/admin/dining-coupons/${id}`);
+  },
+  toggleDiningCouponStatus: (id) => {
+    return apiClient.patch(`/admin/dining-coupons/${id}/status`);
+  },
+  // Dining earnings (admin)
+  getDiningEarnings: (params = {}) => {
+    return apiClient.get("/admin/dining-earnings", { params });
   },
 
   // Get restaurant join requests
@@ -2284,6 +2344,13 @@ export const diningAPI = {
     );
   },
 
+  // Get dining offers by restaurant slug
+  getRestaurantOffersBySlug: (slug) => {
+    return apiClient.get(
+      API_ENDPOINTS.DINING.RESTAURANT_OFFERS_BY_SLUG.replace(":slug", slug),
+    );
+  },
+
   // Get dining categories
   getCategories: () => {
     return apiClient.get(API_ENDPOINTS.DINING.CATEGORIES);
@@ -2345,6 +2412,33 @@ export const diningAPI = {
         bookingId,
       ),
       { status },
+    );
+  },
+  // Send bill (restaurant)
+  sendBill: (bookingId, data) => {
+    return apiClient.post(
+      API_ENDPOINTS.DINING.BOOKING_SEND_BILL.replace(":bookingId", bookingId),
+      data,
+    );
+  },
+  // Apply coupon (user)
+  applyCoupon: (bookingId, code) => {
+    return apiClient.post(
+      API_ENDPOINTS.DINING.BOOKING_APPLY_COUPON.replace(":bookingId", bookingId),
+      { code },
+    );
+  },
+  // Create dining payment order (Razorpay)
+  createDiningPaymentOrder: (bookingId) => {
+    return apiClient.post(
+      API_ENDPOINTS.DINING.BOOKING_CREATE_PAYMENT.replace(":bookingId", bookingId),
+    );
+  },
+  // Verify dining payment
+  verifyDiningPayment: (bookingId, payload) => {
+    return apiClient.post(
+      API_ENDPOINTS.DINING.BOOKING_VERIFY_PAYMENT.replace(":bookingId", bookingId),
+      payload,
     );
   },
   // Create review

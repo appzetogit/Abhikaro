@@ -16,6 +16,7 @@ export default function DiningList() {
     const [error, setError] = useState(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [editingRestaurant, setEditingRestaurant] = useState(null)
+    const [showOnlyRequests, setShowOnlyRequests] = useState(false)
 
     // Fetch restaurants from backend API
     useEffect(() => {
@@ -39,7 +40,7 @@ export default function DiningList() {
                     const mappedRestaurants = restaurantsData.map((restaurant, index) => ({
                         id: restaurant._id || restaurant.id || index + 1,
                         _id: restaurant._id,
-                        name: restaurant.onboarding?.step1?.restaurantName || restaurant.name || "N/A",
+                        name: restaurant.name || "N/A",
                         ownerName: restaurant.ownerName || "N/A",
                         ownerPhone: restaurant.ownerPhone || restaurant.phone || "N/A",
                         zone: restaurant.location?.area || restaurant.location?.city || restaurant.zone || "N/A",
@@ -50,7 +51,13 @@ export default function DiningList() {
                         rating: restaurant.ratings?.average || restaurant.rating || 0,
                         logo: restaurant.profileImage?.url || restaurant.logo || "https://via.placeholder.com/40",
 
-                        diningSettings: restaurant.diningSettings || { isEnabled: false, maxGuests: 6 },
+                        // Categories selected by restaurant in DiningManagement (diningConfig.categories)
+                        diningCategoryIds: Array.isArray(restaurant.diningConfig?.categories)
+                            ? restaurant.diningConfig.categories.map(String)
+                            : [],
+
+                        diningSettings: restaurant.diningSettings || { isEnabled: true, maxGuests: 6, requestStatus: "none" },
+                        diningCommissionPercentage: restaurant.diningCommissionPercentage ?? 0,
                         originalData: restaurant,
                     }))
 
@@ -92,6 +99,11 @@ export default function DiningList() {
         fetchCategories()
     }, [])
 
+    const pendingRequestCount = useMemo(
+        () => restaurants.filter(r => r.diningSettings?.requestStatus === "pending").length,
+        [restaurants]
+    )
+
     const filteredRestaurants = useMemo(() => {
         let result = [...restaurants]
 
@@ -99,13 +111,13 @@ export default function DiningList() {
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase().trim()
             result = result.filter(restaurant =>
-                (restaurant.onboarding?.step1?.restaurantName || restaurant.name || '').toLowerCase().includes(query) ||
+                restaurant.name.toLowerCase().includes(query) ||
                 restaurant.ownerName.toLowerCase().includes(query) ||
                 restaurant.ownerPhone.includes(query)
             )
         }
 
-        // Category Filter
+        // Category Filter (by admin-assigned diningType slug)
         if (selectedCategory !== "All") {
             result = result.filter(restaurant =>
                 restaurant.diningSettings?.diningType === selectedCategory ||
@@ -113,8 +125,12 @@ export default function DiningList() {
             )
         }
 
+        if (showOnlyRequests) {
+            result = result.filter(r => r.diningSettings?.requestStatus === "pending")
+        }
+
         return result
-    }, [restaurants, searchQuery, selectedCategory])
+    }, [restaurants, searchQuery, selectedCategory, showOnlyRequests])
 
     const formatRestaurantId = (id) => {
         if (!id) return "REST000000"
@@ -131,7 +147,14 @@ export default function DiningList() {
             // Optimistic update
             setRestaurants(prev => prev.map(r =>
                 r.id === restaurant.id
-                    ? { ...r, diningSettings: { ...r.diningSettings, isEnabled: newStatus } }
+                    ? {
+                        ...r,
+                        diningSettings: {
+                            ...r.diningSettings,
+                            isEnabled: newStatus,
+                            requestStatus: "none", // clear any pending flag when admin decides
+                        }
+                    }
                     : r
             ))
 
@@ -182,13 +205,30 @@ export default function DiningList() {
                         <div className="flex items-center gap-3">
                             <h1 className="text-2xl font-bold text-slate-900">Dining List</h1>
                         </div>
-                        <button
-                            onClick={() => navigate("/admin/restaurants/add")}
-                            className="px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 transition-all shadow-sm hover:shadow"
-                        >
-                            <Plus className="w-4 h-4" />
-                            <span>Add Restaurant</span>
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowOnlyRequests((prev) => !prev)}
+                                className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-lg border flex items-center gap-2 transition-all
+                                    ${showOnlyRequests
+                                        ? "border-red-500 bg-red-50 text-red-700"
+                                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                    }`}
+                            >
+                                <span>Dining Requests</span>
+                                <span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-xs font-semibold 
+                                    ${pendingRequestCount > 0 ? "bg-red-500 text-white" : "bg-slate-200 text-slate-600"}`}>
+                                    {pendingRequestCount}
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => navigate("/admin/restaurants/add")}
+                                className="px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 transition-all shadow-sm hover:shadow"
+                            >
+                                <Plus className="w-4 h-4" />
+                                <span>Add Restaurant</span>
+                            </button>
+                        </div>
                     </div>
                     <p className="text-slate-500">Manage restaurants available for dining.</p>
                 </div>
@@ -247,7 +287,9 @@ export default function DiningList() {
                                     All ({restaurants.length})
                                 </button>
                                 {categories.map((cat) => {
-                                    const count = restaurants.filter(r => r.diningSettings?.diningType === cat.slug).length;
+                                    const count = restaurants.filter(r =>
+                                        r.diningSettings?.diningType === cat.slug
+                                    ).length;
                                     return (
                                         <button
                                             key={cat._id}
@@ -273,6 +315,7 @@ export default function DiningList() {
                                             <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Dining</th>
                                             <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Guests</th>
                                             <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Rating</th>
+                                            <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Commission %</th>
                                             <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Status</th>
                                             <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-700 uppercase tracking-wider">Actions</th>
                                         </tr>
@@ -280,14 +323,18 @@ export default function DiningList() {
                                     <tbody className="bg-white divide-y divide-slate-100">
                                         {filteredRestaurants.length === 0 ? (
                                             <tr>
-                                                <td colSpan={8} className="px-6 py-20 text-center">
+                                                <td colSpan={9} className="px-6 py-20 text-center">
                                                     <div className="flex flex-col items-center justify-center">
                                                         <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                                                             <Search className="w-8 h-8 text-slate-300" />
                                                         </div>
-                                                        <p className="text-lg font-semibold text-slate-700 mb-1">No dining restaurants found</p>
+                                                        <p className="text-lg font-semibold text-slate-700 mb-1">
+                                                            {showOnlyRequests ? "No dining enable requests pending" : "No dining restaurants found"}
+                                                        </p>
                                                         <p className="text-sm text-slate-500">
-                                                            Try adjusting your search query or filters.
+                                                            {showOnlyRequests
+                                                                ? "When a restaurant requests dining enable from Dining Management, they will appear here."
+                                                                : "Try adjusting your search query or filters."}
                                                         </p>
                                                     </div>
                                                 </td>
@@ -300,13 +347,13 @@ export default function DiningList() {
                                                             <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
                                                                 <img
                                                                     src={restaurant.logo}
-                                                                    alt={restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}
+                                                                    alt={restaurant.name}
                                                                     className="w-full h-full object-cover"
                                                                     onError={(e) => { e.target.src = "https://via.placeholder.com/40" }}
                                                                 />
                                                             </div>
                                                             <div className="flex flex-col">
-                                                                <span className="text-sm font-medium text-slate-900">{restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'}</span>
+                                                                <span className="text-sm font-medium text-slate-900">{restaurant.name}</span>
                                                                 <span className="text-xs text-slate-500">#{formatRestaurantId(restaurant.originalData?.restaurantId || restaurant._id)}</span>
                                                             </div>
                                                         </div>
@@ -321,12 +368,27 @@ export default function DiningList() {
                                                         <span className="text-sm text-slate-700">{restaurant.zone}</span>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
-                                                        <button
-                                                            onClick={() => handleDiningToggle(restaurant)}
-                                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${restaurant.diningSettings?.isEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}
-                                                        >
-                                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${restaurant.diningSettings?.isEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                                                        </button>
+                                                        <div className="flex items-center gap-3">
+                                                            <button
+                                                                onClick={() => handleDiningToggle(restaurant)}
+                                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${restaurant.diningSettings?.isEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}
+                                                            >
+                                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${restaurant.diningSettings?.isEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                                            </button>
+                                                            {restaurant.diningSettings?.isEnabled ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FD0134]/10 text-[#FD0134] border border-[#FD0134]/30">
+                                                                    Enabled
+                                                                </span>
+                                                            ) : restaurant.diningSettings?.requestStatus === "pending" ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                    Pending Approval
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                                                                    Disabled by Admin
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <div className="flex items-center gap-2">
@@ -349,7 +411,10 @@ export default function DiningList() {
                                                         <span className="text-sm text-yellow-500 font-medium">{renderStars(restaurant.rating)}</span>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${restaurant.status ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                                        <span className="text-sm font-medium text-slate-700">{restaurant.diningCommissionPercentage ?? 0}%</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${restaurant.status ? "bg-[#FD0134]/15 text-[#FD0134]" : "bg-red-100 text-red-700"}`}>
                                                             {restaurant.status ? "Active" : "Inactive"}
                                                         </span>
                                                     </td>
@@ -437,6 +502,24 @@ export default function DiningList() {
                                     ))}
                                 </select>
                             </div>
+
+                            {/* Dining Commission % */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-900">Dining Commission (%)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.5"
+                                    value={editingRestaurant.diningCommissionPercentage ?? 0}
+                                    onChange={(e) => setEditingRestaurant(prev => ({
+                                        ...prev,
+                                        diningCommissionPercentage: parseFloat(e.target.value) || 0
+                                    }))}
+                                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                                <p className="text-xs text-slate-500">Platform commission on dining bill payments (0–100)</p>
+                            </div>
                         </div>
 
                         <div className="px-6 py-4 bg-slate-50 flex items-center justify-end gap-3">
@@ -451,14 +534,18 @@ export default function DiningList() {
                                     try {
                                         setLoading(true)
                                         await adminAPI.updateRestaurantDiningSettings(editingRestaurant._id, editingRestaurant.diningSettings)
+                                        const commission = Number(editingRestaurant.diningCommissionPercentage);
+                                        if (Number.isFinite(commission) && commission >= 0 && commission <= 100) {
+                                            await adminAPI.updateRestaurantDiningCommission(editingRestaurant._id, commission);
+                                        }
+                                        const displayCommission = Number.isFinite(commission) && commission >= 0 && commission <= 100 ? commission : (editingRestaurant.diningCommissionPercentage ?? 0);
 
                                         // Update local state
                                         setRestaurants(prev => prev.map(r =>
-                                            r._id === editingRestaurant._id ? editingRestaurant : r
+                                            r._id === editingRestaurant._id ? { ...editingRestaurant, diningCommissionPercentage: displayCommission } : r
                                         ))
 
                                         setIsEditModalOpen(false)
-                                        // toast.success("Settings updated")
                                     } catch (err) {
                                         console.error("Update failed", err)
                                     } finally {

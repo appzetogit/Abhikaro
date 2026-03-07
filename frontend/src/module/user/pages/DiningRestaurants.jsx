@@ -274,7 +274,7 @@ export default function DiningRestaurants() {
                   }
                 }}
                 placeholder="Search for restaurants, cuisines, dishes..."
-                className="w-full h-12 sm:h-14 md:h-16 pl-12 sm:pl-14 pr-12 sm:pr-14 rounded-xl border-2 border-gray-200 focus:border-green-600 bg-white shadow-sm text-base sm:text-lg md:text-xl"
+                className="w-full h-12 sm:h-14 md:h-16 pl-12 sm:pl-14 pr-12 sm:pr-14 rounded-xl border-2 border-gray-200 focus:border-[#FD0134] bg-white shadow-sm text-base sm:text-lg md:text-xl"
               />
               <Search className="absolute left-4 sm:left-5 md:left-6 top-1/2 -translate-y-1/2 h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-gray-400" />
               <Button
@@ -292,152 +292,199 @@ export default function DiningRestaurants() {
 
           {/* Popular Restaurants Around You Section */}
           <div className="mb-6 mt-8 sm:mt-12">
-          <div className="mb-6">
-            <div className="flex items-center mb-2">
-              <div className="flex-grow border-t border-gray-300"></div>
-              <h3 className="px-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                POPULAR RESTAURANTS AROUND YOU
-              </h3>
-              <div className="flex-grow border-t border-gray-300"></div>
+            <div className="mb-6">
+              <div className="flex items-center mb-2">
+                <div className="flex-grow border-t border-gray-300"></div>
+                <h3 className="px-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                  POPULAR RESTAURANTS AROUND YOU
+                </h3>
+                <div className="flex-grow border-t border-gray-300"></div>
+              </div>
             </div>
-          </div>
 
+            {/* Filters */}
+            <section className="py-1 mb-4">
+              <div
+                className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1"
+                style={{
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                }}
+              >
+                {/* Filter Button - Opens Modal */}
+                <Button
+                  variant="outline"
+                  onClick={() => setIsFilterOpen(true)}
+                  className="h-7 sm:h-8 px-2 sm:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all bg-white border border-gray-200 hover:bg-gray-50 text-gray-700"
+                >
+                  <SlidersHorizontal className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="text-xs sm:text-sm font-bold text-black">Filters</span>
+                </Button>
 
-          {/* Restaurant Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
-            {restaurantsLoading ? (
-              <div className="col-span-full text-center py-10 text-gray-500">
-                Loading restaurants...
+                {/* Filter Buttons */}
+                {[
+                  { id: 'delivery-under-30', label: 'Under 30 mins' },
+                  { id: 'delivery-under-45', label: 'Under 45 mins' },
+                  { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
+                  { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
+                  { id: 'rating-35-plus', label: '3.5+ Rating' },
+                  { id: 'rating-4-plus', label: '4.0+ Rating' },
+                  { id: 'rating-45-plus', label: '4.5+ Rating' },
+                ].map((filter) => {
+                  const Icon = filter.icon
+                  const isActive = activeFilters.has(filter.id)
+                  return (
+                    <Button
+                      key={filter.id}
+                      variant="outline"
+                      onClick={() => toggleFilter(filter.id)}
+                      className={`h-7 sm:h-8 px-2 sm:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 transition-all font-medium ${isActive
+                          ? 'bg-[#FD0134] text-white border border-[#FD0134] hover:bg-[#FD0134]/90'
+                          : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-600'
+                        }`}
+                    >
+                      {Icon && <Icon className={`h-3 w-3 sm:h-4 sm:w-4 ${isActive ? 'fill-white' : ''}`} />}
+                      <span className="text-xs sm:text-sm font-bold text-black">{filter.label}</span>
+                    </Button>
+                  )
+                })}
               </div>
-            ) : filteredRestaurants.length === 0 ? (
-              <div className="col-span-full text-center py-10 text-gray-500">
-                No dining restaurants found.
-              </div>
-            ) : (
-              filteredRestaurants.map((restaurant) => {
-              const {
-                restaurantName,
-                restaurantSlug,
-                image,
-                cuisineStr,
-                deliveryTime,
-                distance,
-                rating,
-                offer,
-                featuredDish,
-                featuredPrice,
-              } = getDiningRestaurantDisplayFields(restaurant)
+            </section>
 
-              const favorite = isFavorite(restaurantSlug)
-
-              const handleToggleFavorite = (e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                if (favorite) {
-                  removeFavorite(restaurantSlug)
-                } else {
-                  addFavorite({
-                    slug: restaurantSlug,
-                    name: restaurantName,
-                    cuisine: cuisineStr,
-                    rating,
+            {/* Restaurant Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
+              {restaurantsLoading ? (
+                <div className="col-span-full text-center py-10 text-gray-500">
+                  Loading restaurants...
+                </div>
+              ) : filteredRestaurants.length === 0 ? (
+                <div className="col-span-full text-center py-10 text-gray-500">
+                  No dining restaurants found.
+                </div>
+              ) : (
+                filteredRestaurants.map((restaurant) => {
+                  const {
+                    restaurantName,
+                    restaurantSlug,
+                    image,
+                    cuisineStr,
                     deliveryTime,
                     distance,
-                    image
-                  })
-                }
-              }
+                    rating,
+                    offer,
+                    featuredDish,
+                    featuredPrice,
+                  } = getDiningRestaurantDisplayFields(restaurant)
 
-              return (
-                <Link
-                  key={restaurant._id || restaurantSlug}
-                  to={`/user/dining/${restaurant?.diningSettings?.diningType || "dining"}/${restaurantSlug}`}
-                >
-                  <Card className="overflow-hidden gap-0 cursor-pointer border-0 group bg-white shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-2xl">
-                    {/* Image Section */}
-                    <div className="relative h-48 sm:h-56 md:h-60 w-full overflow-hidden rounded-t-2xl">
-                      <img
-                        src={image}
-                        alt={restaurantName}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        onError={(e) => {
-                          e.target.src = FALLBACK_RESTAURANT_IMAGE
-                        }}
-                      />
-                      
-                      {/* Featured Dish Badge - Top Left */}
-                      {featuredDish && featuredPrice !== null && featuredPrice !== undefined && (
-                        <div className="absolute top-3 left-3">
-                          <div className="bg-gray-800/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium">
-                            {featuredDish} · ₹{featuredPrice}
+                  const favorite = isFavorite(restaurantSlug)
+
+                  const handleToggleFavorite = (e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (favorite) {
+                      removeFavorite(restaurantSlug)
+                    } else {
+                      addFavorite({
+                        slug: restaurantSlug,
+                        name: restaurantName,
+                        cuisine: cuisineStr,
+                        rating,
+                        deliveryTime,
+                        distance,
+                        image
+                      })
+                    }
+                  }
+
+                  return (
+                    <Link
+                      key={restaurant._id || restaurantSlug}
+                      to={`/user/dining/${restaurant?.diningSettings?.diningType || "dining"}/${restaurantSlug}`}
+                    >
+                      <Card className="overflow-hidden gap-0 cursor-pointer border-0 group bg-white shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-2xl">
+                        {/* Image Section */}
+                        <div className="relative h-48 sm:h-56 md:h-60 w-full overflow-hidden rounded-t-2xl">
+                          <img
+                            src={image}
+                            alt={restaurantName}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              e.target.src = FALLBACK_RESTAURANT_IMAGE
+                            }}
+                          />
+
+                          {/* Featured Dish Badge - Top Left */}
+                          {featuredDish && featuredPrice !== null && featuredPrice !== undefined && (
+                            <div className="absolute top-3 left-3">
+                              <div className="bg-gray-800/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium">
+                                {featuredDish} · ₹{featuredPrice}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Bookmark Icon - Top Right */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-3 right-3 h-9 w-9 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors"
+                            onClick={handleToggleFavorite}
+                          >
+                            <Bookmark className={`h-5 w-5 ${favorite ? "fill-gray-800 text-gray-800" : "text-gray-600"}`} strokeWidth={2} />
+                          </Button>
+
+                          {/* Blue Section - Bottom 40% */}
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-r from-blue-600 to-transparent" style={{ height: '40%' }}>
+                            <div className="h-full flex flex-col justify-end">
+                              <div className="pl-4 sm:pl-5 pb-4 sm:pb-5">
+                                <p className="text-white text-xs sm:text-sm font-medium uppercase tracking-wide mb-1">
+                                  PRE-BOOK TABLE
+                                </p>
+                                <div className="h-px bg-white/30 mb-2 w-24"></div>
+                                <p className="text-white text-base sm:text-lg font-bold">
+                                  {offer}
+                                </p>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      )}
-                      
-                      {/* Bookmark Icon - Top Right */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-3 right-3 h-9 w-9 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors"
-                        onClick={handleToggleFavorite}
-                      >
-                        <Bookmark className={`h-5 w-5 ${favorite ? "fill-gray-800 text-gray-800" : "text-gray-600"}`} strokeWidth={2} />
-                      </Button>
 
-                      {/* Blue Section - Bottom 40% */}
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-r from-blue-600 to-transparent" style={{ height: '40%' }}>
-                        <div className="h-full flex flex-col justify-end">
-                          <div className="pl-4 sm:pl-5 pb-4 sm:pb-5">
-                            <p className="text-white text-xs sm:text-sm font-medium uppercase tracking-wide mb-1">
-                              PRE-BOOK TABLE
-                            </p>
-                            <div className="h-px bg-white/30 mb-2 w-24"></div>
-                            <p className="text-white text-base sm:text-lg font-bold">
-                              {offer}
-                            </p>
+                        {/* Content Section */}
+                        <CardContent className="p-3 sm:p-4 pt-3 sm:pt-4">
+                          {/* Restaurant Name & Rating */}
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-lg sm:text-xl font-bold text-gray-900 line-clamp-1">
+                                {restaurantName}
+                              </h3>
+                            </div>
+                            <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 rounded-lg flex items-center gap-1">
+                              <span className="text-sm font-bold">{rating}</span>
+                              <Star className="h-3 w-3 fill-white text-white" />
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Content Section */}
-                    <CardContent className="p-3 sm:p-4 pt-3 sm:pt-4">
-                      {/* Restaurant Name & Rating */}
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-lg sm:text-xl font-bold text-gray-900 line-clamp-1">
-                            {restaurantName}
-                          </h3>
-                        </div>
-                        <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 rounded-lg flex items-center gap-1">
-                          <span className="text-sm font-bold">{rating}</span>
-                          <Star className="h-3 w-3 fill-white text-white" />
-                        </div>
-                      </div>
-                      
-                      {/* Delivery Time & Distance */}
-                      <div className="flex items-center gap-1 text-sm text-gray-500 mb-2">
-                        <Clock className="h-4 w-4" strokeWidth={1.5} />
-                        <span className="font-medium">{deliveryTime}</span>
-                        <span className="mx-1">|</span>
-                        <span className="font-medium">{distance}</span>
-                      </div>
-                      
-                      {/* Offer Badge */}
-                      {offer && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <BadgePercent className="h-4 w-4 text-blue-600" strokeWidth={2} />
-                          <span className="text-gray-700 font-medium">{offer}</span>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Link>
-              )
-            })
-            )}
+
+                          {/* Delivery Time & Distance */}
+                          <div className="flex items-center gap-1 text-sm text-gray-500 mb-2">
+                            <Clock className="h-4 w-4" strokeWidth={1.5} />
+                            <span className="font-medium">{deliveryTime}</span>
+                            <span className="mx-1">|</span>
+                            <span className="font-medium">{distance}</span>
+                          </div>
+
+                          {/* Offer Badge */}
+                          {offer && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <BadgePercent className="h-4 w-4 text-blue-600" strokeWidth={2} />
+                              <span className="text-gray-700 font-medium">{offer}</span>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  )
+                })
+              )}
           </div>
-        </div>
         </div>
       </div>
 
@@ -445,28 +492,28 @@ export default function DiningRestaurants() {
       {isFilterOpen && (
         <div className="fixed inset-0 z-[100]" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
           {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/50" 
+          <div
+            className="absolute inset-0 bg-black/50"
             onClick={() => setIsFilterOpen(false)}
           />
-          
+
           {/* Modal Content */}
           <div className="absolute bottom-0 left-0 right-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-auto md:top-1/2 md:-translate-y-1/2 bg-white rounded-t-3xl md:rounded-3xl max-h-[85vh] md:max-h-[90vh] md:max-w-lg w-full md:w-auto flex flex-col animate-[slideUp_0.3s_ease-out]">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-4 border-b">
               <h2 className="text-lg font-bold text-gray-900">Filters and sorting</h2>
-              <button 
+              <button
                 onClick={() => {
                   setActiveFilters(new Set())
                   setSortBy(null)
                   setSelectedCuisine(null)
                 }}
-                className="text-green-600 font-medium text-sm"
+                className="text-[#FD0134] font-medium text-sm"
               >
                 Clear all
               </button>
             </div>
-            
+
             {/* Body */}
             <div className="flex flex-1 overflow-hidden">
               {/* Left Sidebar - Tabs */}
@@ -485,12 +532,11 @@ export default function DiningRestaurants() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveFilterTab(tab.id)}
-                      className={`flex flex-col items-center gap-1 py-4 px-2 text-center relative transition-colors ${
-                        isActive ? 'bg-white text-green-600' : 'text-gray-500 hover:bg-gray-100'
-                      }`}
+                      className={`flex flex-col items-center gap-1 py-4 px-2 text-center relative transition-colors ${isActive ? 'bg-white text-[#FD0134]' : 'text-gray-500 hover:bg-gray-100'
+                        }`}
                     >
                       {isActive && (
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-600 rounded-r" />
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#FD0134] rounded-r" />
                       )}
                       <Icon className="h-5 w-5" strokeWidth={1.5} />
                       <span className="text-xs font-medium leading-tight">{tab.label}</span>
@@ -498,7 +544,7 @@ export default function DiningRestaurants() {
                   )
                 })}
               </div>
-              
+
               {/* Right Content Area - Scrollable */}
               <div ref={rightContentRef} className="flex-1 overflow-y-auto p-4">
                 {/* Sort By Tab */}
@@ -514,13 +560,12 @@ export default function DiningRestaurants() {
                         <button
                           key={option.id || 'relevance'}
                           onClick={() => setSortBy(option.id)}
-                          className={`px-4 py-3 rounded-xl border text-left transition-colors ${
-                            sortBy === option.id
-                              ? 'border-green-500 bg-green-50'
-                              : 'border-gray-200 hover:border-green-500'
-                          }`}
+                          className={`px-4 py-3 rounded-xl border text-left transition-colors ${sortBy === option.id
+                              ? 'border-[#FD0134] bg-[#FD0134]/10'
+                              : 'border-gray-200 hover:border-[#FD0134]'
+                            }`}
                         >
-                          <span className={`text-sm font-medium ${sortBy === option.id ? 'text-green-600' : 'text-gray-700'}`}>
+                          <span className={`text-sm font-medium ${sortBy === option.id ? 'text-[#FD0134]' : 'text-gray-700'}`}>
                             {option.label}
                           </span>
                         </button>
@@ -528,75 +573,70 @@ export default function DiningRestaurants() {
                     </div>
                   </div>
                 )}
-                
+
                 {/* Time Tab */}
                 {activeFilterTab === 'time' && (
                   <div className="space-y-4 mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Delivery Time</h3>
                     <div className="grid grid-cols-2 gap-3">
-                      <button 
+                      <button
                         onClick={() => toggleFilter('delivery-under-30')}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-                          activeFilters.has('delivery-under-30') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${activeFilters.has('delivery-under-30')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <Timer className={`h-6 w-6 ${activeFilters.has('delivery-under-30') ? 'text-green-600' : 'text-gray-600'}`} strokeWidth={1.5} />
-                        <span className={`text-sm font-medium ${activeFilters.has('delivery-under-30') ? 'text-green-600' : 'text-gray-700'}`}>Under 30 mins</span>
+                        <Timer className={`h-6 w-6 ${activeFilters.has('delivery-under-30') ? 'text-[#FD0134]' : 'text-gray-600'}`} strokeWidth={1.5} />
+                        <span className={`text-sm font-medium ${activeFilters.has('delivery-under-30') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Under 30 mins</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => toggleFilter('delivery-under-45')}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-                          activeFilters.has('delivery-under-45') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${activeFilters.has('delivery-under-45')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <Timer className={`h-6 w-6 ${activeFilters.has('delivery-under-45') ? 'text-green-600' : 'text-gray-600'}`} strokeWidth={1.5} />
-                        <span className={`text-sm font-medium ${activeFilters.has('delivery-under-45') ? 'text-green-600' : 'text-gray-700'}`}>Under 45 mins</span>
+                        <Timer className={`h-6 w-6 ${activeFilters.has('delivery-under-45') ? 'text-[#FD0134]' : 'text-gray-600'}`} strokeWidth={1.5} />
+                        <span className={`text-sm font-medium ${activeFilters.has('delivery-under-45') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Under 45 mins</span>
                       </button>
                     </div>
                   </div>
                 )}
-                
+
                 {/* Rating Tab */}
                 {activeFilterTab === 'rating' && (
                   <div className="space-y-4 mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Restaurant Rating</h3>
                     <div className="grid grid-cols-2 gap-3">
-                      <button 
+                      <button
                         onClick={() => toggleFilter('rating-35-plus')}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-                          activeFilters.has('rating-35-plus') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${activeFilters.has('rating-35-plus')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <Star className={`h-6 w-6 ${activeFilters.has('rating-35-plus') ? 'text-green-600 fill-green-600' : 'text-gray-400'}`} />
-                        <span className={`text-sm font-medium ${activeFilters.has('rating-35-plus') ? 'text-green-600' : 'text-gray-700'}`}>Rated 3.5+</span>
+                        <Star className={`h-6 w-6 ${activeFilters.has('rating-35-plus') ? 'text-[#FD0134] fill-[#FD0134]' : 'text-gray-400'}`} />
+                        <span className={`text-sm font-medium ${activeFilters.has('rating-35-plus') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Rated 3.5+</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => toggleFilter('rating-4-plus')}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-                          activeFilters.has('rating-4-plus') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${activeFilters.has('rating-4-plus')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <Star className={`h-6 w-6 ${activeFilters.has('rating-4-plus') ? 'text-green-600 fill-green-600' : 'text-gray-400'}`} />
-                        <span className={`text-sm font-medium ${activeFilters.has('rating-4-plus') ? 'text-green-600' : 'text-gray-700'}`}>Rated 4.0+</span>
+                        <Star className={`h-6 w-6 ${activeFilters.has('rating-4-plus') ? 'text-[#FD0134] fill-[#FD0134]' : 'text-gray-400'}`} />
+                        <span className={`text-sm font-medium ${activeFilters.has('rating-4-plus') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Rated 4.0+</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => toggleFilter('rating-45-plus')}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-                          activeFilters.has('rating-45-plus') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${activeFilters.has('rating-45-plus')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <Star className={`h-6 w-6 ${activeFilters.has('rating-45-plus') ? 'text-green-600 fill-green-600' : 'text-gray-400'}`} />
-                        <span className={`text-sm font-medium ${activeFilters.has('rating-45-plus') ? 'text-green-600' : 'text-gray-700'}`}>Rated 4.5+</span>
+                        <Star className={`h-6 w-6 ${activeFilters.has('rating-45-plus') ? 'text-[#FD0134] fill-[#FD0134]' : 'text-gray-400'}`} />
+                        <span className={`text-sm font-medium ${activeFilters.has('rating-45-plus') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Rated 4.5+</span>
                       </button>
                     </div>
                   </div>
@@ -607,56 +647,52 @@ export default function DiningRestaurants() {
                   <div className="space-y-4 mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Distance</h3>
                     <div className="grid grid-cols-2 gap-3">
-                      <button 
+                      <button
                         onClick={() => toggleFilter('distance-under-1km')}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-                          activeFilters.has('distance-under-1km') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${activeFilters.has('distance-under-1km')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <MapPin className={`h-6 w-6 ${activeFilters.has('distance-under-1km') ? 'text-green-600' : 'text-gray-600'}`} strokeWidth={1.5} />
-                        <span className={`text-sm font-medium ${activeFilters.has('distance-under-1km') ? 'text-green-600' : 'text-gray-700'}`}>Under 1 km</span>
+                        <MapPin className={`h-6 w-6 ${activeFilters.has('distance-under-1km') ? 'text-[#FD0134]' : 'text-gray-600'}`} strokeWidth={1.5} />
+                        <span className={`text-sm font-medium ${activeFilters.has('distance-under-1km') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Under 1 km</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => toggleFilter('distance-under-2km')}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-                          activeFilters.has('distance-under-2km') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${activeFilters.has('distance-under-2km')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <MapPin className={`h-6 w-6 ${activeFilters.has('distance-under-2km') ? 'text-green-600' : 'text-gray-600'}`} strokeWidth={1.5} />
-                        <span className={`text-sm font-medium ${activeFilters.has('distance-under-2km') ? 'text-green-600' : 'text-gray-700'}`}>Under 2 km</span>
+                        <MapPin className={`h-6 w-6 ${activeFilters.has('distance-under-2km') ? 'text-[#FD0134]' : 'text-gray-600'}`} strokeWidth={1.5} />
+                        <span className={`text-sm font-medium ${activeFilters.has('distance-under-2km') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Under 2 km</span>
                       </button>
                     </div>
                   </div>
                 )}
-                
+
                 {/* Price Tab */}
                 {activeFilterTab === 'price' && (
                   <div className="space-y-4 mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Dish Price</h3>
                     <div className="flex flex-col gap-3">
-                      <button 
+                      <button
                         onClick={() => toggleFilter('price-under-200')}
-                        className={`px-4 py-3 rounded-xl border text-left transition-colors ${
-                          activeFilters.has('price-under-200') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`px-4 py-3 rounded-xl border text-left transition-colors ${activeFilters.has('price-under-200')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <span className={`text-sm font-medium ${activeFilters.has('price-under-200') ? 'text-green-600' : 'text-gray-700'}`}>Under ₹200</span>
+                        <span className={`text-sm font-medium ${activeFilters.has('price-under-200') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Under ₹200</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => toggleFilter('price-under-500')}
-                        className={`px-4 py-3 rounded-xl border text-left transition-colors ${
-                          activeFilters.has('price-under-500') 
-                            ? 'border-green-500 bg-green-50' 
-                            : 'border-gray-200 hover:border-green-500'
-                        }`}
+                        className={`px-4 py-3 rounded-xl border text-left transition-colors ${activeFilters.has('price-under-500')
+                            ? 'border-[#FD0134] bg-[#FD0134]/10'
+                            : 'border-gray-200 hover:border-[#FD0134]'
+                          }`}
                       >
-                        <span className={`text-sm font-medium ${activeFilters.has('price-under-500') ? 'text-green-600' : 'text-gray-700'}`}>Under ₹500</span>
+                        <span className={`text-sm font-medium ${activeFilters.has('price-under-500') ? 'text-[#FD0134]' : 'text-gray-700'}`}>Under ₹500</span>
                       </button>
                     </div>
                   </div>
@@ -671,13 +707,12 @@ export default function DiningRestaurants() {
                         <button
                           key={cuisine}
                           onClick={() => setSelectedCuisine(selectedCuisine === cuisine ? null : cuisine)}
-                          className={`px-4 py-3 rounded-xl border text-center transition-colors ${
-                            selectedCuisine === cuisine
-                              ? 'border-green-500 bg-green-50'
-                              : 'border-gray-200 hover:border-green-500'
-                          }`}
+                          className={`px-4 py-3 rounded-xl border text-center transition-colors ${selectedCuisine === cuisine
+                              ? 'border-[#FD0134] bg-[#FD0134]/10'
+                              : 'border-gray-200 hover:border-[#FD0134]'
+                            }`}
                         >
-                          <span className={`text-sm font-medium ${selectedCuisine === cuisine ? 'text-green-600' : 'text-gray-700'}`}>
+                          <span className={`text-sm font-medium ${selectedCuisine === cuisine ? 'text-[#FD0134]' : 'text-gray-700'}`}>
                             {cuisine}
                           </span>
                         </button>
@@ -687,22 +722,21 @@ export default function DiningRestaurants() {
                 )}
               </div>
             </div>
-            
+
             {/* Footer */}
             <div className="flex items-center gap-4 px-4 py-4 border-t bg-white">
-              <button 
+              <button
                 onClick={() => setIsFilterOpen(false)}
                 className="flex-1 py-3 text-center font-semibold text-gray-700"
               >
                 Close
               </button>
-              <button 
+              <button
                 onClick={() => setIsFilterOpen(false)}
-                className={`flex-1 py-3 font-semibold rounded-xl transition-colors ${
-                  activeFilters.size > 0 || sortBy || selectedCuisine
-                    ? 'bg-green-600 text-white hover:bg-green-700'
+                className={`flex-1 py-3 font-semibold rounded-xl transition-colors ${activeFilters.size > 0 || sortBy || selectedCuisine
+                    ? 'bg-[#FD0134] text-white hover:bg-[#FD0134]/90'
                     : 'bg-gray-200 text-gray-500'
-                }`}
+                  }`}
               >
                 {activeFilters.size > 0 || sortBy || selectedCuisine
                   ? `Show ${filteredRestaurants.length} results`
@@ -715,4 +749,3 @@ export default function DiningRestaurants() {
     </AnimatedPage>
   )
 }
-

@@ -2,6 +2,7 @@ import express from "express";
 import {
   getRestaurants,
   getRestaurantBySlug,
+  getDiningOffersBySlug,
   getCategories,
   getLimelight,
   getBankOffers,
@@ -13,6 +14,10 @@ import {
   getRestaurantBookings,
   updateBookingStatus,
   createDiningReview,
+  sendBill,
+  applyCoupon,
+  createDiningPaymentOrder,
+  verifyDiningPayment,
 } from "../controllers/diningController.js";
 import { authenticate as authenticateUser } from "../../auth/middleware/auth.js";
 import { authenticate as authenticateRestaurant } from "../../restaurant/middleware/restaurantAuth.js";
@@ -20,6 +25,7 @@ import { authenticate as authenticateRestaurant } from "../../restaurant/middlew
 const router = express.Router();
 
 router.get("/restaurants", getRestaurants);
+router.get("/restaurants/:slug/offers", getDiningOffersBySlug);
 router.get("/restaurants/:slug", getRestaurantBySlug);
 router.get("/categories", getCategories);
 router.get("/limelight", getLimelight);
@@ -46,6 +52,10 @@ router.patch(
   authenticateRestaurant,
   updateBookingStatus,
 );
+router.post("/bookings/:bookingId/send-bill", authenticateRestaurant, sendBill);
+router.post("/bookings/:bookingId/apply-coupon", authenticateUser, applyCoupon);
+router.post("/bookings/:bookingId/create-payment", authenticateUser, createDiningPaymentOrder);
+router.post("/bookings/:bookingId/verify-payment", authenticateUser, verifyDiningPayment);
 router.post("/reviews", authenticateUser, createDiningReview);
 
 export default router;
