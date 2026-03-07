@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 import { Percent, Save, RefreshCw } from 'lucide-react';
 
 const CommissionManagement = () => {

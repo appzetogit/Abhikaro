@@ -487,8 +487,9 @@ export default function DiningRestaurants() {
           </div>
         </div>
       </div>
+    </div>
 
-      {/* Filter Modal - Same as Dining page */}
+    {/* Filter Modal - Same as Dining page */}
       {isFilterOpen && (
         <div className="fixed inset-0 z-[100]" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
           {/* Backdrop */}
