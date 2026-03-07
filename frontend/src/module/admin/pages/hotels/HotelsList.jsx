@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Search, Eye, Pencil, Trash2, ArrowUpDown, Loader2, Building2, MapPin, Phone, Mail, QrCode, FileText, Image as ImageIcon, ExternalLink, X, Plus, Upload, Download } from "lucide-react"
+import { Search, Eye, Pencil, Trash2, ArrowUpDown, Loader2, Building2, MapPin, Phone, Mail, QrCode, FileText, Image as ImageIcon, ExternalLink, X, Plus, Upload, Download, ChevronLeft, ChevronRight } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { uploadToCloudinary } from "@/lib/utils/cloudinary"
 import qrPosterTemplate from "@/assets/qrcode.png"
 
+const ITEMS_PER_PAGE = 15
+
 export default function HotelsList() {
   const [searchQuery, setSearchQuery] = useState("")
   const [hotels, setHotels] = useState([])
@@ -17,6 +19,7 @@ export default function HotelsList() {
   const [error, setError] = useState(null)
   const [sortOrder, setSortOrder] = useState("asc") // "asc" or "desc"
   const [sortBy, setSortBy] = useState("hotelName") // "hotelName" or "address"
+  const [currentPage, setCurrentPage] = useState(1)
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [editDialog, setEditDialog] = useState(null)
@@ -119,6 +122,19 @@ export default function HotelsList() {
     return result
   }, [hotels, searchQuery, sortBy, sortOrder])
 
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredAndSortedHotels.length / ITEMS_PER_PAGE)
+  const paginatedHotels = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+    const endIndex = startIndex + ITEMS_PER_PAGE
+    return filteredAndSortedHotels.slice(startIndex, endIndex)
+  }, [filteredAndSortedHotels, currentPage])
+
+  // Reset to page 1 when search or sort changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, sortBy, sortOrder])
+
   const handleSort = (field) => {
     if (sortBy === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc")
@@ -126,6 +142,47 @@ export default function HotelsList() {
       setSortBy(field)
       setSortOrder("asc")
     }
+  }
+
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+      // Scroll to top of table
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    }
+  }
+
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages = []
+    const maxVisiblePages = 5
+    
+    if (totalPages <= maxVisiblePages) {
+      // Show all pages if total pages is less than max visible
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i)
+      }
+    } else {
+      // Show pages with ellipsis
+      if (currentPage <= 3) {
+        // Show first pages
+        for (let i = 1; i <= 5; i++) {
+          pages.push(i)
+        }
+      } else if (currentPage >= totalPages - 2) {
+        // Show last pages
+        for (let i = totalPages - 4; i <= totalPages; i++) {
+          pages.push(i)
+        }
+      } else {
+        // Show pages around current page
+        for (let i = currentPage - 2; i <= currentPage + 2; i++) {
+          pages.push(i)
+        }
+      }
+    }
+    
+    return pages
   }
 
   const handleKycUpload = async (field, file) => {
@@ -745,7 +802,7 @@ export default function HotelsList() {
                   </td>
                 </tr>
               ) : (
-                filteredAndSortedHotels.map((hotel) => (
+                paginatedHotels.map((hotel) => (
                   <tr key={hotel._id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-slate-900">
@@ -827,6 +884,66 @@ export default function HotelsList() {
           </table>
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      {filteredAndSortedHotels.length > 0 && totalPages > 1 && (
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mt-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Page Info */}
+            <div className="text-sm text-slate-600">
+              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{" "}
+              {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedHotels.length)} of{" "}
+              {filteredAndSortedHotels.length} hotels
+            </div>
+
+            {/* Pagination Buttons */}
+            <div className="flex items-center gap-2">
+              {/* Previous Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </Button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1">
+                {getPageNumbers().map((pageNum) => (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`min-w-[40px] ${
+                      currentPage === pageNum
+                        ? "bg-blue-600 hover:bg-blue-700 text-white"
+                        : ""
+                    }`}
+                  >
+                    {pageNum}
+                  </Button>
+                ))}
+              </div>
+
+              {/* Next Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-1"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteConfirmDialog} onOpenChange={(open) => !open && setDeleteConfirmDialog(null)}>
