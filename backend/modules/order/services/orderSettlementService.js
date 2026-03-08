@@ -8,6 +8,7 @@ import Hotel from "../../hotel/models/Hotel.js";
 import mongoose from "mongoose";
 import { calculateDistance } from "./orderCalculationService.js";
 import HotelWallet from "../../hotel/models/HotelWallet.js";
+import { getCache, setCache, generateCacheKey, CACHE_TTL } from "../../../shared/utils/cache.js";
 
 /**
  * Calculate comprehensive order settlement breakdown
@@ -20,10 +21,19 @@ export const calculateOrderSettlement = async (orderId) => {
       throw new Error("Order not found");
     }
 
-    // Get fee settings
-    const feeSettings = await FeeSettings.findOne({ isActive: true })
-      .sort({ createdAt: -1 })
-      .lean();
+    // Get fee settings (with caching)
+    const feeSettingsCacheKey = generateCacheKey('feeSettings', 'active');
+    let feeSettings = await getCache(feeSettingsCacheKey);
+    
+    if (!feeSettings) {
+      feeSettings = await FeeSettings.findOne({ isActive: true })
+        .sort({ createdAt: -1 })
+        .lean();
+      
+      if (feeSettings) {
+        await setCache(feeSettingsCacheKey, feeSettings, CACHE_TTL.FEE_SETTINGS);
+      }
+    }
 
     const platformFee = feeSettings?.platformFee || 5;
     const gstRate = (feeSettings?.gstRate || 5) / 100;

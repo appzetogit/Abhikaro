@@ -237,6 +237,11 @@ userSchema.index({ 'addresses.location': '2dsphere' });
 userSchema.index({ 'currentLocation.location': '2dsphere' }); // GeoJSON index for current location queries
 // Note: Single-field indexes on email/phone removed - compound indexes {email:1,role:1} and {phone:1,role:1} can serve as prefixes
 userSchema.index({ role: 1 });
+// Additional indexes for scalability
+userSchema.index({ email: 1 }, { unique: true, sparse: true }); // Single email index for quick lookups
+userSchema.index({ phone: 1 }, { unique: true, sparse: true }); // Single phone index for quick lookups
+userSchema.index({ role: 1, isActive: 1 }); // Compound for filtering active users by role
+userSchema.index({ createdAt: -1 }); // For sorting by creation date
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {

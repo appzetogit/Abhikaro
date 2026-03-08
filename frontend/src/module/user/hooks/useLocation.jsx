@@ -27,7 +27,6 @@ export function useLocation() {
       // Coordinates are valid and useful for order calculations, even without address
       // Address can be retried later without losing coordinates
       if (!locationData?.latitude || !locationData?.longitude) {
-        console.log("⚠️ Skipping DB update - missing coordinates:", locationData);
         return;
       }
 
@@ -39,20 +38,12 @@ export function useLocation() {
         (!locationData?.city && !locationData?.address && !locationData?.formattedAddress);
 
       if (hasPlaceholderAddress) {
-        console.log("⚠️ Address is placeholder, but saving coordinates to Firebase:", {
-          coordinates: `${locationData.latitude}, ${locationData.longitude}`,
-          city: locationData?.city,
-          address: locationData?.address
-        });
         // Continue to save coordinates even if address is placeholder
       }
 
       // Check if user is authenticated before trying to update DB
       if (!isUserAuthenticated()) {
         // User not logged in - skip DB update, just use localStorage (log only in dev)
-        if (process.env.NODE_ENV === 'development') {
-          console.log("ℹ️ User not authenticated, skipping DB update (using localStorage only)")
-        }
         return
       }
 
@@ -81,14 +72,6 @@ export function useLocation() {
         locationPayload.streetNumber = locationData.streetNumber
       }
 
-      console.log("💾 Updating live location in database:", {
-        coordinates: `${locationPayload.latitude}, ${locationPayload.longitude}`,
-        formattedAddress: locationPayload.formattedAddress,
-        city: locationPayload.city,
-        area: locationPayload.area,
-        accuracy: locationPayload.accuracy
-      })
-
       // Get user ID from token for Firebase backup storage
       const userToken =
         localStorage.getItem("user_accessToken") ||
@@ -101,7 +84,6 @@ export function useLocation() {
           const payload = JSON.parse(atob(userToken.split('.')[1]))
           userId = payload._id || payload.id || payload.userId
         } catch (e) {
-          console.warn("⚠️ Could not extract userId from token:", e)
         }
       }
 
@@ -118,28 +100,18 @@ export function useLocation() {
             postalCode: locationPayload.postalCode,
             accuracy: locationPayload.accuracy
           })
-          console.log("✅ Location saved directly to Firebase as backup")
         } catch (firebaseErr) {
-          console.warn("⚠️ Failed to save to Firebase directly:", firebaseErr)
         }
       }
 
       // Save to backend (which also saves to Firebase)
       const response = await userAPI.updateLocation(locationPayload)
-      
-      console.log("✅ Live location successfully stored in database and Firebase:", {
-        response: response?.data,
-        message: response?.data?.message || "Location updated",
-        userId: userId || "unknown"
-      })
     } catch (err) {
       // Only log non-network and non-auth errors
       if (err.code !== "ERR_NETWORK" && err.response?.status !== 404 && err.response?.status !== 401) {
-        console.error("❌ DB location update error:", err)
       } else if (err.response?.status === 404 || err.response?.status === 401) {
         // 404 or 401 means user not authenticated or route doesn't exist
         // Silently skip - this is expected for non-authenticated users
-        console.log("ℹ️ Location update skipped (user not authenticated or route not available)")
       }
     }
   }
@@ -151,7 +123,6 @@ export function useLocation() {
     try {
       // FIRST: Try backend API (more reliable, handles errors better)
       try {
-        console.log("🔍 Trying backend reverse geocoding API:", { latitude, longitude })
         const backendResponse = await locationAPI.reverseGeocode(latitude, longitude)
         
         if (backendResponse?.data?.success && backendResponse?.data?.data?.results?.[0]) {
@@ -166,11 +137,6 @@ export function useLocation() {
           
           // Check if we got valid data (not just coordinates)
           if (formattedAddress && !formattedAddress.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/)) {
-            console.log("✅ Backend reverse geocoding successful:", {
-              city,
-              area,
-              formattedAddress
-            })
             
             return {
               city: city || "Current Location",
@@ -183,7 +149,6 @@ export function useLocation() {
           }
         }
       } catch (backendError) {
-        console.warn("⚠️ Backend reverse geocoding failed, trying direct BigDataCloud:", backendError.message)
       }
 
       // FALLBACK: Try BigDataCloud directly if backend fails
@@ -215,7 +180,6 @@ export function useLocation() {
         
         // If we don't have city or formattedAddress, treat as placeholder
         if (!city && !formattedAddress) {
-          console.warn("⚠️ BigDataCloud returned empty response:", data)
           return {
             city: "Current Location",
             state: "",
@@ -242,10 +206,8 @@ export function useLocation() {
       // Suppress network errors - they're expected if API is down or network is unavailable
       // Only log if it's not a network/abort error
       if (error.name !== 'AbortError' && error.message !== 'Failed to fetch') {
-        console.warn("⚠️ Reverse geocoding failed:", error.message)
       } else {
         // Network error - silently return placeholder (coordinates will still be saved)
-        console.log("ℹ️ Reverse geocoding unavailable (network error) - using coordinates only")
       }
       
       // Return placeholder location - coordinates will still be saved to Firebase
@@ -266,7 +228,6 @@ export function useLocation() {
       // Check cache first
       try {
         const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(err => {
-          console.warn('Failed to load cache utility:', err);
           return null;
         });
         
@@ -275,18 +236,15 @@ export function useLocation() {
           
           const cachedResult = getCached('geocoding', latitude, longitude);
           if (cachedResult) {
-            console.log("✅ Using cached geocoding result");
             return cachedResult;
           }
           
           // Check rate limit
           if (!shouldMakeApiCall('geocoding')) {
-            console.warn("⚠️ Geocoding API rate limit reached, using fallback");
             return reverseGeocodeDirect(latitude, longitude);
           }
         }
       } catch (error) {
-        console.warn('Cache utility not available:', error);
       }
       
       // Get Google Maps API key from backend database
@@ -294,26 +252,15 @@ export function useLocation() {
       const GOOGLE_MAPS_API_KEY = await getGoogleMapsApiKey();
 
       if (!GOOGLE_MAPS_API_KEY) {
-        console.warn("⚠️ Google Maps API key not found, using fallback");
-        console.warn("⚠️ Please set Google Maps API Key in ENV Setup");
         return reverseGeocodeDirect(latitude, longitude);
       }
 
-      console.log("🔍 Fetching address from Google Maps for:", latitude, longitude);
-      console.log("🔍 Using Google Maps API Key:", GOOGLE_MAPS_API_KEY.substring(0, 10) + "...");
-      console.log("🔍 Coordinates precision:", {
-        lat: latitude.toFixed(8),
-        lng: longitude.toFixed(8)
-      });
 
       // Validate coordinates are in India range BEFORE fetching
       // India: Latitude 6.5° to 37.1° N, Longitude 68.7° to 97.4° E
       const isInIndiaRange = latitude >= 6.5 && latitude <= 37.1 && longitude >= 68.7 && longitude <= 97.4 && longitude > 0
 
       if (!isInIndiaRange || longitude < 0) {
-        console.warn("⚠️ Coordinates are outside India range - skipping geocoding")
-        console.warn("⚠️ Coordinates: Lat", latitude, "Lng", longitude)
-        console.warn("⚠️ India Range: Lat 6.5-37.1, Lng 68.7-97.4 (must be positive/East)")
         throw new Error("Coordinates outside India range")
       }
 
@@ -337,9 +284,6 @@ export function useLocation() {
 
         // Handle HTTP 403 error gracefully - use fallback instead of throwing
         if (response.status === 403) {
-          console.warn("⚠️⚠️⚠️ Google Maps API returned HTTP 403 - using fallback reverse geocoding");
-          console.warn("⚠️ This usually means API key restrictions or billing issues");
-          console.warn("⚠️ Falling back to alternative reverse geocoding service...");
           return reverseGeocodeDirect(latitude, longitude);
         }
 
@@ -351,7 +295,6 @@ export function useLocation() {
       } catch (error) {
         clearTimeout(timeoutId); // Clear timeout on error
         if (error.name === 'AbortError') {
-          console.error("❌ Google Maps API request was aborted due to timeout");
           throw new Error("Google Maps API timeout");
         }
         throw error;
@@ -359,51 +302,25 @@ export function useLocation() {
 
       // Check if response is valid
       if (!data) {
-        console.error("❌ Google Maps API returned null/undefined response");
         throw new Error("Google Maps API returned null response");
       }
 
-      // Log full response for debugging
-      console.log("📦📦📦 Google Maps API Full Response:", {
-        status: data.status,
-        error_message: data.error_message,
-        results_count: data.results?.length || 0,
-        has_results: !!data.results && data.results.length > 0
-      });
 
       // Check for API errors - handle 403 gracefully and use fallback
       if (data.status === "REQUEST_DENIED") {
-        console.warn("⚠️⚠️⚠️ Google Maps API REQUEST_DENIED (403) - using fallback reverse geocoding");
-        console.warn("⚠️ Error message:", data.error_message);
-        console.warn("⚠️ Possible reasons:");
-        console.warn("   1. API key is invalid or missing");
-        console.warn("   2. Geocoding API is not enabled in Google Cloud Console");
-        console.warn("   3. Billing is not enabled");
-        console.warn("   4. API key restrictions are blocking the request");
-        console.warn("⚠️ Falling back to alternative reverse geocoding service...");
         // Don't throw error - let it fall back to reverseGeocodeDirect
         return reverseGeocodeDirect(latitude, longitude);
       }
 
       if (data.status === "OVER_QUERY_LIMIT") {
-        console.error("❌❌❌ Google Maps API OVER_QUERY_LIMIT!");
-        console.error("❌ You have exceeded your quota. Check billing in Google Cloud Console");
         throw new Error("Google Maps API quota exceeded. Check billing.");
       }
 
       if (data.status === "ZERO_RESULTS") {
-        console.warn("⚠️⚠️⚠️ Google Maps API ZERO_RESULTS!");
-        console.warn("⚠️ No results found for these coordinates:", latitude, longitude);
-        console.warn("⚠️ This might mean the coordinates are invalid or in an unmapped area");
         throw new Error("No address found for these coordinates");
       }
 
       if (data.status !== "OK" || !data.results || data.results.length === 0) {
-        console.error("❌ Google Maps Geocoding Error:", {
-          status: data.status,
-          error_message: data.error_message,
-          results_count: data.results?.length || 0
-        });
         throw new Error(`Invalid response from Google Maps API: ${data.status} - ${data.error_message || "No results"}`);
       }
 
@@ -422,14 +339,12 @@ export function useLocation() {
       })
 
       if (indiaResults.length === 0) {
-        console.warn("⚠️ No India results found in geocoding response")
         // Check if first result is foreign
         const firstResult = data.results[0]
         const addressComponents = firstResult.address_components || []
         const countryComponent = addressComponents.find(ac => ac.types.includes('country'))
 
         if (countryComponent && countryComponent.short_name !== 'IN' && countryComponent.long_name !== 'India') {
-          console.error("❌ Address is from foreign country:", countryComponent.long_name)
           throw new Error("Address outside India")
         }
         // If no country info, use first result but log warning
@@ -448,12 +363,6 @@ export function useLocation() {
           if (hasPremise || hasEstablishment || hasStreetAddress || hasPOI) {
             exactResult = result;
             bestResultIndex = i;
-            console.log(`✅✅✅ Found India result with exact location at index ${i}`, {
-              hasPremise,
-              hasEstablishment,
-              hasStreetAddress,
-              hasPOI
-            });
             break;
           }
         }
@@ -461,7 +370,6 @@ export function useLocation() {
         // If no specific result found, use first India result
         if (!exactResult) {
           exactResult = indiaResults[0];
-          console.log("⚠️ No premise/establishment found, using first India result");
         }
       }
 
@@ -471,60 +379,11 @@ export function useLocation() {
       // Validate address is not foreign (additional check)
       const foreignPattern = /\b(USA|United States|Los Angeles|California|CA \d{5}|New York|NY|UK|United Kingdom|London|Canada|Australia|Singapore|Dubai)\b/i
       if (foreignPattern.test(formattedAddress)) {
-        console.error("❌ REJECTED: Address is from foreign country:", formattedAddress)
         throw new Error("Foreign address detected")
       }
 
-      // Log detailed information about the selected result
-      console.log(`📦 Using results[${bestResultIndex}] (Most Precise - Zomato Style):`, {
-        index: bestResultIndex,
-        formattedAddress,
-        formattedAddressParts: formattedAddress.split(',').length,
-        hasPOI: addressComponents.some(c => c.types.includes("point_of_interest")),
-        hasPremise: addressComponents.some(c => c.types.includes("premise")),
-        hasSublocality: addressComponents.some(c => c.types.includes("sublocality_level_1")),
-        allComponents: addressComponents.map(c => ({
-          name: c.long_name,
-          types: c.types
-        }))
-      });
 
-      // If formattedAddress is incomplete (only 2 parts = city, state), log warning
-      const addressPartsCount = formattedAddress.split(',').map(p => p.trim()).filter(p => p.length > 0).length;
-      if (addressPartsCount <= 2 && !addressComponents.some(c => c.types.includes("point_of_interest") || c.types.includes("premise"))) {
-        console.warn("⚠️⚠️⚠️ Incomplete address detected - only city/state level");
-        console.warn("⚠️ Address parts count:", addressPartsCount);
-        console.warn("⚠️ This usually means:");
-        console.warn("   1. GPS coordinates are not accurate (network-based location instead of GPS)");
-        console.warn("   2. Location is on a road/street without specific building");
-        console.warn("   3. Solution: Use mobile device for better GPS accuracy (enableHighAccuracy: true)");
-      }
 
-      // Log ALL results to see what Google is returning
-      console.log("📦 Google Maps API Response - All Results:", {
-        totalResults: data.results.length,
-        results: data.results.map((r, i) => ({
-          index: i,
-          formatted_address: r.formatted_address,
-          types: r.types,
-          hasPOI: r.address_components?.some(c => c.types.includes("point_of_interest")),
-          hasPremise: r.address_components?.some(c => c.types.includes("premise")),
-          hasSublocality: r.address_components?.some(c => c.types.includes("sublocality_level_1"))
-        }))
-      });
-
-      console.log("📦 Using results[0] (Most Precise - Zomato Style):", {
-        status: data.status,
-        formattedAddress,
-        addressComponentsCount: addressComponents.length,
-        hasPremise: addressComponents.some(c => c.types.includes("premise")),
-        hasPOI: addressComponents.some(c => c.types.includes("point_of_interest")),
-        hasSublocality: addressComponents.some(c => c.types.includes("sublocality_level_1")),
-        allComponentTypes: addressComponents.map(c => ({
-          name: c.long_name,
-          types: c.types
-        }))
-      });
 
       // Extract address components with priority order (Zomato style - EXACT LOCATION)
       let city = "";
@@ -551,64 +410,53 @@ export function useLocation() {
         // Point of Interest (POI) - Cafe/Shop name (e.g., "Mama Loca Cafe")
         if (types.includes("point_of_interest") && !pointOfInterest) {
           pointOfInterest = longName;
-          console.log("✅ Found POI:", pointOfInterest);
         }
 
         // Premise - Building name (e.g., "Princess Center", "501 Princess Center")
         if (types.includes("premise") && !premise) {
           premise = longName;
-          console.log("✅ Found premise:", premise);
         }
 
         // Subpremise - Floor/Unit (e.g., "5th Floor", "G-2")
         if (types.includes("subpremise")) {
           floor = longName;
-          console.log("✅ Found floor/subpremise:", floor);
         }
 
         // Street number (e.g., "501")
         if (types.includes("street_number") && !streetNumber) {
           streetNumber = longName;
-          console.log("✅ Found street number:", streetNumber);
         }
 
         // Route/Street name
         if (types.includes("route") && !street) {
           street = longName;
-          console.log("✅ Found route:", street);
         }
 
         // Sublocality Level 1 - Area name (e.g., "New Palasia")
         if (types.includes("sublocality_level_1") && !sublocalityLevel1) {
           sublocalityLevel1 = longName;
-          console.log("✅ Found sublocality_level_1:", sublocalityLevel1);
         }
 
         // Sublocality Level 2 - Sub-area name
         if (types.includes("sublocality_level_2") && !sublocalityLevel2) {
           sublocalityLevel2 = longName;
-          console.log("✅ Found sublocality_level_2:", sublocalityLevel2);
         }
 
         // City (locality)
         if (types.includes("locality") && !city) {
           city = longName;
-          console.log("✅ Found city:", city);
         } else if (types.includes("administrative_area_level_2") && !city) {
           city = longName;
-          console.log("✅ Found city from admin_area_level_2:", city);
         }
 
         // State
         if (types.includes("administrative_area_level_1") && !state) {
           state = longName;
-          console.log("✅ Found state:", state);
         }
 
         // Postal Code (Pincode)
         if (types.includes("postal_code") && !postalCode) {
           postalCode = longName;
-          console.log("✅ Found postal code:", postalCode);
         }
       }
 
@@ -622,21 +470,17 @@ export function useLocation() {
       let mainTitle = "";
 
       // Extract from geocoding address components (no Places API)
-      {
-        // Fallback to geocoding components
-        const building = addressComponents.find(c =>
-          c.types.includes("point_of_interest") ||
-          c.types.includes("premise") ||
-          c.types.includes("sublocality_level_1")
-        );
+      // Fallback to geocoding components
+      const building = addressComponents.find(c =>
+        c.types.includes("point_of_interest") ||
+        c.types.includes("premise") ||
+        c.types.includes("sublocality_level_1")
+      );
 
-        if (building) {
-          mainTitle = building.long_name;
-          console.log("✅✅✅ ZOMATO-STYLE: Found exact building/cafe name from geocoding:", mainTitle);
-        } else {
-          mainTitle = "Location Found";
-          console.warn("⚠️ No building/cafe name found in address components");
-        }
+      if (building) {
+        mainTitle = building.long_name;
+      } else {
+        mainTitle = "Location Found";
       }
 
       // Use mainTitle as mainLocation (Zomato-style)
@@ -645,7 +489,6 @@ export function useLocation() {
       // Set area from main location (Zomato priority order)
       if (mainLocation && mainLocation !== "Location Found") {
         area = mainLocation;
-        console.log("✅✅✅ ZOMATO-STYLE: Using mainTitle as area:", area);
       } else if (pointOfInterest) {
         area = pointOfInterest;
         mainLocation = pointOfInterest;
@@ -718,18 +561,11 @@ export function useLocation() {
       // Otherwise, try to build from components
       if (hasCompleteFormattedAddress) {
         completeFormattedAddress = formattedAddress;
-        console.log("✅✅✅ Using Google's formatted_address directly (complete - 4+ parts):", completeFormattedAddress);
       } else if (completeAddressParts.length > 0 && (pointOfInterest || premise)) {
         // Build from components if we have POI/premise
         completeFormattedAddress = completeAddressParts.join(', ');
-        console.log("✅ Using built address from components:", completeFormattedAddress);
       } else {
         // Google's formatted_address is incomplete - log warning
-        console.warn("⚠️⚠️⚠️ Google's formatted_address is incomplete (only 2-3 parts):", formattedAddress);
-        console.warn("⚠️ This usually means:");
-        console.warn("   1. GPS coordinates are not accurate (network-based location)");
-        console.warn("   2. Location is in a generic area without specific POI/premise");
-        console.warn("   3. Try on mobile device for better GPS accuracy");
         completeFormattedAddress = formattedAddress; // Use what we have
       }
 
@@ -741,15 +577,12 @@ export function useLocation() {
       // This is the exact Zomato approach - show "Mama Loca Cafe" as the main title
       if (mainLocation && mainLocation.trim() !== "" && mainLocation !== "Location Found") {
         displayAddressParts.push(mainLocation);
-        console.log("✅✅✅ ZOMATO-STYLE: Using mainTitle/mainLocation for display:", mainLocation);
       } else if (pointOfInterest && pointOfInterest.trim() !== "") {
         // Fallback to pointOfInterest if mainLocation not set
         displayAddressParts.push(pointOfInterest);
-        console.log("✅ Using pointOfInterest for display:", pointOfInterest);
       } else if (premise && premise.trim() !== "") {
         // Fallback to premise
         displayAddressParts.push(premise);
-        console.log("✅ Using premise for display:", premise);
       }
 
       // Add building details if not already included in mainLocation
@@ -776,7 +609,6 @@ export function useLocation() {
       // If we couldn't build from components, extract from formatted_address (ZOMATO-STYLE)
       // formatted_address from results[0] usually has: "Mama Loca Cafe, 501 Princess Center, 5th Floor, New Palasia, Indore, Madhya Pradesh 452001"
       if (displayAddressParts.length === 0 && formattedAddress) {
-        console.log("🔍 Extracting from formatted_address (fallback):", formattedAddress);
         const parts = formattedAddress.split(',').map(p => p.trim()).filter(p => p.length > 0);
 
         // Remove pincode, country, and city/state parts
@@ -791,7 +623,6 @@ export function useLocation() {
           return true;
         });
 
-        console.log("📋 Filtered parts from formatted_address:", filteredParts);
 
         // Find city index
         let cityIndex = -1;
@@ -808,20 +639,15 @@ export function useLocation() {
         // Extract locality parts (everything before city) - this includes POI, building, floor, area
         if (cityIndex > 0) {
           displayAddressParts = filteredParts.slice(0, cityIndex);
-          console.log("✅✅✅ Extracted locality from formatted_address (before city):", displayAddressParts);
         } else if (filteredParts.length >= 4) {
           // If city not found, take first 4 parts (usually POI, building, floor, area)
           displayAddressParts = filteredParts.slice(0, 4);
-          console.log("✅ Using first 4 parts from formatted_address:", displayAddressParts);
         } else if (filteredParts.length >= 3) {
           displayAddressParts = filteredParts.slice(0, 3);
-          console.log("✅ Using first 3 parts from formatted_address:", displayAddressParts);
         } else if (filteredParts.length >= 2) {
           displayAddressParts = filteredParts.slice(0, 2);
-          console.log("✅ Using first 2 parts from formatted_address:", displayAddressParts);
         } else if (filteredParts.length >= 1) {
           displayAddressParts = [filteredParts[0]];
-          console.log("✅ Using first part from formatted_address:", displayAddressParts);
         }
       }
 
@@ -830,7 +656,6 @@ export function useLocation() {
         ? displayAddressParts.join(', ')
         : (mainLocation || area || city || "Select location");
 
-      console.log("🎯🎯🎯 FINAL Display Address:", displayAddress);
 
       // Set area for backward compatibility
       if (!area) {
@@ -847,33 +672,7 @@ export function useLocation() {
         }
       }
 
-      console.log("✅✅✅ Reverse Geocode Complete Address (NO Google Places API):", {
-        mainTitle, // ZOMATO-STYLE: Building/Cafe name
-        mainLocation, // ZOMATO-STYLE: Main location for display
-        pointOfInterest,
-        premise,
-        streetNumber,
-        floor,
-        sublocalityLevel1,
-        city,
-        state,
-        postalCode,
-        completeFormattedAddress,
-        displayAddress,
-        area,
-        formattedAddressFromGoogle: formattedAddress
-      });
 
-      // Final validation: Ensure mainTitle/mainLocation is used properly
-      if (mainTitle && mainTitle !== "Location Found") {
-        console.log("✅✅✅ ZOMATO-STYLE SUCCESS: Exact building/cafe name extracted:", mainTitle);
-      } else {
-        console.warn("⚠️⚠️⚠️ ZOMATO-STYLE WARNING: Could not extract exact building/cafe name");
-        console.warn("⚠️ This might be due to:");
-        console.warn("   1. Location is not at a specific building/cafe (e.g., on a road)");
-        console.warn("   2. Google Maps doesn't have POI/premise data for this location");
-        console.warn("   3. GPS accuracy is low (try on mobile device)");
-      }
 
       // Return location object with ZOMATO-STYLE exact location (NO Google Places API)
       const locationResult = {
@@ -891,16 +690,6 @@ export function useLocation() {
         premise: premise || null
       };
 
-      console.log("✅✅✅ FINAL Location Result (ZOMATO-STYLE, NO Google Places API):", {
-        mainTitle: locationResult.mainTitle,
-        address: locationResult.address,
-        formattedAddress: locationResult.formattedAddress,
-        area: locationResult.area,
-        city: locationResult.city,
-        state: locationResult.state,
-        hasCompleteAddress: locationResult.formattedAddress &&
-          locationResult.formattedAddress.split(',').length >= 4
-      });
 
       // Cache the result
       try {
@@ -910,26 +699,12 @@ export function useLocation() {
           setCached('geocoding', locationResult, latitude, longitude);
         }
       } catch (error) {
-        console.warn('Failed to cache geocoding result:', error);
       }
 
       return locationResult;
     } catch (error) {
-      console.error("❌❌❌ Google Maps Reverse Geocode Error:", error);
-      console.error("❌ Error details:", {
-        message: error.message,
-        stack: error.stack,
-        coordinates: { latitude, longitude }
-      });
-
       // If it's an API key or billing error, don't fallback - show error
       if (error.message.includes("REQUEST_DENIED") || error.message.includes("OVER_QUERY_LIMIT")) {
-        console.error("❌❌❌ CRITICAL: Google Maps API configuration issue!");
-        console.error("❌ Please check:");
-        console.error("   1. API key is correct in .env file");
-        console.error("   2. Geocoding API is enabled in Google Cloud Console");
-        console.error("   3. Billing is enabled and linked");
-        console.error("   4. API key restrictions allow this request");
 
         // Return error location instead of fallback
         return {
@@ -957,7 +732,6 @@ export function useLocation() {
       }
 
       // For other errors, try fallback
-      console.warn("⚠️ Trying fallback reverse geocoding...");
       return reverseGeocodeDirect(latitude, longitude);
     }
   };
@@ -965,7 +739,6 @@ export function useLocation() {
   /* ===================== OLA MAPS REVERSE GEOCODE (DEPRECATED - KEPT FOR FALLBACK) ===================== */
   const reverseGeocodeWithOLAMaps = async (latitude, longitude) => {
     try {
-      console.log("🔍 Fetching address from OLA Maps for:", latitude, longitude)
 
       // Add timeout to prevent hanging
       const timeoutPromise = new Promise((_, reject) =>
@@ -975,8 +748,6 @@ export function useLocation() {
       const apiPromise = locationAPI.reverseGeocode(latitude, longitude)
       const res = await Promise.race([apiPromise, timeoutPromise])
 
-      // Log full response for debugging
-      console.log("📦 Full OLA Maps API Response:", JSON.stringify(res?.data, null, 2))
 
       // Check if response is valid
       if (!res || !res.data) {
@@ -991,43 +762,23 @@ export function useLocation() {
       // Backend returns: { success: true, data: { results: [{ formatted_address, address_components: { city, state, country, area } }] } }
       const backendData = res?.data?.data || {}
 
-      // Debug: Check backend data structure
-      console.log("🔍 Backend data structure:", {
-        hasResults: !!backendData.results,
-        hasResult: !!backendData.result,
-        keys: Object.keys(backendData),
-        dataType: typeof backendData,
-        backendData: JSON.stringify(backendData, null, 2).substring(0, 500) // First 500 chars
-      })
 
       // Handle different OLA Maps response structures
       // Backend processes OLA Maps response and returns: { results: [{ formatted_address, address_components: { city, state, area } }] }
       let result = null;
       if (backendData.results && Array.isArray(backendData.results) && backendData.results.length > 0) {
         result = backendData.results[0];
-        console.log("✅ Using results[0] from backend")
       } else if (backendData.result && Array.isArray(backendData.result) && backendData.result.length > 0) {
         result = backendData.result[0];
-        console.log("✅ Using result[0] from backend")
       } else if (backendData.results && !Array.isArray(backendData.results)) {
         result = backendData.results;
-        console.log("✅ Using results object from backend")
       } else {
         result = backendData;
-        console.log("⚠️ Using backendData directly (fallback)")
       }
 
       if (!result) {
-        console.warn("⚠️ No result found in backend data")
         result = {};
       }
-
-      console.log("📦 Parsed result:", {
-        hasFormattedAddress: !!result.formatted_address,
-        hasAddressComponents: !!result.address_components,
-        formattedAddress: result.formatted_address,
-        addressComponents: result.address_components
-      })
 
       // Extract address_components - handle both object and array formats
       let addressComponents = {};
@@ -1056,12 +807,6 @@ export function useLocation() {
         addressComponents = result.components;
       }
 
-      console.log("📦 Parsed result structure:", {
-        result,
-        addressComponents,
-        hasArrayComponents: Array.isArray(result.address_components),
-        hasObjectComponents: !Array.isArray(result.address_components) && !!result.address_components
-      })
 
       // Extract address details - try multiple possible response structures
       let city = addressComponents?.city ||
@@ -1094,7 +839,6 @@ export function useLocation() {
       if (formattedAddress) {
         const addressParts = formattedAddress.split(',').map(part => part.trim()).filter(part => part.length > 0)
 
-        console.log("🔍 Parsing formatted address for area:", { formattedAddress, addressParts, city, state, currentArea: area })
 
         // ZOMATO-STYLE: If we have 3+ parts, first part is ALWAYS the area/locality
         // Format: "New Palasia, Indore, Madhya Pradesh" -> area = "New Palasia"
@@ -1119,7 +863,6 @@ export function useLocation() {
               !firstLower.includes("district") && // Not a district name
               !firstLower.includes("city")) { // Not a city name
               area = firstPart
-              console.log("✅✅✅ EXTRACTED AREA from formatted address (3+ parts):", area)
 
               // Also update city if second part matches better
               if (secondPart && (!city || secondPart.toLowerCase() !== city.toLowerCase())) {
@@ -1147,7 +890,6 @@ export function useLocation() {
             !firstPart.toLowerCase().includes("city") &&
             !firstPart.match(/^\d+/)) {
             area = firstPart
-            console.log("✅ Extracted area from 2 part address:", area)
             // Update city if second part exists
             if (secondPart && !city) {
               city = secondPart
@@ -1169,7 +911,6 @@ export function useLocation() {
               if (!singlePart.toLowerCase().includes("city") &&
                 !singlePart.toLowerCase().includes("district")) {
                 // Could be area, but be cautious - only use if we're sure
-                console.log("⚠️ Single part address - ambiguous, not using as area:", singlePart)
               }
             }
           }
@@ -1206,10 +947,8 @@ export function useLocation() {
           if (formattedAddress && formattedAddress.toLowerCase().includes(fallbackArea.toLowerCase())) {
             // formatted_address contains the fallback area, so it's likely more complete
             // Try one more time to extract from formatted_address
-            console.log("⚠️ address_components has area but formatted_address might have full name, re-checking formatted_address")
           } else {
             area = fallbackArea
-            console.log("✅ Extracted area from address_components (fallback):", area)
           }
         }
       }
@@ -1233,7 +972,6 @@ export function useLocation() {
       // Even if formatted_address only has 2 parts (City, State), try to extract area
       if (!area && formattedAddress) {
         const parts = formattedAddress.split(',').map(p => p.trim()).filter(p => p.length > 0)
-        console.log("🔍 Final fallback: Parsing formatted_address for area", { parts, city, state })
 
         if (parts.length >= 2) {
           const potentialArea = parts[0]
@@ -1251,21 +989,10 @@ export function useLocation() {
             !potentialAreaLower.includes("district") &&
             !potentialAreaLower.includes("city")) {
             area = potentialArea
-            console.log("✅✅✅ FORCE EXTRACTED area (final fallback):", area)
           }
         }
       }
 
-      // Final validation and logging
-      console.log("✅✅✅ FINAL PARSED OLA Maps response:", {
-        city,
-        state,
-        country,
-        area,
-        formattedAddress,
-        hasArea: !!area,
-        areaLength: area?.length || 0
-      })
 
       // CRITICAL: If formattedAddress has only 2 parts, OLA Maps didn't provide sublocality
       // Try to get more detailed location using coordinates-based search
@@ -1286,20 +1013,16 @@ export function useLocation() {
             area = potentialArea
             if (!city && parts[1]) city = parts[1]
             if (!state && parts[2]) state = parts[2]
-            console.log("✅✅✅ ZOMATO-STYLE EXTRACTION:", { area, city, state })
           }
         } else if (parts.length === 2) {
           // Only 2 parts: "Indore, Madhya Pradesh" - area is missing
           // OLA Maps API didn't provide sublocality
-          console.warn("⚠️ Only 2 parts in address - OLA Maps didn't provide sublocality")
           // Try to extract from other fields in the response
           // Check if result has any other location fields
           if (result.locality && result.locality !== city) {
             area = result.locality
-            console.log("✅ Using locality as area:", area)
           } else if (result.neighborhood) {
             area = result.neighborhood
-            console.log("✅ Using neighborhood as area:", area)
           } else {
             // Leave area empty - will show city instead
             area = ""
@@ -1309,13 +1032,11 @@ export function useLocation() {
 
       // FINAL VALIDATION: Never use state as area!
       if (area && state && area.toLowerCase() === state.toLowerCase()) {
-        console.warn("⚠️⚠️⚠️ REJECTING area (same as state):", area)
         area = ""
       }
 
       // FINAL VALIDATION: Reject district names
       if (area && area.toLowerCase().includes("district")) {
-        console.warn("⚠️⚠️⚠️ REJECTING area (contains district):", area)
         area = ""
       }
 
@@ -1330,20 +1051,17 @@ export function useLocation() {
           formattedAddress: formattedAddress || `${city || "Current Location"}`,
         }
 
-        console.log("✅✅✅ RETURNING LOCATION DATA:", finalLocation)
         return finalLocation
       }
 
       // If no valid data, throw to trigger fallback
       throw new Error("No valid address data from OLA Maps")
     } catch (err) {
-      console.warn("⚠️ OLA Maps failed, falling back to direct reverse geocoding:", err.message)
       // Fallback to direct reverse geocoding (BigDataCloud / backend only, no Google Maps)
       try {
         return await reverseGeocodeDirect(latitude, longitude)
       } catch (fallbackErr) {
         // If all fail, return minimal location data
-        console.error("❌ All reverse geocoding failed:", fallbackErr)
         return {
           city: "Current Location",
           address: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
@@ -1371,7 +1089,6 @@ export function useLocation() {
 
         if (!isInIndiaRange || loc.longitude < 0) {
           // Coordinates are outside India - return placeholder
-          console.warn("⚠️ Coordinates from DB are outside India range:", { latitude: loc.latitude, longitude: loc.longitude })
           return {
             latitude: loc.latitude,
             longitude: loc.longitude,
@@ -1392,7 +1109,6 @@ export function useLocation() {
           return { ...addr, latitude: loc.latitude, longitude: loc.longitude }
         } catch (geocodeErr) {
           // If reverse geocoding fails, return location without coordinates in address
-          console.warn("⚠️ Reverse geocoding failed in fetchLocationFromDB:", geocodeErr.message)
           return {
             latitude: loc.latitude,
             longitude: loc.longitude,
@@ -1407,7 +1123,6 @@ export function useLocation() {
     } catch (err) {
       // Silently fail for 404/401 (user not authenticated) or network errors
       if (err.code !== "ERR_NETWORK" && err.response?.status !== 404 && err.response?.status !== 401) {
-        console.error("DB location fetch error:", err)
       }
     }
     return null
@@ -1418,7 +1133,6 @@ export function useLocation() {
     // If forceFresh is true, allow the request even if another is in progress (user explicitly requested)
     if (isFetchingLocationRef.current && !forceFresh) {
       if (process.env.NODE_ENV === 'development') {
-        console.log("⏸️ Location fetch already in progress, skipping duplicate call", { forceFresh })
       }
       // Wait a bit and return current location - don't start another fetch
       return location || (() => {
@@ -1455,13 +1169,6 @@ export function useLocation() {
     const getPositionWithRetry = (options, retryCount = 0) => {
       return new Promise((resolve, reject) => {
         const isRetry = retryCount > 0
-        console.log(`📍 Requesting location${isRetry ? ' (retry with lower accuracy)' : ' (high accuracy)'}...`)
-        console.log(`📍 Force fresh: ${forceFresh ? 'YES' : 'NO'}, updateDB: ${updateDB}, showLoading: ${showLoading}`)
-        console.log(`📍 Options:`, {
-          enableHighAccuracy: options.enableHighAccuracy,
-          timeout: options.timeout,
-          maximumAge: options.maximumAge
-        })
 
         // Use cached location if available and not too old (faster response)
         // If forceFresh is true, don't use cache (maximumAge: 0)
@@ -1470,9 +1177,6 @@ export function useLocation() {
           maximumAge: forceFresh ? 0 : (options.maximumAge || 60000), // If forceFresh, get fresh location
         }
         
-        console.log(`📍 Final geolocation options:`, cachedOptions)
-
-        console.log(`🔵 Calling navigator.geolocation.getCurrentPosition with options:`, cachedOptions)
         
         navigator.geolocation.getCurrentPosition(
           async (pos) => {
@@ -1480,15 +1184,6 @@ export function useLocation() {
               const { latitude, longitude, accuracy } = pos.coords
               const timestamp = pos.timestamp || Date.now()
 
-              console.log(`✅✅✅ Got location${isRetry ? ' (lower accuracy)' : ' (high accuracy)'}:`, {
-                latitude,
-                longitude,
-                accuracy: `${accuracy}m`,
-                timestamp: new Date(timestamp).toISOString(),
-                coordinates: `${latitude.toFixed(8)}, ${longitude.toFixed(8)}`,
-                forceFresh,
-                updateDB
-              })
 
               // Validate coordinates are in India range BEFORE attempting geocoding
               // India: Latitude 6.5° to 37.1° N, Longitude 68.7° to 97.4° E
@@ -1498,7 +1193,6 @@ export function useLocation() {
               let addr
               if (!isInIndiaRange || longitude < 0) {
                 // Coordinates are outside India - skip geocoding and use placeholder
-                console.warn("⚠️ Coordinates outside India range, skipping geocoding:", { latitude, longitude })
                 addr = {
                   city: "Current Location",
                   state: "",
@@ -1508,14 +1202,11 @@ export function useLocation() {
                   formattedAddress: "Select location",
                 }
               } else {
-                console.log("🔍 Calling reverse geocode with coordinates (no Google Maps):", { latitude, longitude })
                 try {
                   addr = await reverseGeocodeDirect(latitude, longitude)
-                  console.log("✅ Reverse geocoding successful:", addr)
 
                   // Validate result - if it still has placeholder values, don't save
                   if (addr.city === "Current Location" || addr.address.includes(latitude.toFixed(4))) {
-                    console.warn("⚠️ Reverse geocoding returned placeholder, will not save")
                     addr = {
                       city: "Current Location",
                       state: "",
@@ -1526,7 +1217,6 @@ export function useLocation() {
                     }
                   }
                 } catch (fallbackErr) {
-                  console.error("❌ Geocoding failed:", fallbackErr.message)
                   addr = {
                     city: "Current Location",
                     state: "",
@@ -1537,7 +1227,6 @@ export function useLocation() {
                   }
                 }
               }
-              console.log("✅ Reverse geocode result:", addr)
 
               // Ensure we don't use coordinates as address if we have area/city
               // Keep the complete formattedAddress from Google Maps (it has all details)
@@ -1574,17 +1263,12 @@ export function useLocation() {
               // CRITICAL: Always save coordinates to Firebase even if address is placeholder
               // Coordinates are valid and useful for order calculations
               if (hasPlaceholderAddress) {
-                console.warn("⚠️ Address is placeholder, but saving coordinates to Firebase:", {
-                  coordinates: `${latitude}, ${longitude}`,
-                  address: finalLoc.address
-                })
                 
                 // Even if address is placeholder, DON'T show coordinates - keep trying to get address
               // Coordinates will be saved to Firebase but UI should show "Current Location" or retry
               // We'll retry reverse geocoding in background to get proper address
               }
 
-              console.log("💾 Saving location:", finalLoc)
               localStorage.setItem("userLocation", JSON.stringify(finalLoc))
               setLocation(finalLoc)
               setPermissionGranted(true)
@@ -1594,25 +1278,15 @@ export function useLocation() {
               // CRITICAL: Always save coordinates to Firebase immediately, even if address is placeholder
               // Don't wait for debounce - save immediately when location is first fetched
               if (updateDB) {
-                console.log("🔥 Saving location to database and Firebase immediately:", {
-                  coordinates: `${finalLoc.latitude}, ${finalLoc.longitude}`,
-                  hasAddress: !!finalLoc.address && finalLoc.address !== "Select location"
-                })
-                await updateLocationInDB(finalLoc).catch(err => {
-                  console.error("❌ Failed to update location in DB:", err)
-                })
-              } else {
-                console.warn("⚠️ updateDB is false, skipping database update")
+                await updateLocationInDB(finalLoc).catch(() => {})
               }
               isFetchingLocationRef.current = false // Reset flag on success
               resolve(finalLoc)
             } catch (err) {
-              console.error("❌ Error processing location:", err)
               // Try one more time with direct reverse geocode as last resort
               const { latitude, longitude } = pos.coords
 
               try {
-                console.log("🔄 Last attempt: trying direct reverse geocode...")
                 const lastResortAddr = await reverseGeocodeDirect(latitude, longitude)
 
                 // Check if we got valid data (not just coordinates)
@@ -1627,7 +1301,6 @@ export function useLocation() {
                     longitude,
                     accuracy: pos.coords.accuracy || null
                   }
-                  console.log("✅ Last resort geocoding succeeded:", lastResortLoc)
                   localStorage.setItem("userLocation", JSON.stringify(lastResortLoc))
                   setLocation(lastResortLoc)
                   setPermissionGranted(true)
@@ -1638,10 +1311,8 @@ export function useLocation() {
                   resolve(lastResortLoc)
                   return
                 } else {
-                  console.warn("⚠️ Last resort geocoding returned invalid data:", lastResortAddr)
                 }
               } catch (lastErr) {
-                console.error("❌ Last resort geocoding also failed:", lastErr.message)
               }
 
               // If all geocoding fails, use placeholder but STILL SAVE COORDINATES
@@ -1655,9 +1326,6 @@ export function useLocation() {
                 formattedAddress: "Select location", // Don't show coordinates
               }
               // CRITICAL: Save coordinates even if address is placeholder - coordinates are still useful
-              console.warn("⚠️ All geocoding failed, but saving coordinates to database and Firebase:", {
-                coordinates: `${latitude}, ${longitude}`
-              })
               localStorage.setItem("userLocation", JSON.stringify(fallbackLoc))
               setLocation(fallbackLoc)
               setPermissionGranted(true)
@@ -1665,7 +1333,6 @@ export function useLocation() {
               // CRITICAL: Save coordinates to database and Firebase even if address is placeholder
               if (updateDB) {
                 await updateLocationInDB(fallbackLoc).catch(err => {
-                  console.error("❌ Failed to update location in DB (fallback):", err)
                 })
               }
               isFetchingLocationRef.current = false // Reset flag on fallback
@@ -1681,10 +1348,8 @@ export function useLocation() {
             )
 
             if (isGoogle403Error) {
-              console.warn("⚠️ Google network location provider returned 403 - trying GPS-only mode...")
               // Try again with high accuracy only (GPS, skip network-based location)
               if (retryCount === 0) {
-                console.warn("🔄 Retrying with GPS-only (high accuracy, longer timeout)...")
                 getPositionWithRetry({
                   enableHighAccuracy: true, // Force GPS only
                   timeout: 15000,  // Longer timeout for GPS
@@ -1696,7 +1361,6 @@ export function useLocation() {
 
             // If timeout and we haven't retried yet, try with lower accuracy
             if (err.code === 3 && retryCount === 0 && options.enableHighAccuracy) {
-              console.warn("⏱️ High accuracy timeout, retrying with lower accuracy...")
               // Retry with lower accuracy - faster response (uses network-based location)
               getPositionWithRetry({
                 enableHighAccuracy: false,
@@ -1708,11 +1372,8 @@ export function useLocation() {
 
             // Don't log timeout errors as errors - they're expected in some cases
             if (err.code === 3) {
-              console.warn("⏱️ Geolocation timeout (code 3) - using fallback location")
             } else if (isGoogle403Error) {
-              console.warn("⚠️ Google network location provider 403 - using fallback location")
             } else {
-              console.error("❌ Geolocation error:", err.code, err.message)
             }
             // Try multiple fallback strategies
             try {
@@ -1728,15 +1389,12 @@ export function useLocation() {
                 if (stored) {
                   try {
                     fallback = JSON.parse(stored)
-                    console.log("✅ Using cached location from localStorage")
                   } catch (parseErr) {
-                    console.warn("⚠️ Failed to parse stored location:", parseErr)
                   }
                 }
               }
 
               if (fallback) {
-                console.log("✅ Using fallback location:", fallback)
                 setLocation(fallback)
                 // Don't set error for timeout when we have fallback
                 if (err.code !== 3) {
@@ -1748,7 +1406,6 @@ export function useLocation() {
                 resolve(fallback)
               } else {
                 // No fallback available - reject the promise so caller can handle it
-                console.warn("⚠️ No fallback location available and geolocation failed")
                 setError(err.code === 3 ? "Location request timed out. Please try again." : err.message)
                 setPermissionGranted(false)
                 if (showLoading) setLoading(false)
@@ -1757,7 +1414,6 @@ export function useLocation() {
                 reject(new Error(err.code === 3 ? "Location request timed out. Please try again." : err.message))
               }
             } catch (fallbackErr) {
-              console.warn("⚠️ Fallback retrieval failed:", fallbackErr)
               setLocation(null)
               setError(err.code === 3 ? "Location request timed out. Please try again." : err.message)
               setPermissionGranted(false)
@@ -1787,7 +1443,6 @@ export function useLocation() {
       return locationResult
     } catch (err) {
       // Handle any unexpected errors
-      console.error("❌ Unexpected error in getLocation:", err)
       isFetchingLocationRef.current = false // Reset flag on error
       setError(err.message)
       if (showLoading) setLoading(false)
@@ -1798,14 +1453,12 @@ export function useLocation() {
   /* ===================== WATCH LOCATION ===================== */
   const startWatchingLocation = () => {
     if (!navigator.geolocation) {
-      console.warn("⚠️ Geolocation not supported")
       return
     }
 
     // If user is not authenticated, don't start live watch to avoid unnecessary updates
     if (!isUserAuthenticated()) {
       if (process.env.NODE_ENV === 'development') {
-        console.log("ℹ️ User not authenticated - live location watch disabled (using one-time location only)")
       }
       return
     }
@@ -1816,10 +1469,6 @@ export function useLocation() {
       watchIdRef.current = null
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log("👀 Starting to watch location for live updates...")
-    }
-
     let retryCount = 0
     const maxRetries = 2
 
@@ -1828,9 +1477,6 @@ export function useLocation() {
         async (pos) => {
           try {
             const { latitude, longitude, accuracy } = pos.coords
-            if (process.env.NODE_ENV === 'development') {
-              console.log("🔄 Location updated:", { latitude, longitude, accuracy: `${accuracy}m` })
-            }
 
             // Reset retry count on success
             retryCount = 0
@@ -1865,16 +1511,6 @@ export function useLocation() {
               loc.city = currentLoc?.city || "Current Location"
             }
 
-            if (process.env.NODE_ENV === 'development') {
-              console.log("🔄 Live location updated (coordinates only, NO reverse geocoding):", {
-                latitude,
-                longitude,
-                accuracy: `${accuracy}m`,
-                address: loc.address,
-                city: loc.city
-              })
-            }
-
             // STABILITY: Only update if coordinates changed significantly (>10m)
             // Don't check address improvement since we're not calling geocoding
             const prevLoc = location
@@ -1886,14 +1522,7 @@ export function useLocation() {
 
               // Only update if moved >10 meters
               if (distanceMeters <= 10) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log(`📍 Location unchanged (${distanceMeters.toFixed(1)}m change), skipping update`)
-                }
                 return // Don't update - coordinates haven't changed significantly
-              }
-
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`📍 Location updated: ${distanceMeters.toFixed(1)}m change (coordinates only)`)
               }
             }
 
@@ -1908,9 +1537,6 @@ export function useLocation() {
             // Only update location state if coordinates changed significantly
             if (coordsChanged) {
               prevLocationCoordsRef.current = { latitude: loc.latitude, longitude: loc.longitude }
-              if (process.env.NODE_ENV === 'development') {
-                console.log("💾 Updating live location:", loc)
-              }
               localStorage.setItem("userLocation", JSON.stringify(loc))
               setLocation(loc)
               setPermissionGranted(true)
@@ -1926,29 +1552,19 @@ export function useLocation() {
             if (isUserAuthenticated()) {
               clearTimeout(updateTimerRef.current)
               updateTimerRef.current = setTimeout(() => {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log("🔄 Debounced location update - saving to database and Firebase:", {
-                    coordinates: `${loc.latitude}, ${loc.longitude}`,
-                    hasAddress: !!loc.address && loc.address !== "Select location"
-                  })
-                }
                 updateLocationInDB(loc).catch(err => {
-                  console.error("❌ Failed to update location in DB (debounced):", err)
                 })
               }, 5000)
             }
           } catch (err) {
-            console.error("❌ Error processing live location update:", err)
             // On error, preserve existing location (don't update with placeholder)
             // This ensures we keep the stored address even if coordinate update fails
-            console.warn("⚠️ Error updating coordinates, preserving existing location")
           }
         },
         (err) => {
           // Don't log timeout errors for watchPosition (it's a background operation)
           // Only log non-timeout errors
           if (err.code !== 3) {
-            console.warn("⚠️ Watch position error (non-timeout):", err.code, err.message)
           }
 
           // If timeout and we haven't exceeded max retries, retry with HIGH ACCURACY GPS
@@ -1956,7 +1572,6 @@ export function useLocation() {
           // Network-based location won't give exact landmarks like "Mama Loca Cafe"
           if (err.code === 3 && retryCount < maxRetries) {
             retryCount++
-            console.log(`⏱️ GPS timeout, retrying with high accuracy GPS (attempt ${retryCount}/${maxRetries})...`)
 
             // Clear current watch
             if (watchIdRef.current) {
@@ -1999,10 +1614,6 @@ export function useLocation() {
       timeout: 15000,             // 15 seconds timeout (gives GPS more time to get accurate fix)
       maximumAge: 0               // Always get fresh GPS location (no cache for live tracking)
     })
-
-    console.log("✅✅✅ GPS High Accuracy enabled for live location tracking")
-    console.log("✅ Live tracking updates coordinates only (NO reverse geocoding - cuts API costs by 99%)")
-    console.log("✅ Address is preserved from stored location")
   }
 
   const stopWatchingLocation = () => {
@@ -2055,7 +1666,6 @@ export function useLocation() {
           setPermissionGranted(true)
           setLoading(false) // Set loading to false immediately
           hasInitialLocation = true
-          console.log("📂 Loaded stored location instantly:", parsedLocation)
           
           // If address is placeholder, trigger reverse geocoding retry in background
           if (parsedLocation.formattedAddress === "Select location" || 
@@ -2063,7 +1673,6 @@ export function useLocation() {
               parsedLocation.city === "Current Location" ||
               !parsedLocation.formattedAddress ||
               parsedLocation.address === "Current Location") {
-            console.log("🔄 Address is placeholder, will retry reverse geocoding in background")
             shouldForceRefresh = true
           }
 
@@ -2074,15 +1683,12 @@ export function useLocation() {
             parsedLocation.formattedAddress.split(',').length >= 4
 
           if (!hasCompleteAddress) {
-            console.log("⚠️ Cached location incomplete, will refresh in background")
             shouldForceRefresh = true
           }
         } else {
-          console.log("⚠️ Cached location is placeholder, will fetch fresh")
           shouldForceRefresh = true
         }
       } catch (err) {
-        console.error("Failed to parse stored location:", err)
         shouldForceRefresh = true
       }
     }
@@ -2096,7 +1702,6 @@ export function useLocation() {
             setPermissionGranted(true)
             setLoading(false)
             hasInitialLocation = true
-            console.log("📂 Loaded location from DB:", dbLoc)
 
             // Check if we should refresh for better address
             const hasCompleteAddress = dbLoc?.formattedAddress &&
@@ -2124,7 +1729,6 @@ export function useLocation() {
     const loadingTimeout = setTimeout(() => {
       setLoading((currentLoading) => {
         if (currentLoading) {
-          console.warn("⚠️ Loading timeout - setting loading to false")
           // Only set fallback if we still don't have a location
           setLocation((currentLocation) => {
             if (!currentLocation ||
@@ -2154,7 +1758,6 @@ export function useLocation() {
       // Prevent multiple simultaneous calls
       if (hasInitializedRef.current) {
         if (process.env.NODE_ENV === 'development') {
-          console.log("⏸️ Location initialization already in progress, skipping duplicate call")
         }
         return
       }
@@ -2170,14 +1773,11 @@ export function useLocation() {
             if (result.state === 'granted') {
               permissionGranted = true;
             } else {
-              console.log(`📍 Geolocation permission is '${result.state}' - Waiting for user action (avoiding prompt on load)`);
             }
           } catch (permErr) {
-            console.warn("⚠️ Permission query failed:", permErr);
           }
         } else {
           // Fallback for browsers without permissions API - assume not granted to be safe
-          console.log("📍 Permissions API not available - Skipping auto-start");
         }
 
         // If permission NOT granted, and we don't have a specific user request (this is page load),
@@ -2194,7 +1794,6 @@ export function useLocation() {
           return;
         }
 
-        console.log("🚀 Permission granted! Fetching/Watching location...", shouldForceRefresh ? "(FORCE REFRESH)" : "");
 
         // Always fetch fresh location if we don't have a valid one
         // Check current location state to see if it's a placeholder
@@ -2206,32 +1805,18 @@ export function useLocation() {
         const shouldFetch = shouldForceRefresh || !hasInitialLocation || hasPlaceholder
 
         if (shouldFetch) {
-          console.log("🔄 Fetching location - shouldForceRefresh:", shouldForceRefresh, "hasInitialLocation:", hasInitialLocation, "hasPlaceholder:", hasPlaceholder)
           getLocation(true, shouldForceRefresh) // forceFresh = true if cached location is incomplete
             .then((location) => {
               if (location &&
                 location.formattedAddress !== "Select location" &&
                 location.city !== "Current Location") {
-                console.log("✅ Fresh location fetched:", location)
-                console.log("✅ Location details:", {
-                  formattedAddress: location?.formattedAddress,
-                  address: location?.address,
-                  city: location?.city,
-                  state: location?.state,
-                  area: location?.area
-                })
                 // CRITICAL: Update state with fresh location so PageNavbar displays it
                 setLocation(location)
                 setPermissionGranted(true)
                 
                 // CRITICAL: Save location to database and Firebase immediately
                 if (location.latitude && location.longitude) {
-                  console.log("🔥 Saving valid location to database and Firebase immediately:", {
-                    coordinates: `${location.latitude}, ${location.longitude}`,
-                    address: location.formattedAddress
-                  })
                   updateLocationInDB(location).catch(err => {
-                    console.error("❌ Failed to save location to DB:", err)
                   })
                 }
                 
@@ -2239,11 +1824,6 @@ export function useLocation() {
                 startWatchingLocation()
               } else {
                 // Address is placeholder, but coordinates are valid - save them and retry reverse geocoding
-                console.warn("⚠️ Address is placeholder, but coordinates are valid. Retrying reverse geocoding to get place name:", {
-                  coordinates: `${location.latitude}, ${location.longitude}`,
-                  retryCount: retryCountRef.current
-                })
-                
                 // Save coordinates to Firebase even if address is placeholder
                 setLocation(location)
                 setPermissionGranted(true)
@@ -2251,7 +1831,6 @@ export function useLocation() {
                 // Save coordinates to Firebase
                 if (location.latitude && location.longitude) {
                   updateLocationInDB(location).catch(err => {
-                    console.warn("Failed to save coordinates to Firebase:", err)
                   })
                 }
                 
@@ -2260,7 +1839,6 @@ export function useLocation() {
                 if (retryCountRef.current < 3) {
                   retryCountRef.current += 1
                   const retryDelay = retryCountRef.current * 2000 // 2s, 4s, 6s
-                  console.log(`🔄 Retrying reverse geocoding via backend API (attempt ${retryCountRef.current}/3) in ${retryDelay}ms...`)
                   
                   setTimeout(() => {
                     // Force fresh reverse geocoding
@@ -2271,13 +1849,11 @@ export function useLocation() {
                           retryLocation.city !== "Current Location" &&
                           !retryLocation.formattedAddress.includes('Location (')) {
                           retryCountRef.current = 0 // Reset on success
-                          console.log("✅ Reverse geocoding succeeded on retry:", retryLocation.formattedAddress)
                           setLocation(retryLocation)
                           setPermissionGranted(true)
                           updateLocationInDB(retryLocation).catch(() => {})
                         } else {
                           // Still placeholder, will retry again if under limit
-                          console.warn("⚠️ Reverse geocoding still returned placeholder, will retry again")
                         }
                         // Start watching regardless of retry result
                         startWatchingLocation()
@@ -2289,14 +1865,12 @@ export function useLocation() {
                   }, retryDelay)
                 } else {
                   // Max retries reached, start watching - address will show "Current Location"
-                  console.log("⚠️ Max retries reached. Address will show 'Current Location' until reverse geocoding succeeds")
                   retryCountRef.current = 0 // Reset for next time
                   startWatchingLocation()
                 }
               }
             })
             .catch((err) => {
-              console.warn("⚠️ Background location fetch failed (using cached):", err.message)
               // Still start watching in case permission is granted later
               startWatchingLocation()
             })
@@ -2305,7 +1879,6 @@ export function useLocation() {
           startWatchingLocation()
         }
       } catch (err) {
-        console.error("Error in checkPermissionAndStart:", err);
         setLoading(false);
         hasInitializedRef.current = false // Reset flag on error
       } finally {
@@ -2323,27 +1896,21 @@ export function useLocation() {
     if (hasStoredLocation) {
       checkPermissionAndStart();
     } else {
-      console.log("📍 Fresh visit - skipping auto-geolocation check (waiting for user action)");
       setLoading(false);
     }
 
     // Cleanup timeout and watcher
     return () => {
       clearTimeout(loadingTimeout)
-      console.log("🧹 Cleaning up location watcher")
       stopWatchingLocation()
     }
 
     return () => {
-      console.log("🧹 Cleaning up location watcher")
       stopWatchingLocation()
     }
   }, [])
 
   const requestLocation = async () => {
-    console.log("📍📍📍 User requested location update - fetching fresh")
-    console.log("📍📍📍 Resetting isFetchingLocationRef to allow fresh request")
-    
     // Reset the fetching flag to allow new request even if one was in progress
     isFetchingLocationRef.current = false
     
@@ -2353,55 +1920,25 @@ export function useLocation() {
     try {
       // Don't clear localStorage yet - keep it as fallback if geolocation fails
       // We'll update it after successfully getting new location
-      console.log("📍 Keeping cached location as fallback until new location is confirmed")
 
       // Show loading, so pass showLoading = true
       // forceFresh = true, updateDB = true, showLoading = true
       // This ensures we get fresh GPS coordinates and reverse geocode with Google Maps
-      console.log("📍📍📍 Calling getLocation with forceFresh=true, updateDB=true, showLoading=true")
       const location = await getLocation(true, true, true)
 
       if (!location) {
-        console.error("❌❌❌ getLocation returned null/undefined")
         throw new Error("Failed to get location. Please check your GPS settings and try again.")
       }
 
       if (!location.latitude || !location.longitude) {
-        console.error("❌❌❌ Location missing coordinates:", location)
         throw new Error("Invalid location data received. Please try again.")
       }
-
-      console.log("✅✅✅ Fresh location requested successfully:", location)
-      console.log("✅✅✅ Complete Location details:", {
-        formattedAddress: location?.formattedAddress,
-        address: location?.address,
-        city: location?.city,
-        state: location?.state,
-        area: location?.area,
-        pointOfInterest: location?.pointOfInterest,
-        premise: location?.premise,
-        coordinates: location?.latitude && location?.longitude ?
-          `${location.latitude.toFixed(8)}, ${location.longitude.toFixed(8)}` : "N/A",
-        hasCompleteAddress: location?.formattedAddress &&
-          location.formattedAddress !== "Select location" &&
-          !location.formattedAddress.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/) &&
-          location.formattedAddress.split(',').length >= 4
-      })
 
       // Verify we got complete address (POI, building, floor, area, city, state, pincode)
       if (!location?.formattedAddress ||
         location.formattedAddress === "Select location" ||
         location.formattedAddress.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/) ||
         location.formattedAddress.split(',').length < 4) {
-        console.warn("⚠️⚠️⚠️ Location received but address is incomplete!")
-        console.warn("⚠️ Address parts count:", location?.formattedAddress?.split(',').length || 0)
-        console.warn("⚠️ This might be due to:")
-        console.warn("   1. Google Maps API not enabled or billing not set up")
-        console.warn("   2. Location permission not granted")
-        console.warn("   3. GPS accuracy too low (try on mobile device)")
-      } else {
-        console.log("✅✅✅ SUCCESS: Complete detailed address received!")
-        console.log("✅ Full address:", location.formattedAddress)
       }
 
       // Restart watching for live updates
@@ -2409,7 +1946,6 @@ export function useLocation() {
 
       return location
     } catch (err) {
-      console.error("❌ Failed to request location:", err)
       setError(err.message || "Failed to get location")
       
       // Try to use cached location as fallback
@@ -2418,14 +1954,12 @@ export function useLocation() {
         try {
           const cachedLocation = JSON.parse(cached)
           if (cachedLocation?.latitude && cachedLocation?.longitude) {
-            console.log("📍 Using cached location as fallback after error:", cachedLocation)
             setLocation(cachedLocation)
             // Don't throw error if we have cached location
             setLoading(false)
             return cachedLocation
           }
         } catch (e) {
-          console.error("❌ Failed to parse cached location:", e)
         }
       }
       

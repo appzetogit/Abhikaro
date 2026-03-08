@@ -129,37 +129,38 @@ export const getOrders = asyncHandler(async (req, res) => {
       }
     }
 
-    // Search filter (orderId, customer name, customer phone)
+    // Search filter (orderId, customer name, customer phone) - optimized with batch query
     if (search) {
       query.$or = [
         { orderId: { $regex: search, $options: 'i' } }
       ];
 
+      // Batch all user searches into a single query for better performance
+      const User = (await import('../../auth/models/User.js')).default;
+      const userSearchConditions = [];
+      
       // If search looks like a phone number, search in customer data
       const phoneRegex = /[\d\s\+\-()]+/;
       if (phoneRegex.test(search)) {
-        const User = (await import('../../auth/models/User.js')).default;
         const cleanSearch = search.replace(/\D/g, '');
-        const userSearchQuery = { phone: { $regex: cleanSearch, $options: 'i' } };
+        userSearchConditions.push({ phone: { $regex: cleanSearch, $options: 'i' } });
         if (mongoose.Types.ObjectId.isValid(search)) {
-          userSearchQuery._id = search;
-        }
-        const users = await User.find(userSearchQuery).select('_id').lean();
-        const userIds = users.map(u => u._id);
-        if (userIds.length > 0) {
-          query.$or.push({ userId: { $in: userIds } });
+          userSearchConditions.push({ _id: new mongoose.Types.ObjectId(search) });
         }
       }
 
       // Also search by customer name
-      const User = (await import('../../auth/models/User.js')).default;
-      const usersByName = await User.find({
-        name: { $regex: search, $options: 'i' }
-      }).select('_id').lean();
-      const userIdsByName = usersByName.map(u => u._id);
-      if (userIdsByName.length > 0) {
-        if (!query.$or) query.$or = [];
-        query.$or.push({ userId: { $in: userIdsByName } });
+      userSearchConditions.push({ name: { $regex: search, $options: 'i' } });
+
+      // Execute single batch query instead of multiple queries
+      if (userSearchConditions.length > 0) {
+        const users = await User.find({
+          $or: userSearchConditions
+        }).select('_id').lean();
+        const userIds = users.map(u => u._id);
+        if (userIds.length > 0) {
+          query.$or.push({ userId: { $in: userIds } });
+        }
       }
 
       // Ensure $or array is not empty
@@ -168,10 +169,12 @@ export const getOrders = asyncHandler(async (req, res) => {
       }
     }
 
-    // Calculate pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    // Calculate pagination - enforce max limit for performance
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // Max 100 items per page
+    const skip = (pageNum - 1) * limitNum;
 
-    // Fetch orders with population
+    // Fetch orders with population - using lean() for better performance
     const orders = await Order.find(query)
       .populate('userId', 'name email phone')
       // Include basic restaurant location/address details so invoices and admin UIs
@@ -179,7 +182,7 @@ export const getOrders = asyncHandler(async (req, res) => {
       .populate('restaurantId', 'name slug location.formattedAddress location.address location.city location.state location.zipCode location.pincode')
       .populate('deliveryPartnerId', 'name phone')
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
+      .limit(limitNum)
       .skip(skip)
       .lean();
 

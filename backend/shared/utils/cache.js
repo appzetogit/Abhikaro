@@ -22,6 +22,9 @@ export const CACHE_TTL = {
   STATIC_DATA: 3600, // 1 hour
   CATEGORIES: 1800, // 30 minutes
   ZONE_DATA: 1800, // 30 minutes
+  FEE_SETTINGS: 3600, // 1 hour (settings don't change often)
+  COMMISSION_SETTINGS: 3600, // 1 hour
+  BUSINESS_SETTINGS: 3600, // 1 hour
 };
 
 /**

@@ -15,12 +15,10 @@ async function getFirebaseRealtimeDB() {
     await ensureFirebaseInitialized();
     
     if (!firebaseApp) {
-      console.warn('⚠️ Firebase app not initialized');
       return null;
     }
 
     db = getDatabase(firebaseApp);
-    console.log('✅ Firebase Realtime Database initialized');
     return db;
   } catch (error) {
     console.error('❌ Error initializing Firebase Realtime Database:', error);
@@ -39,7 +37,6 @@ export async function subscribeToOrderTracking(orderId, callback) {
   try {
     const database = await getFirebaseRealtimeDB();
     if (!database) {
-      console.warn('⚠️ Firebase Realtime Database not available');
       return () => {};
     }
 
@@ -90,7 +87,6 @@ export async function updateDeliveryBoyLocationInFirebase(deliveryBoyId, lat, ln
   try {
     const database = await getFirebaseRealtimeDB();
     if (!database) {
-      console.warn('⚠️ Firebase Realtime Database not available');
       return;
     }
 
@@ -132,7 +128,6 @@ export async function updateUserLocationInFirebase(userId, lat, lng, additionalD
   try {
     const database = await getFirebaseRealtimeDB();
     if (!database) {
-      console.warn('⚠️ Firebase Realtime Database not available');
       return;
     }
 

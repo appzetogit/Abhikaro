@@ -6,6 +6,7 @@ import { uploadToCloudinary, deleteFromCloudinary } from '../../../shared/utils/
 import { initializeCloudinary } from '../../../config/cloudinary.js';
 import asyncHandler from '../../../shared/middleware/asyncHandler.js';
 import mongoose from 'mongoose';
+import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from '../../../shared/utils/cache.js';
 
 /**
  * Check if a point is within a zone polygon using ray casting algorithm
@@ -130,6 +131,29 @@ export const getRestaurants = async (req, res) => {
       latitude, // User's latitude - CRITICAL for geospatial queries
       longitude // User's longitude - CRITICAL for geospatial queries
     } = req.query;
+
+    // Generate cache key based on query parameters
+    const cacheKey = generateCacheKey(
+      'restaurants',
+      limit,
+      offset,
+      sortBy,
+      cuisine,
+      minRating,
+      maxDeliveryTime,
+      maxDistance,
+      maxPrice,
+      hasOffers,
+      zoneId,
+      latitude,
+      longitude
+    );
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, 'Restaurants retrieved successfully (cached)', cached);
+    }
     
     // Optional: Zone-based filtering - if zoneId is provided, validate and (later) filter by zone
     let userZone = null;
@@ -251,12 +275,15 @@ export const getRestaurants = async (req, res) => {
       }
     }
     
-    // Fetch restaurants using geospatial query or regular query
+    // Fetch restaurants using geospatial query or regular query - enforce max limit
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // Max 100 items per page
+    const offsetNum = Math.max(0, parseInt(offset));
+    
     let restaurants = await Restaurant.find(query)
       .select('-owner -createdAt -updatedAt -password')
       .sort(sortObj)
-      .limit(parseInt(limit))
-      .skip(parseInt(offset))
+      .limit(limitNum)
+      .skip(offsetNum)
       .lean();
     
     // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
@@ -343,7 +370,7 @@ export const getRestaurants = async (req, res) => {
       userCoordinates: useGeospatialQuery ? `(${userLat}, ${userLng})` : 'not provided'
     });
 
-    return successResponse(res, 200, 'Restaurants retrieved successfully', {
+    const responseData = {
       restaurants,
       total: restaurants.length,
       filters: {
@@ -358,7 +385,12 @@ export const getRestaurants = async (req, res) => {
       // Include metadata about query type
       queryType: useGeospatialQuery ? 'geospatial' : 'regular',
       userCoordinates: useGeospatialQuery ? { latitude: userLat, longitude: userLng } : null
-    });
+    };
+
+    // Cache the response
+    await setCache(cacheKey, responseData, CACHE_TTL.RESTAURANT_LIST);
+
+    return successResponse(res, 200, 'Restaurants retrieved successfully', responseData);
   } catch (error) {
     console.error('Error fetching restaurants:', error);
     return errorResponse(res, 500, 'Failed to fetch restaurants');
@@ -369,6 +401,15 @@ export const getRestaurants = async (req, res) => {
 export const getRestaurantById = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Generate cache key
+    const cacheKey = generateCacheKey('restaurant', id);
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, 'Restaurant retrieved successfully (cached)', cached);
+    }
     
     // Build query conditions - only include _id if it's a valid ObjectId
     const queryConditions = {
@@ -400,9 +441,14 @@ export const getRestaurantById = async (req, res) => {
       restaurant.name = restaurant.onboarding.step1.restaurantName;
     }
 
-    return successResponse(res, 200, 'Restaurant retrieved successfully', {
+    const responseData = {
       restaurant,
-    });
+    };
+
+    // Cache the response
+    await setCache(cacheKey, responseData, CACHE_TTL.RESTAURANT_DETAILS);
+
+    return successResponse(res, 200, 'Restaurant retrieved successfully', responseData);
   } catch (error) {
     console.error('Error fetching restaurant:', error);
     return errorResponse(res, 500, 'Failed to fetch restaurant');

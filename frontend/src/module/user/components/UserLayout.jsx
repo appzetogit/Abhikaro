@@ -15,12 +15,8 @@ import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotificatio
 const SearchOverlayContext = createContext({
   isSearchOpen: false,
   searchValue: "",
-  setSearchValue: () => {
-    console.warn("SearchOverlayProvider not available")
-  },
-  openSearch: () => {
-    console.warn("SearchOverlayProvider not available")
-  },
+  setSearchValue: () => {},
+  openSearch: () => {},
   closeSearch: () => { }
 })
 

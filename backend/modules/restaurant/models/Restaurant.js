@@ -343,6 +343,11 @@ restaurantSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 // CRITICAL: 2dsphere index for geospatial queries (replaces Google Places API)
 // This index enables $near and $geoWithin queries for finding nearby restaurants
 restaurantSchema.index({ 'location.geoLocation': '2dsphere' });
+// Additional indexes for scalability
+restaurantSchema.index({ isActive: 1, zoneId: 1 }); // For filtering active restaurants by zone
+restaurantSchema.index({ slug: 1 }, { unique: true, sparse: true }); // For slug-based lookups
+restaurantSchema.index({ isActive: 1, isAcceptingOrders: 1 }); // For active and accepting orders
+restaurantSchema.index({ createdAt: -1 }); // For sorting by creation date
 
 // Hash password before saving
 restaurantSchema.pre("save", async function (next) {

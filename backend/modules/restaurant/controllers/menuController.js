@@ -3,6 +3,7 @@ import Restaurant from '../models/Restaurant.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import asyncHandler from '../../../shared/middleware/asyncHandler.js';
 import mongoose from 'mongoose';
+import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from '../../../shared/utils/cache.js';
 
 // Get menu for a restaurant
 export const getMenu = asyncHandler(async (req, res) => {
@@ -281,6 +282,9 @@ export const updateMenu = asyncHandler(async (req, res) => {
   console.log('[UPDATE MENU] About to save menu...');
   await menu.save();
   console.log('[UPDATE MENU] Menu saved successfully');
+  
+  // Invalidate menu cache for this restaurant
+  await invalidateCachePattern(`menu:${restaurantId}*`);
   
   // Debug: Verify what was saved - reload from database
   const savedMenu = await Menu.findOne({ restaurant: restaurantId }).lean();
@@ -588,6 +592,15 @@ export const addItemToSubsection = asyncHandler(async (req, res) => {
 export const getMenuByRestaurantId = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Generate cache key
+    const cacheKey = generateCacheKey('menu', id);
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, 'Menu retrieved successfully (cached)', cached);
+    }
     
     // Find restaurant by ID, slug, or restaurantId
     const restaurant = await Restaurant.findOne({
@@ -599,7 +612,7 @@ export const getMenuByRestaurantId = async (req, res) => {
           : []),
       ],
       isActive: true,
-    });
+    }).lean();
 
     if (!restaurant) {
       return errorResponse(res, 404, 'Restaurant not found');
@@ -609,7 +622,7 @@ export const getMenuByRestaurantId = async (req, res) => {
     const menu = await Menu.findOne({ 
       restaurant: restaurant._id,
       isActive: true,
-    });
+    }).lean();
 
     if (!menu) {
       // Return empty menu if not found
@@ -713,12 +726,17 @@ export const getMenuByRestaurantId = async (req, res) => {
     }, 0);
     console.log('[USER MENU] Total items shown to user:', totalItems);
 
-    return successResponse(res, 200, 'Menu retrieved successfully', {
+    const responseData = {
       menu: {
         sections: filteredSections,
         isActive: menu.isActive,
       },
-    });
+    };
+
+    // Cache the response
+    await setCache(cacheKey, responseData, CACHE_TTL.MENU_ITEMS);
+
+    return successResponse(res, 200, 'Menu retrieved successfully', responseData);
   } catch (error) {
     console.error('Error fetching menu by restaurant ID:', error);
     return errorResponse(res, 500, 'Failed to fetch menu');

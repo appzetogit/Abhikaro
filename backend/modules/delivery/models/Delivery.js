@@ -286,6 +286,11 @@ const deliverySchema = new mongoose.Schema(
 deliverySchema.index({ 'availability.currentLocation': '2dsphere' });
 deliverySchema.index({ status: 1 });
 deliverySchema.index({ isActive: 1 });
+// Additional indexes for scalability
+deliverySchema.index({ 'availability.currentLocation.coordinates': '2dsphere' }); // Geospatial index for location queries
+deliverySchema.index({ availability: 1, isActive: 1 }); // Compound for finding available delivery partners
+deliverySchema.index({ status: 1, isActive: 1 }); // Compound for filtering by status and active state
+deliverySchema.index({ createdAt: -1 }); // For sorting by creation date
 
 // Hash password before saving
 deliverySchema.pre('save', async function(next) {

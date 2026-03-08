@@ -1783,18 +1783,10 @@ export default function ItemDetailsPage() {
 
                   return (
                     <p className="text-xs text-green-700 mt-2">
-                      Restaurant profit after{" "}
-                      <span className="font-semibold">
-                        {platformSharePercent}%
-                      </span>{" "}
-                      platform commission:{" "}
+                      You will Get for this item:{" "}
                       <span className="font-semibold">
                         ₹{restaurantProfit.toFixed(2)}
                       </span>{" "}
-                      (<span className="font-semibold">
-                        {restaurantSharePercent}%
-                      </span>{" "}
-                      of item price)
                     </p>
                   )
                 })()}

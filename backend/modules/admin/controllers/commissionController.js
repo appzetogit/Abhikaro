@@ -1,5 +1,6 @@
 import CommissionSettings from "../models/CommissionSettings.js";
 import winston from "winston";
+import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from "../../../shared/utils/cache.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -10,15 +11,28 @@ const logger = winston.createLogger({
 // Get current commission settings (or create default if none exists)
 export const getCommissionSettings = async (req, res) => {
   try {
-    let settings = await CommissionSettings.findOne().sort({ createdAt: -1 });
+    // Generate cache key
+    const cacheKey = generateCacheKey('commissionSettings', 'latest');
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, data: cached, cached: true });
+    }
+
+    let settings = await CommissionSettings.findOne().sort({ createdAt: -1 }).lean();
 
     if (!settings) {
       // Create default settings if none exist
-      settings = await CommissionSettings.create({
+      const newSettings = await CommissionSettings.create({
         qrCommission: { hotel: 10, user: 20, admin: 70 },
         directCommission: { admin: 30, restaurant: 70 },
       });
+      settings = newSettings.toObject();
     }
+
+    // Cache the settings
+    await setCache(cacheKey, settings, CACHE_TTL.COMMISSION_SETTINGS);
 
     res.status(200).json({ success: true, data: settings });
   } catch (error) {
@@ -65,6 +79,9 @@ export const updateCommissionSettings = async (req, res) => {
     });
 
     await newSettings.save();
+
+    // Invalidate commission settings cache
+    await invalidateCachePattern('commissionSettings:*');
 
     res.status(200).json({
       success: true,

@@ -19,6 +19,7 @@ import etaCalculationService from "../services/etaCalculationService.js";
 import etaWebSocketService from "../services/etaWebSocketService.js";
 import UserWallet from "../../user/models/UserWallet.js";
 import { distributeCommissions } from "../services/commissionDistributionService.js";
+import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from "../../../shared/utils/cache.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -1637,6 +1638,15 @@ export const getOrderDetails = async (req, res) => {
     const userId = req.user.id;
     const { id } = req.params;
 
+    // Generate cache key
+    const cacheKey = generateCacheKey('order-details', id, userId);
+
+    // Try to get from cache first (short TTL for real-time data)
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     // Try to find order by MongoDB _id or orderId (custom order ID)
     let order = null;
 
@@ -1674,13 +1684,18 @@ export const getOrderDetails = async (req, res) => {
       orderId: order._id,
     }).lean();
 
-    res.json({
+    const responseData = {
       success: true,
       data: {
         order,
         payment,
       },
-    });
+    };
+
+    // Cache the response with short TTL for real-time order status
+    await setCache(cacheKey, responseData, CACHE_TTL.ORDER_STATUS);
+
+    res.json(responseData);
   } catch (error) {
     logger.error(`Error fetching order details: ${error.message}`);
     res.status(500).json({

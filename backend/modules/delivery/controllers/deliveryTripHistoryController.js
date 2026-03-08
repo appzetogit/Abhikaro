@@ -89,15 +89,17 @@ export const getTripHistory = asyncHandler(async (req, res) => {
       query.status = statusMap[status] || status.toLowerCase();
     }
 
-    // Calculate pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    // Calculate pagination - enforce max limit for performance
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // Max 100 items per page
+    const skip = (pageNum - 1) * limitNum;
 
-    // Fetch orders
+    // Fetch orders - using lean() for better performance
     const orders = await Order.find(query)
       .populate('userId', 'name phone')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(limitNum)
       .lean();
 
     // Get total count

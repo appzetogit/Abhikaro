@@ -2,6 +2,7 @@ import Zone from '../models/Zone.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import asyncHandler from '../../../shared/middleware/asyncHandler.js';
 import mongoose from 'mongoose';
+import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from '../../../shared/utils/cache.js';
 
 /**
  * Get all zones
@@ -16,6 +17,15 @@ export const getZones = asyncHandler(async (req, res) => {
       restaurantId,
       isActive
     } = req.query;
+
+    // Generate cache key based on query parameters
+    const cacheKey = generateCacheKey('zones', 'all', page, limit, search, restaurantId, isActive);
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, 'Zones retrieved successfully (cached)', cached);
+    }
 
     // Build query
     const query = {};
@@ -56,7 +66,7 @@ export const getZones = asyncHandler(async (req, res) => {
     // Get total count
     const total = await Zone.countDocuments(query);
 
-    return successResponse(res, 200, 'Zones retrieved successfully', {
+    const responseData = {
       zones,
       pagination: {
         page: parseInt(page),
@@ -64,7 +74,12 @@ export const getZones = asyncHandler(async (req, res) => {
         total,
         pages: Math.ceil(total / parseInt(limit))
       }
-    });
+    };
+
+    // Cache the response
+    await setCache(cacheKey, responseData, CACHE_TTL.ZONE_DATA);
+
+    return successResponse(res, 200, 'Zones retrieved successfully', responseData);
   } catch (error) {
     console.error('Error fetching zones:', error);
     return errorResponse(res, 500, 'Failed to fetch zones');
@@ -347,6 +362,17 @@ export const detectUserZone = asyncHandler(async (req, res) => {
       return errorResponse(res, 400, 'Invalid coordinates');
     }
 
+    // Generate cache key based on coordinates (rounded to 3 decimal places for cache efficiency)
+    const roundedLat = Math.round(userLat * 1000) / 1000;
+    const roundedLng = Math.round(userLng * 1000) / 1000;
+    const cacheKey = generateCacheKey('zoneDetect', roundedLat, roundedLng);
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, 'Zone detected successfully (cached)', cached);
+    }
+
     // Get all active zones
     const activeZones = await Zone.find({ isActive: true }).lean();
 
@@ -419,27 +445,33 @@ export const detectUserZone = asyncHandler(async (req, res) => {
       }
     }
 
+    let responseData;
     if (!userZone) {
-      return successResponse(res, 200, 'User location is outside all service zones', {
+      responseData = {
         status: 'OUT_OF_SERVICE',
         zoneId: null,
         zone: null,
         message: 'Your location is not within any active delivery zone. Please check if delivery is available in your area.'
-      });
+      };
+    } else {
+      responseData = {
+        status: 'IN_SERVICE',
+        zoneId: userZone._id.toString(),
+        zone: {
+          _id: userZone._id.toString(),
+          name: userZone.name || userZone.zoneName,
+          zoneName: userZone.zoneName || userZone.name,
+          country: userZone.country,
+          unit: userZone.unit
+        },
+        message: 'Service available in your area'
+      };
     }
 
-    return successResponse(res, 200, 'Zone detected successfully', {
-      status: 'IN_SERVICE',
-      zoneId: userZone._id.toString(),
-      zone: {
-        _id: userZone._id.toString(),
-        name: userZone.name || userZone.zoneName,
-        zoneName: userZone.zoneName || userZone.name,
-        country: userZone.country,
-        unit: userZone.unit
-      },
-      message: 'Service available in your area'
-    });
+    // Cache the response (with shorter TTL since zones can change)
+    await setCache(cacheKey, responseData, CACHE_TTL.ZONE_DATA);
+
+    return successResponse(res, 200, userZone ? 'Zone detected successfully' : 'User location is outside all service zones', responseData);
   } catch (error) {
     console.error('Error detecting user zone:', error);
     return errorResponse(res, 500, 'Failed to detect zone');

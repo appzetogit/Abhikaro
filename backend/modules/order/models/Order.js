@@ -458,6 +458,12 @@ orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ restaurantId: 1, status: 1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ "payment.razorpayOrderId": 1 });
+// Additional indexes for scalability
+orderSchema.index({ deliveryPartnerId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ hotelId: 1, createdAt: -1 });
+orderSchema.index({ "payment.method": 1, "payment.status": 1 });
+orderSchema.index({ createdAt: -1, status: 1 }); // Compound for admin queries
+orderSchema.index({ restaurantId: 1, createdAt: -1 }); // For restaurant history
 
 // Generate order ID before saving (fallback if not provided)
 orderSchema.pre("save", async function (next) {

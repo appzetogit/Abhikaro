@@ -2,6 +2,7 @@ import Restaurant from '../../restaurant/models/Restaurant.js';
 import Offer from '../../restaurant/models/Offer.js';
 import FeeSettings from '../../admin/models/FeeSettings.js';
 import mongoose from 'mongoose';
+import { getCache, setCache, generateCacheKey, CACHE_TTL } from '../../../shared/utils/cache.js';
 
 /**
  * Get active fee settings from database
@@ -9,22 +10,37 @@ import mongoose from 'mongoose';
  */
 const getFeeSettings = async () => {
   try {
+    // Generate cache key
+    const cacheKey = generateCacheKey('feeSettings', 'active');
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const feeSettings = await FeeSettings.findOne({ isActive: true })
       .sort({ createdAt: -1 })
       .lean();
     
+    let result;
     if (feeSettings) {
-      return feeSettings;
+      result = feeSettings;
+    } else {
+      // Return default values if no active settings found
+      result = {
+        deliveryFee: 25,
+        freeDeliveryThreshold: 149,
+        platformFee: 5,
+        platformFeeRanges: [],
+        gstRate: 5,
+      };
     }
-    
-    // Return default values if no active settings found
-    return {
-      deliveryFee: 25,
-      freeDeliveryThreshold: 149,
-      platformFee: 5,
-      platformFeeRanges: [],
-      gstRate: 5,
-    };
+
+    // Cache the result (with longer TTL since settings don't change often)
+    await setCache(cacheKey, result, CACHE_TTL.FEE_SETTINGS || 3600); // 1 hour default
+
+    return result;
   } catch (error) {
     console.error('Error fetching fee settings:', error);
     // Return default values on error

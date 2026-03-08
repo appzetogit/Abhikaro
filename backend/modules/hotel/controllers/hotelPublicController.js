@@ -16,6 +16,15 @@ export const getHotelByHotelId = asyncHandler(async (req, res) => {
     return errorResponse(res, 400, "Hotel ID is required");
   }
 
+  // Generate cache key
+  const cacheKey = generateCacheKey('hotel', 'public', hotelId);
+
+  // Try to get from cache first
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return successResponse(res, 200, "Hotel fetched successfully (cached)", cached);
+  }
+
   console.log("🔍 Public hotel fetch request:", {
     hotelId,
     params: req.params,
@@ -58,7 +67,7 @@ export const getHotelByHotelId = asyncHandler(async (req, res) => {
   });
 
   // Return public hotel info (no sensitive data)
-  return successResponse(res, 200, "Hotel fetched successfully", {
+  const responseData = {
     hotel: {
       _id: hotel._id,
       hotelId: hotel.hotelId,
@@ -70,7 +79,12 @@ export const getHotelByHotelId = asyncHandler(async (req, res) => {
       isActive: hotel.isActive,
       location: hotel.location,
     },
-  });
+  };
+
+  // Cache the response
+  await setCache(cacheKey, responseData, CACHE_TTL.RESTAURANT_DETAILS);
+
+  return successResponse(res, 200, "Hotel fetched successfully", responseData);
 });
 
 /**
@@ -78,6 +92,15 @@ export const getHotelByHotelId = asyncHandler(async (req, res) => {
  * Get all active hotels for public viewing
  */
 export const getAllHotels = asyncHandler(async (req, res) => {
+  // Generate cache key
+  const cacheKey = generateCacheKey('hotels', 'all', 'active');
+
+  // Try to get from cache first
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return successResponse(res, 200, "Hotels fetched successfully (cached)", cached);
+  }
+
   console.log("🔍 Fetching all public hotels");
 
   // Find all active hotels
@@ -90,7 +113,7 @@ export const getAllHotels = asyncHandler(async (req, res) => {
   console.log(`✅ Found ${hotels.length} active hotels`);
 
   // Return public hotel info
-  return successResponse(res, 200, "Hotels fetched successfully", {
+  const responseData = {
     hotels: hotels.map((hotel) => ({
       _id: hotel._id,
       hotelId: hotel.hotelId,
@@ -102,5 +125,10 @@ export const getAllHotels = asyncHandler(async (req, res) => {
       isActive: hotel.isActive,
       location: hotel.location,
     })),
-  });
+  };
+
+  // Cache the response
+  await setCache(cacheKey, responseData, CACHE_TTL.RESTAURANT_LIST);
+
+  return successResponse(res, 200, "Hotels fetched successfully", responseData);
 });

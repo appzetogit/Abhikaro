@@ -23,6 +23,7 @@ import { userRateLimit, ipRateLimit, strictRateLimit } from './shared/middleware
 
 // Import middleware
 import { errorHandler } from './shared/middleware/errorHandler.js';
+import { performanceMonitor } from './shared/middleware/performanceMonitor.js';
 
 // Import routes
 import authRoutes from './modules/auth/index.js';
@@ -60,6 +61,7 @@ import diningRoutes from './modules/dining/index.js';
 import diningAdminRoutes from './modules/dining/routes/diningAdminRoutes.js';
 import chatRoutes from './modules/chat/routes/chatRoutes.js';
 import firebaseSwRoute from './routes/firebaseSwRoute.js';
+import metricsRoutes from './routes/metrics.js';
 
 
 // Validate required environment variables
@@ -340,6 +342,18 @@ connectRedis().then(async (redisClient) => {
       console.warn('⚠️ Socket.IO Redis adapter failed:', error.message);
       console.warn('⚠️ Socket.IO will work in single-server mode only');
     }
+
+    // Initialize queue system
+    try {
+      const { initializeQueues } = await import('./shared/queues/index.js');
+      const queues = await initializeQueues();
+      if (queues) {
+        console.log('✅ Queue system initialized successfully');
+      }
+    } catch (error) {
+      console.warn('⚠️ Queue system initialization failed:', error.message);
+      console.warn('⚠️ Async processing will be disabled');
+    }
   }
 }).catch(() => {
   // Silently handle Redis connection failures
@@ -439,6 +453,22 @@ app.use(compression({
   }
 }));
 
+// Performance monitoring middleware (should be early in the chain)
+app.use(performanceMonitor);
+
+// Request timeout middleware (30 seconds)
+app.use((req, res, next) => {
+  req.setTimeout(30000, () => {
+    if (!res.headersSent) {
+      res.status(408).json({
+        success: false,
+        message: 'Request timeout'
+      });
+    }
+  });
+  next();
+});
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -450,12 +480,14 @@ app.use(mongoSanitize());
 // Rate limiting - Use Redis-based rate limiting if available, fallback to express-rate-limit
 // Redis-based is more effective (per-user) and works across multiple servers
 if (process.env.NODE_ENV === 'production') {
-  // Try Redis-based rate limiting first (per-user)
+  // Try Redis-based rate limiting first (per-user with tiered limits)
   const redisClient = getRedisClient();
   if (redisClient && redisClient.isOpen) {
-    // Use Redis-based rate limiting (more effective)
-    app.use('/api/', userRateLimit); // Per-user rate limiting
-    console.log('✅ Redis-based rate limiting enabled (per-user, production mode)');
+    // Import tiered rate limiter
+    const { tieredUserRateLimit } = await import('./shared/middleware/redisRateLimit.js');
+    // Use tiered rate limiting (role-based limits)
+    app.use('/api/', tieredUserRateLimit);
+    console.log('✅ Redis-based tiered rate limiting enabled (role-based, production mode)');
   } else {
     // Fallback to express-rate-limit (IP-based)
     const limiter = rateLimit({
@@ -476,13 +508,56 @@ app.use('/api/auth/verify-otp', strictRateLimit);
 app.use('/api/auth/login', strictRateLimit);
 app.use('/api/auth/register', strictRateLimit);
 
-// Health check route
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
+// Health check routes for load balancer
+app.get('/health', async (req, res) => {
+  try {
+    const { getHealthStatus } = await import('./config/loadBalancer.js');
+    const health = await getHealthStatus();
+    const statusCode = health.status === 'healthy' ? 200 : health.status === 'degraded' ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Readiness probe (for Kubernetes/Docker)
+app.get('/ready', async (req, res) => {
+  try {
+    const { isReady } = await import('./config/loadBalancer.js');
+    const ready = await isReady();
+    res.status(ready ? 200 : 503).json({
+      ready,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      ready: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Liveness probe
+app.get('/live', async (req, res) => {
+  try {
+    const { isAlive } = await import('./config/loadBalancer.js');
+    const alive = isAlive();
+    res.status(alive ? 200 : 503).json({
+      alive,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      alive: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // FCM service worker - must be at root path for Firebase SDK
@@ -523,6 +598,7 @@ app.use('/api/location', locationRoutes);
 app.use('/api', heroBannerRoutes);
 app.use('/api/dining', diningRoutes);
 app.use('/api/admin/dining', diningAdminRoutes);
+app.use('/api/metrics', metricsRoutes);
 
 // 404 handler - but skip Socket.IO paths
 app.use((req, res, next) => {

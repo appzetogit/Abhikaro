@@ -286,7 +286,6 @@ export default function Home() {
           setHeroBannerImages(banners.map(b => b.imageUrl || b))
         }
       } catch (error) {
-        console.error('Error fetching hero banners:', error)
         // Fallback to empty array if API fails
         setHeroBannerImages([])
         setHeroBannersData([])
@@ -317,7 +316,6 @@ export default function Home() {
           setRealCategories([])
         }
       } catch (error) {
-        console.error('Error fetching real categories:', error)
         setRealCategories([])
       } finally {
         setLoadingRealCategories(false)
@@ -351,7 +349,6 @@ export default function Home() {
           setExploreMoreHeading(response.data.data.settings?.exploreMoreHeading || "Explore More")
         }
       } catch (error) {
-        console.error('Error fetching landing config:', error)
         // Fallback to empty arrays and default heading
         setLandingCategories([])
         setLandingExploreMore([])
@@ -517,11 +514,10 @@ export default function Home() {
   try {
     profileContext = useProfile()
   } catch (error) {
-    console.warn("ProfileProvider not available, using fallback:", error.message)
     // Fallback values when ProfileProvider is not available
     profileContext = {
-      addFavorite: () => console.warn("ProfileProvider not available"),
-      removeFavorite: () => console.warn("ProfileProvider not available"),
+      addFavorite: () => {},
+      removeFavorite: () => {},
       isFavorite: () => false,
       getFavorites: () => []
     }
@@ -610,7 +606,6 @@ export default function Home() {
         if (!healthCheck.ok) {
           throw new Error(`Backend health check failed: ${healthCheck.status}`)
         }
-        console.log('✅ Backend connection successful')
       } catch (healthError) {
         // Backend connection error - handled silently, toast notifications shown via axios interceptor
         setRestaurantsData([])
@@ -690,16 +685,12 @@ export default function Home() {
       }
       // Note: We show all restaurants regardless of zone, but apply grayscale styling if user is out of service
 
-      console.log('✅ Fetching restaurants with params (using MongoDB geospatial query, NO Google Places API):', params)
       const response = await restaurantAPI.getRestaurants(params)
-      console.log('Restaurants API response:', response.data)
 
       if (response.data && response.data.success && response.data.data && response.data.data.restaurants) {
         const restaurantsArray = response.data.data.restaurants
-        console.log(`Fetched ${restaurantsArray.length} restaurants from API`)
 
         if (restaurantsArray.length === 0) {
-          console.warn('No restaurants found in API response')
           setRestaurantsData([])
           setLoadingRestaurants(false)
           return
@@ -824,21 +815,16 @@ export default function Home() {
           })
         }
 
-        console.log('Transformed and sorted restaurants:', transformedRestaurants)
         setRestaurantsData(transformedRestaurants)
       } else {
-        console.warn('Invalid API response structure:', response.data)
         setRestaurantsData([])
       }
     } catch (error) {
-      console.error('Error fetching restaurants:', error)
-      console.error('Error details:', error.response?.data || error.message)
       // Don't set hardcoded data here - let the useMemo fallback handle it
       // This way, if API succeeds later, it will show the real data
       setRestaurantsData([])
     } finally {
       setLoadingRestaurants(false)
-      console.log('Restaurant loading completed. restaurantsData length:', restaurantsData.length)
     }
   }, [zoneId])
 
@@ -906,7 +892,6 @@ export default function Home() {
     })
 
     setRestaurantsData(updatedRestaurants)
-    console.log('🔄 Recalculated distances for all restaurants based on user location')
   }, [location?.latitude, location?.longitude])
 
   // Filter restaurants and foods based on active filters
@@ -2287,7 +2272,6 @@ export default function Home() {
                         selectedCuisine
                       })
                     } catch (error) {
-                      console.error('Error applying filters:', error)
                     } finally {
                       setIsLoadingFilterResults(false)
                     }

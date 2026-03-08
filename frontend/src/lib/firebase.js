@@ -35,7 +35,6 @@ const fetchFirebaseConfig = async () => {
       if (config.MEASUREMENT_ID)
         firebaseConfig.measurementId = config.MEASUREMENT_ID;
 
-      console.log("✅ Firebase config loaded from database");
       return true;
     }
     return false;

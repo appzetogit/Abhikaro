@@ -7,6 +7,7 @@ import User from "../../auth/models/User.js";
 import { uploadToCloudinary } from "../../../shared/utils/cloudinaryService.js";
 import axios from "axios";
 import winston from "winston";
+import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from "../../../shared/utils/cache.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -24,15 +25,31 @@ const logger = winston.createLogger({
  */
 export const getUserProfile = asyncHandler(async (req, res) => {
   try {
+    const userId = req.user._id.toString();
+    
+    // Generate cache key
+    const cacheKey = generateCacheKey('user-profile', userId);
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, "User profile retrieved successfully (cached)", cached);
+    }
+
     const user = await User.findById(req.user._id).select("-password").lean();
 
     if (!user) {
       return errorResponse(res, 404, "User profile not found");
     }
 
-    return successResponse(res, 200, "User profile retrieved successfully", {
+    const responseData = {
       user,
-    });
+    };
+
+    // Cache the response
+    await setCache(cacheKey, responseData, CACHE_TTL.USER_PROFILE);
+
+    return successResponse(res, 200, "User profile retrieved successfully", responseData);
   } catch (error) {
     logger.error(`Error fetching user profile: ${error.message}`);
     return errorResponse(res, 500, "Failed to fetch user profile");
@@ -118,6 +135,10 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
     // Remove password from response
     const userResponse = user.toObject();
     delete userResponse.password;
+
+    // Invalidate user profile cache
+    const cacheKey = generateCacheKey('user-profile', user._id.toString());
+    await invalidateCachePattern(cacheKey);
 
     logger.info(`User profile updated: ${user._id}`, {
       updatedFields: { name, email, phone, dateOfBirth, anniversary, gender },
@@ -367,6 +388,15 @@ export const getUserLocation = asyncHandler(async (req, res) => {
  */
 export const getUserAddresses = asyncHandler(async (req, res) => {
   try {
+    // Generate cache key
+    const cacheKey = generateCacheKey('userAddresses', req.user._id.toString());
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, "Addresses retrieved successfully (cached)", cached);
+    }
+
     const user = await User.findById(req.user._id).select("addresses").lean();
 
     if (!user) {
@@ -379,9 +409,14 @@ export const getUserAddresses = asyncHandler(async (req, res) => {
       id: addr._id ? addr._id.toString() : null,
     }));
 
-    return successResponse(res, 200, "Addresses retrieved successfully", {
+    const responseData = {
       addresses,
-    });
+    };
+
+    // Cache the response
+    await setCache(cacheKey, responseData, CACHE_TTL.USER_PROFILE);
+
+    return successResponse(res, 200, "Addresses retrieved successfully", responseData);
   } catch (error) {
     logger.error(`Error fetching user addresses: ${error.message}`);
     return errorResponse(res, 500, "Failed to fetch addresses");
@@ -449,6 +484,9 @@ export const addUserAddress = asyncHandler(async (req, res) => {
     // Add address
     user.addresses.push(newAddress);
     await user.save();
+
+    // Invalidate user addresses cache
+    await invalidateCachePattern(`userAddresses:${req.user._id.toString()}`);
 
     // Get the added address with _id
     const addedAddress = user.addresses[user.addresses.length - 1];
@@ -541,6 +579,9 @@ export const updateUserAddress = asyncHandler(async (req, res) => {
 
     await user.save();
 
+    // Invalidate user addresses cache
+    await invalidateCachePattern(`userAddresses:${req.user._id.toString()}`);
+
     const addressResponse = {
       ...address.toObject(),
       id: address._id.toString(),
@@ -591,6 +632,9 @@ export const deleteUserAddress = asyncHandler(async (req, res) => {
     }
 
     await user.save();
+
+    // Invalidate user addresses cache
+    await invalidateCachePattern(`userAddresses:${req.user._id.toString()}`);
 
     logger.info(`Address deleted for user: ${user._id}`, {
       addressId: id,

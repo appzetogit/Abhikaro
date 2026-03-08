@@ -34,7 +34,6 @@ export default function UserPreventRedirect({ children }) {
         if (currentPath !== window.location.pathname) {
           navigate(currentPath, { replace: true })
         }
-        console.log("Page refreshed on food screen, staying on:", currentPath)
       }
     }
 

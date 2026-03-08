@@ -88,21 +88,103 @@ export function createRedisRateLimit(options = {}) {
 }
 
 /**
- * Per-user rate limiter (more strict)
- * Limits based on authenticated user ID
+ * Tiered rate limits based on user role
+ * Different limits for different user types
+ */
+const ROLE_RATE_LIMITS = {
+  admin: { maxRequests: 1000, windowMs: 15 * 60 * 1000 }, // Admins get highest limit
+  restaurant: { maxRequests: 500, windowMs: 15 * 60 * 1000 }, // Restaurants need higher limits
+  delivery: { maxRequests: 400, windowMs: 15 * 60 * 1000 }, // Delivery partners
+  user: { maxRequests: 200, windowMs: 15 * 60 * 1000 }, // Regular users
+  default: { maxRequests: 100, windowMs: 15 * 60 * 1000 }, // Unauthenticated
+};
+
+/**
+ * Per-user rate limiter with tiered limits based on role
+ * Limits based on authenticated user ID and role
  */
 export const userRateLimit = createRedisRateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 200, // Higher limit for authenticated users
+  maxRequests: 200, // Default, will be overridden by role
   message: 'Too many requests from your account. Please try again later.',
   keyGenerator: (req) => {
     const userId = req.user?.id || req.user?._id || req.auth?.userId;
+    const role = req.user?.role || req.auth?.role;
+    
     if (!userId) {
       return `ratelimit:ip:${req.ip || req.connection.remoteAddress}`;
     }
-    return `ratelimit:user:${userId}`;
+    return `ratelimit:user:${userId}:role:${role || 'user'}`;
   }
 });
+
+/**
+ * Enhanced user rate limiter with role-based limits
+ */
+export const tieredUserRateLimit = async (req, res, next) => {
+  try {
+    const redisClient = getRedisClient();
+    
+    // If Redis not available, skip rate limiting
+    if (!redisClient || !redisClient.isOpen) {
+      return next();
+    }
+
+    const userId = req.user?.id || req.user?._id || req.auth?.userId;
+    const role = req.user?.role || req.auth?.role || 'default';
+    
+    // Get rate limit config for this role
+    const limitConfig = ROLE_RATE_LIMITS[role] || ROLE_RATE_LIMITS.default;
+    
+    // Generate rate limit key
+    const rateLimitKey = userId 
+      ? `ratelimit:user:${userId}:role:${role}`
+      : `ratelimit:ip:${req.ip || req.connection.remoteAddress}`;
+
+    // Get current request count
+    const current = await redisClient.get(rateLimitKey);
+    const count = current ? parseInt(current) : 0;
+
+    if (count >= limitConfig.maxRequests) {
+      // Get TTL to show when limit resets
+      const ttl = await redisClient.ttl(rateLimitKey);
+      
+      return res.status(429).json({
+        success: false,
+        message: 'Too many requests from your account. Please try again later.',
+        retryAfter: Math.ceil(ttl),
+        limit: limitConfig.maxRequests,
+        window: Math.ceil(limitConfig.windowMs / 1000),
+        role: role
+      });
+    }
+
+    // Increment counter
+    const newCount = count + 1;
+    
+    if (newCount === 1) {
+      // First request in window, set with TTL
+      await redisClient.setEx(rateLimitKey, Math.ceil(limitConfig.windowMs / 1000), String(newCount));
+    } else {
+      // Increment existing counter
+      await redisClient.incr(rateLimitKey);
+    }
+
+    // Add rate limit headers
+    res.set({
+      'X-RateLimit-Limit': limitConfig.maxRequests,
+      'X-RateLimit-Remaining': Math.max(0, limitConfig.maxRequests - newCount),
+      'X-RateLimit-Reset': new Date(Date.now() + limitConfig.windowMs).toISOString(),
+      'X-RateLimit-Role': role
+    });
+
+    next();
+  } catch (error) {
+    console.error('Tiered rate limit error:', error);
+    // On error, allow request (fail open)
+    next();
+  }
+};
 
 /**
  * Per-IP rate limiter (for unauthenticated requests)

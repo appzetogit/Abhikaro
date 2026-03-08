@@ -190,6 +190,11 @@ const hotelSchema = new mongoose.Schema(
 
 // Indexes (phone already has unique: true on field; avoid duplicate schema.index)
 hotelSchema.index({ email: 1 }, { sparse: true });
+// Additional indexes for scalability
+hotelSchema.index({ isActive: 1 }); // For filtering active hotels
+hotelSchema.index({ standRequestStatus: 1 }); // For filtering by stand request status
+hotelSchema.index({ createdAt: -1 }); // For sorting by creation date
+hotelSchema.index({ hotelId: 1 }); // For quick hotelId lookups
 
 // Hash password before saving
 hotelSchema.pre("save", async function (next) {

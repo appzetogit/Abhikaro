@@ -3,6 +3,7 @@ import { successResponse, errorResponse } from '../../../shared/utils/response.j
 import { asyncHandler } from '../../../shared/middleware/asyncHandler.js';
 import { uploadToCloudinary } from '../../../shared/utils/cloudinaryService.js';
 import winston from 'winston';
+import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from '../../../shared/utils/cache.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -20,6 +21,15 @@ const logger = winston.createLogger({
  */
 export const getPublicCategories = asyncHandler(async (req, res) => {
   try {
+    // Generate cache key
+    const cacheKey = generateCacheKey('categories', 'public');
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, 'Categories retrieved successfully (cached)', cached);
+    }
+
     // Only get active categories for public access
     const categories = await AdminCategoryManagement.find({ status: true })
       .select('name image _id type offerPercentage offerUsageLimitPerDay')
@@ -42,9 +52,14 @@ export const getPublicCategories = asyncHandler(async (req, res) => {
           : 1,
     }));
 
-    return successResponse(res, 200, 'Categories retrieved successfully', {
+    const responseData = {
       categories: formattedCategories
-    });
+    };
+
+    // Cache the response
+    await setCache(cacheKey, responseData, CACHE_TTL.CATEGORIES);
+
+    return successResponse(res, 200, 'Categories retrieved successfully', responseData);
   } catch (error) {
     logger.error(`Error fetching public categories: ${error.message}`);
     return errorResponse(res, 500, 'Failed to fetch categories');
@@ -58,6 +73,15 @@ export const getPublicCategories = asyncHandler(async (req, res) => {
 export const getCategories = asyncHandler(async (req, res) => {
   try {
     const { limit = 100, offset = 0, search, priority, status } = req.query;
+
+    // Generate cache key based on query parameters
+    const cacheKey = generateCacheKey('categories', 'admin', limit, offset, search, priority, status);
+
+    // Try to get from cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return successResponse(res, 200, 'Categories retrieved successfully (cached)', cached);
+    }
 
     // Build query
     const query = {};
@@ -97,12 +121,17 @@ export const getCategories = asyncHandler(async (req, res) => {
 
     const total = await AdminCategoryManagement.countDocuments(query);
 
-    return successResponse(res, 200, 'Categories retrieved successfully', {
+    const responseData = {
       categories: categoriesWithSl,
       total,
       limit: parseInt(limit),
       offset: parseInt(offset)
-    });
+    };
+
+    // Cache the response
+    await setCache(cacheKey, responseData, CACHE_TTL.CATEGORIES);
+
+    return successResponse(res, 200, 'Categories retrieved successfully', responseData);
   } catch (error) {
     logger.error(`Error fetching categories: ${error.message}`);
     return errorResponse(res, 500, 'Failed to fetch categories');
@@ -226,6 +255,9 @@ export const createCategory = asyncHandler(async (req, res) => {
 
     const category = await AdminCategoryManagement.create(categoryData);
 
+    // Invalidate categories cache
+    await invalidateCachePattern('categories:*');
+
     logger.info(`Category created: ${category._id}`, {
       name: category.name,
       createdBy: req.user._id
@@ -339,6 +371,9 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
     await category.save();
 
+    // Invalidate categories cache
+    await invalidateCachePattern('categories:*');
+
     logger.info(`Category updated: ${id}`, {
       updatedBy: req.user._id
     });
@@ -376,6 +411,9 @@ export const deleteCategory = asyncHandler(async (req, res) => {
 
     await AdminCategoryManagement.deleteOne({ _id: id });
 
+    // Invalidate categories cache
+    await invalidateCachePattern('categories:*');
+
     logger.info(`Category deleted: ${id}`, {
       deletedBy: req.user._id
     });
@@ -404,6 +442,9 @@ export const toggleCategoryStatus = asyncHandler(async (req, res) => {
     category.status = !category.status;
     category.updatedBy = req.user._id;
     await category.save();
+
+    // Invalidate categories cache
+    await invalidateCachePattern('categories:*');
 
     logger.info(`Category status toggled: ${id}`, {
       status: category.status,
@@ -444,6 +485,9 @@ export const updateCategoryPriority = asyncHandler(async (req, res) => {
     category.priority = priority;
     category.updatedBy = req.user._id;
     await category.save();
+
+    // Invalidate categories cache
+    await invalidateCachePattern('categories:*');
 
     logger.info(`Category priority updated: ${id}`, {
       priority,
