@@ -131,9 +131,16 @@ export const tieredUserRateLimit = async (req, res, next) => {
     }
 
     // Skip rate limiting for high-frequency, low-risk public endpoints
-    // e.g. location reverse geocoding which is already debounced on frontend
+    // (reverse geocode, order price preview, public env/business settings, user passive location updates)
     const path = req.path || '';
-    if (path.startsWith('/location/reverse')) {
+    if (
+      path.startsWith('/location/reverse') ||
+      path.startsWith('/order/calculate') ||
+      path === '/order' ||
+      path === '/env/public' ||
+      path === '/user/location' ||
+      path === '/business-settings/public'
+    ) {
       return next();
     }
 
