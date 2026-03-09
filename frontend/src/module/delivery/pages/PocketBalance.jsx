@@ -39,7 +39,7 @@ export default function PocketBalancePage() {
       const walletData = await fetchDeliveryWallet()
       setWalletState(walletData)
     } catch (error) {
-      console.error('Error fetching wallet data:', error)
+      // Error fetching wallet data
       setWalletState({
         totalBalance: 0,
         cashInHand: 0,
@@ -136,20 +136,6 @@ export default function PocketBalancePage() {
   const canWithdraw = withdrawableAmount >= withdrawalLimit && withdrawableAmount > 0
   
   // Debug logging (cashInHand = Cash collected from backend)
-  console.log('💰 PocketBalance Page Calculations:', {
-    walletStateCashInHand: walletState?.cashInHand,
-    balancesCashInHand: balances.cashInHand,
-    cashCollected,
-    walletStateTotalBalance: walletState?.totalBalance,
-    walletStatePocketBalance: walletState?.pocketBalance,
-    balancesTotalBalance: balances.totalBalance,
-    calculatedPocketBalance: pocketBalance,
-    totalBonus: totalBonus,
-    weeklyEarnings: weeklyEarnings,
-    withdrawableAmount: withdrawableAmount,
-    withdrawalLimit,
-    canWithdraw
-  })
 
   // Get current week date range
   const getCurrentWeekRange = () => {

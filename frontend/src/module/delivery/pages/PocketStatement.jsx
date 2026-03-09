@@ -53,7 +53,7 @@ export default function PocketStatement() {
         setOrders(trips)
         setBonusTransactions(bonus)
       } catch (error) {
-        console.error("Error loading pocket statement data:", error)
+        // Error loading pocket statement data
         setOrders([])
         setBonusTransactions([])
       } finally {

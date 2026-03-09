@@ -94,7 +94,7 @@ export default function PocketPage() {
       } catch (error) {
         // Skip logging timeout errors (handled by axios interceptor)
         if (error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
-          console.error("Error checking bank details:", error)
+          // Error checking bank details
         }
         // Default to showing the banner if we can't check
         setBankDetailsFilled(false)
@@ -115,30 +115,13 @@ export default function PocketPage() {
     }
   }, [])
 
-  // Carousel slides data - bank details banner removed for delivery boy
+  // Carousel slides data - currently no slides for delivery boy
   const carouselSlides = useMemo(() => [], [])
 
   // Calculate balances
   const balances = calculateDeliveryBalances(walletState)
   
   // Debug: Log wallet state and balances
-  useEffect(() => {
-    console.log('💰 Wallet State:', walletState)
-    console.log('💰 Calculated Balances:', balances)
-    // Pocket balance = total balance (includes bonus)
-    const calculatedPocketBalance = walletState?.totalBalance || balances.totalBalance || 0
-    console.log('💰 Pocket Balance (same as Total Balance):', calculatedPocketBalance)
-    console.log('💰 Total Balance (includes bonus):', walletState?.totalBalance || balances.totalBalance)
-    console.log('💰 Cash In Hand:', walletState?.cashInHand || balances.cashInHand)
-    // Check for bonus transactions
-    const bonusTransactions = walletState?.transactions?.filter(t => t.type === 'bonus' && t.status === 'Completed') || []
-    console.log('💰 Bonus Transactions:', bonusTransactions)
-    if (bonusTransactions.length > 0) {
-      const totalBonus = bonusTransactions.reduce((sum, t) => sum + (t.amount || 0), 0)
-      console.log('💰 Total Bonus Amount:', totalBonus)
-      console.log('💰 Pocket Balance should include this bonus:', totalBonus)
-    }
-  }, [walletState, balances])
 
   // Calculate weekly earnings from wallet transactions (payment + earning_addon bonus)
   // Include both payment and earning_addon transactions in weekly earnings
@@ -207,13 +190,10 @@ export default function PocketPage() {
     const fetchActiveEarningAddons = async () => {
       try {
         setEarningAddonLoading(true)
-        console.log('🔄 Fetching active earning addons...')
         const response = await deliveryAPI.getActiveEarningAddons()
-        console.log('✅ Active earning addons response:', response?.data)
         
         if (response?.data?.success && response?.data?.data?.activeOffers) {
           const offers = response.data.data.activeOffers
-          console.log('📦 Active offers found:', offers.length, offers)
           
           // Get the first valid active offer (prioritize isValid, then isUpcoming, then any active status)
           const activeOffer = offers.find(offer => offer.isValid) || 
@@ -222,22 +202,12 @@ export default function PocketPage() {
                              offers[0] || 
                              null
           
-          console.log('🎯 Selected active offer:', activeOffer)
           setActiveEarningAddon(activeOffer)
         } else {
-          console.log('ℹ️ No active offers found in response')
           setActiveEarningAddon(null)
         }
       } catch (error) {
-        if (error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
-          if (error.code === 'ERR_NETWORK') {
-            console.warn('Active offers: network error. Ensure backend is running and CORS allows /api/delivery.')
-          } else if (error.response) {
-            console.warn('Active offers fetch failed:', error.response.status, error.response?.data?.message || error.response?.data)
-          } else {
-            console.warn('Active offers fetch failed:', error.message)
-          }
-        }
+        // Error fetching active earning addons
         setActiveEarningAddon(null)
       } finally {
         setEarningAddonLoading(false)
@@ -252,11 +222,6 @@ export default function PocketPage() {
       fetchActiveEarningAddons()
     }
     window.addEventListener('deliveryEarningAddonRefresh', handleAddonRefresh)
-
-    // Refresh every 3 seconds to get latest offers
-    const refreshInterval = setInterval(() => {
-      fetchActiveEarningAddons()
-    }, 3000)
 
     // Refresh when page becomes visible
     const handleVisibilityChange = () => {
@@ -273,7 +238,6 @@ export default function PocketPage() {
     window.addEventListener('focus', handleFocus)
 
     return () => {
-      clearInterval(refreshInterval)
       window.removeEventListener('deliveryEarningAddonRefresh', handleAddonRefresh)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
@@ -350,52 +314,15 @@ export default function PocketPage() {
   // Offer is live if it's valid (started) or upcoming (not started yet but active)
   const isOfferLive = activeEarningAddon?.isValid || activeEarningAddon?.isUpcoming || false
 
-  // Calculate total bonus amount from all bonus transactions
+  // Calculate total bonus amount from all bonus transactions (for display only)
   const totalBonus = walletState?.transactions
     ?.filter(t => t.type === 'bonus' && t.status === 'Completed')
     .reduce((sum, t) => sum + (t.amount || 0), 0) || 0
   
-  // Pocket balance - shows total balance (includes bonus)
-  // Total balance = all earnings + bonus - withdrawals
-  // This is what delivery partner can withdraw
-  // IMPORTANT: Use walletState.pocketBalance if available (from API), otherwise use totalBalance
-  let pocketBalance = walletState?.pocketBalance !== undefined 
-    ? walletState.pocketBalance 
-    : (walletState?.totalBalance || balances.totalBalance || 0)
-  
-  // IMPORTANT: Ensure pocket balance includes bonus
-  // If backend totalBalance is 0 but we have bonus, calculate it manually
-  // This ensures bonus is always reflected in pocket balance
-  if (pocketBalance === 0 && totalBonus > 0) {
-    // If totalBalance is 0 but we have bonus, pocket balance = bonus
-    pocketBalance = totalBonus
-  } else if (pocketBalance > 0 && totalBonus > 0) {
-    // Verify pocket balance includes bonus
-    // Calculate expected: Earnings + Bonus - Withdrawals
-    const totalWithdrawn = balances.totalWithdrawn || 0
-    const expectedBalance = weeklyEarnings + totalBonus - totalWithdrawn
-    // Use the higher value to ensure bonus is included
-    if (expectedBalance > pocketBalance) {
-      pocketBalance = expectedBalance
-    }
-  }
-  
-  // Debug: Log pocket balance calculation
-  useEffect(() => {
-    const bonusTransactions = walletState?.transactions?.filter(t => t.type === 'bonus' && t.status === 'Completed') || []
-    const calculatedTotalBonus = bonusTransactions.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
-    
-    console.log('💰 FINAL Pocket Balance Display:', {
-      pocketBalance: pocketBalance,
-      walletStatePocketBalance: walletState?.pocketBalance,
-      walletStateTotalBalance: walletState?.totalBalance,
-      balancesTotalBalance: balances.totalBalance,
-      totalBonus: calculatedTotalBonus,
-      weeklyEarnings: weeklyEarnings,
-      bonusTransactions: bonusTransactions
-    })
-    // Only depend on walletState and balances - totalBonus and weeklyEarnings are derived from these
-  }, [pocketBalance, walletState, balances])
+  // Pocket balance - trust backend-calculated values (includes any bonuses)
+  const pocketBalance = walletState?.pocketBalance !== undefined
+    ? Number(walletState.pocketBalance) || 0
+    : (Number(walletState?.totalBalance) || Number(balances.totalBalance) || 0)
   // Available cash limit = remaining limit (global limit - cash in hand)
   const totalCashLimit = Number.isFinite(Number(walletState?.totalCashLimit))
     ? Number(walletState.totalCashLimit)
@@ -465,54 +392,15 @@ export default function PocketPage() {
         setWalletState(walletData)
         
         // End-to-end real data logging
-        console.log('💰 Wallet data fetched (Real Data):', walletData)
-        console.log('💰 Total Balance from API:', walletData?.totalBalance)
-        console.log('💰 Total Earned from API:', walletData?.totalEarned)
-        console.log('💰 Pocket Balance from API:', walletData?.pocketBalance)
-        console.log('💰 Transactions count:', walletData?.transactions?.length || 0)
         
         // Real earnings calculation from transactions
         const paymentTransactions = walletData?.transactions?.filter(t => t.type === 'payment' && t.status === 'Completed') || []
         const realEarningsFromTransactions = paymentTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
-        console.log('💰 Real Earnings from Payment Transactions:', realEarningsFromTransactions)
-        console.log('💰 Payment transactions count:', paymentTransactions.length)
-        console.log('💰 Payment transactions:', paymentTransactions)
-        
         // Bonus transactions
         const bonusTransactions = walletData?.transactions?.filter(t => t.type === 'bonus' && t.status === 'Completed') || []
         const totalBonus = bonusTransactions.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
-        console.log('💰 Total Bonus Amount:', totalBonus)
-        console.log('💰 Bonus Transactions:', bonusTransactions)
-        
-        // Debug weekly earnings calculation with real data
-        console.log('💰 Weekly Earnings Calculation (Real Data):')
-        paymentTransactions.forEach(t => {
-          const transactionDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null)
-          const now = new Date()
-          const startOfWeek = new Date(now)
-          startOfWeek.setDate(now.getDate() - now.getDay())
-          startOfWeek.setHours(0, 0, 0, 0)
-          const isInCurrentWeek = transactionDate && transactionDate >= startOfWeek && transactionDate <= now
-          
-          console.log('  - Transaction:', {
-            amount: t.amount,
-            orderId: t.orderId,
-            date: t.date,
-            createdAt: t.createdAt,
-            dateParsed: transactionDate,
-            isInCurrentWeek: isInCurrentWeek,
-            description: t.description
-          })
-        })
-        
-        // Verify data consistency
-        console.log('💰 Data Consistency Check:', {
-          totalEarnedFromAPI: walletData?.totalEarned,
-          realEarningsFromTransactions: realEarningsFromTransactions,
-          match: Math.abs((walletData?.totalEarned || 0) - realEarningsFromTransactions) < 0.01
-        })
       } catch (error) {
-        console.error('Error fetching wallet data:', error)
+        // Error fetching wallet data
         // Keep empty state on error
         setWalletState({
           totalBalance: 0,
@@ -529,22 +417,22 @@ export default function PocketPage() {
 
     fetchWalletData()
 
-    // Refresh wallet data every 3 seconds to get latest balance (including bonus) - FAST REFRESH
+    // Refresh wallet data periodically as a fallback (real-time updates come from socket events)
     const refreshInterval = setInterval(() => {
       fetchWalletData()
-    }, 3000)
+    }, 30000) // 30 seconds
 
-    // INSTANT refresh when page becomes visible (user switches back to tab) - BONUS SHOWS FAST
+    // Refresh when page becomes visible (user switches back to tab)
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        fetchWalletData() // Instant refresh when user comes back
+        fetchWalletData()
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
-    // INSTANT refresh when window gets focus - BONUS SHOWS FAST
+    // Refresh when window gets focus
     const handleFocus = () => {
-      fetchWalletData() // Instant refresh when window gets focus
+      fetchWalletData()
     }
     window.addEventListener('focus', handleFocus)
 
@@ -612,8 +500,17 @@ export default function PocketPage() {
     }
   }
 
-  // Auto-rotate carousel
+  // Auto-rotate carousel (only when slides exist)
   useEffect(() => {
+    if (!carouselSlides || carouselSlides.length === 0) {
+      if (carouselAutoRotateRef.current) {
+        clearInterval(carouselAutoRotateRef.current)
+        carouselAutoRotateRef.current = null
+      }
+      setCurrentCarouselSlide(0)
+      return
+    }
+
     // Reset to first slide if current slide is out of bounds
     setCurrentCarouselSlide((prev) => {
       if (prev >= carouselSlides.length) {
@@ -628,12 +525,14 @@ export default function PocketPage() {
     return () => {
       if (carouselAutoRotateRef.current) {
         clearInterval(carouselAutoRotateRef.current)
+        carouselAutoRotateRef.current = null
       }
     }
   }, [carouselSlides])
 
   // Reset auto-rotate timer after manual swipe
   const resetCarouselAutoRotate = () => {
+    if (!carouselSlides || carouselSlides.length === 0) return
     if (carouselAutoRotateRef.current) {
       clearInterval(carouselAutoRotateRef.current)
     }

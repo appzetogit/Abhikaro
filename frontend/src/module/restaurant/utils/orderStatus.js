@@ -25,7 +25,6 @@ export const getOrderStatus = (orderId) => {
     const savedStatus = localStorage.getItem(`order_status_${orderId}`)
     return savedStatus || ORDER_STATUS.PENDING
   } catch (error) {
-    console.error('Error reading order status from localStorage:', error)
     return ORDER_STATUS.PENDING
   }
 }
@@ -41,7 +40,7 @@ export const saveOrderStatus = (orderId, status) => {
   try {
     localStorage.setItem(`order_status_${orderId}`, status)
   } catch (error) {
-    console.error('Error saving order status to localStorage:', error)
+    // Error saving order status
   }
 }
 

@@ -115,15 +115,9 @@ export default function ProfilePage() {
           const profileData = response.data.data.profile
           setProfile(profileData)
           // Debug: Log profile image data
-          console.log("Profile image data:", {
-            profileImage: profileData.profileImage,
-            documentsPhoto: profileData.documents?.photo,
-            hasProfileImage: !!profileData.profileImage?.url,
-            hasDocumentsPhoto: !!profileData.documents?.photo
-          })
         }
       } catch (error) {
-        console.error("Error fetching profile:", error)
+        // Error fetching profile
         toast.error("Failed to load profile data")
       } finally {
         setLoading(false)
@@ -145,7 +139,7 @@ export default function ProfilePage() {
             setProfile(response.data.data.profile)
           }
         } catch (error) {
-          console.error("Error fetching profile:", error)
+          // Error fetching profile
         }
       }
       fetchProfile()
@@ -167,7 +161,7 @@ export default function ProfilePage() {
       // Call logout API to clear refresh token on server
       await deliveryAPI.logout()
     } catch (error) {
-      console.error("Logout API error (continuing with local cleanup):", error)
+      // Logout API error (continuing with local cleanup)
       // Continue with local cleanup even if API call fails
     }
 
@@ -233,9 +227,9 @@ export default function ProfilePage() {
                     alt="Profile"
                     className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-gray-200"
                     onError={(e) => {
-                      // Fallback to documents.photo if profileImage fails to load
-                      if (profile?.documents?.photo) {
-                        e.target.src = profile.documents.photo
+                      // Fallback to documents.photo/profilePhoto if profileImage fails to load
+                      if (profile?.documents?.photo || profile?.documents?.profilePhoto) {
+                        e.target.src = profile.documents.photo || profile.documents.profilePhoto
                       } else {
                         // Show default icon if both fail
                         e.target.style.display = 'none'
@@ -243,9 +237,9 @@ export default function ProfilePage() {
                       }
                     }}
                   />
-                ) : profile?.documents?.photo ? (
+                ) : (profile?.documents?.photo || profile?.documents?.profilePhoto) ? (
                   <img 
-                    src={profile.documents.photo}
+                    src={profile.documents.photo || profile.documents.profilePhoto}
                     alt="Profile"
                     className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-gray-200"
                     onError={(e) => {
@@ -255,7 +249,7 @@ export default function ProfilePage() {
                     }}
                   />
                 ) : null}
-                {(!profile?.profileImage?.url && !profile?.documents?.photo) && (
+                {(!profile?.profileImage?.url && !profile?.documents?.photo && !profile?.documents?.profilePhoto) && (
                   <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gray-300 flex items-center justify-center border-2 border-gray-200">
                     <User className="w-10 h-10 md:w-12 md:h-12 text-gray-500" />
                   </div>
@@ -371,21 +365,13 @@ export default function ProfilePage() {
                       localStorage.setItem('delivery_alert_sound', e.target.value)
                       // Play preview sound
                       try {
-                        console.log('🔊 Playing preview sound: Original', { originalSoundPath: originalSound })
                         const audio = new Audio(originalSound)
                         audio.volume = 0.7
-                        const playPromise = audio.play()
-                        if (playPromise !== undefined) {
-                          playPromise
-                            .then(() => {
-                              console.log('✅ Preview sound playing: Original')
-                            })
-                            .catch(err => {
-                              console.error('❌ Preview audio error:', err)
-                            })
-                        }
+                        audio.play().catch(() => {
+                          // Preview audio error
+                        })
                       } catch (err) {
-                        console.error('❌ Could not create preview audio:', err)
+                        // Could not create preview audio
                       }
                     }}
                     className="w-5 h-5 text-black focus:ring-2 focus:ring-black"
@@ -405,21 +391,13 @@ export default function ProfilePage() {
                       localStorage.setItem('delivery_alert_sound', e.target.value)
                       // Play preview sound
                       try {
-                        console.log('🔊 Playing preview sound: Zomato Tone', { alertSoundPath: alertSound })
                         const audio = new Audio(alertSound)
                         audio.volume = 0.7
-                        const playPromise = audio.play()
-                        if (playPromise !== undefined) {
-                          playPromise
-                            .then(() => {
-                              console.log('✅ Preview sound playing: Zomato Tone')
-                            })
-                            .catch(err => {
-                              console.error('❌ Preview audio error:', err)
-                            })
-                        }
+                        audio.play().catch(() => {
+                          // Preview audio error
+                        })
                       } catch (err) {
-                        console.error('❌ Could not create preview audio:', err)
+                        // Could not create preview audio
                       }
                     }}
                     className="w-5 h-5 text-black focus:ring-2 focus:ring-black"

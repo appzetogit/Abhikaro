@@ -83,7 +83,7 @@ export default function PocketDetails() {
         setPaymentTransactions(filteredPayments)
         setBonusTransactions(filteredBonuses)
       } catch (error) {
-        console.error("Error loading pocket details data:", error)
+        // Error loading pocket details
         setOrders([])
         setPaymentTransactions([])
         setBonusTransactions([])

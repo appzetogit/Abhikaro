@@ -121,7 +121,6 @@ export default function RestaurantDetails() {
           setCategoryOffers([])
         }
       } catch (error) {
-        console.error("Error fetching category offers:", error)
         setCategoryOffers([])
       }
     }
@@ -148,7 +147,6 @@ export default function RestaurantDetails() {
         setLoadingRestaurant(true)
         setRestaurantError(null)
 
-        console.log('Fetching restaurant with slug:', slug)
         let response = null
         let apiRestaurant = null
 
@@ -157,12 +155,10 @@ export default function RestaurantDetails() {
           response = await diningAPI.getRestaurantBySlug(slug)
           if (response.data && response.data.success && response.data.data) {
             apiRestaurant = response.data.data
-            console.log('✅ Found restaurant in dining API:', apiRestaurant)
           }
         } catch (diningError) {
           // If dining API fails with 404, try restaurant API
           if (diningError.response?.status === 404) {
-            console.log('⚠️ Restaurant not found in dining API, trying restaurant API...')
             try {
               // First, try to get restaurant directly by slug (getRestaurantById supports both ID and slug)
               // This doesn't require zoneId, so it works even if zone is not detected
@@ -170,15 +166,11 @@ export default function RestaurantDetails() {
                 response = await restaurantAPI.getRestaurantById(slug)
                 if (response.data && response.data.success && response.data.data) {
                   apiRestaurant = response.data.data
-                  console.log('✅ Found restaurant in restaurant API by slug/ID:', apiRestaurant)
                 }
               } catch (directLookupError) {
                 // If direct lookup fails, try searching by name (requires zoneId)
-                console.log('⚠️ Direct lookup failed, trying search by name...')
-
                 // Only search if zoneId is available (zoneId is required by backend for search)
                 if (!zoneId) {
-                  console.warn('⚠️ User zone not available, cannot search restaurants. Restaurant may not be found.')
                   // Don't throw error - let it fall through to show "Restaurant not found" message
                 } else {
                   // Include zoneId for zone-based filtering
@@ -199,13 +191,11 @@ export default function RestaurantDetails() {
                     const fullResponse = await restaurantAPI.getRestaurantById(matchingRestaurant._id || matchingRestaurant.restaurantId)
                     if (fullResponse.data && fullResponse.data.success && fullResponse.data.data) {
                       apiRestaurant = fullResponse.data.data
-                      console.log('✅ Found restaurant in restaurant API by name search:', apiRestaurant)
                     }
                   }
                 }
               }
             } catch (restaurantError) {
-              console.error('❌ Restaurant not found in restaurant API either:', restaurantError)
               // Only throw if we haven't found the restaurant yet
               if (!apiRestaurant) {
                 throw diningError // Throw original error to show "Restaurant not found"
@@ -217,13 +207,6 @@ export default function RestaurantDetails() {
         }
 
         if (apiRestaurant) {
-          console.log('✅ Fetched restaurant from API:', apiRestaurant)
-          console.log('📋 Restaurant data keys:', Object.keys(apiRestaurant))
-          console.log('📋 Restaurant name field:', apiRestaurant?.name)
-          console.log('📋 Restaurant restaurantId:', apiRestaurant?.restaurantId)
-          console.log('📋 Restaurant _id:', apiRestaurant?._id)
-          console.log('📋 Restaurant.restaurant:', apiRestaurant?.restaurant)
-
           // Check if this is a dining restaurant with nested restaurant data
           const actualRestaurant = apiRestaurant?.restaurant || apiRestaurant
 
@@ -323,10 +306,7 @@ export default function RestaurantDetails() {
 
           // Get location object for address formatting
           const locationObj = actualRestaurant?.location || apiRestaurant?.location
-          console.log('📍 Location Object for formatting:', locationObj)
-          console.log('📍 formattedAddress field:', locationObj?.formattedAddress)
           const formattedAddress = formatRestaurantAddress(locationObj)
-          console.log('📍 Final Formatted Address:', formattedAddress)
 
           // Calculate distance from user to restaurant
           const calculateDistance = (lat1, lng1, lat2, lng2) => {
@@ -346,13 +326,9 @@ export default function RestaurantDetails() {
           const restaurantLat = locationObj?.latitude || (locationObj?.coordinates && Array.isArray(locationObj.coordinates) ? locationObj.coordinates[1] : null)
           const restaurantLng = locationObj?.longitude || (locationObj?.coordinates && Array.isArray(locationObj.coordinates) ? locationObj.coordinates[0] : null)
 
-          console.log('📍 Restaurant coordinates:', { restaurantLat, restaurantLng, locationObj })
-
           // Get user coordinates
           const userLat = userLocation?.latitude
           const userLng = userLocation?.longitude
-
-          console.log('📍 User location:', { userLat, userLng, userLocation })
 
           // Calculate distance if both coordinates are available
           let calculatedDistance = null
@@ -366,16 +342,6 @@ export default function RestaurantDetails() {
               const distanceInMeters = Math.round(distanceInKm * 1000)
               calculatedDistance = `${distanceInMeters} m`
             }
-            console.log('✅ Calculated distance from user to restaurant:', calculatedDistance, 'km:', distanceInKm)
-          } else {
-            console.warn('⚠️ Cannot calculate distance - missing coordinates:', {
-              hasUserLocation: !!(userLat && userLng),
-              hasRestaurantLocation: !!(restaurantLat && restaurantLng),
-              userLat,
-              userLng,
-              restaurantLat,
-              restaurantLng
-            })
           }
 
           // Transform API data to match expected format with comprehensive fallbacks
@@ -462,11 +428,7 @@ export default function RestaurantDetails() {
             isAcceptingOrders: actualRestaurant?.isAcceptingOrders !== false, // Default to true if not specified
           }
 
-          console.log('✅ Transformed restaurant:', transformedRestaurant)
-          console.log('✅ Restaurant ID for menu fetch:', transformedRestaurant.id)
-
           if (!transformedRestaurant.id) {
-            console.error('❌ No restaurant ID found! Cannot fetch menu.')
           }
 
           setRestaurant(transformedRestaurant)
@@ -477,11 +439,9 @@ export default function RestaurantDetails() {
           let restaurantIdForMenu = transformedRestaurant.id
 
           if (!restaurantIdForMenu) {
-            console.warn('⚠️ No restaurant ID available, searching for restaurant by name...')
             try {
               // CRITICAL: Only search if zoneId is available (zoneId is required by backend)
               if (!zoneId) {
-                console.warn('⚠️ User zone not available, cannot search restaurants. Menu may not load.')
                 // Continue without menu - restaurant details are still available
                 return
               }
@@ -498,7 +458,6 @@ export default function RestaurantDetails() {
 
               if (matchingRestaurant) {
                 restaurantIdForMenu = matchingRestaurant._id || matchingRestaurant.restaurantId || matchingRestaurant.id
-                console.log('✅ Found matching restaurant by name, ID:', restaurantIdForMenu)
 
                 // Update the restaurant ID in state
                 setRestaurant(prev => ({
@@ -506,17 +465,14 @@ export default function RestaurantDetails() {
                   id: restaurantIdForMenu,
                   restaurantId: restaurantIdForMenu
                 }))
-              } else {
-                console.warn('⚠️ No matching restaurant found by name')
               }
             } catch (searchError) {
-              console.error('❌ Error searching for restaurant:', searchError)
+              // Error searching for restaurant
             }
           }
 
           if (restaurantIdForMenu) {
             try {
-              console.log('📋 Fetching menu for restaurant ID:', restaurantIdForMenu)
               const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurantIdForMenu)
               if (menuResponse.data && menuResponse.data.success && menuResponse.data.data && menuResponse.data.data.menu) {
                 const menuSections = menuResponse.data.data.menu.sections || []
@@ -551,23 +507,6 @@ export default function RestaurantDetails() {
                   }
                 })
 
-                // Debug log to verify recommended items and their isRecommended values
-                console.log('Recommended items collected:', recommendedItems.map(item => ({
-                  name: item.name,
-                  isRecommended: item.isRecommended,
-                  isRecommendedType: typeof item.isRecommended,
-                  preparationTime: item.preparationTime
-                })))
-
-                // Debug log to check preparationTime in menu sections
-                console.log('Menu sections with preparationTime:', menuSections.map(section => ({
-                  sectionName: section.name,
-                  items: section.items?.map(item => ({
-                    name: item.name,
-                    preparationTime: item.preparationTime
-                  })) || []
-                })))
-
                 // Always create recommended section (even if empty) - will show "No dish Yet" if empty
                 const finalMenuSections = [{ name: "Recommended for you", items: recommendedItems, subsections: [] }, ...menuSections]
 
@@ -579,19 +518,12 @@ export default function RestaurantDetails() {
                 // Set first 3 sections (Recommended, Starters, Main Course) as expanded by default
                 const defaultExpandedSections = new Set([0, 1, 2]) // Index 0, 1, 2
                 setExpandedSections(defaultExpandedSections)
-
-                console.log('Fetched menu sections with recommended items:', finalMenuSections)
               }
             } catch (menuError) {
-              if (menuError.response && menuError.response.status === 404) {
-                console.log('⚠️ Menu not found for this restaurant (might be a dining-only listing).')
-              } else {
-                console.error('❌ Error fetching menu:', menuError)
-              }
+              // Error fetching menu
             }
 
             try {
-              console.log('📋 Fetching inventory for restaurant ID:', restaurantIdForMenu)
               const inventoryResponse = await restaurantAPI.getInventoryByRestaurantId(restaurantIdForMenu)
               if (inventoryResponse.data && inventoryResponse.data.success && inventoryResponse.data.data && inventoryResponse.data.data.inventory) {
                 const inventoryCategories = inventoryResponse.data.data.inventory.categories || []
@@ -620,20 +552,12 @@ export default function RestaurantDetails() {
                   ...prev,
                   inventory: normalizedInventory,
                 }))
-                console.log('✅ Fetched and normalized inventory categories:', normalizedInventory)
               }
             } catch (inventoryError) {
-              if (inventoryError.response && inventoryError.response.status === 404) {
-                console.log('⚠️ Inventory not found for this restaurant (might be a dining-only listing).')
-              } else {
-                console.error('❌ Error fetching inventory:', inventoryError)
-              }
+              // Error fetching inventory
             }
           }
         } else {
-          console.error('❌ No restaurant data found in API response')
-          console.error('❌ Response:', response)
-          console.error('❌ apiRestaurant:', apiRestaurant)
           setRestaurantError('Restaurant not found')
           setRestaurant(null)
         }
@@ -648,17 +572,14 @@ export default function RestaurantDetails() {
           // Network error - backend is not running
           // Don't show "Restaurant not found" for network errors
           // The axios interceptor will show a toast notification
-          console.error('Network error fetching restaurant (backend may not be running):', error)
           setRestaurantError('Backend server is not connected. Please make sure the backend is running.')
           setRestaurant(null)
         } else if (is404Error) {
           // 404 error - restaurant doesn't exist in database
-          console.log(`Restaurant "${slug}" not found in database`)
           setRestaurantError('Restaurant not found')
           setRestaurant(null)
         } else {
           // Other errors
-          console.error('Error fetching restaurant:', error)
           setRestaurantError(error.message || 'Failed to load restaurant')
           setRestaurant(null)
         }
@@ -675,7 +596,6 @@ export default function RestaurantDetails() {
     // Wait for zone to load before fetching (if zone-based search might be needed)
     // But don't block if we're fetching by direct ID
     if (loadingZone) {
-      console.log('⏳ Waiting for zone detection before fetching restaurant...')
       return
     }
 
@@ -771,7 +691,6 @@ export default function RestaurantDetails() {
 
       // Only update if distance actually changed
       if (calculatedDistance !== prevDistanceRef.current) {
-        console.log('🔄 Recalculated distance from user to restaurant:', calculatedDistance, 'km:', distanceInKm)
         prevDistanceRef.current = calculatedDistance
 
         // Update restaurant distance
@@ -855,19 +774,12 @@ export default function RestaurantDetails() {
     }))
 
     if (!restaurant || !restaurant.name) {
-      console.error('❌ Cannot add item to cart: Restaurant data is missing!');
       toast.error('Restaurant information is missing. Please refresh the page.');
       return;
     }
 
     const validRestaurantId = restaurant?.restaurantId || restaurant?._id || restaurant?.id;
     if (!validRestaurantId) {
-      console.error('❌ Cannot add item to cart: Restaurant ID is missing!', {
-        restaurant: restaurant,
-        restaurantId: restaurant?.restaurantId,
-        _id: restaurant?._id,
-        id: restaurant?.id
-      });
       toast.error('Restaurant ID is missing. Please refresh the page.');
       return;
     }
@@ -950,7 +862,6 @@ export default function RestaurantDetails() {
               updateQuantity(cartItemId, newQuantity)
             }
           } catch (error) {
-            console.error('❌ Error adding item to cart:', error);
             toast.error(error.message || 'Cannot add item from different restaurant. Please clear cart first.');
             return;
           }
@@ -969,7 +880,6 @@ export default function RestaurantDetails() {
           }
         } catch (error) {
           // Handle restaurant mismatch error
-          console.error('❌ Error adding item to cart:', error);
           toast.error(error.message || 'Cannot add item from different restaurant. Please clear cart first.');
         }
       }
@@ -1135,7 +1045,6 @@ export default function RestaurantDetails() {
           return
         }
         // For other errors, try fallback
-        console.error("Share error:", error)
         await copyToClipboard(shareUrl)
       }
     } else {
@@ -1187,7 +1096,6 @@ export default function RestaurantDetails() {
           return
         }
         // For other errors, try fallback
-        console.error("Share error:", error)
         await copyToClipboard(shareUrl)
       }
     } else {
@@ -1773,11 +1681,6 @@ export default function RestaurantDetails() {
                         const isVeg = item.foodType === "Veg"
                         const categoryOfferPercent = getCategoryOfferForItem(item)
 
-                        // Debug: Log preparationTime for troubleshooting
-                        if (item.preparationTime) {
-                          console.log(`[FRONTEND] Item "${item.name}" preparationTime:`, item.preparationTime, 'Type:', typeof item.preparationTime)
-                        }
-
                         // Create unique key combining section ID and item ID/index
                         const uniqueKey = `${section.id || section.name}-${item.id || itemIndex}-${itemIndex}`
 
@@ -2028,11 +1931,6 @@ export default function RestaurantDetails() {
                                     ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
                                     : (quantities[item.id] || 0)
                                   const isVeg = item.foodType === "Veg"
-
-                                  // Debug: Log preparationTime for troubleshooting
-                                  if (item.preparationTime) {
-                                    console.log(`[FRONTEND] Subsection item "${item.name}" preparationTime:`, item.preparationTime)
-                                  }
 
                                   // Create unique key combining section ID, subsection ID, item ID, and index
                                   const uniqueKey = `${section.id || section.name}-${subsection.id || subsection.name}-${item.id || itemIndex}-${itemIndex}`

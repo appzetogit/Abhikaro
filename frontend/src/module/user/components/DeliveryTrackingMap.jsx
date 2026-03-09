@@ -82,7 +82,6 @@ const DeliveryTrackingMap = ({
 
     // Validate coordinates before making API call
     if (!start || !end) {
-      console.warn('Invalid coordinates: start or end is missing');
       return;
     }
 
@@ -93,27 +92,23 @@ const DeliveryTrackingMap = ({
 
     // Check if coordinates are valid numbers
     if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
-      console.warn('Invalid coordinates: coordinates are not valid numbers', { start, end });
       return;
     }
 
     // Check if coordinates are within valid range
     if (startLat < -90 || startLat > 90 || endLat < -90 || endLat > 90 ||
       startLng < -180 || startLng > 180 || endLng < -180 || endLng > 180) {
-      console.warn('Invalid coordinates: coordinates are out of valid range', { start, end });
       return;
     }
 
     // Check if start and end are the same (will cause API error)
     if (startLat === endLat && startLng === endLng) {
-      console.warn('Invalid route: start and end coordinates are the same');
       return;
     }
 
     // Check global cache first
     try {
       const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(err => {
-        console.warn('Failed to load cache utility:', err);
         return null;
       });
       
@@ -122,7 +117,6 @@ const DeliveryTrackingMap = ({
         
         const cachedResult = getCached('directions', start, end);
         if (cachedResult) {
-        console.log('✅ Using cached directions result from global cache');
         directionsRendererRef.current.setOptions({ preserveViewport: true });
         directionsRendererRef.current.setDirections(cachedResult);
         

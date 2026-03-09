@@ -167,7 +167,7 @@ export default function SignupStep1() {
         navigate("/delivery/signup/documents")
       }
     } catch (error) {
-      console.error("Error submitting signup details:", error)
+      // Error submitting signup details
       const message = error?.response?.data?.message || "Failed to save details. Please try again."
       toast.error(message)
     } finally {

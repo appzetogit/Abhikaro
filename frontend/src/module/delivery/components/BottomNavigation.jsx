@@ -48,8 +48,11 @@ export default function BottomNavigation() {
         const response = await deliveryAPI.getProfile()
         if (response?.data?.success && response?.data?.data?.profile) {
           const profile = response.data.data.profile
-          // Use profileImage.url first, fallback to documents.photo
-          const imageUrl = profile.profileImage?.url || profile.documents?.photo
+          // Use profileImage.url first, fallback to documents.photo/profilePhoto
+          const imageUrl =
+            profile.profileImage?.url ||
+            profile.documents?.photo ||
+            profile.documents?.profilePhoto
           if (imageUrl) {
             setProfileImage(imageUrl)
           }
@@ -60,7 +63,7 @@ export default function BottomNavigation() {
             error.code !== 'ERR_NETWORK' && 
             error.message !== 'Network Error' &&
             !error.message?.includes('timeout')) {
-          console.error("Error fetching profile image for navigation:", error)
+          // Error fetching profile image
         }
       }
     }

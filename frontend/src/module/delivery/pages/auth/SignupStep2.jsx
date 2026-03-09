@@ -84,7 +84,7 @@ export default function SignupStep2() {
         }
       }
     } catch (error) {
-      console.error("Error opening camera:", error)
+      // Error opening camera
       toast.error("Failed to open camera. Please try again.")
 
       // Fallback to standard file input
@@ -140,7 +140,7 @@ export default function SignupStep2() {
         toast.success(`${docType.replace(/([A-Z])/g, ' $1').trim()} uploaded successfully`)
       }
     } catch (error) {
-      console.error(`Error uploading ${docType}:`, error)
+      // Error uploading document
       toast.error(`Failed to upload ${docType.replace(/([A-Z])/g, ' $1').trim()}`)
     } finally {
       setUploading(prev => ({ ...prev, [docType]: false }))
@@ -193,7 +193,7 @@ export default function SignupStep2() {
         }, 1000)
       }
     } catch (error) {
-      console.error("Error submitting documents:", error)
+      // Error submitting documents
       const message = error?.response?.data?.message || "Failed to submit documents. Please try again."
       toast.error(message)
     } finally {

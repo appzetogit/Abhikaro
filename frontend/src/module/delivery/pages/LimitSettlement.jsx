@@ -51,7 +51,7 @@ export default function LimitSettlement() {
 
         setTransactions(formatted)
       } catch (error) {
-        console.error("Error loading limit settlement transactions:", error)
+        // Error loading limit settlement transactions
         setTransactions([])
       } finally {
         setLoading(false)

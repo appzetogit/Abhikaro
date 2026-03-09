@@ -25,7 +25,7 @@ export default function SupportTickets() {
         setTickets([])
       }
     } catch (error) {
-      console.error("Error fetching tickets:", error)
+      // Error fetching tickets
       toast.error("Failed to load tickets")
       setTickets([])
     } finally {

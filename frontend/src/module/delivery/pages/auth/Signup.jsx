@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/select"
 import loginBg from "@/assets/deliveryloginbanner.png"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
+import { deliveryAPI } from "@/lib/api"
+import { isModuleAuthenticated } from "@/lib/utils/auth"
 
 // Common country codes
 const countryCodes = [
@@ -53,10 +55,9 @@ export default function DeliverySignup() {
   })
   const [isLoading, setIsLoading] = useState(false)
 
-  // Redirect to home if already authenticated
+  // Redirect to delivery home if already authenticated
   useEffect(() => {
-    const isAuthenticated = localStorage.getItem("delivery_authenticated") === "true"
-    if (isAuthenticated) {
+    if (isModuleAuthenticated("delivery")) {
       navigate("/delivery", { replace: true })
     }
   }, [navigate])
@@ -135,21 +136,33 @@ export default function DeliverySignup() {
       return
     }
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const fullPhone = `${formData.countryCode} ${formData.phone}`.trim()
 
-    // Store auth data in sessionStorage for OTP page
-    const authData = {
-      method: "phone",
-      phone: `${formData.countryCode} ${formData.phone}`,
-      name: formData.name,
-      isSignUp: true,
-      module: "delivery",
+    try {
+      // Send OTP for signup (use purpose=login so backend can auto-create user and flag needsSignup)
+      await deliveryAPI.sendOTP(fullPhone, "login")
+
+      // Store auth data in sessionStorage for OTP page
+      const authData = {
+        method: "phone",
+        phone: fullPhone,
+        name: formData.name,
+        isSignUp: true,
+        module: "delivery",
+      }
+      sessionStorage.setItem("deliveryAuthData", JSON.stringify(authData))
+
+      navigate("/delivery/otp")
+    } catch (error) {
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Failed to send OTP. Please try again."
+      setErrors((prev) => ({ ...prev, phone: message }))
+    } finally {
+      setIsLoading(false)
     }
-    sessionStorage.setItem("deliveryAuthData", JSON.stringify(authData))
-
-    setIsLoading(false)
-    navigate("/delivery/otp")
   }
 
   return (

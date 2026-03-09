@@ -134,7 +134,6 @@ export default function ItemDetailsPage() {
         setRestaurantSharePercent(restaurantPercent)
       } catch (error) {
         // If commission API fails, keep default 70/30
-        console.warn("Could not fetch restaurant commission for item profit:", error)
       }
     }
 
@@ -322,7 +321,6 @@ export default function ItemDetailsPage() {
             toast.error("Item not found")
           }
         } catch (error) {
-          console.error('Error fetching item data:', error)
           toast.error("Failed to load item data")
         } finally {
           setLoadingItem(false)
@@ -375,10 +373,8 @@ export default function ItemDetailsPage() {
         // Sort by name
         uniqueCategories.sort((a, b) => a.name.localeCompare(b.name))
 
-        console.log('Combined categories (restaurant + menu sections):', uniqueCategories)
         setCategories(uniqueCategories)
       } catch (error) {
-        console.error('Error fetching categories:', error)
         // Show empty array on error - user can add categories
         setCategories([])
       } finally {
@@ -463,15 +459,10 @@ export default function ItemDetailsPage() {
           setImageBase64Data(newBase64DataMap)
           toast.success('Image captured successfully')
         } catch (error) {
-          console.error('Error processing camera image:', error)
           toast.error('Failed to process image')
         }
-      } else if (result && result.success === false) {
-        // User cancelled - don't show error
-        console.log('User cancelled image capture')
       }
     }).catch((error) => {
-      console.error('Error calling Flutter openCamera:', error)
       // Only show error if it's not a cancellation
       if (!error.message || !error.message.includes('cancel')) {
         toast.error('Failed to capture image from camera')
@@ -481,27 +472,19 @@ export default function ItemDetailsPage() {
 
   // Handler for Flutter gallery callback - EXACT same as camera handler
   const handleFlutterGallery = () => {
-    console.log('🖼️ Gallery button clicked')
-    console.log('Flutter available:', !!window.flutter_inappwebview)
-    
     // If Flutter not available, use native file input immediately
     if (!window.flutter_inappwebview) {
-      console.log('⚠️ Flutter not available, using native file input')
       const galleryInput = document.getElementById('image-upload-gallery')
       if (galleryInput) {
         galleryInput.click()
       } else {
-        console.error('❌ Gallery input element not found!')
         toast.error('Gallery input not found. Please refresh the page.')
       }
       return
     }
-
-    console.log('🖼️ Calling Flutter openGallery handler...')
     
     // Add timeout - if handler doesn't respond in 3 seconds, use native fallback
     const timeoutId = setTimeout(() => {
-      console.warn('⚠️ Gallery handler timeout, using native file input')
       const galleryInput = document.getElementById('image-upload-gallery')
       if (galleryInput) {
         galleryInput.click()
@@ -510,28 +493,14 @@ export default function ItemDetailsPage() {
     
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
       clearTimeout(timeoutId)
-      console.log('📥 Flutter openGallery response:', result)
       
       if (result && result.success && result.base64) {
         try {
-          console.log('✅ Gallery image received, processing...', {
-            hasBase64: !!result.base64,
-            base64Length: result.base64?.length,
-            mimeType: result.mimeType,
-            fileName: result.fileName
-          })
-          
           const file = base64ToFile(
             result.base64,
             result.mimeType || 'image/jpeg',
             result.fileName || `gallery_${Date.now()}.jpg`
           )
-
-          console.log('✅ File created from base64:', {
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type
-          })
 
           // Create preview URL and store
           const previewUrl = URL.createObjectURL(file)
@@ -546,32 +515,17 @@ export default function ItemDetailsPage() {
             fileName: result.fileName || file.name
           })
           
-          console.log('✅ Storing image data:', {
-            previewUrl: previewUrl.substring(0, 50) + '...',
-            hasBase64Data: !!newBase64DataMap.get(previewUrl)?.base64,
-            base64DataLength: newBase64DataMap.get(previewUrl)?.base64?.length
-          })
-          
           setImages(prev => [...prev, previewUrl])
           setImageFiles(newImageFilesMap)
           setImageBase64Data(newBase64DataMap)
           
-          console.log('✅ Gallery image added successfully to state')
           toast.success('Image selected successfully')
         } catch (error) {
-          console.error('❌ Error processing gallery image:', error)
-          console.error('Error details:', {
-            message: error.message,
-            stack: error.stack,
-            result: result
-          })
           toast.error('Failed to process image')
         }
       } else if (result && result.success === false) {
         // User cancelled - don't show error
-        console.log('ℹ️ User cancelled image selection')
       } else {
-        console.warn('⚠️ Unexpected gallery response, using native fallback:', result)
         // Fallback to native if response is unexpected
         const galleryInput = document.getElementById('image-upload-gallery')
         if (galleryInput) {
@@ -580,15 +534,8 @@ export default function ItemDetailsPage() {
       }
     }).catch((error) => {
       clearTimeout(timeoutId)
-      console.error('❌ Error calling Flutter openGallery:', error)
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      })
       
       // Always fallback to native file input on error
-      console.log('🔄 Falling back to native file input')
       const galleryInput = document.getElementById('image-upload-gallery')
       if (galleryInput) {
         galleryInput.click()
@@ -672,7 +619,6 @@ export default function ItemDetailsPage() {
     }
 
     toast.success('Image deleted successfully')
-    console.log(`Image deleted. Remaining images: ${newImages.length}`)
   }
 
   // Swipe handlers
@@ -807,45 +753,11 @@ export default function ItemDetailsPage() {
         !img.startsWith('blob:')
       )
 
-      console.log('Images state:', images)
-      console.log('Existing image URLs (already uploaded):', existingImageUrls)
-      console.log('Image files map:', imageFiles)
-
       // Upload new images to Cloudinary
       // For Flutter-selected images (with base64 data), use uploadBase64 API (more reliable)
       // For native file inputs, use uploadMedia API
       const filesToUpload = Array.from(imageFiles.entries()) // Get [previewUrl, file] pairs
       
-      // DETAILED LOGGING FOR LIVE SERVER DEBUGGING
-      console.log('========================================')
-      console.log('=== IMAGE UPLOAD DEBUG START ===')
-      console.log('Total images in state:', images.length)
-      console.log('Existing image URLs:', existingImageUrls.length, existingImageUrls)
-      console.log('Files to upload count:', filesToUpload.length)
-      console.log('Image files map size:', imageFiles.size)
-      console.log('Base64 data map size:', imageBase64Data.size)
-      console.log('---')
-      filesToUpload.forEach(([previewUrl, file], idx) => {
-        const base64Data = imageBase64Data.get(previewUrl)
-        console.log(`📎 File ${idx + 1}/${filesToUpload.length}:`)
-        console.log(`   Preview URL: ${previewUrl.substring(0, 60)}...`)
-        console.log(`   File Name: ${file?.name || 'N/A'}`)
-        console.log(`   File Size: ${file?.size || 'N/A'} bytes`)
-        console.log(`   File Type: ${file?.type || 'N/A'}`)
-        console.log(`   Has Base64 Data: ${!!base64Data}`)
-        if (base64Data) {
-          console.log(`   Base64 Length: ${base64Data.base64?.length || 0}`)
-          console.log(`   Base64 MimeType: ${base64Data.mimeType || 'N/A'}`)
-          console.log(`   Base64 FileName: ${base64Data.fileName || 'N/A'}`)
-          console.log(`   Base64 Preview: ${base64Data.base64?.substring(0, 50) || 'N/A'}...`)
-        } else {
-          console.log(`   ⚠️ NO BASE64 DATA - Will use File upload`)
-        }
-        console.log('---')
-      })
-      console.log('=== IMAGE UPLOAD DEBUG END ===')
-      console.log('========================================')
-
       if (filesToUpload.length > 0) {
         toast.info(`Uploading ${filesToUpload.length} image(s)...`)
         for (let i = 0; i < filesToUpload.length; i++) {
@@ -857,32 +769,13 @@ export default function ItemDetailsPage() {
             
             // If base64 data exists (Flutter-selected image), use uploadBase64 API
             if (base64Data && base64Data.base64) {
-              console.log('========================================')
-              console.log(`📤 UPLOADING IMAGE ${i + 1}/${filesToUpload.length} VIA BASE64`)
-              console.log(`   File Name: ${base64Data.fileName || 'N/A'}`)
-              console.log(`   Mime Type: ${base64Data.mimeType || 'image/jpeg'}`)
-              console.log(`   Base64 Length: ${base64Data.base64.length}`)
-              console.log(`   Base64 Preview: ${base64Data.base64.substring(0, 50)}...`)
-              console.log(`   Preview URL: ${previewUrl.substring(0, 60)}...`)
-              
               try {
                 // Ensure base64 string is clean (no data URL prefix)
                 let cleanBase64 = base64Data.base64
                 const hadPrefix = cleanBase64.includes(',')
                 if (hadPrefix) {
                   cleanBase64 = cleanBase64.split(',')[1]
-                  console.log(`   ✅ Removed data URL prefix (original: ${base64Data.base64.length}, cleaned: ${cleanBase64.length})`)
-                } else {
-                  console.log(`   ✅ Base64 is already clean (no prefix)`)
                 }
-                
-                console.log(`   📤 Calling uploadAPI.uploadBase64...`)
-                console.log(`   Parameters:`, {
-                  base64Length: cleanBase64.length,
-                  mimeType: base64Data.mimeType || 'image/jpeg',
-                  fileName: base64Data.fileName || `image_${Date.now()}.jpg`,
-                  folder: 'restaurant/menu-items'
-                })
                 
                 const uploadResponse = await uploadAPI.uploadBase64(
                   cleanBase64, // Send clean base64 without data URL prefix
@@ -891,101 +784,36 @@ export default function ItemDetailsPage() {
                   { folder: 'restaurant/menu-items' }
                 )
                 
-                console.log(`   📥 Upload API Response Received:`)
-                console.log(`   Response Status: ${uploadResponse?.status || 'N/A'}`)
-                console.log(`   Response Success: ${uploadResponse?.data?.success || 'N/A'}`)
-                console.log(`   Has Data: ${!!uploadResponse?.data?.data}`)
-                console.log(`   Has URL: ${!!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)}`)
-                console.log(`   Full Response:`, JSON.stringify(uploadResponse?.data, null, 2))
-                
                 imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
                 if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
                   uploadedImageUrls.push(imageUrl)
-                  console.log(`   ✅ SUCCESS! Image URL received: ${imageUrl}`)
-                  console.log(`   ✅ Total uploaded URLs so far: ${uploadedImageUrls.length}`)
-                  console.log('========================================')
                 } else {
-                  console.error(`   ❌ ERROR: No URL in response!`)
-                  console.error(`   Response data:`, uploadResponse?.data)
-                  console.error(`   Response structure:`, {
-                    hasData: !!uploadResponse?.data,
-                    hasDataData: !!uploadResponse?.data?.data,
-                    hasUrl: !!(uploadResponse?.data?.data?.url),
-                    hasDirectUrl: !!(uploadResponse?.data?.url),
-                    fullResponse: uploadResponse
-                  })
                   throw new Error("Failed to get uploaded image URL from base64 upload response")
                 }
               } catch (base64Error) {
-                console.error('========================================')
-                console.error(`❌ BASE64 UPLOAD FAILED FOR IMAGE ${i + 1}`)
-                console.error(`   Error Message: ${base64Error.message}`)
-                console.error(`   Error Type: ${base64Error.constructor.name}`)
-                console.error(`   Response Status: ${base64Error.response?.status || 'N/A'}`)
-                console.error(`   Response Data:`, base64Error.response?.data)
-                console.error(`   Full Error:`, base64Error)
-                console.error(`   Stack:`, base64Error.stack)
-                console.error('========================================')
                 // Fallback to File upload if base64 upload fails
                 if (!file || !(file instanceof File)) {
                   throw new Error(`Base64 upload failed and no valid File object available: ${base64Error.message}`)
                 }
-                console.log(`🔄 Falling back to File upload for image ${i + 1}`)
                 // Continue to File upload below
               }
             }
             
             // If base64 upload didn't happen or failed, use File upload
             if (!imageUrl && file) {
-              console.log('========================================')
-              console.log(`📤 UPLOADING IMAGE ${i + 1}/${filesToUpload.length} VIA FILE`)
-              console.log(`   File Name: ${file.name || 'N/A'}`)
-              console.log(`   File Size: ${file.size || 'N/A'} bytes`)
-              console.log(`   File Type: ${file.type || 'N/A'}`)
-              console.log(`   Preview URL: ${previewUrl.substring(0, 60)}...`)
-              
               // Validate file before upload
               if (!file || !(file instanceof File)) {
-                console.error(`   ❌ Invalid file object!`)
-                console.error(`   File object:`, file)
                 throw new Error(`Invalid file object: ${file?.name || 'unknown'}`)
               }
-              
-              console.log(`   📤 Calling uploadAPI.uploadMedia...`)
-              console.log(`   Parameters:`, {
-                fileName: file.name,
-                fileSize: file.size,
-                fileType: file.type,
-                folder: 'restaurant/menu-items'
-              })
               
               const uploadResponse = await uploadAPI.uploadMedia(file, {
                 folder: 'restaurant/menu-items'
               })
               
-              console.log(`   📥 Upload API Response Received:`)
-              console.log(`   Response Status: ${uploadResponse?.status || 'N/A'}`)
-              console.log(`   Response Success: ${uploadResponse?.data?.success || 'N/A'}`)
-              console.log(`   Has Data: ${!!uploadResponse?.data?.data}`)
-              console.log(`   Has URL: ${!!(uploadResponse?.data?.data?.url || uploadResponse?.data?.url)}`)
-              console.log(`   Full Response:`, JSON.stringify(uploadResponse?.data, null, 2))
-              
               imageUrl = uploadResponse?.data?.data?.url || uploadResponse?.data?.url
               if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
                 uploadedImageUrls.push(imageUrl)
-                console.log(`   ✅ SUCCESS! Image URL received: ${imageUrl}`)
-                console.log(`   ✅ Total uploaded URLs so far: ${uploadedImageUrls.length}`)
-                console.log('========================================')
               } else {
-                console.error(`   ❌ ERROR: No URL in response!`)
-                console.error(`   Response data:`, uploadResponse?.data)
-                console.error(`   Response structure:`, {
-                  hasData: !!uploadResponse?.data,
-                  hasDataData: !!uploadResponse?.data?.data,
-                  hasUrl: !!(uploadResponse?.data?.data?.url),
-                  hasDirectUrl: !!(uploadResponse?.data?.url),
-                  fullResponse: uploadResponse
-                })
                 throw new Error("Failed to get uploaded image URL from file upload response")
               }
             }
@@ -997,27 +825,6 @@ export default function ItemDetailsPage() {
             
           } catch (uploadError) {
             const fileName = base64Data?.fileName || file?.name || 'image'
-            console.error('========================================')
-            console.error(`❌ UPLOAD ERROR FOR IMAGE ${i + 1}`)
-            console.error(`   File Name: ${fileName}`)
-            console.error(`   Error Message: ${uploadError.message}`)
-            console.error(`   Error Type: ${uploadError.constructor.name}`)
-            console.error(`   Has Base64 Data: ${!!base64Data}`)
-            if (base64Data) {
-              console.error(`   Base64 Length: ${base64Data.base64?.length || 0}`)
-              console.error(`   Base64 MimeType: ${base64Data.mimeType || 'N/A'}`)
-            }
-            console.error(`   Has File Object: ${!!(file && file instanceof File)}`)
-            if (file) {
-              console.error(`   File Name: ${file.name || 'N/A'}`)
-              console.error(`   File Size: ${file.size || 'N/A'}`)
-              console.error(`   File Type: ${file.type || 'N/A'}`)
-            }
-            console.error(`   Response Status: ${uploadError.response?.status || 'N/A'}`)
-            console.error(`   Response Data:`, uploadError.response?.data)
-            console.error(`   Full Error Object:`, uploadError)
-            console.error(`   Stack Trace:`, uploadError.stack)
-            console.error('========================================')
             
             // Show more detailed error message
             const errorMessage = uploadError.response?.data?.message 
@@ -1028,16 +835,6 @@ export default function ItemDetailsPage() {
             return
           }
         }
-        
-        console.log('========================================')
-        console.log(`✅ ALL ${filesToUpload.length} IMAGE(S) UPLOADED SUCCESSFULLY`)
-        console.log(`   Uploaded URLs:`, uploadedImageUrls)
-        console.log('========================================')
-      } else {
-        console.log('========================================')
-        console.log('ℹ️ NO NEW FILES TO UPLOAD')
-        console.log(`   All images are already uploaded URLs: ${existingImageUrls.length}`)
-        console.log('========================================')
       }
 
       // Combine existing URLs and newly uploaded URLs
@@ -1052,36 +849,8 @@ export default function ItemDetailsPage() {
         self.indexOf(url) === index // Remove duplicates
       )
 
-      // DETAILED LOGGING FOR LIVE SERVER
-      console.log('========================================')
-      console.log('=== FINAL IMAGE URLS SUMMARY ===')
-      console.log(`   Total images in state: ${images.length}`)
-      console.log(`   Existing URLs: ${existingImageUrls.length}`, existingImageUrls)
-      console.log(`   Uploaded URLs: ${uploadedImageUrls.length}`, uploadedImageUrls)
-      console.log(`   All Image URLs (combined): ${allImageUrls.length}`, allImageUrls)
-      console.log('   URL Validation Details:', allImageUrls.map((url, idx) => ({
-        index: idx,
-        url: url,
-        isValid: url && typeof url === 'string' && url.trim() !== '' && (url.startsWith('http://') || url.startsWith('https://'))
-      })))
-      console.log('========================================')
-      
       // CRITICAL: Ensure we have at least one valid image URL if images were uploaded
       if (images.length > 0 && allImageUrls.length === 0) {
-        console.error('========================================')
-        console.error('❌ CRITICAL ERROR: Images were added but no valid URLs to save!')
-        console.error(`   Images in state: ${images.length}`)
-        console.error(`   Existing URLs: ${existingImageUrls.length}`)
-        console.error(`   Uploaded URLs: ${uploadedImageUrls.length}`)
-        console.error(`   All Image URLs: ${allImageUrls.length}`)
-        console.error('   Images state:', images)
-        console.error('   Image files map:', Array.from(imageFiles.entries()))
-        console.error('   Base64 data map:', Array.from(imageBase64Data.entries()).map(([url, data]) => ({
-          url: url.substring(0, 50) + '...',
-          hasBase64: !!data.base64,
-          base64Length: data.base64?.length
-        })))
-        console.error('========================================')
         toast.error('Failed to process images. Please try adding images again.')
         setUploadingImages(false)
         return
@@ -1102,14 +871,11 @@ export default function ItemDetailsPage() {
         // Try to get ID from itemData first (most reliable), then from URL param
         itemId = itemData?.id || id
         if (!itemId) {
-          console.warn('No item ID found, generating new one')
           itemId = `item-${Date.now()}-${Math.random()}`
         }
         // Ensure ID is a string
         itemId = String(itemId)
       }
-
-      console.log('Item ID for save:', itemId, 'From itemData:', itemData?.id, 'From URL:', id)
 
       // If editing, remove item from its current location (in case category changed or it's in a subsection)
       if (!isNewItem && itemId) {
@@ -1131,7 +897,6 @@ export default function ItemDetailsPage() {
             if (itemIndex !== -1) {
               section.items.splice(itemIndex, 1)
               itemRemoved = true
-              console.log(`Removed item from section: ${section.name}, item ID was: ${section.items[itemIndex]?.id}`)
               break
             }
           }
@@ -1150,7 +915,6 @@ export default function ItemDetailsPage() {
                 if (subItemIndex !== -1) {
                   subsection.items.splice(subItemIndex, 1)
                   itemRemoved = true
-                  console.log(`Removed item from subsection: ${subsection.name} in section: ${section.name}`)
                   break
                 }
               }
@@ -1159,9 +923,7 @@ export default function ItemDetailsPage() {
           }
         }
 
-        if (!itemRemoved && !isNewItem) {
-          console.warn(`Item with ID ${itemId} (URL: ${id}) not found in menu for removal. It will be added as new.`)
-        }
+        // Item will be added as new if not found
       }
 
       // Find or create the category section
@@ -1248,55 +1010,24 @@ export default function ItemDetailsPage() {
 
       if (existingItemIndex !== -1) {
         // Update existing item (shouldn't happen if removal worked, but handle it)
-        console.log(`Updating existing item at index ${existingItemIndex} in section: ${targetSection.name}`)
         targetSection.items[existingItemIndex] = itemDataToSave
       } else {
         // Add new item (or re-add after removal)
-        console.log(`Adding item to section: ${targetSection.name}`)
         targetSection.items.push(itemDataToSave)
       }
 
       // Update menu with new sections
-      console.log('=== SAVING ITEM DATA ===')
-      console.log('Item ID:', itemId, 'Is new item:', isNewItem)
-      console.log('Item name:', itemDataToSave.name)
-      console.log('Images array type:', Array.isArray(itemDataToSave.images) ? 'Array' : typeof itemDataToSave.images)
-      console.log('Images array:', itemDataToSave.images)
-      console.log('Images count:', itemDataToSave.images?.length)
-      console.log('Image (single):', itemDataToSave.image)
-      console.log('PhotoCount:', itemDataToSave.photoCount)
-      console.log('All image URLs that should be saved:', allImageUrls)
-      console.log('Full itemDataToSave:', JSON.stringify(itemDataToSave, null, 2))
-      
       // CRITICAL: Verify images are being set correctly before saving
       if (!Array.isArray(itemDataToSave.images)) {
-        console.error('❌ ERROR: itemDataToSave.images is not an array!', itemDataToSave.images)
         itemDataToSave.images = allImageUrls.length > 0 ? allImageUrls : []
       }
       if (itemDataToSave.images.length !== allImageUrls.length) {
-        console.error('❌ ERROR: Images count mismatch!', {
-          itemDataToSaveImages: itemDataToSave.images.length,
-          allImageUrls: allImageUrls.length
-        })
         itemDataToSave.images = allImageUrls
       }
       
       // Ensure image field is also set correctly
       if (allImageUrls.length > 0 && !itemDataToSave.image) {
         itemDataToSave.image = allImageUrls[0]
-      }
-      
-      console.log('✅ Final itemDataToSave.images after validation:', itemDataToSave.images)
-      console.log('✅ Final itemDataToSave.image after validation:', itemDataToSave.image)
-
-      // Verify sections structure
-      console.log('Sections being sent:', sections.length, 'sections')
-      const itemSection = sections.find(s => s.items?.some(item => item.id === itemId))
-      if (itemSection) {
-        const itemInSection = itemSection.items.find(item => item.id === itemId)
-        if (itemInSection) {
-          console.log('Item in section before API call - images:', itemInSection.images, 'count:', itemInSection.images?.length)
-        }
       }
 
       const updateResponse = await restaurantAPI.updateMenu({ sections })
@@ -1315,11 +1046,9 @@ export default function ItemDetailsPage() {
         // Trigger a page refresh event
         window.dispatchEvent(new CustomEvent('foodsChanged'))
       } else {
-        console.error('Update failed:', updateResponse.data)
         toast.error(updateResponse.data?.message || "Failed to save item")
       }
     } catch (error) {
-      console.error('Error saving menu:', error)
       if (error.code === 'ERR_NETWORK') {
         toast.error('Network error. Please check if backend server is running and try again.')
       } else {
@@ -1332,7 +1061,6 @@ export default function ItemDetailsPage() {
 
   const handleDelete = () => {
     // Delete logic here
-    console.log("Deleting item:", id)
     navigate(-1)
   }
 

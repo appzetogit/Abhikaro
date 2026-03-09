@@ -24,7 +24,7 @@ export default function ShowIdCard() {
           toast.error("Failed to load profile data")
         }
       } catch (error) {
-        console.error("Error fetching profile:", error)
+        // Error fetching profile
         toast.error("Failed to load ID card data")
       } finally {
         setLoading(false)
@@ -67,8 +67,12 @@ export default function ShowIdCard() {
     if (profileData?.profileImage?.url) {
       return profileData.profileImage.url
     }
+    // Support both legacy `documents.photo` and new `documents.profilePhoto`
     if (profileData?.documents?.photo) {
       return profileData.documents.photo
+    }
+    if (profileData?.documents?.profilePhoto) {
+      return profileData.documents.profilePhoto
     }
     // Fallback to avatar generator with name
     const name = profileData?.name || "Delivery Partner"

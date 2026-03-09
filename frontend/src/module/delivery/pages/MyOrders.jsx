@@ -30,9 +30,6 @@ export default function MyOrders() {
         
         // Check authentication token
         const deliveryToken = localStorage.getItem('delivery_accessToken') || localStorage.getItem('accessToken')
-        console.log('🔐 Delivery Token exists:', !!deliveryToken)
-        
-        console.log('🔄 Fetching orders using Trip History API (includes all completed orders)...')
         
         // Use Trip History API which includes all orders including delivered/completed
         // Fetch from last 1 year to get all orders
@@ -46,33 +43,23 @@ export default function MyOrders() {
           limit: 1000 // Get more orders
         })
         
-        console.log('📦 Trip History API Response:', response?.data)
-        
         // Trip History API returns: { success: true, data: { trips: [...] } }
         let ordersData = []
         
         if (response?.data?.success && response?.data?.data?.trips) {
           // Trip History returns trips array
           ordersData = response.data.data.trips || []
-          console.log('✅ Using Trip History API, found orders:', ordersData.length)
         } else if (response?.data?.data?.orders) {
           // Fallback to orders structure
           ordersData = response.data.data.orders || []
-          console.log('✅ Using orders structure, found orders:', ordersData.length)
         } else if (Array.isArray(response?.data?.data)) {
           // Direct array
           ordersData = response.data.data
-          console.log('✅ Using direct array, found orders:', ordersData.length)
         }
-        
-        console.log('✅ Final orders to set:', ordersData.length)
-        console.log('✅ Orders sample:', ordersData.slice(0, 2))
         
         if (ordersData && ordersData.length > 0) {
           setOrders(ordersData)
-          console.log('✅ Orders state updated successfully')
         } else {
-          console.warn('⚠️ No orders found - trying getOrders API as fallback...')
           // Fallback to getOrders API
           try {
             const fallbackResponse = await deliveryAPI.getOrders({ 
@@ -81,35 +68,20 @@ export default function MyOrders() {
             })
             if (fallbackResponse?.data?.success && fallbackResponse?.data?.data?.orders) {
               const fallbackOrders = fallbackResponse.data.data.orders || []
-              console.log('✅ Fallback API found orders:', fallbackOrders.length)
               setOrders(fallbackOrders)
     } else {
               setOrders([])
             }
           } catch (fallbackError) {
-            console.error('❌ Fallback API also failed:', fallbackError)
             setOrders([])
           }
         }
       } catch (error) {
-        console.error('❌ ========== ERROR DETAILS ==========')
-        console.error('❌ Error fetching orders:', error)
-        console.error('❌ Error name:', error?.name)
-        console.error('❌ Error message:', error?.message)
-        console.error('❌ Error stack:', error?.stack)
-        console.error('❌ Error response:', error?.response)
-        console.error('❌ Error response data:', error?.response?.data)
-        console.error('❌ Error response status:', error?.response?.status)
-        console.error('❌ Error response statusText:', error?.response?.statusText)
-        console.error('❌ Error response headers:', error?.response?.headers)
-        console.error('❌ Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2))
-        console.error('❌ ========== END ERROR DETAILS ==========')
-        
+        // Error fetching orders
         const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load orders'
         toast.error(errorMessage)
         setOrders([])
       } finally {
-        console.log('🏁 Setting loading to false')
         setLoading(false)
       }
     }
@@ -181,14 +153,6 @@ export default function MyOrders() {
   }
 
   // Debug: Log orders state changes
-  useEffect(() => {
-    console.log('📊 Orders state changed:', {
-      ordersCount: orders.length,
-      orders: orders,
-      isArray: Array.isArray(orders),
-      firstOrder: orders[0]
-    })
-  }, [orders])
 
   // Filter orders by search query
   const filteredOrders = orders.filter(order => {
@@ -206,13 +170,6 @@ export default function MyOrders() {
   })
 
   // Debug: Log filtered orders
-  useEffect(() => {
-    console.log('🔍 Filtered orders changed:', {
-      searchQuery,
-      filteredCount: filteredOrders.length,
-      filteredOrders: filteredOrders
-    })
-  }, [filteredOrders, searchQuery])
 
   return (
     <div className="min-h-screen bg-gray-50 pb-10 font-sans">
@@ -232,9 +189,7 @@ export default function MyOrders() {
             {process.env.NODE_ENV === 'development' && (
         <button
                 onClick={() => {
-                  console.log('🔍 Current State:', {
-                    orders,
-                    filteredOrders,
+                  // Current State
                     loading,
                     searchQuery
                   })
@@ -276,12 +231,12 @@ export default function MyOrders() {
           <div className="flex flex-col items-center justify-center py-12">
             <Package className="w-16 h-16 text-gray-300 mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {searchQuery ? "No orders found" : "You haven't placed any orders yet"}
+              {searchQuery ? "No deliveries found" : "You haven't completed any deliveries yet"}
             </h3>
             <p className="text-gray-600 text-sm text-center mb-6">
               {searchQuery 
                 ? "Try searching with different keywords"
-                : "Start accepting orders to see them here"}
+                : "Start accepting and completing orders to see them here"}
             </p>
           </div>
         ) : (

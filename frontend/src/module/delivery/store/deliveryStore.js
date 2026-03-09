@@ -292,7 +292,6 @@ export const useDeliveryStore = create(
           set(data)
           window.dispatchEvent(new CustomEvent('deliveryStoreImported'))
         } catch (error) {
-          console.error('Error importing delivery store data:', error)
           throw new Error('Invalid JSON data')
         }
       }
@@ -318,7 +317,7 @@ export const initializeDeliveryStore = () => {
     const store = useDeliveryStore.getState()
     store.updateLastActiveTime()
   } catch (error) {
-    console.error('Error initializing delivery store:', error)
+    // Error initializing delivery store
   }
 }
 

@@ -143,7 +143,7 @@ export default function DeliverySignIn() {
       // Navigate to OTP page
       navigate("/delivery/otp")
     } catch (err) {
-      console.error("Send OTP Error:", err)
+      // Send OTP Error
       const message =
         err?.response?.data?.message ||
         err?.response?.data?.error ||

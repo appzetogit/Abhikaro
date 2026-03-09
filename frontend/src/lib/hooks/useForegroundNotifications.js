@@ -19,8 +19,6 @@ export function useForegroundNotifications(options = {}) {
     const setupNotifications = async () => {
       try {
         unsubscribe = await onForegroundMessage((payload) => {
-          console.log('🔔 [Foreground] Notification received:', payload);
-
           const title = payload.notification?.title || payload.data?.title || 'Notification';
           const body = payload.notification?.body || payload.data?.body || '';
           const data = payload.data || {};
@@ -46,9 +44,8 @@ export function useForegroundNotifications(options = {}) {
         });
 
         unsubscribeRef.current = unsubscribe;
-        console.log('✅ [Foreground] Notification handler registered');
       } catch (error) {
-        console.error('❌ [Foreground] Error setting up notification handler:', error);
+        // Error setting up notification handler
       }
     };
 
@@ -58,7 +55,6 @@ export function useForegroundNotifications(options = {}) {
     return () => {
       if (unsubscribeRef.current && typeof unsubscribeRef.current === 'function') {
         unsubscribeRef.current();
-        console.log('🧹 [Foreground] Notification handler unregistered');
       }
     };
   }, [onNotificationClick, showToasts]);

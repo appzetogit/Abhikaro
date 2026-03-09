@@ -85,7 +85,7 @@ export default function Conversation() {
                 className="bg-white shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => {
                   // Navigate to chat detail page
-                  console.log("Open conversation:", conversation.id)
+                  // Open conversation
                 }}
               >
                 <CardContent className="px-2 md:px-4 py-1.5 md:py-3 gap-0">

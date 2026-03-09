@@ -60,7 +60,7 @@ export default function Payout() {
         
         setWithdrawals(formattedTransactions)
       } catch (error) {
-        console.error('Error loading withdrawal transactions:', error)
+        // Error loading withdrawal transactions
         setWithdrawals([])
       } finally {
         setLoading(false)

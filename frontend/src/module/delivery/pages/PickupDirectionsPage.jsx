@@ -123,7 +123,7 @@ export default function PickupDirectionsPage() {
               currentLocation = [restaurant.lat, restaurant.lng]
             }
           } catch (error) {
-            console.error('Error fetching route:', error)
+            // Error fetching route
             routes.push([currentLocation, [restaurant.lat, restaurant.lng]])
             currentLocation = [restaurant.lat, restaurant.lng]
           }

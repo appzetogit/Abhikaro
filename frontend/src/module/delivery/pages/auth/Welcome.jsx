@@ -22,7 +22,7 @@ export default function DeliveryWelcome() {
         return user.name || "Delivery Partner"
       }
     } catch (error) {
-      console.error("Error getting user name:", error)
+      // Error getting user name
     }
     return "Delivery Partner"
   }

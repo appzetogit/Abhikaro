@@ -42,69 +42,35 @@ async function getVapidKey() {
  */
 export async function getFcmToken() {
   try {
-    console.log("🔔 [FCM] Starting token retrieval...");
-    
     if (!("Notification" in window)) {
-      console.warn("🔔 [FCM] Notifications not supported in this browser");
       return null;
     }
     
-    console.log("🔔 [FCM] Requesting notification permission...");
     const permission = await Notification.requestPermission();
-    console.log(`🔔 [FCM] Permission result: ${permission}`);
     
     if (permission !== "granted") {
-      console.warn("⚠️  [FCM] Notification permission denied");
-      console.warn("⚠️  [FCM] Cannot get FCM token without notification permission");
-      console.warn("⚠️  [FCM] User must click 'Allow' when browser prompts for notifications");
-      console.warn("⚠️  [FCM] Token will NOT be stored in database until permission is granted");
       return null;
     }
-    
-    console.log("✅ [FCM] Notification permission granted!");
 
     const messaging = await getMessaging();
     if (!messaging) {
-      console.warn("🔔 [FCM] Firebase messaging not available");
       return null;
     }
 
-    console.log("🔔 [FCM] Getting VAPID key...");
     const vapidKey = await getVapidKey();
     if (!vapidKey) {
-      console.warn("🔔 [FCM] VAPID key not configured. Add FIREBASE_VAPID_KEY in Admin or VITE_FIREBASE_VAPID_KEY in .env");
       return null;
     }
-    console.log("🔔 [FCM] VAPID key found");
 
     const { getToken } = await import("firebase/messaging");
     
-    console.log("🔔 [FCM] Requesting FCM token from Firebase...");
     // Firebase automatically looks for /firebase-messaging-sw.js at the root
     // The backend serves this dynamically via proxy, or it's in public/ as fallback
     const token = await getToken(messaging, { vapidKey });
     
-    if (token) {
-      console.log("✅ [FCM] Token received:", token.substring(0, 30) + "...");
-    } else {
-      console.warn("🔔 [FCM] No token returned from Firebase");
-    }
-    
     return token || null;
   } catch (err) {
     // Handle service worker registration errors gracefully
-    if (err?.code === 'messaging/failed-service-worker-registration' || 
-        err?.message?.includes('service worker') ||
-        err?.message?.includes('ServiceWorker')) {
-      console.warn("FCM: Service worker registration failed.");
-      console.warn("Ensure:");
-      console.warn("  1. Backend server is running on port 5000");
-      console.warn("  2. Backend route /firebase-messaging-sw.js is accessible");
-      console.warn("  3. Firebase config is set in backend environment variables");
-      console.warn("Error:", err?.message || err);
-    } else {
-      console.warn("FCM getToken error:", err?.message || err);
-    }
     // Return null to allow app to continue without FCM (non-blocking)
     return null;
   }
@@ -118,29 +84,19 @@ export async function getFcmToken() {
 export async function registerFcmToken(accessToken, options = {}) {
   const { fcmToken: providedToken, sendWelcome = false, sendLoginAlert = false } = options;
   
-  console.log("📤 [FCM] Starting token registration...");
-  console.log("📤 [FCM] Options:", { sendWelcome, sendLoginAlert });
-  
   const token = providedToken || (await getFcmToken());
   
   if (!token) {
-    console.warn("⚠️  [FCM] No token available, skipping registration");
-    console.warn("⚠️  [FCM] Reason: Notification permission was denied or token retrieval failed");
-    console.warn("⚠️  [FCM] Token will NOT be stored in database");
-    console.warn("⚠️  [FCM] To fix: Allow notifications in browser settings and login again");
     return;
   }
   
   if (!accessToken) {
-    console.warn("📤 [FCM] No access token available, skipping registration");
     return;
   }
-
-  console.log("📤 [FCM] Sending token to backend:", token.substring(0, 30) + "...");
   
   try {
     const apiClient = (await import("./api/axios.js")).default;
-    const response = await apiClient.post(
+    await apiClient.post(
       "/fcm/register-token",
       {
         fcmToken: token,
@@ -152,12 +108,8 @@ export async function registerFcmToken(accessToken, options = {}) {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
     );
-    
-    console.log("✅ [FCM] Token registered successfully!");
-    console.log("✅ [FCM] Backend response:", response.data);
   } catch (err) {
-    console.error("❌ [FCM] Registration failed:", err?.response?.data?.message || err?.message);
-    console.error("❌ [FCM] Error details:", err?.response?.data || err);
+    // Registration failed
   }
 }
 
@@ -171,7 +123,7 @@ export async function removeFcmToken() {
     const apiClient = (await import("./api/axios.js")).default;
     await apiClient.post("/fcm/remove-token", { fcmToken: token });
   } catch (err) {
-    console.warn("FCM remove token error:", err?.message);
+    // FCM remove token error
   }
 }
 
@@ -184,7 +136,6 @@ export async function onForegroundMessage(callback) {
   try {
     const messaging = await getMessaging();
     if (!messaging) {
-      console.warn("🔔 [FCM] Messaging not available for foreground handler");
       return () => {}; // Return no-op cleanup
     }
 
@@ -192,8 +143,6 @@ export async function onForegroundMessage(callback) {
     
     // Set up the message handler
     const unsubscribe = onMessage(messaging, (payload) => {
-      console.log("🔔 [FCM] Foreground message received:", payload);
-      
       // Check for duplicate using tag
       const tag = payload.data?.tag || payload.data?.orderId || payload.data?.notificationId;
       if (tag) {
@@ -204,7 +153,6 @@ export async function onForegroundMessage(callback) {
         
         // If same notification was shown in last 2 seconds, skip (prevent duplicates)
         if (lastShown && (now - parseInt(lastShown)) < 2000) {
-          console.log("🔔 [FCM] Duplicate notification detected, skipping:", tag);
           return;
         }
         sessionStorage.setItem(notificationKey, now.toString());
@@ -216,10 +164,8 @@ export async function onForegroundMessage(callback) {
       }
     });
 
-    console.log("✅ [FCM] Foreground message handler registered");
     return unsubscribe;
   } catch (err) {
-    console.error("❌ [FCM] Error setting up foreground handler:", err);
     return () => {}; // Return no-op cleanup
   }
 }

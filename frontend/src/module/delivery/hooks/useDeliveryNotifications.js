@@ -40,7 +40,6 @@ export const useDeliveryNotifications = () => {
           audioRef.current.pause();
           audioRef.current.src = newSrc;
           audioRef.current.load();
-          console.log('🔊 Audio source updated to:', selectedSound === 'original' ? 'Original' : 'Zomato Tone');
         }
       } else {
         // Initialize audio if not exists
@@ -51,23 +50,16 @@ export const useDeliveryNotifications = () => {
       if (audioRef.current) {
         // Only play if user has interacted with the page (browser autoplay policy)
         if (!userInteractedRef.current) {
-          console.log('🔇 Audio playback skipped - user has not interacted with page yet');
           return;
         }
         
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch(error => {
           // Don't log autoplay policy errors as they're expected
-          if (!error.message?.includes('user didn\'t interact') && !error.name?.includes('NotAllowedError')) {
-            console.warn('Error playing notification sound:', error);
-          }
         });
       }
     } catch (error) {
       // Don't log autoplay policy errors
-      if (!error.message?.includes('user didn\'t interact') && !error.name?.includes('NotAllowedError')) {
-        console.warn('Error playing sound:', error);
-      }
     }
   }, []);
 
@@ -103,7 +95,6 @@ export const useDeliveryNotifications = () => {
     if (!audioRef.current) {
       audioRef.current = new Audio(soundFile);
       audioRef.current.volume = 0.7;
-      console.log('🔊 Audio initialized with:', selectedSound === 'original' ? 'Original' : 'Zomato Tone');
     } else {
       // Update audio source if preference changed
       const currentSrc = audioRef.current.src;
@@ -112,7 +103,6 @@ export const useDeliveryNotifications = () => {
         audioRef.current.pause();
         audioRef.current.src = newSrc;
         audioRef.current.load();
-        console.log('🔊 Audio updated to:', selectedSound === 'original' ? 'Original' : 'Zomato Tone');
       }
     }
     
@@ -137,18 +127,11 @@ export const useDeliveryNotifications = () => {
                       deliveryPartner.deliveryId;
             if (id) {
               setDeliveryPartnerId(id);
-              console.log('✅ Delivery Partner ID fetched:', id);
-            } else {
-              console.warn('⚠️ Could not extract delivery partner ID from response');
             }
-          } else {
-            console.warn('⚠️ No delivery partner data in API response');
           }
-        } else {
-          console.warn('⚠️ Could not fetch delivery partner ID from API');
         }
       } catch (error) {
-        console.error('Error fetching delivery partner:', error);
+        // Error fetching delivery partner
       }
     };
     fetchDeliveryPartnerId();
@@ -173,7 +156,6 @@ export const useDeliveryNotifications = () => {
   // Socket connection effect
   useEffect(() => {
     if (!deliveryPartnerId) {
-      console.log('⏳ Waiting for deliveryPartnerId...');
       return;
     }
 
@@ -216,22 +198,8 @@ export const useDeliveryNotifications = () => {
     
     const socketUrl = `${backendUrl}/delivery`;
     
-    console.log('🔌 Attempting to connect to Delivery Socket.IO:', socketUrl);
-    console.log('🔌 Backend URL:', backendUrl);
-    console.log('🔌 API_BASE_URL:', API_BASE_URL);
-    console.log('🔌 Delivery Partner ID:', deliveryPartnerId);
-    console.log('🔌 Environment:', import.meta.env.MODE);
-    
     // Warn if trying to connect to localhost in production
     if (import.meta.env.MODE === 'production' && backendUrl.includes('localhost')) {
-      console.error('❌ CRITICAL: Trying to connect Socket.IO to localhost in production!');
-      console.error('💡 This means VITE_API_BASE_URL was not set during build time');
-      console.error('💡 Current socketUrl:', socketUrl);
-      console.error('💡 Current API_BASE_URL:', API_BASE_URL);
-      console.error('💡 Fix: Rebuild frontend with: VITE_API_BASE_URL=https://your-backend-domain.com/api npm run build');
-      console.error('💡 Note: Vite environment variables are embedded at BUILD TIME, not runtime');
-      console.error('💡 You must rebuild and redeploy the frontend with correct VITE_API_BASE_URL');
-      
       // Don't try to connect to localhost in production - it will fail
       setIsConnected(false);
       return;
@@ -239,9 +207,6 @@ export const useDeliveryNotifications = () => {
     
     // Validate backend URL format
     if (!backendUrl || !backendUrl.startsWith('http')) {
-      console.error('❌ CRITICAL: Invalid backend URL format:', backendUrl);
-      console.error('💡 API_BASE_URL:', API_BASE_URL);
-      console.error('💡 Expected format: https://your-domain.com or http://localhost:5000');
       return; // Don't try to connect with invalid URL
     }
     
@@ -249,10 +214,6 @@ export const useDeliveryNotifications = () => {
     try {
       new URL(socketUrl); // This will throw if URL is invalid
     } catch (urlError) {
-      console.error('❌ CRITICAL: Invalid Socket.IO URL:', socketUrl);
-      console.error('💡 URL validation error:', urlError.message);
-      console.error('💡 Backend URL:', backendUrl);
-      console.error('💡 API_BASE_URL:', API_BASE_URL);
       return; // Don't try to connect with invalid URL
     }
 
@@ -273,17 +234,15 @@ export const useDeliveryNotifications = () => {
     });
 
     socketRef.current.on('connect', () => {
-      console.log('✅ Delivery Socket connected, deliveryPartnerId:', deliveryPartnerId);
       setIsConnected(true);
       
       if (deliveryPartnerId) {
-        console.log('📢 Joining delivery room with ID:', deliveryPartnerId);
         socketRef.current.emit('join-delivery', deliveryPartnerId);
       }
     });
 
     socketRef.current.on('delivery-room-joined', (data) => {
-      console.log('✅ Delivery room joined successfully:', data);
+      // Delivery room joined successfully
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -295,21 +254,12 @@ export const useDeliveryNotifications = () => {
                                error.message?.includes('websocket') ||
                                error.description === 0; // WebSocket upgrade failures
       
-      if (!isTransportError) {
-        console.error('❌ Delivery Socket connection error:', error);
-      } else {
-        // Silently handle transport errors - backend might not be running or WebSocket not available
-        // Socket.IO will automatically retry with exponential backoff and fall back to polling
-        // Only log in development for debugging
-        if (process.env.NODE_ENV === 'development') {
-          console.log('⏳ Delivery Socket: WebSocket upgrade failed, using polling fallback');
-        }
-      }
+      // Silently handle transport errors - backend might not be running or WebSocket not available
+      // Socket.IO will automatically retry with exponential backoff and fall back to polling
       setIsConnected(false);
     });
 
     socketRef.current.on('disconnect', (reason) => {
-      console.log('❌ Delivery Socket disconnected:', reason);
       setIsConnected(false);
       
       if (reason === 'io server disconnect') {
@@ -318,11 +268,10 @@ export const useDeliveryNotifications = () => {
     });
 
     socketRef.current.on('reconnect_attempt', (attemptNumber) => {
-      console.log(`🔄 Reconnection attempt ${attemptNumber}...`);
+      // Reconnection attempt
     });
 
     socketRef.current.on('reconnect', (attemptNumber) => {
-      console.log(`✅ Reconnected after ${attemptNumber} attempts`);
       setIsConnected(true);
       
       if (deliveryPartnerId) {
@@ -331,15 +280,12 @@ export const useDeliveryNotifications = () => {
     });
 
     socketRef.current.on('new_order', (orderData) => {
-      console.log('📦 New order received via socket:', orderData);
-
       const orderId =
         orderData?.orderId?.toString?.() ||
         orderData?._id?.toString?.() ||
         orderData?.orderMongoId?.toString?.();
 
       if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
-        console.log('🚫 Skipping new_order notification for rejected order:', orderId);
         return;
       }
 
@@ -349,16 +295,12 @@ export const useDeliveryNotifications = () => {
 
     // Listen for priority-based order notifications (new_order_available)
     socketRef.current.on('new_order_available', (orderData) => {
-      console.log('📦 New order available (priority notification):', orderData);
-      console.log('📦 Notification phase:', orderData.phase || 'unknown');
-
       const orderId =
         orderData?.orderId?.toString?.() ||
         orderData?._id?.toString?.() ||
         orderData?.orderMongoId?.toString?.();
 
       if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
-        console.log('🚫 Skipping new_order_available for rejected order:', orderId);
         return;
       }
 
@@ -368,19 +310,16 @@ export const useDeliveryNotifications = () => {
     });
 
     socketRef.current.on('play_notification_sound', (data) => {
-      console.log('🔔 Sound notification:', data);
       playNotificationSound();
     });
 
     socketRef.current.on('order_ready', (orderData) => {
-      console.log('✅ Order ready notification received via socket:', orderData);
       setOrderReady(orderData);
       playNotificationSound();
     });
 
     // FIXED: Listen for wallet update events to refresh wallet state immediately
     socketRef.current.on('wallet_updated', (data) => {
-      console.log('💰 Wallet updated event received via socket:', data);
       // Dispatch custom event to trigger wallet refresh in all components
       window.dispatchEvent(new CustomEvent('deliveryWalletStateUpdated', { detail: data }));
       // Also trigger storage event for cross-tab sync

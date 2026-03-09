@@ -24,7 +24,6 @@ export const getDeliveryOrderStatus = (orderId) => {
     const savedStatus = localStorage.getItem(`delivery_order_status_${orderId}`)
     return savedStatus || DELIVERY_ORDER_STATUS.ACCEPTED
   } catch (error) {
-    console.error('Error reading delivery order status from localStorage:', error)
     return DELIVERY_ORDER_STATUS.ACCEPTED
   }
 }
@@ -44,7 +43,7 @@ export const saveDeliveryOrderStatus = (orderId, status) => {
       detail: { orderId, status } 
     }))
   } catch (error) {
-    console.error('Error saving delivery order status to localStorage:', error)
+    // Error saving delivery order status
   }
 }
 
@@ -178,7 +177,6 @@ export const getAllDeliveryOrders = () => {
     
     return Array.from(ordersMap.values())
   } catch (error) {
-    console.error('Error getting all delivery orders:', error)
     return []
   }
 }

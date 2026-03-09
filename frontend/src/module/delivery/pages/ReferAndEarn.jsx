@@ -22,7 +22,7 @@ export default function ReferAndEarn() {
         const referrals = JSON.parse(storedReferrals)
         setReferralCount(Array.isArray(referrals) ? referrals.length : 0)
       } catch (error) {
-        console.error("Error parsing referrals from localStorage:", error)
+        // Error parsing referrals
         setReferralCount(0)
       }
     }
@@ -45,7 +45,7 @@ export default function ReferAndEarn() {
             referrals = []
           }
         } catch (error) {
-          console.error("Error parsing referrals from localStorage:", error)
+          // Error parsing referrals
           referrals = []
         }
       }

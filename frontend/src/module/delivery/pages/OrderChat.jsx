@@ -40,7 +40,7 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
           }
         }
       } catch (error) {
-        console.error("Error fetching delivery ID:", error);
+        // Error fetching delivery ID
       }
     };
     fetchDeliveryId();
@@ -58,7 +58,7 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
           setMessages(response.data.data.messages || []);
         }
       } catch (error) {
-        console.error("Error fetching messages:", error);
+        // Error fetching messages
         toast.error("Failed to load messages");
       } finally {
         setLoading(false);
@@ -83,7 +83,7 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
     const socket = socketRef.current;
 
     socket.on("connect", () => {
-      console.log("✅ Socket connected for chat");
+      // Socket connected for chat
       // Join order chat room (try both ObjectId and string orderId)
       socket.emit("join-chat", orderId);
       // Also join order tracking room
@@ -96,7 +96,7 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
     });
 
     socket.on("disconnect", () => {
-      console.log("❌ Socket disconnected");
+      // Socket disconnected
     });
 
     // Listen for new messages
@@ -204,7 +204,7 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
         setMessages((prev) => prev.filter(msg => msg._id !== tempMessageId));
       }
     } catch (error) {
-      console.error("Error sending message:", error);
+      // Error sending message
       toast.error("Failed to send message");
       // Remove optimistic message on error
       setMessages((prev) => prev.filter(msg => msg._id !== tempMessageId));

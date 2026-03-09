@@ -46,7 +46,7 @@ export default function ProfileDetails() {
           })
         }
       } catch (error) {
-        console.error("Error fetching profile:", error)
+        // Error fetching profile
         
         // More detailed error handling
         if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
@@ -101,7 +101,12 @@ export default function ProfileDetails() {
       {/* Profile Picture Area */}
       <div className="relative w-full bg-gray-200 overflow-hidden flex items-center justify-center">
         <img
-          src={profile?.profileImage?.url || profile?.documents?.photo || "https://i.pravatar.cc/400?img=12"}
+          src={
+            profile?.profileImage?.url ||
+            profile?.documents?.photo ||
+            profile?.documents?.profilePhoto ||
+            "https://i.pravatar.cc/400?img=12"
+          }
           alt="Profile"
           className="w-full h-auto max-h-96 object-contain"
         />
@@ -408,7 +413,7 @@ export default function ProfileDetails() {
                     setProfile(response.data.data.profile)
                   }
                 } catch (error) {
-                  console.error("Error updating vehicle number:", error)
+                  // Error updating vehicle number
                   toast.error("Failed to update vehicle number")
                 }
               } else {
@@ -608,7 +613,7 @@ export default function ProfileDetails() {
                   setProfile(response.data.data.profile)
                 }
               } catch (error) {
-                console.error("Error updating bank details:", error)
+                // Error updating bank details
                 toast.error(error?.response?.data?.message || "Failed to update bank details")
               } finally {
                 setIsUpdatingBankDetails(false)

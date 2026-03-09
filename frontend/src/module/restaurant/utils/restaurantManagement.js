@@ -38,7 +38,6 @@ export const getRestaurantData = () => {
     setRestaurantData(DEFAULT_RESTAURANT_DATA)
     return DEFAULT_RESTAURANT_DATA
   } catch (error) {
-    console.error('Error reading restaurant data from localStorage:', error)
     return DEFAULT_RESTAURANT_DATA
   }
 }
@@ -55,7 +54,7 @@ export const setRestaurantData = (restaurantData) => {
     // Trigger storage event for cross-tab updates
     window.dispatchEvent(new Event('storage'))
   } catch (error) {
-    console.error('Error saving restaurant data to localStorage:', error)
+    // Error saving restaurant data
   }
 }
 

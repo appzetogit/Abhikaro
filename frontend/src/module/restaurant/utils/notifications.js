@@ -26,7 +26,6 @@ export const getUnreadNotificationCount = () => {
     
     return unreadCount + staticUnread
   } catch (error) {
-    console.error('Error getting unread notification count:', error)
     return 0
   }
 }

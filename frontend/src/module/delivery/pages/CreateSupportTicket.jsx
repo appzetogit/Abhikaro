@@ -90,8 +90,6 @@ export default function CreateSupportTicket() {
         requestData.priority = formData.priority
       }
       
-      console.log('Sending ticket creation request:', requestData)
-      
       const response = await deliveryAPI.createSupportTicket(requestData)
 
       if (response?.data?.success) {
@@ -101,12 +99,7 @@ export default function CreateSupportTicket() {
         toast.error(response?.data?.message || "Failed to create ticket")
       }
     } catch (error) {
-      console.error("Error creating ticket:", error)
-      console.error("Error response:", error?.response?.data)
-      console.error("Request data:", {
-        subject: formData.subject.trim(),
-        description: formData.description.trim(),
-        category: formData.category,
+      // Error creating ticket
         priority: formData.priority
       })
       

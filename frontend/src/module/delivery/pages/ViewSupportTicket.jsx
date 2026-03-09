@@ -28,7 +28,7 @@ export default function ViewSupportTicket() {
         navigate("/delivery/help/tickets")
       }
     } catch (error) {
-      console.error("Error fetching ticket:", error)
+      // Error fetching ticket
       toast.error("Failed to load ticket")
       navigate("/delivery/help/tickets")
     } finally {

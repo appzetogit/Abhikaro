@@ -353,7 +353,7 @@ export const initializeOnlineStatus = () => {
       useGigStore.setState({ isOnline: true })
     }
   } catch (error) {
-    console.error('Error initializing online status:', error)
+    // Error initializing online status
   }
 }
 

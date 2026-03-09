@@ -63,7 +63,6 @@ export default function Cart() {
   try {
     cartContext = useCart();
   } catch (error) {
-    console.error('❌ CartProvider not found. Make sure Cart component is rendered within UserLayout.');
     // Return early with error message
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f5f5f5] dark:bg-[#0a0a0a]">
@@ -164,7 +163,7 @@ export default function Cart() {
         setHasUsedAdminOfferToday(true)
       }
     } catch (e) {
-      console.warn("Failed to mark admin offer used in localStorage:", e)
+      // Failed to mark admin offer used
     }
   }
 
@@ -202,7 +201,7 @@ export default function Cart() {
         })
       }, 250)
     } catch (error) {
-      console.error("Error triggering offer confetti:", error)
+      // Error triggering offer confetti
     }
   }
 
@@ -291,7 +290,6 @@ export default function Cart() {
       setHasHotelReference(true);
       // Auto-select pay_at_hotel for hotel orders
       setSelectedPaymentMethod('pay_at_hotel');
-      console.log('✅ Hotel order detected:', { hotelRef, hotelName: hotelNameStored });
     }
   }, []);
 
@@ -316,7 +314,6 @@ export default function Cart() {
           const cartRestaurantId = cart[0].restaurantId;
           const cartRestaurantName = cart[0].restaurant;
 
-          console.log("🔄 Fetching restaurant data by restaurantId from cart:", cartRestaurantId)
           const response = await restaurantAPI.getRestaurantById(cartRestaurantId)
           const data = response?.data?.data?.restaurant || response?.data?.restaurant
 
@@ -337,50 +334,29 @@ export default function Cart() {
               fetchedRestaurantName?.toLowerCase().trim() === cartRestaurantName.toLowerCase().trim();
 
             if (!restaurantIdMatches) {
-              console.error('❌ CRITICAL: Fetched restaurant ID does not match cart restaurantId!', {
-                cartRestaurantId: cartRestaurantId,
-                fetchedRestaurantId: fetchedRestaurantId,
-                fetched_id: data._id?.toString(),
-                fetched_restaurantId: data.restaurantId,
-                cartRestaurantName: cartRestaurantName,
-                fetchedRestaurantName: fetchedRestaurantName
-              });
               // Don't set restaurantData if IDs don't match - this prevents wrong restaurant assignment
               setLoadingRestaurant(false);
               return;
             }
 
             if (!restaurantNameMatches) {
-              console.warn('⚠️ WARNING: Restaurant name mismatch:', {
-                cartRestaurantName: cartRestaurantName,
-                fetchedRestaurantName: fetchedRestaurantName
-              });
               // Still proceed but log warning
             }
 
-            console.log("✅ Restaurant data loaded from cart restaurantId:", {
-              _id: data._id,
-              restaurantId: data.restaurantId,
-              name: data.name,
-              cartRestaurantId: cartRestaurantId,
-              cartRestaurantName: cartRestaurantName
-            })
             setRestaurantData(data)
             setLoadingRestaurant(false)
             return
           }
         } catch (error) {
-          console.warn("⚠️ Failed to fetch by cart restaurantId, trying fallback...", error)
+          // Failed to fetch by cart restaurantId, trying fallback
         }
       }
 
       // Strategy 2: If no restaurantId in cart, search by restaurant name
       if (cart[0]?.restaurant && !restaurantData) {
         try {
-          console.log("🔍 Searching restaurant by name:", cart[0].restaurant)
           const searchResponse = await restaurantAPI.getRestaurants({ limit: 100 })
           const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
-          console.log("📋 Fetched", restaurants.length, "restaurants for name search")
 
           // Try exact match first
           let matchingRestaurant = restaurants.find(r =>
@@ -389,7 +365,6 @@ export default function Cart() {
 
           // If no exact match, try partial match
           if (!matchingRestaurant) {
-            console.log("🔍 No exact match, trying partial match...")
             matchingRestaurant = restaurants.find(r =>
               r.name?.toLowerCase().includes(cart[0].restaurant?.toLowerCase().trim()) ||
               cart[0].restaurant?.toLowerCase().trim().includes(r.name?.toLowerCase())
@@ -402,35 +377,17 @@ export default function Cart() {
             const foundRestaurantName = matchingRestaurant.name?.toLowerCase().trim();
 
             if (cartRestaurantName && foundRestaurantName && cartRestaurantName !== foundRestaurantName) {
-              console.error("❌ CRITICAL: Restaurant name mismatch!", {
-                cartRestaurantName: cart[0]?.restaurant,
-                foundRestaurantName: matchingRestaurant.name,
-                cartRestaurantId: cart[0]?.restaurantId,
-                foundRestaurantId: matchingRestaurant.restaurantId || matchingRestaurant._id
-              });
               // Don't set restaurantData if names don't match - this prevents wrong restaurant assignment
               setLoadingRestaurant(false);
               return;
             }
 
-            console.log("✅ Found restaurant by name:", {
-              name: matchingRestaurant.name,
-              _id: matchingRestaurant._id,
-              restaurantId: matchingRestaurant.restaurantId,
-              slug: matchingRestaurant.slug,
-              cartRestaurantName: cart[0]?.restaurant
-            })
             setRestaurantData(matchingRestaurant)
             setLoadingRestaurant(false)
             return
-          } else {
-            console.warn("⚠️ Restaurant not found even by name search. Searched in", restaurants.length, "restaurants")
-            if (restaurants.length > 0) {
-              console.log("📋 Available restaurant names:", restaurants.map(r => r.name).slice(0, 10))
-            }
           }
         } catch (searchError) {
-          console.warn("⚠️ Error searching restaurants by name:", searchError)
+          // Error searching restaurants by name
         }
       }
 
@@ -445,72 +402,32 @@ export default function Cart() {
   // Fetch approved addons for the restaurant
   useEffect(() => {
     const fetchAddonsWithId = async (idToUse) => {
-
-      console.log("🔍 Addons fetch - Using ID:", {
-        restaurantData: restaurantData ? {
-          _id: restaurantData._id,
-          restaurantId: restaurantData.restaurantId,
-          name: restaurantData.name
-        } : 'Not loaded',
-        cartRestaurantId: restaurantId,
-        idToUse: idToUse
-      })
-
       // Convert to string for validation
       const idString = String(idToUse)
-      console.log("🔍 Restaurant ID string:", idString, "Type:", typeof idString, "Length:", idString.length)
 
       // Validate ID format (should be ObjectId or restaurantId format)
       const isValidIdFormat = /^[a-zA-Z0-9\-_]+$/.test(idString) && idString.length >= 3
 
       if (!isValidIdFormat) {
-        console.warn("⚠️ Restaurant ID format invalid:", idString)
         setAddons([])
         return
       }
 
       try {
         setLoadingAddons(true)
-        console.log("🚀 Fetching addons for restaurant ID:", idString)
         const response = await restaurantAPI.getAddonsByRestaurantId(idString)
-        console.log("✅ Addons API response received:", response?.data)
-        console.log("📦 Response structure:", {
-          success: response?.data?.success,
-          data: response?.data?.data,
-          addons: response?.data?.data?.addons,
-          directAddons: response?.data?.addons
-        })
 
         const data = response?.data?.data?.addons || response?.data?.addons || []
         // Filter to show only approved and available addons for users
         const approvedAddons = data.filter(addon =>
           addon.approvalStatus === 'approved' && addon.isAvailable !== false
         )
-        console.log("📊 Fetched addons count:", data.length, "Approved addons:", approvedAddons.length)
-        console.log("📋 Fetched addons data:", JSON.stringify(data, null, 2))
-
-        if (approvedAddons.length === 0) {
-          console.warn("⚠️ No approved addons returned from API. Response:", response?.data)
-        } else {
-          console.log("✅ Successfully fetched", approvedAddons.length, "approved addons:", approvedAddons.map(a => a.name))
-        }
 
         setAddons(approvedAddons)
       } catch (error) {
-        // Log error for debugging
-        console.error("❌ Addons fetch error:", {
-          code: error.code,
-          status: error.response?.status,
-          message: error.message,
-          url: error.config?.url,
-          data: error.response?.data
-        })
         // Silently handle network errors and 404 errors
         // Network errors (ERR_NETWORK) happen when backend is not running - this is OK for development
         // 404 errors mean restaurant might not have addons or restaurant not found - also OK
-        if (error.code !== 'ERR_NETWORK' && error.response?.status !== 404) {
-          console.error("Error fetching addons:", error)
-        }
         // Continue with cart even if addons fetch fails
         setAddons([])
       } finally {
@@ -526,13 +443,11 @@ export default function Cart() {
 
       // Wait for restaurantData to be loaded (including fallback search)
       if (loadingRestaurant) {
-        console.log("⏳ Waiting for restaurantData to load (including fallback search)...")
         return
       }
 
       // Must have restaurantData to fetch addons
       if (!restaurantData) {
-        console.warn("⚠️ No restaurantData available for addons fetch")
         setAddons([])
         return
       }
@@ -540,12 +455,10 @@ export default function Cart() {
       // Use restaurantData ID (most reliable)
       const idToUse = restaurantData._id || restaurantData.restaurantId
       if (!idToUse) {
-        console.warn("⚠️ No valid restaurant ID in restaurantData")
         setAddons([])
         return
       }
 
-      console.log("✅ Using restaurantData ID for addons:", idToUse)
       fetchAddonsWithId(idToUse)
     }
 
@@ -560,7 +473,6 @@ export default function Cart() {
         return
       }
 
-      console.log(`[CART-COUPONS] Fetching coupons for ${cart.length} items in cart`)
       setLoadingCoupons(true)
 
       const allCoupons = []
@@ -569,17 +481,14 @@ export default function Cart() {
       // Fetch coupons for each item in cart
       for (const cartItem of cart) {
         if (!cartItem.id) {
-          console.log(`[CART-COUPONS] Skipping item without id:`, cartItem)
           continue
         }
 
         try {
-          console.log(`[CART-COUPONS] Fetching coupons for itemId: ${cartItem.id}, name: ${cartItem.name}`)
           const response = await restaurantAPI.getCouponsByItemIdPublic(restaurantId, cartItem.id)
 
           if (response?.data?.success && response?.data?.data?.coupons) {
             const coupons = response.data.data.coupons
-            console.log(`[CART-COUPONS] Found ${coupons.length} coupons for item ${cartItem.id}`)
 
             // Add coupons, avoiding duplicates
             coupons.forEach(coupon => {
@@ -601,11 +510,10 @@ export default function Cart() {
             })
           }
         } catch (error) {
-          console.error(`[CART-COUPONS] Error fetching coupons for item ${cartItem.id}:`, error)
+          // Error fetching coupons for item
         }
       }
 
-      console.log(`[CART-COUPONS] Total unique coupons found: ${allCoupons.length}`, allCoupons)
       setAvailableCoupons(allCoupons)
       setLoadingCoupons(false)
     }
@@ -656,9 +564,6 @@ export default function Cart() {
         }
       } catch (error) {
         // Network errors or 404 errors - silently handle, fallback to frontend calculation
-        if (error.code !== 'ERR_NETWORK' && error.response?.status !== 404) {
-          console.error("Error calculating pricing:", error)
-        }
         // Fallback to frontend calculation if backend fails
         setPricing(null)
       } finally {
@@ -679,7 +584,6 @@ export default function Cart() {
           setWalletBalance(response.data.data.wallet.balance || 0)
         }
       } catch (error) {
-        console.error("Error fetching wallet balance:", error)
         setWalletBalance(0)
       } finally {
         setIsLoadingWallet(false)
@@ -703,7 +607,6 @@ export default function Cart() {
           })
         }
       } catch (error) {
-        console.error('Error fetching fee settings:', error)
         // Keep default values on error
       }
     }
@@ -743,7 +646,6 @@ export default function Cart() {
           setCategoryOffers([])
         }
       } catch (error) {
-        console.error("Error fetching category offers for cart:", error)
         setCategoryOffers([])
       }
     }
@@ -831,7 +733,7 @@ export default function Cart() {
       setShowCategoryOfferModal(true)
       categoryOfferPromptShownRef.current = true
     } catch (e) {
-      console.warn("Failed to determine admin offer usage:", e)
+      // Failed to determine admin offer usage
     }
   }, [cart, categoryOffers, isCategoryOfferApplied, userProfile])
 
@@ -964,7 +866,6 @@ export default function Cart() {
       // Force page reload to update location
       window.location.reload()
     } catch (error) {
-      console.error(`Error selecting ${label} address:`, error)
       toast.error(`Failed to select ${label} address. Please try again.`)
     }
   }
@@ -1002,7 +903,7 @@ export default function Cart() {
             setPricing(response.data.data.pricing)
           }
         } catch (error) {
-          console.error("Error recalculating pricing:", error)
+          // Error recalculating pricing
         }
       }
     }
@@ -1038,7 +939,7 @@ export default function Cart() {
           setPricing(response.data.data.pricing)
         }
       } catch (error) {
-        console.error("Error recalculating pricing:", error)
+        // Error recalculating pricing
       }
     }
   }
@@ -1074,11 +975,6 @@ export default function Cart() {
     // Use API_BASE_URL from config (supports both dev and production)
 
     try {
-      console.log("🛒 Starting order placement process...")
-      console.log("📦 Cart items:", cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price })))
-      console.log("💰 Applied coupon:", appliedCoupon?.code || "None")
-      console.log("📍 Delivery address:", defaultAddress?.label || defaultAddress?.city)
-
       // Ensure couponCode is included in pricing; total must include delivery fee and other charges
       const orderPricing = pricing ? { ...pricing } : {
         subtotal,
@@ -1124,13 +1020,8 @@ export default function Cart() {
         selectedVariantName: item.selectedVariantName || null,
       }))
 
-      console.log("📋 Order items to send:", orderItems)
-      console.log("💵 Order pricing:", orderPricing)
-
       // Check API base URL before making request (for debugging)
       const fullUrl = `${API_BASE_URL}${API_ENDPOINTS.ORDER.CREATE}`;
-      console.log("🌐 Making request to:", fullUrl)
-      console.log("🔑 Authentication token present:", !!localStorage.getItem('accessToken') || !!localStorage.getItem('user_accessToken'))
 
       // CRITICAL: Validate restaurant ID before placing order
       // Ensure we're using the correct restaurant from restaurantData (most reliable)
@@ -1138,22 +1029,6 @@ export default function Cart() {
       const finalRestaurantName = restaurantData?.name || null;
 
       if (!finalRestaurantId) {
-        console.error('❌ CRITICAL: Cannot place order - Restaurant ID is missing!');
-        console.error('📋 Debug info:', {
-          restaurantData: restaurantData ? {
-            _id: restaurantData._id,
-            restaurantId: restaurantData.restaurantId,
-            name: restaurantData.name
-          } : 'Not loaded',
-          cartRestaurantId: restaurantId,
-          cartRestaurantName: cart[0]?.restaurant,
-          cartItems: cart.map(item => ({
-            id: item.id,
-            name: item.name,
-            restaurant: item.restaurant,
-            restaurantId: item.restaurantId
-          }))
-        });
         toast.error('Restaurant information is missing. Please refresh the page and try again.', {
           duration: 5000
         });
@@ -1170,7 +1045,6 @@ export default function Cart() {
         restaurantData.location.coordinates[1] !== 0
 
       if (!hasRestaurantLocation) {
-        console.error('❌ CRITICAL: Cannot place order - Restaurant location is not set!');
         toast.error("This restaurant's location is not configured. Please contact support or try ordering from another restaurant.", {
           duration: 7000,
           style: {
@@ -1204,20 +1078,8 @@ export default function Cart() {
       // Note: If restaurant names match, allow even if IDs differ (same restaurant, different ID format)
       if (uniqueRestaurantNames.length > 1) {
         // Different restaurant names = definitely different restaurants
-        console.error('❌ CRITICAL ERROR: Cart contains items from multiple restaurants!', {
-          restaurantIds: uniqueRestaurantIds,
-          restaurantNames: uniqueRestaurantNames,
-          cartItems: cart.map(item => ({
-            id: item.id,
-            name: item.name,
-            restaurant: item.restaurant,
-            restaurantId: item.restaurantId
-          }))
-        });
-
         // Automatically clean cart to keep items from the restaurant matching restaurantData
         if (finalRestaurantId && finalRestaurantName) {
-          console.log('🧹 Auto-cleaning cart to keep items from:', finalRestaurantName);
           cleanCartForRestaurant(finalRestaurantId, finalRestaurantName);
           toast.error('Cart contained items from different restaurants. Items from other restaurants have been removed.');
         } else {
@@ -1225,7 +1087,6 @@ export default function Cart() {
           const firstRestaurantId = cart[0]?.restaurantId;
           const firstRestaurantName = cart[0]?.restaurant;
           if (firstRestaurantId && firstRestaurantName) {
-            console.log('🧹 Auto-cleaning cart to keep items from first restaurant:', firstRestaurantName);
             cleanCartForRestaurant(firstRestaurantId, firstRestaurantName);
             toast.error('Cart contained items from different restaurants. Items from other restaurants have been removed.');
           } else {
@@ -1240,12 +1101,7 @@ export default function Cart() {
       // If restaurant names match but IDs differ, that's OK (same restaurant, different ID format)
       // But log a warning in development
       if (uniqueRestaurantIds.length > 1 && uniqueRestaurantNames.length === 1) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('⚠️ Cart items have different restaurant IDs but same name. This is OK if IDs are in different formats.', {
-            restaurantIds: uniqueRestaurantIds,
-            restaurantName: uniqueRestaurantNames[0]
-          });
-        }
+        // Cart items have different restaurant IDs but same name - OK if IDs are in different formats
       }
 
       // Validate that cart items' restaurantId matches the restaurantData
@@ -1264,14 +1120,6 @@ export default function Cart() {
           cartIdStr === dataRestaurantIdStr;
 
         if (!restaurantIdMatches) {
-          console.error('❌ CRITICAL ERROR: Cart restaurantId does not match restaurantData!', {
-            cartRestaurantId: cartRestaurantId,
-            finalRestaurantId: finalRestaurantId,
-            restaurantDataId: dataIdStr,
-            restaurantDataRestaurantId: dataRestaurantIdStr,
-            restaurantDataName: restaurantData?.name,
-            cartRestaurantName: cartRestaurantNames[0]
-          });
           alert(`Error: Cart items belong to a different restaurant. Please clear cart and try again.`);
           setIsPlacingOrder(false);
           return;
@@ -1288,26 +1136,13 @@ export default function Cart() {
         const idsMatch = cartIdStr && finalIdStr && cartIdStr === finalIdStr;
 
         if (!idsMatch && cartRestaurantName.toLowerCase().trim() !== finalRestaurantName.toLowerCase().trim()) {
-          console.error('❌ CRITICAL ERROR: Restaurant name mismatch!', {
-            cartRestaurantName: cartRestaurantName,
-            finalRestaurantName: finalRestaurantName
-          });
           alert(`Error: Cart items belong to "${cartRestaurantName}" but restaurant data shows "${finalRestaurantName}". Please refresh the page and try again.`);
           setIsPlacingOrder(false);
           return;
         }
       }
 
-      // Log order details for debugging
-      console.log('✅ Order validation passed - Placing order with restaurant:', {
-        restaurantId: finalRestaurantId,
-        restaurantName: finalRestaurantName,
-        restaurantDataId: restaurantData?._id,
-        restaurantDataRestaurantId: restaurantData?.restaurantId,
-        cartRestaurantId: cartRestaurantIds[0],
-        cartRestaurantName: cartRestaurantNames[0],
-        cartItemCount: cart.length
-      });
+      // Order validation passed
 
       // FINAL VALIDATION: Double-check restaurantId before sending to backend
       const cartRestaurantId = cart[0]?.restaurantId;
@@ -1322,14 +1157,6 @@ export default function Cart() {
         cartIdStr === dataRestaurantIdStr;
 
       if (cartIdStr && !finalValidationMatches) {
-        console.error('❌ CRITICAL: Final validation failed - restaurantId mismatch!', {
-          cartRestaurantId: cartRestaurantId,
-          finalRestaurantId: finalRestaurantId,
-          restaurantDataId: dataIdStr,
-          restaurantDataRestaurantId: dataRestaurantIdStr,
-          cartRestaurantName: cart[0]?.restaurant,
-          finalRestaurantName: finalRestaurantName
-        });
         alert('Error: Restaurant information mismatch detected. Please refresh the page and try again.');
         setIsPlacingOrder(false);
         return;
@@ -1357,21 +1184,6 @@ export default function Cart() {
         roomNumber: selectedPaymentMethod === 'pay_at_hotel' ? roomNumber : null
       };
 
-      // Log hotel reference if present
-      if (hotelReference) {
-        console.log("🏨 Order includes hotel reference:", {
-          hotelReference,
-          hotelName
-        });
-      }
-      // Log final order details (including paymentMethod for COD debugging)
-      console.log('📤 FINAL: Sending order to backend with:', {
-        restaurantId: finalRestaurantId,
-        restaurantName: finalRestaurantName,
-        itemCount: orderItems.length,
-        totalAmount: orderPricing.total,
-        paymentMethod: orderPayload.paymentMethod
-      });
 
       // Check wallet balance if wallet payment selected
       if (selectedPaymentMethod === "wallet" && walletBalance < total) {
@@ -1382,8 +1194,6 @@ export default function Cart() {
 
       // Create order in backend
       const orderResponse = await orderAPI.createOrder(orderPayload)
-
-      console.log("✅ Order created successfully:", orderResponse.data)
 
       const { order, razorpay } = orderResponse.data.data
 
@@ -1411,7 +1221,7 @@ export default function Cart() {
             createdAt: order.createdAt
           })
         } catch (e) {
-          console.warn("Failed to create local tracking order (pay_at_hotel):", e)
+          // Failed to create local tracking order
         }
         if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
           markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
@@ -1440,7 +1250,7 @@ export default function Cart() {
             createdAt: order.createdAt
           })
         } catch (e) {
-          console.warn("Failed to create local tracking order (wallet):", e)
+          // Failed to create local tracking order
         }
         setPlacedOrderId(order?.orderId || order?.id || null)
         setShowOrderSuccess(true)
@@ -1455,7 +1265,7 @@ export default function Cart() {
             setWalletBalance(walletResponse.data.data.wallet.balance || 0)
           }
         } catch (error) {
-          console.error("Error refreshing wallet balance:", error)
+          // Error refreshing wallet balance
         }
         if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
           markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
@@ -1464,16 +1274,8 @@ export default function Cart() {
       }
 
       if (!razorpay || !razorpay.orderId || !razorpay.key) {
-        console.error("❌ Razorpay initialization failed:", { razorpay, order })
         throw new Error(razorpay ? "Razorpay payment gateway is not configured. Please contact support." : "Failed to initialize payment")
       }
-
-      console.log("💳 Razorpay order created:", {
-        orderId: razorpay.orderId,
-        amount: razorpay.amount,
-        currency: razorpay.currency,
-        keyPresent: !!razorpay.key
-      })
 
       // Get user info for Razorpay prefill
       const userInfo = userProfile || {}
@@ -1483,12 +1285,6 @@ export default function Cart() {
 
       // Format phone number (remove non-digits, take last 10 digits)
       const formattedPhone = userPhone.replace(/\D/g, "").slice(-10)
-
-      console.log("👤 User info for payment:", {
-        name: userName,
-        email: userEmail,
-        phone: formattedPhone
-      })
 
       // Get company name for Razorpay
       const companyName = await getCompanyNameAsync()
@@ -1513,11 +1309,6 @@ export default function Cart() {
         },
         handler: async (response) => {
           try {
-            console.log("✅ Payment successful, verifying...", {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id
-            })
-
             // Verify payment with backend
             const verifyResponse = await orderAPI.verifyPayment({
               orderId: order.id,
@@ -1526,14 +1317,8 @@ export default function Cart() {
               razorpaySignature: response.razorpay_signature
             })
 
-            console.log("✅ Payment verification response:", verifyResponse.data)
-
             if (verifyResponse.data.success) {
               // Payment successful
-              console.log("🎉 Order placed successfully:", {
-                orderId: order.orderId,
-                paymentId: verifyResponse.data.data?.payment?.paymentId
-              })
               try {
                 createOrder({
                   id: order.id || order._id || order.orderId,
@@ -1546,7 +1331,7 @@ export default function Cart() {
                   createdAt: order.createdAt
                 })
               } catch (e) {
-                console.warn("Failed to create local tracking order (razorpay):", e)
+                // Failed to create local tracking order
               }
               if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
                 markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
@@ -1561,14 +1346,12 @@ export default function Cart() {
               throw new Error(verifyResponse.data.message || "Payment verification failed")
             }
           } catch (error) {
-            console.error("❌ Payment verification error:", error)
             const errorMessage = error?.response?.data?.message || error?.message || "Payment verification failed. Please contact support."
             alert(errorMessage)
             setIsPlacingOrder(false)
           }
         },
         onError: (error) => {
-          console.error("❌ Razorpay payment error:", error)
           // Don't show alert for user cancellation
           if (error?.code !== 'PAYMENT_CANCELLED' && error?.message !== 'PAYMENT_CANCELLED') {
             const errorMessage = error?.description || error?.message || "Payment failed. Please try again."
@@ -1577,13 +1360,10 @@ export default function Cart() {
           setIsPlacingOrder(false)
         },
         onClose: () => {
-          console.log("⚠️ Payment modal closed by user")
           setIsPlacingOrder(false)
         }
       })
     } catch (error) {
-      console.error("❌ Order creation error:", error)
-
       let errorMessage = "Failed to create order. Please try again."
 
       // Handle network errors
@@ -1597,37 +1377,6 @@ export default function Cart() {
           `3. Check browser console (F12) for more details\n\n` +
           `If backend is not running, start it with:\n` +
           `cd backend && npm start`
-
-        console.error("🔴 Network Error Details:", {
-          code: error.code,
-          message: error.message,
-          config: {
-            url: error.config?.url,
-            baseURL: error.config?.baseURL,
-            fullUrl: error.config?.baseURL + error.config?.url,
-            method: error.config?.method
-          },
-          backendUrl: backendUrl,
-          apiBaseUrl: API_BASE_URL
-        })
-
-        // Try to test backend connectivity
-        try {
-          fetch(backendUrl + '/health', { method: 'GET', signal: AbortSignal.timeout(5000) })
-            .then(response => {
-              if (response.ok) {
-                console.log("✅ Backend health check passed - server is running")
-              } else {
-                console.warn("⚠️ Backend health check returned:", response.status)
-              }
-            })
-            .catch(fetchError => {
-              console.error("❌ Backend health check failed:", fetchError.message)
-              console.error("💡 Make sure backend server is running at:", backendUrl)
-            })
-        } catch (fetchTestError) {
-          console.error("❌ Could not test backend connectivity:", fetchTestError.message)
-        }
       }
       // Handle timeout errors
       else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
@@ -1994,13 +1743,7 @@ export default function Cart() {
                                 const cartRestaurantName = cart[0]?.restaurant || restaurantName;
 
                                 if (!cartRestaurantId || !cartRestaurantName) {
-                                  console.error('❌ Cannot add addon: Missing restaurant information', {
-                                    cartRestaurantId,
-                                    cartRestaurantName,
-                                    restaurantId,
-                                    restaurantName,
-                                    cartItem: cart[0]
-                                  });
+                                  // Cannot add addon: Missing restaurant information
                                   toast.error('Restaurant information is missing. Please refresh the page.');
                                   return;
                                 }

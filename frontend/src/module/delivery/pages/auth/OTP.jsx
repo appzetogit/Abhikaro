@@ -138,16 +138,14 @@ export default function DeliveryOTP() {
 
         // Store auth data using utility function
         try {
-          console.log("Storing auth data for signup flow:", { hasToken: !!accessToken, hasUser: !!user })
           storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
           
           // Register FCM token for push notifications
           import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
             registerFcmToken(accessToken, { sendLoginAlert: false }).catch(() => {})
           })
-          console.log("Auth data stored successfully for signup")
         } catch (storageError) {
-          console.error("Failed to store authentication data:", storageError)
+          // Failed to store authentication data
           setError("Failed to save authentication. Please try again or clear your browser storage.")
           setIsLoading(false)
           return
@@ -178,16 +176,14 @@ export default function DeliveryOTP() {
       // Store auth data using utility function to ensure proper role handling
       // The setAuthData function includes error handling and verification
       try {
-        console.log("Storing auth data for delivery:", { hasToken: !!accessToken, hasUser: !!user })
         storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
         
         // Register FCM token for push notifications
         import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
           registerFcmToken(accessToken, { sendLoginAlert: true }).catch(() => {})
         })
-        console.log("Auth data stored successfully")
       } catch (storageError) {
-        console.error("Failed to store authentication data:", storageError)
+        // Failed to store authentication data
         setError("Failed to save authentication. Please try again or clear your browser storage.")
         setIsLoading(false)
         return
@@ -205,11 +201,8 @@ export default function DeliveryOTP() {
       const verifyAndNavigate = () => {
         const storedToken = getModuleToken("delivery")
 
-        console.log("Verifying token storage:", { hasToken: !!storedToken, retryCount })
-
         if (storedToken) {
           // Token is stored, navigate to delivery home
-          console.log("Token verified, navigating to /delivery")
           navigate("/delivery", { replace: true })
         } else if (retryCount < maxRetries) {
           // Token not stored yet, retry after short delay
@@ -217,7 +210,6 @@ export default function DeliveryOTP() {
           setTimeout(verifyAndNavigate, 100)
         } else {
           // Max retries reached, show error
-          console.error("Token storage verification failed after max retries")
           setError("Failed to save authentication. Please try again.")
           setIsLoading(false)
         }
@@ -226,7 +218,7 @@ export default function DeliveryOTP() {
       // Start verification after a small delay
       setTimeout(verifyAndNavigate, 200)
     } catch (err) {
-      console.error("OTP Verification Error:", err)
+      // OTP Verification Error
       const message =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
@@ -277,11 +269,9 @@ export default function DeliveryOTP() {
       // Store auth data using utility function to ensure proper role handling
       // The setAuthData function includes error handling and verification
       try {
-        console.log("Storing auth data for delivery (with name):", { hasToken: !!accessToken, hasUser: !!user })
         storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
-        console.log("Auth data stored successfully")
       } catch (storageError) {
-        console.error("Failed to store authentication data:", storageError)
+        // Failed to store authentication data
         setError("Failed to save authentication. Please try again or clear your browser storage.")
         setIsLoading(false)
         return
@@ -299,11 +289,8 @@ export default function DeliveryOTP() {
       const verifyAndNavigate = () => {
         const storedToken = getModuleToken("delivery")
 
-        console.log("Verifying token storage (with name):", { hasToken: !!storedToken, retryCount })
-
         if (storedToken) {
           // Token is stored, navigate to delivery home
-          console.log("Token verified, navigating to /delivery")
           navigate("/delivery", { replace: true })
         } else if (retryCount < maxRetries) {
           // Token not stored yet, retry after short delay
@@ -311,7 +298,6 @@ export default function DeliveryOTP() {
           setTimeout(verifyAndNavigate, 100)
         } else {
           // Max retries reached, show error
-          console.error("Token storage verification failed after max retries")
           setError("Failed to save authentication. Please try again.")
           setIsLoading(false)
         }
@@ -320,7 +306,7 @@ export default function DeliveryOTP() {
       // Start verification after a small delay
       setTimeout(verifyAndNavigate, 200)
     } catch (err) {
-      console.error("Name Submission Error:", err)
+      // Name Submission Error
       const message =
         err?.response?.data?.message ||
         err?.response?.data?.error ||

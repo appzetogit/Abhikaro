@@ -74,7 +74,7 @@ export default function TransactionHistory() {
         
         setTransactions(formattedTransactions)
       } catch (error) {
-        console.error('Error loading transactions:', error)
+        // Error loading transactions
         setTransactions([])
       } finally {
         setLoading(false)

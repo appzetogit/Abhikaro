@@ -49,7 +49,7 @@ export default function AcceptedOrderDetails() {
         const data = res?.data?.data?.order || res?.data?.order
         if (data) setOrder(data)
       } catch (e) {
-        if (!cancelled) console.error('Failed to fetch order details:', e)
+        // Failed to fetch order details
       } finally {
         if (!cancelled) setLoadingOrder(false)
       }

@@ -77,7 +77,7 @@ const EnhancedDeliveryTracking = ({
         });
       }
     } catch (error) {
-      console.warn('Failed to update marker rotation:', error);
+      // Failed to update marker rotation
     }
   }, [bikeMarkerRef, getRotatedBikeIcon]);
 
@@ -113,7 +113,7 @@ const EnhancedDeliveryTracking = ({
         };
       });
     } catch (error) {
-      console.warn('Failed to load bike icon:', error);
+      // Failed to load bike icon
       // Return a default icon or use CSS transform instead
       return null;
     }
@@ -122,7 +122,7 @@ const EnhancedDeliveryTracking = ({
   // Handle new location update from Socket.io
   const handleLocationUpdate = useCallback((data) => {
     if (!data || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
-      console.warn('⚠️ Invalid location data received:', data);
+      // Invalid location data received
       return;
     }
 
@@ -185,13 +185,13 @@ const EnhancedDeliveryTracking = ({
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('✅ Socket connected for order tracking:', orderId);
+      // Socket connected for order tracking
       socket.emit('join-order-tracking', orderId);
       socket.emit('request-current-location', orderId);
     });
 
     socket.on('disconnect', () => {
-      console.log('❌ Socket disconnected');
+      // Socket disconnected
     });
 
     // Listen for location updates

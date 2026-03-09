@@ -42,7 +42,7 @@ export default function DeliveryLayout({
       !savedRoute.includes('/signup') &&
       !savedRoute.includes('/otp')
     if (isFeedRoute && isValidSavedRoute && savedRoute !== currentPath) {
-      console.log(`🔄 Restoring saved route after refresh: ${savedRoute}`)
+      // Restoring saved route after refresh
       navigate(savedRoute, { replace: true })
     }
   }, [location.pathname, navigate])

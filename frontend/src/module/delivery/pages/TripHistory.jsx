@@ -59,7 +59,7 @@ export default function TripHistory() {
           setTrips([])
         }
       } catch (error) {
-        console.error("Error fetching trip history:", error)
+        // Error fetching trip history
         setError("Failed to load trip history. Please try again.")
         setTrips([])
       } finally {
@@ -124,7 +124,7 @@ export default function TripHistory() {
             setHasViewedBonus(true)
           }
         } catch (error) {
-          console.error('Error fetching bonus transactions:', error)
+          // Error fetching bonus transactions
           setBonusTransactions([])
         } finally {
           setBonusLoading(false)
@@ -142,7 +142,7 @@ export default function TripHistory() {
         const transactions = await fetchWalletTransactions({ type: 'bonus', limit: 100 })
         setBonusTransactions(transactions)
       } catch (error) {
-        console.error('Error checking bonus transactions:', error)
+        // Error checking bonus transactions
       }
     }
 

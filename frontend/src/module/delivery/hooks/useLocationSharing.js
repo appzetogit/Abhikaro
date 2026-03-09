@@ -37,12 +37,12 @@ export const useLocationSharing = (orderId, enabled = false) => {
 
   const startSharing = () => {
     if (!orderId) {
-      console.error('Order ID is required for location sharing');
+      // Order ID is required for location sharing
       return;
     }
 
     if (isSharingRef.current) {
-      console.log('Location sharing already active');
+      // Location sharing already active
       return;
     }
 
@@ -56,12 +56,12 @@ export const useLocationSharing = (orderId, enabled = false) => {
       });
 
       socketRef.current.on('connect', () => {
-        console.log('✅ Socket connected for location sharing');
+        // Socket connected for location sharing
         socketRef.current.emit('join-delivery', orderId);
       });
 
       socketRef.current.on('disconnect', () => {
-        console.log('❌ Socket disconnected');
+        // Socket disconnected
       });
     }
 
@@ -112,25 +112,12 @@ export const useLocationSharing = (orderId, enabled = false) => {
               timestamp: now
             });
 
-            console.log(`📍 Location sent (throttled):`, { lat: latitude, lng: longitude, heading, interval: LOCATION_UPDATE_INTERVAL });
+            // Location sent (throttled)
           }
         },
         (error) => {
-          console.error('Geolocation error:', error);
-          // Handle different error types
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              console.error('User denied geolocation permission');
-              break;
-            case error.POSITION_UNAVAILABLE:
-              console.error('Location information unavailable');
-              break;
-            case error.TIMEOUT:
-              console.error('Location request timed out');
-              break;
-            default:
-              console.error('Unknown geolocation error');
-          }
+          // Geolocation error
+          // Handle different error types silently
         },
         {
           enableHighAccuracy: true, // Force GPS for accuracy
@@ -140,9 +127,9 @@ export const useLocationSharing = (orderId, enabled = false) => {
       );
 
       isSharingRef.current = true;
-      console.log('✅ Location sharing started');
+      // Location sharing started
     } else {
-      console.error('Geolocation is not supported by this browser');
+      // Geolocation is not supported by this browser
     }
   };
 
@@ -151,14 +138,14 @@ export const useLocationSharing = (orderId, enabled = false) => {
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
-      console.log('📍 Geolocation watch stopped');
+      // Geolocation watch stopped
     }
 
     // Disconnect socket
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
-      console.log('🔌 Socket disconnected');
+      // Socket disconnected
     }
 
     isSharingRef.current = false;

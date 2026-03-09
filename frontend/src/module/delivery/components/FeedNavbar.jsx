@@ -140,12 +140,11 @@ export default function FeedNavbar({ className = "" }) {
           // Validate coordinates
           if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
               latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-            console.warn('⚠️ Invalid coordinates from geolocation:', { latitude, longitude });
             latitude = null;
             longitude = null;
           }
         } catch (geoError) {
-          console.warn('Could not get current location:', geoError);
+          // Could not get current location
         }
       }
       
@@ -154,18 +153,11 @@ export default function FeedNavbar({ className = "" }) {
           latitude >= -90 && latitude <= 90 && 
           longitude >= -180 && longitude <= 180) {
         await deliveryAPI.updateLocation(latitude, longitude, next);
-        console.log('✅ Online status and location updated in backend:', { 
-          isOnline: next, 
-          latitude, 
-          longitude,
-          format: "lat, lng (correct order)"
-        });
       } else {
         await deliveryAPI.updateOnlineStatus(next);
-        console.log('✅ Online status updated in backend (location not available):', next);
       }
     } catch (error) {
-      console.error('❌ Error updating online status in backend:', error);
+      // Error updating online status in backend
       // Revert state if backend update fails
       setIsOnline(!next);
       toast.error('Failed to update status. Please try again.');
@@ -228,7 +220,7 @@ export default function FeedNavbar({ className = "" }) {
         }
       } catch (error) {
         // Silently fail - use default empty numbers
-        console.error("Error fetching emergency help:", error);
+        // Error fetching emergency help
       }
     };
 
@@ -302,8 +294,11 @@ export default function FeedNavbar({ className = "" }) {
         const response = await deliveryAPI.getProfile();
         if (response?.data?.success && response?.data?.data?.profile) {
           const profile = response.data.data.profile;
-          // Use profileImage.url first, fallback to documents.photo
-          const imageUrl = profile.profileImage?.url || profile.documents?.photo;
+          // Use profileImage.url first, fallback to documents.photo/profilePhoto
+          const imageUrl =
+            profile.profileImage?.url ||
+            profile.documents?.photo ||
+            profile.documents?.profilePhoto;
           if (imageUrl) {
             setProfileImage(imageUrl);
             setImageError(false);
@@ -315,7 +310,7 @@ export default function FeedNavbar({ className = "" }) {
             error.code !== 'ERR_NETWORK' && 
             error.message !== 'Network Error' &&
             !error.message?.includes('timeout')) {
-          console.error("Error fetching profile image for navbar:", error);
+          // Error fetching profile image
         }
       }
     };
