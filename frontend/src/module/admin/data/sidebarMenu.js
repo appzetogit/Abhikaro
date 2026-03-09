@@ -76,6 +76,11 @@ export const sidebarMenuData = [
         permissionId: "menu.restaurants",
         subItems: [
           {
+            label: "Restaurant Join Requests",
+            path: "/admin/restaurants/joining-request",
+            permissionId: "menu.restaurants",
+          },
+          {
             label: "Restaurants List",
             path: "/admin/restaurants",
             permissionId: "menu.restaurants",
