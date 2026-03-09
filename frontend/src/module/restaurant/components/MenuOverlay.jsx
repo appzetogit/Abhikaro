@@ -59,7 +59,7 @@ export default function MenuOverlay({ showMenu, setShowMenu }) {
       { id: 10, name: "Coupon", icon: Tag, route: "/restaurant/coupon" },
       { id: 11, name: "My Business Plan", icon: FileText, route: "/restaurant/business-plan" },
       { id: 12, name: "Reviews", icon: MessageSquare, route: "/restaurant/reviews" },
-      { id: 14, name: "Wallet Method", icon: Settings, route: "/restaurant/wallet" },
+      { id: 14, name: "Withdrawal History", icon: Settings, route: "/restaurant/withdrawal-history" },
       { id: 16, name: "Settings", icon: Settings, route: "/restaurant/settings" },
       { id: 17, name: "Conversation", icon: MessageCircle, route: "/restaurant/conversation" },
       { id: 18, name: "Privacy Policy", icon: Shield, route: "/restaurant/privacy" },

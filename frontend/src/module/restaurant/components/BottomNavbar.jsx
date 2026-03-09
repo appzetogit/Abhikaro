@@ -52,9 +52,9 @@ export default function BottomNavbar({ onMenuClick }) {
           </div>
         </button>
         <button
-          onClick={() => navigate("/restaurant/wallet")}
+          onClick={() => navigate("/restaurant/withdrawal-history")}
           className={`flex flex-col items-center gap-1 p-2 transition-colors ${
-            isActive("/restaurant/wallet") ? "text-[#ff8100]" : "text-gray-600"
+            isActive("/restaurant/withdrawal-history") ? "text-[#ff8100]" : "text-gray-600"
           }`}
         >
           <Wallet className="w-6 h-6" />

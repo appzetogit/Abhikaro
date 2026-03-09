@@ -31,7 +31,6 @@ const EditRestaurantPage = lazy(() => import("@/module/restaurant/pages/EditRest
 const FoodDetailsPage = lazy(() => import("@/module/restaurant/pages/FoodDetailsPage"))
 const EditFoodPage = lazy(() => import("@/module/restaurant/pages/EditFoodPage"))
 const AllFoodPage = lazy(() => import("@/module/restaurant/pages/AllFoodPage"))
-const WalletPage = lazy(() => import("@/module/restaurant/pages/WalletPage"))
 const RestaurantNotifications = lazy(() => import("@/module/restaurant/pages/Notifications"))
 const OrderDetails = lazy(() => import("@/module/restaurant/pages/OrderDetails"))
 const OrdersMain = lazy(() => import("@/module/restaurant/pages/OrdersMain"))
@@ -321,15 +320,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/restaurant/wallet"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <WalletPage />
-            </ProtectedRoute>
-          }
-        />
-
         {/* Restaurant Protected Routes - Continued */}
         <Route
           path="/restaurant/advertisements"

@@ -5,6 +5,7 @@ import { diningAPI, restaurantAPI } from "@/lib/api"
 import Loader from "@/components/Loader"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import BottomNavOrders from "../components/BottomNavOrders"
 
 export default function DiningReservations() {
     const navigate = useNavigate()
@@ -116,7 +117,7 @@ export default function DiningReservations() {
     if (loading) return <Loader />
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-20">
+        <div className="min-h-screen bg-slate-50 pb-24">
             {/* Header */}
             <div className="bg-white p-6 border-b sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -447,6 +448,11 @@ export default function DiningReservations() {
                     </div>
                 </div>
             )}
+
+            {/* Orders / Dining bottom navigation - fixed on mobile */}
+            <div className="fixed inset-x-0 bottom-0 z-40 md:static md:mt-auto">
+                <BottomNavOrders />
+            </div>
         </div>
     )
 }
