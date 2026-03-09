@@ -100,9 +100,6 @@ export default function CreateSupportTicket() {
       }
     } catch (error) {
       // Error creating ticket
-        priority: formData.priority
-      })
-      
       // Show detailed error message
       let errorMessage = "Failed to create ticket"
       if (error?.response?.data?.message) {

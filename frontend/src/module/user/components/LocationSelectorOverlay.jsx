@@ -716,17 +716,6 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         return
       }
 
-        formattedAddress: locationData?.formattedAddress,
-        address: locationData?.address,
-        city: locationData?.city,
-        state: locationData?.state,
-        area: locationData?.area,
-        coordinates: locationData?.latitude && locationData?.longitude ?
-          `${locationData.latitude.toFixed(8)}, ${locationData.longitude.toFixed(8)}` : "N/A",
-        hasCompleteAddress: locationData?.formattedAddress &&
-          locationData.formattedAddress.split(',').length >= 4
-      })
-
       // Verify we got complete address (but don't fail if incomplete - still use the location)
       if (!locationData?.formattedAddress ||
         locationData.formattedAddress === "Select location" ||
@@ -1053,13 +1042,6 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           // Try different marker creation methods - EXACT SAME PATTERN AS GREEN PIN
           let newMarker = null
 
-            hasSdkInstance: !!sdkInstance,
-            hasMapInstance: !!mapInstance,
-            sdkAddMarker: !!(sdkInstance && sdkInstance.addMarker),
-            sdkMarker: !!(sdkInstance && sdkInstance.Marker),
-            element: !!el
-          })
-
           // Method 1: Try SDK's addMarker method (EXACT SAME AS GREEN PIN)
           if (sdkInstance && sdkInstance.addMarker) {
             try {
@@ -1123,12 +1105,12 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             setTimeout(() => {
               const markerEl = newMarker.getElement?.() || newMarker._element
               if (markerEl) {
+                // Ensure marker is still visible after animations/styles settle
                 const computedStyle = window.getComputedStyle(markerEl)
-                  display: computedStyle.display,
-                  visibility: computedStyle.visibility,
-                  opacity: computedStyle.opacity,
-                  zIndex: computedStyle.zIndex
-                })
+                markerEl.style.display = computedStyle.display || 'block'
+                markerEl.style.visibility = computedStyle.visibility || 'visible'
+                markerEl.style.opacity = computedStyle.opacity || '1'
+                markerEl.style.zIndex = computedStyle.zIndex || '1001'
               }
             }, 1000)
 
@@ -1394,9 +1376,6 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
 
       setLoadingAddress(true)
       try {
-          lat: roundedLat.toFixed(8),
-          lng: roundedLng.toFixed(8)
-        })
 
         // Use backend location API (OLA Maps / fallback) for complete address details
         let formattedAddress = ""

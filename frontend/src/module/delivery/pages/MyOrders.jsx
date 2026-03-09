@@ -186,13 +186,9 @@ export default function MyOrders() {
         {!loading && (
           <div className="ml-auto text-xs text-gray-500 flex flex-col items-end">
             <span>({orders.length} orders, {filteredOrders.length} filtered)</span>
-            {process.env.NODE_ENV === 'development' && (
-        <button
+            {process.env.NODE_ENV === "development" && (
+              <button
                 onClick={() => {
-                  // Current State
-                    loading,
-                    searchQuery
-                  })
                   toast.info(`Orders: ${orders.length}, Filtered: ${filteredOrders.length}`)
                 }}
                 className="text-[10px] mt-1 px-2 py-0.5 bg-gray-200 rounded"
@@ -200,7 +196,7 @@ export default function MyOrders() {
                 Debug
               </button>
             )}
-        </div>
+          </div>
         )}
       </div>
 
