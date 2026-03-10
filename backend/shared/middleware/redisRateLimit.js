@@ -94,7 +94,9 @@ export function createRedisRateLimit(options = {}) {
 const ROLE_RATE_LIMITS = {
   admin: { maxRequests: 1500, windowMs: 15 * 60 * 1000 }, // Admins get highest limit (increased from 1000)
   restaurant: { maxRequests: 800, windowMs: 15 * 60 * 1000 }, // Restaurants need higher limits (increased from 500)
-  delivery: { maxRequests: 600, windowMs: 15 * 60 * 1000 }, // Delivery partners (increased from 400)
+  // Delivery partners send frequent location updates + order status pings,
+  // so we keep this limit very high to avoid impacting normal usage.
+  delivery: { maxRequests: 4000, windowMs: 15 * 60 * 1000 }, // Delivery partners (relaxed from 600)
   user: { maxRequests: 300, windowMs: 15 * 60 * 1000 }, // Regular users (increased from 200)
   default: { maxRequests: 100, windowMs: 15 * 60 * 1000 }, // Unauthenticated (kept strict)
 };
@@ -145,6 +147,16 @@ export const tieredUserRateLimit = async (req, res, next) => {
       path === '/business-settings/public'
   ) {
       return next();
+  }
+
+  // Delivery live location endpoints are high-frequency but low-risk.
+  // They already include their own throttling on the client and extra
+  // backend safeguards, so we avoid applying the generic per-user limiter.
+  if (
+    path.startsWith('/delivery/location') ||
+    path.startsWith('/delivery/zones/in-radius')
+  ) {
+    return next();
   }
 
   // Auth / OTP endpoints already have their own strict rate limiting.
