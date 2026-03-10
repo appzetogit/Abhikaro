@@ -224,24 +224,57 @@ export default function RestaurantOnboarding() {
     }
 
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
-      if (result && result.success && result.base64) {
-        const file = base64ToFile(
-          result.base64,
-          result.mimeType || 'image/jpeg',
-          result.fileName || `gallery_${Date.now()}.jpg`
+      try {
+        if (!result || !result.success) return;
+
+        // Support multiple possible payload shapes from Flutter:
+        // 1) { success, base64, mimeType, fileName }
+        // 2) { success, images: [{ base64, mimeType, fileName }, ...] }
+        // 3) { success, files: [...] }
+        const entries = [];
+
+        if (Array.isArray(result.images)) {
+          entries.push(...result.images);
+        } else if (Array.isArray(result.files)) {
+          entries.push(...result.files);
+        } else if (Array.isArray(result)) {
+          entries.push(...result);
+        } else if (result.base64) {
+          entries.push(result);
+        }
+
+        if (!entries.length) return;
+
+        const files = entries.map((entry, index) =>
+          base64ToFile(
+            entry.base64,
+            entry.mimeType || result.mimeType || 'image/jpeg',
+            entry.fileName || result.fileName || `gallery_${Date.now()}_${index}.jpg`
+          )
         );
 
         if (imageType === 'menuImages') {
-          setStep2((prev) => ({ ...prev, menuImages: [...(prev.menuImages || []), file] }));
-        } else if (imageType === 'profileImage') {
-          setStep2((prev) => ({ ...prev, profileImage: file }));
-        } else if (imageType === 'panImage') {
-          setStep3((prev) => ({ ...prev, panImage: file }));
-        } else if (imageType === 'gstImage') {
-          setStep3((prev) => ({ ...prev, gstImage: file }));
-        } else if (imageType === 'fssaiImage') {
-          setStep3((prev) => ({ ...prev, fssaiImage: file }));
+          setStep2((prev) => ({
+            ...prev,
+            menuImages: [...(prev.menuImages || []), ...files],
+          }));
+        } else {
+          const file = files[0];
+          if (!file) return;
+
+          if (imageType === 'profileImage') {
+            setStep2((prev) => ({ ...prev, profileImage: file }));
+          } else if (imageType === 'panImage') {
+            setStep3((prev) => ({ ...prev, panImage: file }));
+          } else if (imageType === 'gstImage') {
+            setStep3((prev) => ({ ...prev, gstImage: file }));
+          } else if (imageType === 'fssaiImage') {
+            setStep3((prev) => ({ ...prev, fssaiImage: file }));
+          }
         }
+      } catch (err) {
+        console.error('Error processing Flutter gallery result:', err);
+        toast.error('Failed to process image from gallery');
       }
     }).catch((error) => {
       console.error('Error calling Flutter openGallery:', error);

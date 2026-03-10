@@ -1967,13 +1967,10 @@ export default function Home() {
                 <div className="w-24 sm:w-28 bg-gray-50 dark:bg-[#0a0a0a] border-r dark:border-gray-800 flex flex-col">
                   {[
                     { id: 'sort', label: 'Sort By', icon: ArrowDownUp },
-                    { id: 'time', label: 'Time', icon: Timer },
                     { id: 'rating', label: 'Rating', icon: Star },
                     { id: 'distance', label: 'Distance', icon: MapPin },
                     { id: 'price', label: 'Dish Price', icon: IndianRupee },
                     { id: 'cuisine', label: 'Cuisine', icon: UtensilsCrossed },
-                    { id: 'offers', label: 'Offers', icon: BadgePercent },
-                    { id: 'trust', label: 'Trust', icon: ShieldCheck },
                   ].map((tab) => {
                     const Icon = tab.icon
                     const isActive = activeScrollSection === tab.id || activeFilterTab === tab.id
