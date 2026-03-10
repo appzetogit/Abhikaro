@@ -212,22 +212,27 @@ export default function HubMenu() {
     }
   }
 
-  // Fetch menu from API on mount
+  // Fetch menu from API on mount and when page becomes visible/focused
   useEffect(() => {
-    fetchMenu()
-  }, [])
+    let isMounted = true
 
-  // Refresh menu when page comes into focus (e.g., when user switches from admin panel)
-  useEffect(() => {
+    const safeFetchMenu = (showLoading = true) => {
+      if (!isMounted) return
+      fetchMenu(showLoading)
+    }
+
+    // Initial fetch on mount
+    safeFetchMenu()
+
     const handleFocus = () => {
       console.log('Page focused - refreshing menu to check for approval updates')
-      fetchMenu(false) // Refresh without showing loading spinner
+      safeFetchMenu(false) // Refresh without showing loading spinner
     }
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         console.log('Page visible - refreshing menu to check for approval updates')
-        fetchMenu(false) // Refresh without showing loading spinner
+        safeFetchMenu(false) // Refresh without showing loading spinner
       }
     }
 
@@ -235,12 +240,13 @@ export default function HubMenu() {
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
+      isMounted = false
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 
-  // Periodic refresh to check for approval updates (every 30 seconds)
+  // Periodic refresh to check for approval updates (every 60 seconds, increased from 30s)
   useEffect(() => {
     const interval = setInterval(() => {
       // Only refresh if page is visible and not loading
@@ -248,7 +254,7 @@ export default function HubMenu() {
         console.log('Periodic refresh - checking for approval updates')
         fetchMenu(false) // Refresh without showing loading spinner
       }
-    }, 30000) // 30 seconds
+    }, 60000) // Increased from 30000ms to 60000ms to reduce rate limit issues
 
     return () => clearInterval(interval)
   }, [loadingMenu])

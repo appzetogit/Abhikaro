@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   Select,
@@ -52,6 +52,7 @@ export default function DeliverySignIn() {
   })
   const [error, setError] = useState("")
   const [isSending, setIsSending] = useState(false)
+  const lastOTPRequestTime = useRef(0) // Track last OTP request time for debouncing
 
   // Prefill phone from sessionStorage when returning from OTP screen
   useEffect(() => {
@@ -114,6 +115,13 @@ export default function DeliverySignIn() {
   }
 
   const handleSendOTP = async () => {
+    // Prevent duplicate requests - debounce for 2 seconds
+    const now = Date.now()
+    if (now - lastOTPRequestTime.current < 2000 || isSending) {
+      return
+    }
+    lastOTPRequestTime.current = now
+    
     setError("")
 
     const phoneError = validatePhone(formData.phone, formData.countryCode)
@@ -144,11 +152,23 @@ export default function DeliverySignIn() {
       navigate("/delivery/otp")
     } catch (err) {
       // Send OTP Error
-      const message =
+      let message =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
         "Failed to send OTP. Please try again."
+      
+      // Check if it's a rate limit error and add retry information
+      if (err?.response?.status === 429 || message.includes("Too many")) {
+        const retryAfter = err?.response?.data?.retryAfter;
+        if (retryAfter) {
+          const minutes = Math.ceil(retryAfter / 60);
+          message = `Too many OTP requests. Please try again in ${minutes} minute${minutes > 1 ? 's' : ''}.`;
+        } else {
+          message = "Too many OTP requests. Please wait a moment before trying again.";
+        }
+      }
+      
       setError(message)
       setIsSending(false)
     }

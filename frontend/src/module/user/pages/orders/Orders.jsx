@@ -174,6 +174,9 @@ export default function Orders() {
   // Fetch orders from backend API
   useEffect(() => {
     const fetchOrders = async () => {
+      const controller = new AbortController()
+      activeFetchRef.current = controller
+
       try {
         setLoading(true)
         
@@ -291,6 +294,9 @@ export default function Orders() {
           setOrders([])
         }
       } catch (error) {
+        if (error.name === 'AbortError') {
+          return
+        }
         console.error('Error fetching user orders:', error)
         let errorMessage = 'Failed to load orders'
         if (error?.response?.status === 401) {
@@ -301,19 +307,40 @@ export default function Orders() {
         toast.error(errorMessage)
         setOrders([])
       } finally {
+        if (activeFetchRef.current === controller) {
+          activeFetchRef.current = null
+        }
         setLoading(false)
       }
     }
 
     fetchOrders()
     
-    // Poll for order updates every 20 seconds to detect delivered orders
+    // Poll for order updates every 30 seconds to detect delivered orders (increased from 20s)
     // This ensures rating popup shows quickly when order is delivered
+    // Only poll when page is visible to reduce unnecessary requests
     const pollInterval = setInterval(() => {
-      fetchOrders()
-    }, 20000) // Poll every 20 seconds
+      if (document.visibilityState === 'visible' && !activeFetchRef.current) {
+        fetchOrders()
+      }
+    }, 30000) // Increased from 20000ms to 30000ms
 
-    return () => clearInterval(pollInterval)
+    // Pause polling when page becomes hidden, resume when visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Immediately fetch when page becomes visible
+        fetchOrders()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      if (activeFetchRef.current) {
+        activeFetchRef.current.abort()
+      }
+      clearInterval(pollInterval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [])
 
   // Format date helper

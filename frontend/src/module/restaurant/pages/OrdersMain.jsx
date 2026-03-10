@@ -2654,12 +2654,22 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
     }
     window.addEventListener('order_assigned', handleOrderAssigned)
 
-    // Refresh orders every 10 seconds
+    // Refresh orders every 15 seconds (increased from 10s to reduce rate limit issues)
+    // Only poll when page is visible to reduce unnecessary requests
     intervalId = setInterval(() => {
-      if (isMounted) {
+      if (isMounted && document.visibilityState === 'visible') {
         fetchOrders()
       }
-    }, 10000)
+    }, 15000) // Increased from 10000ms to 15000ms
+
+    // Pause polling when page becomes hidden, resume when visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        // Immediately fetch when page becomes visible
+        fetchOrders()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     // Update countdown every second
     countdownIntervalId = setInterval(() => {
@@ -2671,6 +2681,7 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
     return () => {
       isMounted = false
       window.removeEventListener('order_assigned', handleOrderAssigned)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (intervalId) {
         clearInterval(intervalId)
       }

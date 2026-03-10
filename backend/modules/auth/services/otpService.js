@@ -1,6 +1,7 @@
 import Otp from "../models/Otp.js";
 import smsIndiaHubService from "./smsIndiaHubService.js";
 import emailService from "./emailService.js";
+import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
 import winston from "winston";
 
 const logger = winston.createLogger({
@@ -106,24 +107,41 @@ class OTPService {
         throw new Error("Either phone or email must be provided");
       }
 
+      // Normalize phone number for consistent rate limiting and storage
+      let normalizedPhone = null;
+      if (phone) {
+        normalizedPhone = normalizePhoneNumber(phone);
+        if (!normalizedPhone) {
+          throw new Error("Invalid phone number format");
+        }
+      }
+
+      // Normalize email (lowercase and trim)
+      const normalizedEmail = email ? email.toLowerCase().trim() : null;
+
       const identifier = phone || email;
       const identifierType = phone ? "phone" : "email";
 
       // Check rate limiting (max 3 OTPs per identifier per hour) - using MongoDB
-      if (process.env.NODE_ENV === "production") {
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const rateLimitQuery = {
-          [identifierType]: identifier,
-          purpose,
-          createdAt: { $gte: oneHourAgo },
-        };
+      // Always enforce rate limiting in all environments
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const rateLimitQuery = {
+        purpose,
+        createdAt: { $gte: oneHourAgo },
+      };
 
-        const recentOtpCount = await Otp.countDocuments(rateLimitQuery);
-        if (recentOtpCount >= 3) {
-          throw new Error(
-            "Too many OTP requests. Please try again after some time.",
-          );
-        }
+      // Use normalized identifier for rate limiting
+      if (normalizedPhone) {
+        rateLimitQuery.normalizedPhone = normalizedPhone;
+      } else if (normalizedEmail) {
+        rateLimitQuery.email = normalizedEmail;
+      }
+
+      const recentOtpCount = await Otp.countDocuments(rateLimitQuery);
+      if (recentOtpCount >= 3) {
+        throw new Error(
+          "Too many OTP requests. Please try again after some time.",
+        );
       }
 
       // Generate OTP (use default for test identifiers)
@@ -131,10 +149,13 @@ class OTPService {
       const otp = isTestResult ? DEFAULT_TEST_OTP : generateOTP();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-      // Build query for invalidating previous OTPs
+      // Build query for invalidating previous OTPs using normalized identifiers
       const invalidateQuery = { purpose, verified: false };
-      if (phone) invalidateQuery.phone = phone;
-      if (email) invalidateQuery.email = email;
+      if (normalizedPhone) {
+        invalidateQuery.normalizedPhone = normalizedPhone;
+      } else if (normalizedEmail) {
+        invalidateQuery.email = normalizedEmail;
+      }
 
       // Invalidate previous OTPs for this identifier and purpose
       await Otp.updateMany(
@@ -142,14 +163,19 @@ class OTPService {
         { verified: true }, // Mark as used
       );
 
-      // Store OTP in database
+      // Store OTP in database with both original and normalized phone
       const otpData = {
         otp,
         purpose,
         expiresAt,
       };
-      if (phone) otpData.phone = phone;
-      if (email) otpData.email = email;
+      if (phone) {
+        otpData.phone = phone; // Store original format for display/logging
+        otpData.normalizedPhone = normalizedPhone; // Store normalized for queries
+      }
+      if (normalizedEmail) {
+        otpData.email = normalizedEmail;
+      }
 
       const otpRecord = await Otp.create(otpData);
 
@@ -220,6 +246,18 @@ class OTPService {
         throw new Error("Either phone or email must be provided");
       }
 
+      // Normalize phone number for consistent lookup
+      let normalizedPhone = null;
+      if (phone) {
+        normalizedPhone = normalizePhoneNumber(phone);
+        if (!normalizedPhone) {
+          throw new Error("Invalid phone number format");
+        }
+      }
+
+      // Normalize email (lowercase and trim)
+      const normalizedEmail = email ? email.toLowerCase().trim() : null;
+
       const identifier = phone || email;
       const identifierType = phone ? "phone" : "email";
 
@@ -252,15 +290,18 @@ class OTPService {
       let otpRecord;
 
       if (purpose === "reset-password") {
-        // First try to find unverified OTP
+        // First try to find unverified OTP using normalized identifiers
         const unverifiedQuery = {
           otp,
           purpose,
           verified: false,
           expiresAt: { $gt: new Date() },
         };
-        if (phone) unverifiedQuery.phone = phone;
-        if (email) unverifiedQuery.email = email;
+        if (normalizedPhone) {
+          unverifiedQuery.normalizedPhone = normalizedPhone;
+        } else if (normalizedEmail) {
+          unverifiedQuery.email = normalizedEmail;
+        }
 
         otpRecord = await Otp.findOne(unverifiedQuery);
 
@@ -274,8 +315,11 @@ class OTPService {
             expiresAt: { $gt: new Date() },
             updatedAt: { $gt: tenMinutesAgo },
           };
-          if (phone) verifiedQuery.phone = phone;
-          if (email) verifiedQuery.email = email;
+          if (normalizedPhone) {
+            verifiedQuery.normalizedPhone = normalizedPhone;
+          } else if (normalizedEmail) {
+            verifiedQuery.email = normalizedEmail;
+          }
 
           otpRecord = await Otp.findOne(verifiedQuery);
 
@@ -288,24 +332,30 @@ class OTPService {
           }
         }
       } else {
-        // For other purposes, only check unverified OTPs
+        // For other purposes, only check unverified OTPs using normalized identifiers
         const query = {
           otp,
           purpose,
           verified: false,
           expiresAt: { $gt: new Date() },
         };
-        if (phone) query.phone = phone;
-        if (email) query.email = email;
+        if (normalizedPhone) {
+          query.normalizedPhone = normalizedPhone;
+        } else if (normalizedEmail) {
+          query.email = normalizedEmail;
+        }
 
         otpRecord = await Otp.findOne(query);
       }
 
       if (!otpRecord) {
-        // Increment attempts for security (only for unverified OTPs)
+        // Increment attempts for security (only for unverified OTPs) using normalized identifiers
         const incrementQuery = { purpose, verified: false };
-        if (phone) incrementQuery.phone = phone;
-        if (email) incrementQuery.email = email;
+        if (normalizedPhone) {
+          incrementQuery.normalizedPhone = normalizedPhone;
+        } else if (normalizedEmail) {
+          incrementQuery.email = normalizedEmail;
+        }
 
         await Otp.updateMany(incrementQuery, { $inc: { attempts: 1 } });
 

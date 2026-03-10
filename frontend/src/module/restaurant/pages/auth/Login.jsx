@@ -57,6 +57,7 @@ export default function RestaurantLogin() {
   })
   const [isSending, setIsSending] = useState(false)
   const [apiError, setApiError] = useState("")
+  const lastOTPRequestTime = useRef(0) // Track last OTP request time for debouncing
 
   // Prefill phone from sessionStorage when returning from OTP screen
   useEffect(() => {
@@ -120,6 +121,13 @@ export default function RestaurantLogin() {
   }
 
   const handleSendOTP = async () => {
+    // Prevent duplicate requests - debounce for 2 seconds
+    const now = Date.now()
+    if (now - lastOTPRequestTime.current < 2000 || isSending) {
+      return
+    }
+    lastOTPRequestTime.current = now
+    
     // Mark all fields as touched
     setTouched({ phone: true })
     setApiError("")
@@ -157,10 +165,22 @@ export default function RestaurantLogin() {
       navigate("/restaurant/otp")
     } catch (error) {
       // Extract backend error message if available
-      const message =
+      let message =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         "Failed to send OTP. Please try again."
+      
+      // Check if it's a rate limit error and add retry information
+      if (error?.response?.status === 429 || message.includes("Too many")) {
+        const retryAfter = error?.response?.data?.retryAfter;
+        if (retryAfter) {
+          const minutes = Math.ceil(retryAfter / 60);
+          message = `Too many OTP requests. Please try again in ${minutes} minute${minutes > 1 ? 's' : ''}.`;
+        } else {
+          message = "Too many OTP requests. Please wait a moment before trying again.";
+        }
+      }
+      
       setApiError(message)
     } finally {
       setIsSending(false)

@@ -4,6 +4,7 @@ import {
 } from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import Hotel from "../models/Hotel.js";
+import { getCache, setCache, generateCacheKey, CACHE_TTL } from "../../../shared/utils/cache.js";
 
 /**
  * GET /api/hotel/public/:hotelId

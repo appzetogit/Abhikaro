@@ -8,6 +8,11 @@ const otpSchema = new mongoose.Schema({
     },
     index: true
   },
+  normalizedPhone: {
+    type: String,
+    index: true,
+    sparse: true // Index only when field exists
+  },
   email: {
     type: String,
     required: function() {
@@ -45,8 +50,12 @@ const otpSchema = new mongoose.Schema({
 
 // Index for faster lookups - phone-based
 otpSchema.index({ phone: 1, purpose: 1, verified: 1 });
+// Index for faster lookups - normalized phone-based (for rate limiting)
+otpSchema.index({ normalizedPhone: 1, purpose: 1, createdAt: 1 });
+otpSchema.index({ normalizedPhone: 1, purpose: 1, verified: 1 });
 // Index for faster lookups - email-based
 otpSchema.index({ email: 1, purpose: 1, verified: 1 });
+otpSchema.index({ email: 1, purpose: 1, createdAt: 1 });
 
 // Compound index for either phone or email
 otpSchema.index({ phone: 1, email: 1, purpose: 1, verified: 1 });

@@ -9,6 +9,8 @@ import {
   errorResponse,
 } from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
+import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
+import { getRedisClient } from "../../../config/redis.js";
 import winston from "winston";
 
 const logger = winston.createLogger({
@@ -21,6 +23,46 @@ const logger = winston.createLogger({
   ],
 });
 
+// In-memory cache for request deduplication (fallback when Redis is not available)
+const inFlightRequests = new Map();
+
+/**
+ * Check if a request is already in flight and prevent duplicates
+ * @param {string} identifier - Normalized phone or email
+ * @param {string} purpose - Purpose of OTP
+ * @returns {Promise<boolean>} - True if request should be blocked
+ */
+async function checkAndSetInFlight(identifier, purpose) {
+  const redisClient = getRedisClient();
+  const key = `otp:inflight:${identifier}:${purpose}`;
+  const ttl = 2; // 2 seconds deduplication window
+
+  if (redisClient && redisClient.isOpen) {
+    try {
+      const exists = await redisClient.exists(key);
+      if (exists) {
+        return true; // Request already in flight
+      }
+      await redisClient.setEx(key, ttl, "1");
+      return false; // New request, allow it
+    } catch (error) {
+      logger.warn(`Redis deduplication check failed: ${error.message}`);
+      // Fall through to in-memory cache
+    }
+  }
+
+  // Fallback to in-memory cache
+  if (inFlightRequests.has(key)) {
+    return true; // Request already in flight
+  }
+  inFlightRequests.set(key, Date.now());
+  // Auto-cleanup after TTL
+  setTimeout(() => {
+    inFlightRequests.delete(key);
+  }, ttl * 1000);
+  return false; // New request, allow it
+}
+
 /**
  * Send OTP for phone number or email
  * POST /api/auth/send-otp
@@ -31,6 +73,27 @@ export const sendOTP = asyncHandler(async (req, res) => {
   // Validate that either phone or email is provided
   if (!phone && !email) {
     return errorResponse(res, 400, "Either phone number or email is required");
+  }
+
+  // Normalize identifier for deduplication
+  let normalizedIdentifier = null;
+  if (phone) {
+    normalizedIdentifier = normalizePhoneNumber(phone);
+    if (!normalizedIdentifier) {
+      return errorResponse(res, 400, "Invalid phone number format");
+    }
+  } else if (email) {
+    normalizedIdentifier = email.toLowerCase().trim();
+  }
+
+  // Check for duplicate in-flight requests
+  const isDuplicate = await checkAndSetInFlight(normalizedIdentifier, purpose);
+  if (isDuplicate) {
+    return errorResponse(
+      res,
+      429,
+      "Request already in progress. Please wait a moment.",
+    );
   }
 
   // Validate phone number format if provided
@@ -62,7 +125,9 @@ export const sendOTP = asyncHandler(async (req, res) => {
     });
   } catch (error) {
     logger.error(`Error sending OTP: ${error.message}`);
-    return errorResponse(res, 500, error.message);
+    // Return appropriate status code based on error type
+    const statusCode = error.message.includes("Too many") ? 429 : 500;
+    return errorResponse(res, statusCode, error.message);
   }
 });
 

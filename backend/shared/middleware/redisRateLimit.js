@@ -92,11 +92,11 @@ export function createRedisRateLimit(options = {}) {
  * Different limits for different user types
  */
 const ROLE_RATE_LIMITS = {
-  admin: { maxRequests: 1000, windowMs: 15 * 60 * 1000 }, // Admins get highest limit
-  restaurant: { maxRequests: 500, windowMs: 15 * 60 * 1000 }, // Restaurants need higher limits
-  delivery: { maxRequests: 400, windowMs: 15 * 60 * 1000 }, // Delivery partners
-  user: { maxRequests: 200, windowMs: 15 * 60 * 1000 }, // Regular users
-  default: { maxRequests: 100, windowMs: 15 * 60 * 1000 }, // Unauthenticated
+  admin: { maxRequests: 1500, windowMs: 15 * 60 * 1000 }, // Admins get highest limit (increased from 1000)
+  restaurant: { maxRequests: 800, windowMs: 15 * 60 * 1000 }, // Restaurants need higher limits (increased from 500)
+  delivery: { maxRequests: 600, windowMs: 15 * 60 * 1000 }, // Delivery partners (increased from 400)
+  user: { maxRequests: 300, windowMs: 15 * 60 * 1000 }, // Regular users (increased from 200)
+  default: { maxRequests: 100, windowMs: 15 * 60 * 1000 }, // Unauthenticated (kept strict)
 };
 
 /**
@@ -211,15 +211,48 @@ export const ipRateLimit = createRedisRateLimit({
 });
 
 /**
+ * Normalize phone number for rate limiting
+ * @param {string} phone - Phone number to normalize
+ * @returns {string} - Normalized phone number
+ */
+function normalizePhoneForRateLimit(phone) {
+  if (!phone || typeof phone !== 'string') {
+    return phone;
+  }
+  // Remove all non-digit characters
+  const digitsOnly = phone.trim().replace(/\D/g, '');
+  // Handle Indian phone numbers (most common case)
+  if (digitsOnly.length === 10) {
+    return `91${digitsOnly}`;
+  }
+  if (digitsOnly.length === 11 && digitsOnly.startsWith('0')) {
+    return `91${digitsOnly.substring(1)}`;
+  }
+  if (digitsOnly.length === 12 && digitsOnly.startsWith('91')) {
+    return digitsOnly;
+  }
+  return digitsOnly;
+}
+
+/**
  * Strict rate limiter for sensitive endpoints (OTP, login, etc.)
  */
 export const strictRateLimit = createRedisRateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 10, // Very strict
+  maxRequests: 20, // Increased from 10 to 20 for better UX
   message: 'Too many attempts. Please try again after some time.',
   keyGenerator: (req) => {
     const userId = req.user?.id || req.user?._id || req.auth?.userId;
-    const identifier = req.body?.phone || req.body?.email || req.ip;
-    return `ratelimit:strict:${userId || identifier}`;
+    if (userId) {
+      return `ratelimit:strict:user:${userId}`;
+    }
+    // Normalize phone/email for consistent rate limiting
+    let identifier = req.ip || 'unknown';
+    if (req.body?.phone) {
+      identifier = normalizePhoneForRateLimit(req.body.phone);
+    } else if (req.body?.email) {
+      identifier = req.body.email.toLowerCase().trim();
+    }
+    return `ratelimit:strict:${identifier}`;
   }
 });

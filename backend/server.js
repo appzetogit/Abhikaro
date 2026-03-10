@@ -508,6 +508,24 @@ app.use('/api/auth/verify-otp', strictRateLimit);
 app.use('/api/auth/login', strictRateLimit);
 app.use('/api/auth/register', strictRateLimit);
 
+// Request deduplication middleware for GET endpoints (reduces duplicate polling requests)
+// Enabled in all environments so behaviour is consistent between dev and production
+{
+  const { requestDeduplication } = await import('./shared/middleware/requestDeduplication.js');
+  app.use('/api/', requestDeduplication({
+    windowMs: 3000, // 3 second deduplication window for better coverage
+    excludePaths: [
+      '/auth/',
+      '/admin/',
+      '/restaurant/orders',
+      '/order/',
+      '/delivery/',
+      '/hotel/orders'
+    ]
+  }));
+  console.log('✅ Request deduplication middleware enabled');
+}
+
 // Health check routes for load balancer
 app.get('/health', async (req, res) => {
   try {

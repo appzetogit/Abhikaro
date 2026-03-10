@@ -47,6 +47,7 @@ export default function SignIn() {
   const isSignUp = searchParams.get("mode") === "signup"
 
   const [authMethod, setAuthMethod] = useState("phone") // "phone" or "email"
+  const lastOTPRequestTime = useRef(0) // Track last OTP request time for debouncing
   const [formData, setFormData] = useState({
     phone: "",
     countryCode: "+91",
@@ -353,6 +354,19 @@ export default function SignIn() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // Prevent duplicate requests - debounce for 2 seconds
+    const now = Date.now()
+    if (now - lastOTPRequestTime.current < 2000) {
+      return
+    }
+    lastOTPRequestTime.current = now
+    
+    // Prevent if already loading
+    if (isLoading) {
+      return
+    }
+    
     setIsLoading(true)
     setApiError("")
 
@@ -407,10 +421,22 @@ export default function SignIn() {
       // Navigate to OTP page
       navigate("/user/auth/otp")
     } catch (error) {
-      const message =
+      let message =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         "Failed to send OTP. Please try again."
+      
+      // Check if it's a rate limit error and add retry information
+      if (error?.response?.status === 429 || message.includes("Too many")) {
+        const retryAfter = error?.response?.data?.retryAfter;
+        if (retryAfter) {
+          const minutes = Math.ceil(retryAfter / 60);
+          message = `Too many OTP requests. Please try again in ${minutes} minute${minutes > 1 ? 's' : ''}.`;
+        } else {
+          message = "Too many OTP requests. Please wait a moment before trying again.";
+        }
+      }
+      
       setApiError(message)
     } finally {
       setIsLoading(false)

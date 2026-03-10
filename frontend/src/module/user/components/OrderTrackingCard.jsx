@@ -24,7 +24,10 @@ export default function OrderTrackingCard() {
       return;
     }
 
+    let isMounted = true;
+
     const fetchOrders = async () => {
+      if (!isMounted) return;
       try {
         const response = await orderAPI.getOrders({ limit: 10, page: 1 });
         let orders = [];
@@ -37,10 +40,13 @@ export default function OrderTrackingCard() {
           orders = response.data.data;
         }
         
+        if (!isMounted) return;
+
         // IMPORTANT: Set orders even if empty array - this means database has no orders
         setApiOrders(orders);
         setApiCalled(true);
       } catch (error) {
+        if (!isMounted) return;
         // API call failed - fall back to context orders
         setApiOrders([]);
         setApiCalled(true); // Still mark as called so we know API failed
@@ -49,6 +55,10 @@ export default function OrderTrackingCard() {
 
     // Try once on mount, but don't retry if it fails
     fetchOrders();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Get active order (not delivered)

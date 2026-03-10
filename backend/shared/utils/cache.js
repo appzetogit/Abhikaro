@@ -12,19 +12,19 @@
 
 import { getRedisClient } from '../../config/redis.js';
 
-// Cache TTL in seconds
+// Cache TTL in seconds (extended to reduce rate limit issues)
 export const CACHE_TTL = {
-  RESTAURANT_LIST: 300, // 5 minutes
-  RESTAURANT_DETAILS: 600, // 10 minutes
-  USER_PROFILE: 900, // 15 minutes
-  ORDER_STATUS: 60, // 1 minute
-  MENU_ITEMS: 1800, // 30 minutes
-  STATIC_DATA: 3600, // 1 hour
-  CATEGORIES: 1800, // 30 minutes
-  ZONE_DATA: 1800, // 30 minutes
-  FEE_SETTINGS: 3600, // 1 hour (settings don't change often)
-  COMMISSION_SETTINGS: 3600, // 1 hour
-  BUSINESS_SETTINGS: 3600, // 1 hour
+  RESTAURANT_LIST: 600, // 10 minutes (increased from 5 minutes)
+  RESTAURANT_DETAILS: 900, // 15 minutes (increased from 10 minutes)
+  USER_PROFILE: 1800, // 30 minutes (increased from 15 minutes)
+  ORDER_STATUS: 60, // 1 minute (kept short for real-time data)
+  MENU_ITEMS: 3600, // 60 minutes (increased from 30 minutes)
+  STATIC_DATA: 7200, // 2 hours (increased from 1 hour)
+  CATEGORIES: 3600, // 60 minutes (increased from 30 minutes)
+  ZONE_DATA: 3600, // 60 minutes (increased from 30 minutes)
+  FEE_SETTINGS: 7200, // 2 hours (increased from 1 hour)
+  COMMISSION_SETTINGS: 7200, // 2 hours (increased from 1 hour)
+  BUSINESS_SETTINGS: 7200, // 2 hours (increased from 1 hour)
 };
 
 /**

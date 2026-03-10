@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { API_BASE_URL } from "./config.js";
 import { getRoleFromToken, clearModuleAuth, getModuleToken } from "../utils/auth.js";
 import { getNetworkStatus } from "../utils/networkStatus.js";
+import { deduplicateRequest, clearRequestCache } from "../utils/requestDeduplication.js";
 
 // Network error tracking to prevent spam
 const networkErrorState = {
@@ -286,6 +287,12 @@ apiClient.interceptors.request.use(
       }
     }
 
+    // For idempotent GET requests, wrap with client-side request deduplication
+    // This prevents multiple identical requests from firing in parallel
+    if (!isWriteMethod) {
+      config.deduplicate = true;
+    }
+
     return config;
   },
   (error) => {
@@ -355,7 +362,7 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config || {};
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
@@ -611,6 +618,80 @@ apiClient.interceptors.response.use(
         }
       }
       return Promise.reject(error);
+    }
+
+    // Handle 429 errors (Too Many Requests) with exponential backoff + lightweight queue
+    if (error.response?.status === 429) {
+      const originalRequest = error.config || {};
+      const retryCount = originalRequest._retryCount || 0;
+      const maxRetries = 3; // Maximum number of retries per request
+
+      // Get retry-after from response header or use exponential backoff
+      const retryAfter = error.response?.headers?.["retry-after"]
+        ? parseInt(error.response.headers["retry-after"]) * 1000
+        : Math.min(1000 * Math.pow(2, retryCount), 30000); // Max 30 seconds
+
+      const retryAfterSeconds = Math.ceil(retryAfter / 1000);
+
+      // Don't retry if we've exceeded max retries
+      if (retryCount >= maxRetries) {
+        const errorMessage =
+          error.response?.data?.message ||
+          `Too many requests. Please try again after ${retryAfterSeconds} seconds.`;
+
+        toast.error(errorMessage, {
+          duration: 5000,
+          id: "rate-limit-error-toast",
+          style: {
+            background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+            color: "#ffffff",
+            border: "1px solid #b45309",
+            borderRadius: "12px",
+            padding: "16px",
+            fontSize: "14px",
+            fontWeight: "500",
+            boxShadow:
+              "0 10px 25px -5px rgba(245, 158, 11, 0.3), 0 8px 10px -6px rgba(245, 158, 11, 0.2)",
+          },
+          className: "rate-limit-error-toast",
+        });
+
+        return Promise.reject(error);
+      }
+
+      // Mark request for retry
+      originalRequest._retryCount = retryCount + 1;
+
+      // Log retry attempt
+      if (import.meta.env.DEV) {
+        console.warn(
+          `⏳ Rate limit hit (429). Retrying in ${retryAfterSeconds}s (attempt ${retryCount + 1}/${maxRetries})...`,
+        );
+      }
+
+      // Show user-friendly message with countdown
+      const retryMessage = `Too many requests. Retrying in ${retryAfterSeconds} seconds...`;
+      toast.warning(retryMessage, {
+        duration: retryAfter,
+        id: "rate-limit-retry-toast",
+        style: {
+          background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+          color: "#ffffff",
+          border: "1px solid #b45309",
+          borderRadius: "12px",
+          padding: "16px",
+          fontSize: "14px",
+          fontWeight: "500",
+        },
+        className: "rate-limit-retry-toast",
+      });
+
+      // Queue the retry to avoid burst of simultaneous retries
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(apiClient(originalRequest));
+        }, retryAfter);
+      });
     }
 
     // Handle 404 errors (route not found)

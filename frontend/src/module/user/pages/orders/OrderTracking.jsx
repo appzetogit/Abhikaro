@@ -253,11 +253,15 @@ export default function OrderTracking() {
       currentPhase === 'at_pickup' ||
       currentPhase === 'en_route_to_delivery';
 
-    // If delivery partner is assigned, reduce polling frequency to 30 seconds
-    // If not assigned, poll every 5 seconds to detect assignment
-    const pollInterval = hasDeliveryPartner ? 30000 : 5000;
+    // If delivery partner is assigned, reduce polling frequency to 45 seconds (increased from 30s)
+    // If not assigned, poll every 10 seconds to detect assignment (increased from 5s)
+    const pollInterval = hasDeliveryPartner ? 45000 : 10000;
 
     const interval = setInterval(async () => {
+      // Only poll when page is visible to reduce unnecessary requests
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
       try {
         const response = await orderAPI.getOrderDetails(orderId);
         if (response.data?.success && response.data.data?.order) {
@@ -324,7 +328,31 @@ export default function OrderTracking() {
       }
     }, pollInterval);
 
-    return () => clearInterval(interval);
+    // Pause polling when page becomes hidden, resume when visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && orderId) {
+        // Immediately fetch when page becomes visible
+        orderAPI.getOrderDetails(orderId).then((response) => {
+          if (response.data?.success && response.data.data?.order) {
+            const apiOrder = response.data.data.order;
+            const transformedOrder = {
+              ...apiOrder,
+              restaurantLocation: order?.restaurantLocation,
+              deliveryPartnerId: apiOrder.deliveryPartnerId?._id || apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
+              assignmentInfo: apiOrder.assignmentInfo || null,
+              deliveryState: apiOrder.deliveryState || null
+            };
+            setOrder(transformedOrder);
+          }
+        }).catch(err => console.error('Error fetching order on visibility change:', err));
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [orderId, order?.deliveryState?.status, order?.deliveryState?.currentPhase]);
 
   // Fetch order from API if not found in context

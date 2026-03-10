@@ -55,14 +55,46 @@ export const api = {
   },
 };
 
+// Track in-flight OTP requests to prevent duplicates
+const inFlightOTPRequests = new Map();
+
+/**
+ * Generate a unique key for OTP request deduplication
+ */
+function getOTPRequestKey(phone, email, purpose) {
+  const identifier = phone || email || 'unknown';
+  return `${identifier}:${purpose}`;
+}
+
 // Export auth helper functions
 export const authAPI = {
   // Send OTP (supports both phone and email)
   sendOTP: (phone = null, purpose = "login", email = null) => {
+    const requestKey = getOTPRequestKey(phone, email, purpose);
+    
+    // Check if request is already in flight
+    if (inFlightOTPRequests.has(requestKey)) {
+      const existingRequest = inFlightOTPRequests.get(requestKey);
+      return existingRequest;
+    }
+
     const payload = { purpose };
     if (phone) payload.phone = phone;
     if (email) payload.email = email;
-    return apiClient.post(API_ENDPOINTS.AUTH.SEND_OTP, payload);
+    
+    // Create the request promise
+    const requestPromise = apiClient.post(API_ENDPOINTS.AUTH.SEND_OTP, payload)
+      .finally(() => {
+        // Remove from in-flight requests after completion (with small delay)
+        setTimeout(() => {
+          inFlightOTPRequests.delete(requestKey);
+        }, 2000); // 2 second deduplication window
+      });
+    
+    // Store the promise
+    inFlightOTPRequests.set(requestKey, requestPromise);
+    
+    return requestPromise;
   },
 
   // Verify OTP (supports both phone and email)
