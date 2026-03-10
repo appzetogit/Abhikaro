@@ -35,7 +35,7 @@ export const getMenu = asyncHandler(async (req, res) => {
 export const updateMenu = asyncHandler(async (req, res) => {
   // Restaurant is attached by authenticate middleware
   const restaurantId = req.restaurant._id;
-  const { sections } = req.body;
+  const { sections, clearMenu } = req.body;
   
   console.log('=== UPDATE MENU REQUEST RECEIVED ===');
   console.log('Restaurant ID:', restaurantId);
@@ -47,6 +47,27 @@ export const updateMenu = asyncHandler(async (req, res) => {
   
   if (existingMenu) {
     console.log('[UPDATE MENU] Existing sections count:', existingMenu.sections?.length || 0);
+  }
+
+  // SAFETY GUARD:
+  // Many restaurant apps send a second \"cleanup\" update with sections = []
+  // immediately after a successful save. Without this guard, that empty payload
+  // would wipe the entire menu. We only allow a full clear when the client
+  // explicitly asks for it via clearMenu=true.
+  if (
+    existingMenu &&
+    (!Array.isArray(sections) || sections.length === 0) &&
+    !clearMenu
+  ) {
+    console.warn('[UPDATE MENU] Empty sections payload detected for restaurant', restaurantId.toString(), '- preserving existing menu (use clearMenu=true to wipe).');
+
+    return successResponse(res, 200, 'Menu unchanged (empty update ignored)', {
+      menu: {
+        sections: existingMenu.sections || [],
+        isActive: existingMenu.isActive,
+      },
+      ignoredEmptyUpdate: true,
+    });
   }
   
   // Debug: Log incoming images data

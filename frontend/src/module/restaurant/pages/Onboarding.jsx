@@ -205,15 +205,42 @@ export default function RestaurantOnboarding() {
     return new File([blob], fileName, { type: mimeType });
   };
 
+  // Trigger normal HTML file input as a fallback (for WebView / browser)
+  const triggerFileInputFallback = (imageType, isMultiple = false) => {
+    let inputId = null;
+
+    if (imageType === 'menuImages') {
+      inputId = isMultiple ? 'menuImagesInput' : 'menuImagesCameraInput';
+    } else if (imageType === 'profileImage') {
+      inputId = isMultiple ? 'profileImageInput' : 'profileImageCameraInput';
+    } else if (imageType === 'panImage') {
+      inputId = isMultiple ? 'panImageInput' : 'panImageCameraInput';
+    } else if (imageType === 'gstImage') {
+      inputId = isMultiple ? 'gstImageInput' : 'gstImageCameraInput';
+    } else if (imageType === 'fssaiImage') {
+      inputId = isMultiple ? 'fssaiImageInput' : 'fssaiImageCameraInput';
+    }
+
+    if (inputId) {
+      const el = document.getElementById(inputId);
+      if (el) {
+        el.click();
+      }
+    }
+  };
+
   // Check if running in Flutter WebView
   const isFlutterApp = () => {
-    return !!(window.flutter_inappwebview || window.webkit?.messageHandlers);
+    // We only treat environment as Flutter if the inappwebview bridge is present.
+    // This avoids false-positives on iOS Safari / generic WebViews.
+    return !!window.flutter_inappwebview;
   };
 
   // Handler for Flutter camera callback
   const handleFlutterCamera = (imageType, isMultiple = false) => {
     if (!window.flutter_inappwebview) {
-      console.warn('Flutter WebView not available');
+      console.warn('Flutter WebView not available, falling back to native file input');
+      triggerFileInputFallback(imageType, isMultiple);
       return;
     }
 
@@ -240,19 +267,26 @@ export default function RestaurantOnboarding() {
     }).catch((error) => {
       console.error('Error calling Flutter openCamera:', error);
       toast.error('Failed to capture image from camera');
+      // Fallback to HTML file input if Flutter handler fails
+      triggerFileInputFallback(imageType, isMultiple);
     });
   };
 
   // Handler for Flutter gallery callback
   const handleFlutterGallery = (imageType, isMultiple = false) => {
     if (!window.flutter_inappwebview) {
-      console.warn('Flutter WebView not available');
+      console.warn('Flutter WebView not available, falling back to native file input');
+      triggerFileInputFallback(imageType, isMultiple);
       return;
     }
 
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
       try {
-        if (!result || !result.success) return;
+        if (!result || !result.success) {
+          // If Flutter didn't return a valid result, fall back to normal picker
+          triggerFileInputFallback(imageType, isMultiple);
+          return;
+        }
 
         // Support multiple possible payload shapes from Flutter:
         // 1) { success, base64, mimeType, fileName }
@@ -270,7 +304,10 @@ export default function RestaurantOnboarding() {
           entries.push(result);
         }
 
-        if (!entries.length) return;
+        if (!entries.length) {
+          triggerFileInputFallback(imageType, isMultiple);
+          return;
+        }
 
         const files = entries.map((entry, index) =>
           base64ToFile(
@@ -302,10 +339,14 @@ export default function RestaurantOnboarding() {
       } catch (err) {
         console.error('Error processing Flutter gallery result:', err);
         toast.error('Failed to process image from gallery');
+        // Fallback if processing fails
+        triggerFileInputFallback(imageType, isMultiple);
       }
     }).catch((error) => {
       console.error('Error calling Flutter openGallery:', error);
       toast.error('Failed to select image from gallery');
+      // Fallback to HTML file input if Flutter handler fails
+      triggerFileInputFallback(imageType, isMultiple);
     });
   };
 
