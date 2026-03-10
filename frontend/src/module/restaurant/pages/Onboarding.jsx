@@ -50,6 +50,33 @@ const timeToString = (date) => {
   return `${hours}:${minutes}`
 }
 
+// Clear any onboarding-related data from localStorage when onboarding is complete
+// This prevents stale data from affecting future sessions
+const clearOnboardingFromLocalStorage = () => {
+  try {
+    if (typeof window === "undefined") return
+
+    const keysToClear = [
+      "restaurant_onboarding_step",
+      "restaurant_onboarding_data",
+      "restaurant_onboarding_step1",
+      "restaurant_onboarding_step2",
+      "restaurant_onboarding_step3",
+      "restaurant_onboarding_step4",
+    ]
+
+    keysToClear.forEach((key) => {
+      try {
+        window.localStorage.removeItem(key)
+      } catch {
+        // ignore per-key errors
+      }
+    })
+  } catch {
+    // Fail silently - not critical for UX
+  }
+}
+
 function TimeSelector({ label, value, onChange }) {
   const timeValue = stringToTime(value)
 
