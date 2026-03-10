@@ -132,20 +132,52 @@ export const tieredUserRateLimit = async (req, res, next) => {
 
     // Skip rate limiting for high-frequency, low-risk public endpoints
     // (reverse geocode, order price preview, public env/business settings, user passive location updates)
-    const path = req.path || '';
-    if (
+  const path = req.path || '';
+
+  // Skip rate limiting for high-frequency, low-risk public endpoints
+  // (reverse geocode, order price preview, public env/business settings, user passive location updates)
+  if (
       path.startsWith('/location/reverse') ||
       path.startsWith('/order/calculate') ||
       path === '/order' ||
       path === '/env/public' ||
       path === '/user/location' ||
       path === '/business-settings/public'
-    ) {
+  ) {
       return next();
-    }
+  }
 
-    const userId = req.user?.id || req.user?._id || req.auth?.userId;
-    const role = req.user?.role || req.auth?.role || 'default';
+  // Auth / OTP endpoints already have their own strict rate limiting.
+  // Avoid double‑limiting them here.
+  if (
+    path.startsWith('/auth/') ||
+    path.startsWith('/restaurant/auth') ||
+    path.startsWith('/delivery/auth') ||
+    path.startsWith('/hotel/auth')
+  ) {
+    return next();
+  }
+
+  const userId = req.user?.id || req.user?._id || req.auth?.userId;
+
+  // Normalise role string so it matches ROLE_RATE_LIMITS keys
+  let role = (req.user?.role || req.auth?.role || 'default')
+    .toString()
+    .toLowerCase();
+
+  // If role isn't directly mapped, infer from path so admins/restaurants/delivery
+  // don't fall back to the very strict "default" bucket.
+  if (!ROLE_RATE_LIMITS[role]) {
+    if (path.startsWith('/admin/')) {
+      role = 'admin';
+    } else if (path.startsWith('/restaurant/')) {
+      role = 'restaurant';
+    } else if (path.startsWith('/delivery/')) {
+      role = 'delivery';
+    } else {
+      role = 'default';
+    }
+  }
     
     // Get rate limit config for this role
     const limitConfig = ROLE_RATE_LIMITS[role] || ROLE_RATE_LIMITS.default;
