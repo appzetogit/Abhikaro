@@ -824,4 +824,20 @@ apiClient.interceptors.response.use(
   },
 );
 
+/**
+ * Wrap apiClient.request with lightweight client-side deduplication for
+ * idempotent requests (where config.deduplicate was set in the interceptor).
+ * This preserves the exact same response shape and errors while avoiding
+ * duplicate in-flight calls to the same endpoint.
+ */
+const rawRequest = apiClient.request.bind(apiClient);
+
+apiClient.request = function dedupAwareRequest(config) {
+  const finalConfig = config || {};
+  if (finalConfig.deduplicate) {
+    return deduplicateRequest(rawRequest, finalConfig, 800);
+  }
+  return rawRequest(finalConfig);
+};
+
 export default apiClient;

@@ -10,6 +10,12 @@ const pendingRequests = new Map();
 // Store completed requests for deduplication window
 const completedRequests = new Map();
 
+// Avoid noisy logging in production; keep full logs only in dev
+const isDev =
+  typeof import.meta !== "undefined" &&
+  import.meta.env &&
+  import.meta.env.DEV === true;
+
 /**
  * Generate a unique key for a request
  * @param {string} method - HTTP method
@@ -47,14 +53,18 @@ export function deduplicateRequest(requestFn, config, deduplicationWindow = 1000
 
   // Check if same request is already pending
   if (pendingRequests.has(key)) {
-    console.log(`🔄 Deduplicating request: ${key}`);
+    if (isDev) {
+      console.log(`🔄 Deduplicating request: ${key}`);
+    }
     return pendingRequests.get(key);
   }
 
   // Check if same request was completed recently
   const completedRequest = completedRequests.get(key);
   if (completedRequest && (Date.now() - completedRequest.timestamp) < deduplicationWindow) {
-    console.log(`✅ Returning cached response for: ${key}`);
+    if (isDev) {
+      console.log(`✅ Returning cached response for: ${key}`);
+    }
     return Promise.resolve(completedRequest.response);
   }
 

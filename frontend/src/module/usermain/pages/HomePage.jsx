@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import Lenis from "lenis"
@@ -260,21 +260,31 @@ export default function HomePage() {
     }
   })()
   
-  // Debug: Log location data
+  // Debug: Log location data (deferred so it doesn't impact first paint)
   useEffect(() => {
-    console.log("📍 HomePage - Location state:", {
-      hasLocation: !!location,
-      hasStoredLocation: !!storedLocation,
-      location: location,
-      storedLocation: storedLocation,
-      currentLocation: currentLocation,
-      formattedAddress: currentLocation?.formattedAddress,
-      address: currentLocation?.address,
-      city: currentLocation?.city,
-      state: currentLocation?.state,
-      area: currentLocation?.area,
-      display: locationDisplay
-    })
+    const run = () => {
+      console.log("📍 HomePage - Location state:", {
+        hasLocation: !!location,
+        hasStoredLocation: !!storedLocation,
+        location: location,
+        storedLocation: storedLocation,
+        currentLocation: currentLocation,
+        formattedAddress: currentLocation?.formattedAddress,
+        address: currentLocation?.address,
+        city: currentLocation?.city,
+        state: currentLocation?.state,
+        area: currentLocation?.area,
+        display: locationDisplay,
+      })
+    }
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(run)
+      return () => window.cancelIdleCallback(id)
+    }
+
+    const timeoutId = setTimeout(run, 0)
+    return () => clearTimeout(timeoutId)
   }, [location, storedLocation, currentLocation, locationDisplay])
 
   // Show toast notification
@@ -303,36 +313,47 @@ export default function HomePage() {
 
   // Carousel slides data
   const carouselSlides = [
-    { id: 1, title: "Biryani That Will Change Your Mind", image: "https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=1200&h=600&fit=crop", discount: "14% OFF", rating: "5/5" },
-    { id: 2, title: "Delicious Pizza", image: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1200&h=600&fit=crop", discount: "20% OFF", rating: "4.8/5" },
-    { id: 3, title: "Fresh Burgers", image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1200&h=600&fit=crop", discount: "15% OFF", rating: "4.9/5" },
-    { id: 4, title: "Tasty Pasta", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=1200&h=600&fit=crop", discount: "10% OFF", rating: "4.7/5" },
-    { id: 5, title: "Sushi Delight", image: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=1200&h=600&fit=crop", discount: "12% OFF", rating: "4.6/5" },
+    { id: 1, title: "Biryani That Will Change Your Mind", image: "https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=1200&h=600&fit=crop&q=60", discount: "14% OFF", rating: "5/5" },
+    { id: 2, title: "Delicious Pizza", image: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1200&h=600&fit=crop&q=60", discount: "20% OFF", rating: "4.8/5" },
+    { id: 3, title: "Fresh Burgers", image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1200&h=600&fit=crop&q=60", discount: "15% OFF", rating: "4.9/5" },
+    { id: 4, title: "Tasty Pasta", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=1200&h=600&fit=crop&q=60", discount: "10% OFF", rating: "4.7/5" },
+    { id: 5, title: "Sushi Delight", image: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=1200&h=600&fit=crop&q=60", discount: "12% OFF", rating: "4.6/5" },
   ]
 
-  // Auto-slide effect
+  // Smooth scrolling + auto-slide effect (deferred to avoid blocking first paint)
   useEffect(() => {
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-    })
+    let lenis
+    let rafId
 
-    function raf(time) {
-      lenis.raf(time)
-      requestAnimationFrame(raf)
+    const startLenis = () => {
+      lenis = new Lenis({
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+      })
+
+      const raf = (time) => {
+        lenis?.raf(time)
+        rafId = requestAnimationFrame(raf)
+      }
+
+      rafId = requestAnimationFrame(raf)
     }
 
-    requestAnimationFrame(raf)
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      window.requestIdleCallback(startLenis)
+    } else {
+      setTimeout(startLenis, 0)
+    }
 
-    // Auto-slide carousel
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % carouselSlides.length)
-    }, 4000) // Change slide every 4 seconds
+    }, 4000)
 
     return () => {
       clearInterval(interval)
-      lenis.destroy()
+      if (rafId) cancelAnimationFrame(rafId)
+      lenis?.destroy()
     }
   }, [carouselSlides.length])
 
@@ -353,7 +374,7 @@ export default function HomePage() {
   }, [wishlist])
 
   // Toggle wishlist item
-  const toggleWishlist = (item, type = 'food') => {
+  const toggleWishlist = useCallback((item, type = 'food') => {
     const itemId = type === 'food' ? `food-${item.id}` : `restaurant-${item.id}`
     const { id, ...restItem } = item
     const wishlistItem = {
@@ -380,31 +401,31 @@ export default function HomePage() {
         return [...prev, wishlistItem]
       }
     })
-  }
+  }, [wishlist])
 
   // Check if item is in wishlist
-  const isInWishlist = (item, type = 'food') => {
+  const isInWishlist = useCallback((item, type = 'food') => {
     const itemId = type === 'food' ? `food-${item.id}` : `restaurant-${item.id}`
     return wishlist.some((w) => w.id === itemId)
-  }
+  }, [wishlist])
 
   // Food categories
   const categories = [
-    { id: 1, name: "American", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=200&h=200&fit=crop", color: "bg-blue-100" },
-    { id: 2, name: "Bengali", image: "https://images.unsplash.com/photo-1551024506-0bccd828d307?w=200&h=200&fit=crop", color: "bg-orange-100" },
-    { id: 3, name: "Caribbean", image: "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=200&h=200&fit=crop", color: "bg-pink-100" },
-    { id: 4, name: "Chinese", image: "https://images.unsplash.com/photo-1525755662778-989d0524087e?w=200&h=200&fit=crop", color: "bg-purple-100" },
-    { id: 5, name: "Italian", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=200&h=200&fit=crop", color: "bg-green-100" },
-    { id: 6, name: "Mexican", image: "https://images.unsplash.com/photo-1626700051175-6818013e1d4f?w=200&h=200&fit=crop", color: "bg-yellow-100" },
-    { id: 7, name: "Indian", image: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=200&h=200&fit=crop", color: "bg-red-100" },
+    { id: 1, name: "American", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=200&h=200&fit=crop&q=60", color: "bg-blue-100" },
+    { id: 2, name: "Bengali", image: "https://images.unsplash.com/photo-1551024506-0bccd828d307?w=200&h=200&fit=crop&q=60", color: "bg-orange-100" },
+    { id: 3, name: "Caribbean", image: "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=200&h=200&fit=crop&q=60", color: "bg-pink-100" },
+    { id: 4, name: "Chinese", image: "https://images.unsplash.com/photo-1525755662778-989d0524087e?w=200&h=200&fit=crop&q=60", color: "bg-purple-100" },
+    { id: 5, name: "Italian", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=200&h=200&fit=crop&q=60", color: "bg-green-100" },
+    { id: 6, name: "Mexican", image: "https://images.unsplash.com/photo-1626700051175-6818013e1d4f?w=200&h=200&fit=crop&q=60", color: "bg-yellow-100" },
+    { id: 7, name: "Indian", image: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=200&h=200&fit=crop&q=60", color: "bg-red-100" },
   ]
 
   // Today's Trends items
   const trendsItems = [
-    { id: 1, name: "Red n hot pizza", description: "Spicy chicken, beef", image: "https://images.unsplash.com/photo-1628840042765-356cda07504e?w=400&h=400&fit=crop", price: "$9.50", rating: 4.5, reviews: 25 },
-    { id: 2, name: "Meat Pasta", description: "meat & Basil", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=400&h=400&fit=crop", price: "$9.50", rating: 4.5, reviews: 25 },
-    { id: 3, name: "Brushetta", description: "topings & tomato", image: "https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=400&h=400&fit=crop", price: "$9.50", rating: 4.5, reviews: 25 },
-    { id: 4, name: "Salad", description: "Baked Salmon", image: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=400&fit=crop", price: "$9.50", rating: 4.5, reviews: 25 },
+    { id: 1, name: "Red n hot pizza", description: "Spicy chicken, beef", image: "https://images.unsplash.com/photo-1628840042765-356cda07504e?w=400&h=400&fit=crop&q=60", price: "$9.50", rating: 4.5, reviews: 25 },
+    { id: 2, name: "Meat Pasta", description: "meat & Basil", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=400&h=400&fit=crop&q=60", price: "$9.50", rating: 4.5, reviews: 25 },
+    { id: 3, name: "Brushetta", description: "topings & tomato", image: "https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=400&h=400&fit=crop&q=60", price: "$9.50", rating: 4.5, reviews: 25 },
+    { id: 4, name: "Salad", description: "Baked Salmon", image: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=400&fit=crop&q=60", price: "$9.50", rating: 4.5, reviews: 25 },
   ]
 
   // Popular Restaurants data
@@ -412,7 +433,7 @@ export default function HomePage() {
     { 
       id: 1, 
       name: "Hungry Puppets", 
-      foodImage: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&h=300&fit=crop",
+      foodImage: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&h=300&fit=crop&q=60",
       restaurantIcon: UtensilsCrossed,
       cuisines: "Bengali, Indian, Pizza, Pasta",
       distance: "967.40 km",
@@ -422,7 +443,7 @@ export default function HomePage() {
     { 
       id: 2, 
       name: "Pizza Paradise", 
-      foodImage: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=300&fit=crop",
+      foodImage: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=300&fit=crop&q=60",
       restaurantIcon: ChefHat,
       cuisines: "Italian, Pizza, Pasta",
       distance: "850.20 km",
@@ -432,7 +453,7 @@ export default function HomePage() {
     { 
       id: 3, 
       name: "Burger King", 
-      foodImage: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=300&fit=crop",
+      foodImage: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=300&fit=crop&q=60",
       restaurantIcon: Store,
       cuisines: "American, Fast Food, Burgers",
       distance: "720.50 km",
@@ -442,7 +463,7 @@ export default function HomePage() {
     { 
       id: 4, 
       name: "Sushi Express", 
-      foodImage: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400&h=300&fit=crop",
+      foodImage: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400&h=300&fit=crop&q=60",
       restaurantIcon: ChefHat,
       cuisines: "Japanese, Sushi, Asian",
       distance: "1100.30 km",
@@ -452,7 +473,7 @@ export default function HomePage() {
     { 
       id: 5, 
       name: "Taco Bell", 
-      foodImage: "https://images.unsplash.com/photo-1626700051175-6818013e1d4f?w=400&h=300&fit=crop",
+      foodImage: "https://images.unsplash.com/photo-1626700051175-6818013e1d4f?w=400&h=300&fit=crop&q=60",
       restaurantIcon: Coffee,
       cuisines: "Mexican, Fast Food, Tacos",
       distance: "650.80 km",
@@ -542,10 +563,13 @@ export default function HomePage() {
               src={carouselSlides[currentSlide].image} 
               alt={carouselSlides[currentSlide].title}
               className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.target.src = `https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=1200&h=600&fit=crop`
-                }}
-              />
+              width={1200}
+              height={600}
+              loading="lazy"
+              onError={(e) => {
+                e.target.src = `https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=1200&h=600&fit=crop`
+              }}
+            />
               
               {/* Gradient Overlay for better text readability */}
               <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent" />
@@ -630,12 +654,15 @@ export default function HomePage() {
                 onClick={() => navigate(`/usermain/category/${category.name}`)}
               >
                 <div className="w-20 h-20 rounded-full overflow-hidden">
-                <img 
-                  src={category.image} 
-                  alt={category.name}
+                  <img 
+                    src={category.image} 
+                    alt={category.name}
                     className="w-full h-full object-cover"
-                />
-              </div>
+                    width={200}
+                    height={200}
+                    loading="lazy"
+                  />
+                </div>
                 <p className="text-[10px] font-medium text-gray-700 text-center leading-tight">{category.name}</p>
             </div>
           ))}
@@ -668,6 +695,9 @@ export default function HomePage() {
                   onError={(e) => {
                     e.target.src = `https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=400&fit=crop`
                   }}
+                  width={400}
+                  height={128}
+                  loading="lazy"
                 />
                 {/* Price Badge - Top Left - White oval with black border */}
                 <div className="absolute top-1.5 left-1.5 bg-white border-2 border-black rounded-full px-2 py-0.5">
@@ -752,6 +782,9 @@ export default function HomePage() {
                   onError={(e) => {
                     e.target.src = `https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&h=300&fit=crop`
                   }}
+                  width={400}
+                  height={160}
+                  loading="lazy"
                 />
                 {/* Heart Icon - Top Right */}
                 <button 

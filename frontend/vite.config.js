@@ -38,9 +38,9 @@ export default defineConfig({
         changeOrigin: true,
         // Don't rewrite the path - backend serves at root
         configure: (proxy, _options) => {
-          proxy.on('error', (err, _req, res) => {
+          proxy.on("error", (_err, _req, _res) => {
             // If backend is unavailable, let Vite serve the static fallback
-            console.log('Backend unavailable for service worker, using static fallback');
+            console.log("Backend unavailable for service worker, using static fallback");
           });
         },
       },
@@ -50,5 +50,17 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: false,
     chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        // Split large vendor bundles for better caching and initial load
+        manualChunks: {
+          react: ["react", "react-dom"],
+          router: ["react-router-dom"],
+          mui: ["@mui/material", "@mui/x-date-pickers", "@emotion/react", "@emotion/styled"],
+          maps: ["mapbox-gl", "react-map-gl", "leaflet", "react-leaflet", "@react-google-maps/api"],
+          charts: ["recharts"],
+        },
+      },
+    },
   },
 });

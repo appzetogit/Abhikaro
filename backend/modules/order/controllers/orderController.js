@@ -31,6 +31,10 @@ const logger = winston.createLogger({
   ],
 });
 
+// Simple environment flag to reduce debug logging and synchronous disk I/O
+// in production hot paths (order creation, payment, list endpoints).
+const isDev = (process.env.NODE_ENV || "development") !== "production";
+
 /**
  * Create a new order and initiate Razorpay payment
  */
@@ -66,13 +70,15 @@ export const createOrder = async (req, res) => {
       return paymentMethod || "razorpay";
     })();
 
-    logger.info("Order create paymentMethod:", {
-      raw: paymentMethod,
-      normalized: normalizedPaymentMethod,
-      bodyKeys: Object.keys(req.body || {}).filter((k) =>
-        k.toLowerCase().includes("payment"),
-      ),
-    });
+    if (isDev) {
+      logger.info("Order create paymentMethod:", {
+        raw: paymentMethod,
+        normalized: normalizedPaymentMethod,
+        bodyKeys: Object.keys(req.body || {}).filter((k) =>
+          k.toLowerCase().includes("payment"),
+        ),
+      });
+    }
 
     // Validate required fields
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -161,13 +167,15 @@ export const createOrder = async (req, res) => {
     let assignedRestaurantId = restaurantId;
     let assignedRestaurantName = restaurantName;
 
-    // Log incoming restaurant data for debugging
-    logger.info("🔍 Order creation - Restaurant lookup:", {
-      incomingRestaurantId: restaurantId,
-      incomingRestaurantName: restaurantName,
-      restaurantIdType: typeof restaurantId,
-      restaurantIdLength: restaurantId?.length,
-    });
+    // Log incoming restaurant data for debugging (dev / staging only)
+    if (isDev) {
+      logger.info("🔍 Order creation - Restaurant lookup:", {
+        incomingRestaurantId: restaurantId,
+        incomingRestaurantName: restaurantName,
+        restaurantIdType: typeof restaurantId,
+        restaurantIdLength: restaurantId?.length,
+      });
+    }
 
     // Find and validate the restaurant
     let restaurant = null;
@@ -177,23 +185,27 @@ export const createOrder = async (req, res) => {
       restaurantId.length === 24
     ) {
       restaurant = await Restaurant.findById(restaurantId);
-      logger.info("🔍 Restaurant lookup by _id:", {
-        restaurantId: restaurantId,
-        found: !!restaurant,
-        restaurantName: restaurant?.name,
-      });
+      if (isDev) {
+        logger.info("🔍 Restaurant lookup by _id:", {
+          restaurantId: restaurantId,
+          found: !!restaurant,
+          restaurantName: restaurant?.name,
+        });
+      }
     }
     if (!restaurant) {
       restaurant = await Restaurant.findOne({
         $or: [{ restaurantId: restaurantId }, { slug: restaurantId }],
       });
-      logger.info("🔍 Restaurant lookup by restaurantId/slug:", {
-        restaurantId: restaurantId,
-        found: !!restaurant,
-        restaurantName: restaurant?.name,
-        restaurant_restaurantId: restaurant?.restaurantId,
-        restaurant__id: restaurant?._id?.toString(),
-      });
+      if (isDev) {
+        logger.info("🔍 Restaurant lookup by restaurantId/slug:", {
+          restaurantId: restaurantId,
+          found: !!restaurant,
+          restaurantName: restaurant?.name,
+          restaurant_restaurantId: restaurant?.restaurantId,
+          restaurant__id: restaurant?._id?.toString(),
+        });
+      }
     }
 
     if (!restaurant) {
@@ -416,15 +428,17 @@ export const createOrder = async (req, res) => {
       }
     }
 
-    // Log restaurant assignment for debugging
-    logger.info("✅ Restaurant assigned to order:", {
-      assignedRestaurantId: assignedRestaurantId,
-      assignedRestaurantName: assignedRestaurantName,
-      restaurant_id: restaurant._id?.toString(),
-      restaurant_restaurantId: restaurant.restaurantId,
-      incomingRestaurantId: restaurantId,
-      incomingRestaurantName: restaurantName,
-    });
+    // Log restaurant assignment for debugging (dev / staging only)
+    if (isDev) {
+      logger.info("✅ Restaurant assigned to order:", {
+        assignedRestaurantId: assignedRestaurantId,
+        assignedRestaurantName: assignedRestaurantName,
+        restaurant_id: restaurant._id?.toString(),
+        restaurant_restaurantId: restaurant.restaurantId,
+        incomingRestaurantId: restaurantId,
+        incomingRestaurantName: restaurantName,
+      });
+    }
 
     // Generate order ID before creating order
     const timestamp = Date.now();
@@ -463,34 +477,45 @@ export const createOrder = async (req, res) => {
     // Check for specific restaurant commission first
     try {
       if (!hotelReference) {
-        // DEBUG LOGGING
+        // Optional debug logging to file (development and debugging only)
         const fs = await import("fs");
-        const debugLog = `[${new Date().toISOString()}] Checking Specific Commission for RestaurantId: ${assignedRestaurantId}\n`;
-        fs.appendFileSync("commission_debug.txt", debugLog);
+        if (isDev) {
+          const debugLog = `[${new Date().toISOString()}] Checking Specific Commission for RestaurantId: ${assignedRestaurantId}\n`;
+          fs.appendFile(
+            "commission_debug.txt",
+            debugLog,
+            (err) => err && logger.error("Failed to write commission debug log:", err),
+          );
+        }
 
         const restaurantCommission = await RestaurantCommission.findOne({
           restaurant: assignedRestaurantId,
           status: true,
         });
 
-        fs.appendFileSync(
-          "commission_debug.txt",
-          `[${new Date().toISOString()}] Found Commission: ${restaurantCommission ? "YES" : "NO"}\n`,
-        );
-        if (restaurantCommission) {
-          fs.appendFileSync(
+        if (isDev) {
+          fs.appendFile(
             "commission_debug.txt",
-            `[${new Date().toISOString()}] Comm Data: ${JSON.stringify(restaurantCommission.defaultCommission)}\n`,
+            `[${new Date().toISOString()}] Found Commission: ${restaurantCommission ? "YES" : "NO"}\n`,
+            () => {},
           );
-        } else {
-          // Check if any commission exists for this restaurant ignoring status
-          const anyComm = await RestaurantCommission.findOne({
-            restaurant: assignedRestaurantId,
-          });
-          fs.appendFileSync(
-            "commission_debug.txt",
-            `[${new Date().toISOString()}] Any Commission Exists? ${anyComm ? "YES (Status: " + anyComm.status + ")" : "NO"}\n`,
-          );
+          if (restaurantCommission) {
+            fs.appendFile(
+              "commission_debug.txt",
+              `[${new Date().toISOString()}] Comm Data: ${JSON.stringify(restaurantCommission.defaultCommission)}\n`,
+              () => {},
+            );
+          } else {
+            // Check if any commission exists for this restaurant ignoring status
+            const anyComm = await RestaurantCommission.findOne({
+              restaurant: assignedRestaurantId,
+            });
+            fs.appendFile(
+              "commission_debug.txt",
+              `[${new Date().toISOString()}] Any Commission Exists? ${anyComm ? "YES (Status: " + anyComm.status + ")" : "NO"}\n`,
+              () => {},
+            );
+          }
         }
 
         if (restaurantCommission) {

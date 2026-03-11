@@ -106,6 +106,9 @@ if (missingEnvVars.length > 0) {
 const app = express();
 const httpServer = createServer(app);
 
+// Simple env flag to avoid heavy logging in production hot paths
+const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+
 // Initialize Socket.IO with proper CORS configuration
 const allowedSocketOrigins = [
   process.env.CORS_ORIGIN,
@@ -194,7 +197,7 @@ restaurantNamespace.on('connection', (socket) => {
   console.log('🍽️ Socket headers:', socket.handshake.headers);
 
   // Restaurant joins their room
-  socket.on('join-restaurant', (restaurantId) => {
+      socket.on('join-restaurant', (restaurantId) => {
     if (restaurantId) {
       // Normalize restaurantId to string (handle both ObjectId and string)
       const normalizedRestaurantId = restaurantId?.toString() || restaurantId;
@@ -691,17 +694,19 @@ io.on('connection', (socket) => {
       // Send to specific order room
       io.to(`order:${data.orderId}`).emit(`location-receive-${data.orderId}`, locationData);
 
-      console.log(`📍 Location broadcasted to order room ${data.orderId}:`, {
-        lat: locationData.lat,
-        lng: locationData.lng,
-        heading: locationData.heading
-      });
+      if (isDev) {
+        console.log(`📍 Location broadcasted to order room ${data.orderId}:`, {
+          lat: locationData.lat,
+          lng: locationData.lng,
+          heading: locationData.heading
+        });
 
-      console.log(`📍 Location update for order ${data.orderId}:`, {
-        lat: data.lat,
-        lng: data.lng,
-        heading: data.heading
-      });
+        console.log(`📍 Location update for order ${data.orderId}:`, {
+          lat: data.lat,
+          lng: data.lng,
+          heading: data.heading
+        });
+      }
     } catch (error) {
       console.error('Error handling location update:', error);
     }

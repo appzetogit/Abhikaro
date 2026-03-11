@@ -1,4 +1,4 @@
-import { getDatabase, ref, onValue, off, update, set } from 'firebase/database';
+import { getDatabase, ref, onValue, off, update, set, get } from 'firebase/database';
 import { firebaseApp, ensureFirebaseInitialized } from './firebase.js';
 
 let db = null;
@@ -196,8 +196,6 @@ export async function getOrderTrackingFromFirebase(orderId) {
     if (!database) {
       return null;
     }
-
-    const { get } = await import('firebase/database');
     const orderRef = ref(database, `active_orders/${orderId}`);
     const snapshot = await get(orderRef);
 
