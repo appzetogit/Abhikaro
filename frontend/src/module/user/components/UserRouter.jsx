@@ -3,7 +3,7 @@ import ProtectedRoute from "@/components/ProtectedRoute"
 import AuthRedirect from "@/components/AuthRedirect"
 import UserLayout from "./UserLayout"
 import UserPreventRedirect from "./UserPreventRedirect"
-import { Suspense, lazy } from "react"
+import { Suspense, lazy, useEffect } from "react"
 import Loader from "@/components/Loader"
 
 // Lazy Loading Pages
