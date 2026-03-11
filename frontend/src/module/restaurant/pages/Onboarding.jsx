@@ -168,14 +168,17 @@ export default function RestaurantOnboarding() {
     panNumber: "",
     nameOnPan: "",
     panImage: null,
+    panImagePreviewUrl: "", // data URL for reliable preview across webviews
     gstRegistered: false,
     gstNumber: "",
     gstLegalName: "",
     gstAddress: "",
     gstImage: null,
+    gstImagePreviewUrl: "",
     fssaiNumber: "",
     fssaiExpiry: "",
     fssaiImage: null,
+    fssaiImagePreviewUrl: "",
     accountNumber: "",
     confirmAccountNumber: "",
     ifscCode: "",
@@ -1629,7 +1632,9 @@ export default function RestaurantOnboarding() {
               {(() => {
                 let imageSrc = null
 
-                if (step3.panImage instanceof File) {
+                if (step3.panImagePreviewUrl) {
+                  imageSrc = step3.panImagePreviewUrl
+                } else if (step3.panImage instanceof File) {
                   imageSrc = URL.createObjectURL(step3.panImage)
                 } else if (step3.panImage?.url) {
                   imageSrc = step3.panImage.url
@@ -1674,7 +1679,20 @@ export default function RestaurantOnboarding() {
               capture="environment"
               className="hidden"
               onChange={(e) => {
-                setStep3({ ...step3, panImage: e.target.files?.[0] || null })
+                const file = e.target.files?.[0] || null
+                if (file) {
+                  const reader = new FileReader()
+                  reader.onloadend = () => {
+                    setStep3(prev => ({
+                      ...prev,
+                      panImage: file,
+                      panImagePreviewUrl: typeof reader.result === 'string' ? reader.result : ''
+                    }))
+                  }
+                  reader.readAsDataURL(file)
+                } else {
+                  setStep3(prev => ({ ...prev, panImage: null, panImagePreviewUrl: '' }))
+                }
                 e.target.value = ""
               }}
             />
@@ -1694,7 +1712,20 @@ export default function RestaurantOnboarding() {
               accept="image/*"
               className="hidden"
               onChange={(e) => {
-                setStep3({ ...step3, panImage: e.target.files?.[0] || null })
+                const file = e.target.files?.[0] || null
+                if (file) {
+                  const reader = new FileReader()
+                  reader.onloadend = () => {
+                    setStep3(prev => ({
+                      ...prev,
+                      panImage: file,
+                      panImagePreviewUrl: typeof reader.result === 'string' ? reader.result : ''
+                    }))
+                  }
+                  reader.readAsDataURL(file)
+                } else {
+                  setStep3(prev => ({ ...prev, panImage: null, panImagePreviewUrl: '' }))
+                }
                 e.target.value = ""
               }}
             />
