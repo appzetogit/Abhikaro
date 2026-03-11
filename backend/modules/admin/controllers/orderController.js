@@ -227,6 +227,29 @@ export const getOrders = asyncHandler(async (req, res) => {
       console.warn('Could not batch fetch payment status:', err.message);
     }
 
+    // Batch fetch AdminCommission for per‑order earnings breakdown
+    let commissionMapByOrderId = new Map();
+    try {
+      const AdminCommission = (await import('../models/AdminCommission.js')).default;
+      const commissions = await AdminCommission.find({
+        orderId: { $in: orders.map(o => o._id) },
+        status: 'completed'
+      })
+        .select('orderId commissionAmount restaurantEarning')
+        .lean();
+
+      commissions.forEach(c => {
+        if (c.orderId) {
+          commissionMapByOrderId.set(c.orderId.toString(), {
+            adminEarning: c.commissionAmount || 0,
+            restaurantEarning: c.restaurantEarning || 0
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('Could not batch fetch admin commissions for earnings breakdown:', err.message);
+    }
+
     // Transform orders to match frontend format
     const transformedOrders = orders.map((order, index) => {
       const orderDate = new Date(order.createdAt);
@@ -333,6 +356,29 @@ export const getOrders = asyncHandler(async (req, res) => {
       // Order amount (final total)
       const orderAmount = order.pricing?.total || 0;
 
+      // Earnings breakdown (per order) for admin view
+      const commissionInfo = commissionMapByOrderId.get(order._id.toString()) || {};
+      let deliveryEarning = order.estimatedEarnings?.totalEarning || 0; // real payout to delivery boy for this order
+      let restaurantEarning = commissionInfo.restaurantEarning || 0;     // net earning to restaurant after commission (when available)
+
+      // Fallback for older orders where commissions/estimatedEarnings were not stored
+      if (!restaurantEarning && !deliveryEarning) {
+        const subtotal = order.pricing?.subtotal || 0;
+        const discount = order.pricing?.discount || 0;
+        const deliveryFee = order.pricing?.deliveryFee || 0;
+
+        // Basic assumption: restaurant keeps discounted subtotal,
+        // delivery boy gets 80% of delivery fee,
+        // admin keeps the rest.
+        restaurantEarning = Math.max(0, subtotal - discount);
+        if (deliveryFee) {
+          deliveryEarning = Number((deliveryFee * 0.8).toFixed(2));
+        }
+      }
+
+      // Admin earning = everything left after paying restaurant (net) and delivery boy
+      const adminEarning = Math.max(0, orderAmount - restaurantEarning - deliveryEarning);
+
       // Build a human‑readable restaurant address if available
       const rawRestaurant = order.restaurantId || {};
       // restaurantId may be populated document or string; only build address when it's an object
@@ -428,7 +474,14 @@ export const getOrders = asyncHandler(async (req, res) => {
         zoneId: order.assignmentInfo?.zoneId || null,
         zoneName: order.assignmentInfo?.zoneName || null,
         // Refund status from settlement
-        refundStatus: refundStatusMap.get(order._id.toString()) || null
+        refundStatus: refundStatusMap.get(order._id.toString()) || null,
+        // Earnings breakdown (for detailed order views like Order Detect Delivery)
+        earnings: {
+          orderTotal: orderAmount,
+          restaurantEarning,
+          deliveryEarning,
+          adminEarning
+        }
       };
     });
 

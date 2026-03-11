@@ -119,6 +119,7 @@ export default function DeliveryEarnings() {
       { key: "restaurantName", label: "Restaurant" },
       { key: "amount", label: "Earning" },
       { key: "orderTotal", label: "Order Total" },
+      { key: "paymentMethod", label: "Payment" },
       { key: "deliveryFee", label: "Delivery Fee" },
       { key: "orderStatus", label: "Status" },
       { key: "createdAt", label: "Date" },
@@ -132,6 +133,7 @@ export default function DeliveryEarnings() {
       restaurantName: earning.restaurantName || 'N/A',
       amount: formatCurrency(earning.amount),
       orderTotal: formatCurrency(earning.orderTotal),
+        paymentMethod: earning.paymentMethod || 'Online',
       deliveryFee: formatCurrency(earning.deliveryFee),
       orderStatus: earning.orderStatus || 'N/A',
       createdAt: formatDate(earning.createdAt)
@@ -349,6 +351,7 @@ export default function DeliveryEarnings() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase">Restaurant</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase">Earning</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase">Order Total</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase">Payment</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase">Date</th>
                 </tr>
@@ -386,6 +389,19 @@ export default function DeliveryEarnings() {
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatCurrency(earning.orderTotal)}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            (earning.paymentMethod || 'Online') === 'Online'
+                              ? 'bg-blue-100 text-blue-800'
+                              : (earning.paymentMethod || '').toLowerCase() === 'pay at hotel'
+                                ? 'bg-orange-100 text-orange-800'
+                                : 'bg-slate-100 text-slate-800'
+                          }`}
+                        >
+                          {earning.paymentMethod || 'Online'}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

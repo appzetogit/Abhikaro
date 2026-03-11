@@ -208,6 +208,8 @@ const transformOrder = (order, index) => {
     statusHistory: statusHistory,
     orderDate: dateStr,
     orderTime: timeStr,
+    // Earnings breakdown for this order (if provided by backend)
+    earnings: order.earnings || null,
     // Keep original order data for detail view
     originalOrder: order
   }

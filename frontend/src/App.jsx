@@ -1,10 +1,10 @@
-import { Routes, Route, Navigate, useLocation } from "react-router-dom"
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AuthRedirect from "@/components/AuthRedirect"
 import NetworkStatusBanner from "@/components/NetworkStatusBanner"
 import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
 
-import { Suspense, lazy, useEffect } from "react"
+import { Suspense, lazy, useEffect, useState } from "react"
 import Loader from "@/components/Loader"
 import { restoreUserSession } from "@/lib/utils/auth.js"
 
@@ -142,6 +142,8 @@ function UserPathRedirect() {
 }
 
 export default function App() {
+  const [sessionRestored, setSessionRestored] = useState(false)
+
   useEffect(() => {
     // On initial app mount, try to restore *user* session using refresh token cookie.
     // Restrict to user-facing routes so that admin/restaurant/delivery/hotel apps
@@ -154,16 +156,75 @@ export default function App() {
       path.startsWith("/hotel-menu");
 
     if (!isUserRoute) {
+      setSessionRestored(true)
       return;
     }
 
-    restoreUserSession().catch(() => {});
+    restoreUserSession()
+      .catch(() => {})
+      .finally(() => {
+        setSessionRestored(true)
+      });
   }, []);
+
+  function UserReloadHandler({ children }) {
+    const location = useLocation();
+    const navigate = useNavigate();
+
+    useEffect(() => {
+      if (!sessionRestored) return;
+
+      try {
+        const nav = performance.getEntriesByType?.("navigation")?.[0];
+        const isReload = nav?.type === "reload";
+        if (!isReload) return;
+
+        const currentPath = location.pathname;
+        const isUserPath =
+          currentPath === "/" ||
+          currentPath.startsWith("/dining") ||
+          currentPath.startsWith("/cart") ||
+          currentPath.startsWith("/orders") ||
+          currentPath.startsWith("/profile") ||
+          currentPath.startsWith("/offers") ||
+          currentPath.startsWith("/wallet") ||
+          currentPath.startsWith("/help") ||
+          currentPath.startsWith("/notifications") ||
+          currentPath.startsWith("/collections") ||
+          currentPath.startsWith("/gift-card") ||
+          currentPath.startsWith("/complaints") ||
+          currentPath.startsWith("/usermain");
+
+        if (!isUserPath) return;
+
+        const storedRoute = sessionStorage.getItem("user_lastRoute");
+        const storedScroll = sessionStorage.getItem("user_lastScrollY");
+        const fullCurrent =
+          window.location.pathname + window.location.search + window.location.hash;
+
+        if (storedRoute && storedRoute !== fullCurrent) {
+          navigate(storedRoute, { replace: true });
+          setTimeout(() => {
+            const scrollY = storedScroll ? Number(storedScroll) || 0 : 0;
+            window.scrollTo(0, scrollY);
+          }, 100);
+        } else if (storedScroll) {
+          const scrollY = Number(storedScroll) || 0;
+          window.scrollTo(0, scrollY);
+        }
+      } catch {
+        // ignore errors
+      }
+    }, [location.pathname, sessionRestored, navigate]);
+
+    return children;
+  }
 
   return (
     <Suspense fallback={<Loader />}>
       <NetworkStatusProvider>
         <NetworkStatusBanner />
+        <UserReloadHandler>
         <Routes>
         <Route path="/user" element={<Navigate to="/" replace />} />
         <Route path="/user/*" element={<UserPathRedirect />} />
@@ -948,6 +1009,7 @@ export default function App() {
           element={<UserRouter />}
         />
       </Routes>
+      </UserReloadHandler>
       </NetworkStatusProvider>
     </Suspense>
   )

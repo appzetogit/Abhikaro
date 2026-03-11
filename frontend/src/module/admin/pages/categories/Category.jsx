@@ -28,6 +28,7 @@ export default function Category() {
     type: "",
     offerPercentage: 0,
     offerUsageLimitPerDay: 1,
+    offerEnabled: false,
   })
   const [selectedImageFile, setSelectedImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
@@ -236,6 +237,7 @@ export default function Category() {
       offerUsageLimitPerDay: typeof category.offerUsageLimitPerDay === "number"
         ? category.offerUsageLimitPerDay
         : 1,
+      offerEnabled: typeof category.offerPercentage === "number" && category.offerPercentage > 0,
     })
     setSelectedImageFile(null)
     setImagePreview(category.image || null)
@@ -251,6 +253,7 @@ export default function Category() {
       type: "",
       offerPercentage: 0,
       offerUsageLimitPerDay: 1,
+      offerEnabled: false,
     })
     setSelectedImageFile(null)
     setImagePreview(null)
@@ -393,6 +396,7 @@ export default function Category() {
       type: "",
       offerPercentage: 0,
       offerUsageLimitPerDay: 1,
+      offerEnabled: false,
     })
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
@@ -411,9 +415,9 @@ export default function Category() {
       formDataToSend.append('status', formData.status.toString())
       // Ensure a numeric string is always sent for offerPercentage
       const offerValue =
-        formData.offerPercentage === "" || formData.offerPercentage == null
-          ? "0"
-          : String(formData.offerPercentage)
+        formData.offerEnabled && formData.offerPercentage !== "" && formData.offerPercentage != null
+          ? String(formData.offerPercentage)
+          : "0"
       formDataToSend.append('offerPercentage', offerValue)
       // Usage limit per day (0 = unlimited)
       const usageLimitValue =
@@ -1058,11 +1062,33 @@ export default function Category() {
                       </select>
                     </div>
 
-                    {/* Category Offer Percentage */}
+                    {/* Category Offer Percentage with toggle */}
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
-                        Category Offer (%) <span className="text-xs text-slate-400">(optional, 0-100)</span>
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-slate-700">
+                          Category Offer (%) <span className="text-xs text-slate-400">(optional, 0-100)</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              offerEnabled: !prev.offerEnabled,
+                              // When turning off, keep value but it will not be applied
+                            }))
+                          }
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                            formData.offerEnabled ? "bg-blue-600" : "bg-slate-300"
+                          }`}
+                          title={formData.offerEnabled ? "Disable category offer" : "Enable category offer"}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              formData.offerEnabled ? "translate-x-4" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
+                      </div>
                       <input
                         type="number"
                         min={0}
@@ -1080,11 +1106,16 @@ export default function Category() {
                           if (num < 0 || num > 100) return
                           setFormData({ ...formData, offerPercentage: num })
                         }}
-                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                        disabled={!formData.offerEnabled}
+                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 mb-2 ${
+                          formData.offerEnabled
+                            ? "border-slate-300 focus:ring-blue-500"
+                            : "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                        }`}
                         placeholder="e.g. 10 for 10% OFF"
                       />
                       <p className="text-xs text-slate-500">
-                        This is flat discount percentage that will be shown to users.
+                        This is flat discount percentage that will be shown to users when offer is enabled.
                       </p>
                     </div>
 
@@ -1108,7 +1139,12 @@ export default function Category() {
                           if (num < 0) return
                           setFormData({ ...formData, offerUsageLimitPerDay: Math.floor(num) })
                         }}
-                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={!formData.offerEnabled}
+                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                          formData.offerEnabled
+                            ? "border-slate-300 focus:ring-blue-500"
+                            : "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                        }`}
                         placeholder="e.g. 1 for once per day"
                       />
                       <p className="text-xs text-slate-500 mt-1">

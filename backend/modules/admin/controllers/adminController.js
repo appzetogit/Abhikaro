@@ -376,10 +376,15 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       });
 
       const Menu = (await import("../../restaurant/models/Menu.js")).default;
+      const Hotel = (await import("../../hotel/models/Hotel.js")).default;
       const activeRestaurantDocs = await Restaurant.find({ isActive: true })
         .select("_id")
         .lean();
       const activeRestaurantIds = activeRestaurantDocs.map((r) => r._id);
+
+      // Total hotels (all) and active hotels (for hotel QR / stay partners)
+      const totalHotels = await Hotel.countDocuments({});
+      const activeHotels = await Hotel.countDocuments({ isActive: true });
 
       const activeMenus = await Menu.find({
         isActive: true,
@@ -898,6 +903,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       },
       customers: {
         total: totalCustomers,
+      },
+      hotels: {
+        total: totalHotels,
+        active: activeHotels,
       },
       orderStats: {
         pending: pendingOrders,

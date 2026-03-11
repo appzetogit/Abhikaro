@@ -199,7 +199,7 @@ export const getDeliveryEarnings = asyncHandler(async (req, res) => {
           orders = await Order.find({
             _id: { $in: orderIds }
           })
-            .select('orderId status createdAt deliveredAt pricing.total pricing.deliveryFee restaurantName address')
+            .select('orderId status createdAt deliveredAt pricing.total pricing.deliveryFee restaurantName address payment.method')
             .lean();
           
           console.log(`📦 Found ${orders.length} orders for ${orderIds.length} order IDs`);
@@ -220,6 +220,17 @@ export const getDeliveryEarnings = asyncHandler(async (req, res) => {
         // Get transaction date
         const transactionDate = transaction.createdAt || transaction.processedAt || new Date();
 
+        // Derive payment method (Online / Pay at Hotel / Cash)
+        let paymentType = 'Online';
+        if (order?.payment?.method) {
+          const method = order.payment.method.toString().toLowerCase();
+          if (method === 'pay_at_hotel') {
+            paymentType = 'Pay at Hotel';
+          } else if (method === 'cash' || method === 'cod') {
+            paymentType = 'Cash';
+          }
+        }
+
         allEarnings.push({
           deliveryPartnerId: delivery._id.toString(),
           deliveryPartnerName: delivery.name || 'Unknown',
@@ -237,7 +248,8 @@ export const getDeliveryEarnings = asyncHandler(async (req, res) => {
           restaurantName: order?.restaurantName || 'N/A',
           orderTotal: order?.pricing?.total || 0,
           deliveryFee: order?.pricing?.deliveryFee || 0,
-          customerAddress: order?.address?.formattedAddress || 'N/A'
+          customerAddress: order?.address?.formattedAddress || 'N/A',
+          paymentMethod: paymentType
         });
       }
 

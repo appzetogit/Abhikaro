@@ -1,4 +1,4 @@
-import { X, Clock, CheckCircle, XCircle, User, Phone, Package, MapPin } from "lucide-react"
+import { X, Clock, CheckCircle, XCircle, User, Phone, Package, MapPin, IndianRupee } from "lucide-react"
 
 const getStatusColor = (status) => {
   const colors = {
@@ -26,6 +26,15 @@ export default function ViewOrderDetectDeliveryDialog({ isOpen, onOpenChange, or
   if (!isOpen || !order) return null
 
   const StatusIcon = getStatusIcon(order.status)
+  const earnings = order.earnings || order.originalOrder?.earnings || null
+
+  const formatCurrency = (amount) => {
+    if (amount === null || amount === undefined) return "₹0.00"
+    return `₹${Number(amount || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -123,6 +132,42 @@ export default function ViewOrderDetectDeliveryDialog({ isOpen, onOpenChange, or
               <span className="font-semibold">{order.status}</span>
             </div>
           </div>
+
+          {/* Earnings Breakdown */}
+          {earnings && (
+            <div className="mb-6 bg-white rounded-lg border border-slate-200 shadow-sm p-4">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <IndianRupee className="w-4 h-4" />
+                Earnings Breakdown
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Total Order Amount</p>
+                  <p className="text-sm font-semibold text-slate-900 mt-1">
+                    {formatCurrency(earnings.orderTotal)}
+                  </p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3">
+                  <p className="text-xs text-green-700">Restaurant Earning</p>
+                  <p className="text-sm font-semibold text-green-700 mt-1">
+                    {formatCurrency(earnings.restaurantEarning)}
+                  </p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p className="text-xs text-blue-700">Delivery Boy Earning</p>
+                  <p className="text-sm font-semibold text-blue-700 mt-1">
+                    {formatCurrency(earnings.deliveryEarning)}
+                  </p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-3">
+                  <p className="text-xs text-amber-700">Admin Earning</p>
+                  <p className="text-sm font-semibold text-amber-700 mt-1">
+                    {formatCurrency(earnings.adminEarning)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Status History Timeline */}
           <div>

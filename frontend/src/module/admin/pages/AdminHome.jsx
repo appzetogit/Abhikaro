@@ -34,6 +34,7 @@ export default function AdminHome() {
   const [customRange, setCustomRange] = useState({ start: "", end: "" })
   const [isLoading, setIsLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState(null)
+  const [hotelCountOverride, setHotelCountOverride] = useState(null)
   const filtersRequestRef = useRef({ zone: "all", timeFilter: "overall", startDate: "", endDate: "" })
   const debounceRef = useRef(null)
 
@@ -51,6 +52,23 @@ export default function AdminHome() {
     }
 
     fetchZones()
+  }, [])
+
+  // Fetch total hotels count once (fallback independent of dashboard stats)
+  useEffect(() => {
+    const fetchHotelCount = async () => {
+      try {
+        const res = await adminAPI.getHotels({ page: 1, limit: 1 })
+        const totalFromPagination = res.data?.data?.pagination?.total
+        if (typeof totalFromPagination === "number") {
+          setHotelCountOverride(totalFromPagination)
+        }
+      } catch (error) {
+        console.error("❌ Error fetching hotel count for dashboard:", error)
+      }
+    }
+
+    fetchHotelCount()
   }, [])
 
   // Fetch dashboard stats when filters change (single combined request, debounced)
@@ -168,6 +186,7 @@ export default function AdminHome() {
   const totalFoods = dashboardData?.foods?.total || 0
   const totalAddons = dashboardData?.addons?.total || 0
   const totalCustomers = dashboardData?.customers?.total || 0
+  const totalHotels = hotelCountOverride ?? (dashboardData?.hotels?.total || 0)
   const pendingOrders = dashboardData?.orderStats?.pending || 0
   const completedOrders = dashboardData?.orderStats?.completed || 0
 
@@ -279,8 +298,8 @@ export default function AdminHome() {
           )}
         </div>
 
-        <div className="space-y-6 px-6 py-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-5 px-6 py-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               title="Gross revenue"
               value={`₹${revenueTotal.toLocaleString("en-IN")}`}
@@ -337,6 +356,14 @@ export default function AdminHome() {
               icon={<Store className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
               onClick={() => navigate("/admin/restaurants")}
+            />
+            <MetricCard
+              title="Total hotels"
+              value={totalHotels.toLocaleString("en-IN")}
+              helper="All registered hotels"
+              icon={<Store className="h-5 w-5 text-fuchsia-600" />}
+              accent="bg-fuchsia-200/40"
+              onClick={() => navigate("/admin/hotels")}
             />
             <MetricCard
               title="Restaurant request pending"
@@ -565,15 +592,15 @@ function MetricCard({ title, value, helper, icon, accent, onClick }) {
       onClick={onClick}
       role={onClick ? "button" : undefined}
     >
-      <CardContent className="relative flex flex-col gap-2 px-4 pb-4 pt-4">
+      <CardContent className="relative flex flex-col gap-1.5 px-3 pb-3 pt-3">
         <div className={`absolute inset-0 ${accent} `} />
         <div className="relative flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">{title}</p>
-            <p className="text-2xl font-semibold text-neutral-900">{value}</p>
-            <p className="text-xs text-neutral-500">{helper}</p>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{title}</p>
+            <p className="text-xl font-semibold text-neutral-900 leading-snug">{value}</p>
+            <p className="text-[11px] text-neutral-500">{helper}</p>
           </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-neutral-100 ring-1 ring-neutral-200">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 ring-1 ring-neutral-200">
             {icon}
           </div>
         </div>

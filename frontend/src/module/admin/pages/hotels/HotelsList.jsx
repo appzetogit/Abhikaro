@@ -710,8 +710,10 @@ export default function HotelsList() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Hotels Management</h1>
-          <p className="text-slate-600">Manage all hotels in the system</p>
+          <h1 className="text-2xl font-bold text-slate-900 mb-1">Hotels Management</h1>
+          <p className="text-slate-600 text-sm">
+            Total Hotels: <span className="font-semibold">{hotels.length}</span>
+          </p>
         </div>
         <Button
           onClick={() => setAddDialog(true)}
