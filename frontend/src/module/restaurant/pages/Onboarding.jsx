@@ -206,19 +206,31 @@ export default function RestaurantOnboarding() {
   };
 
   // Trigger normal HTML file input as a fallback (for WebView / browser)
-  const triggerFileInputFallback = (imageType, isMultiple = false) => {
+  // isMultipleOrOptions can be:
+  //  - boolean (backwards compat) => isMultiple, assume gallery source
+  //  - { isMultiple?: boolean, source?: 'camera' | 'gallery' }
+  const triggerFileInputFallback = (imageType, isMultipleOrOptions = false) => {
+    const isOptionsObject =
+      typeof isMultipleOrOptions === 'object' && isMultipleOrOptions !== null
+    const isMultiple = isOptionsObject
+      ? !!isMultipleOrOptions.isMultiple
+      : !!isMultipleOrOptions
+    const source = isOptionsObject && isMultipleOrOptions.source
+      ? isMultipleOrOptions.source
+      : 'gallery' // default to gallery picker
+
     let inputId = null;
 
     if (imageType === 'menuImages') {
-      inputId = isMultiple ? 'menuImagesInput' : 'menuImagesCameraInput';
+      inputId = source === 'camera' ? 'menuImagesCameraInput' : 'menuImagesInput';
     } else if (imageType === 'profileImage') {
-      inputId = isMultiple ? 'profileImageInput' : 'profileImageCameraInput';
+      inputId = source === 'camera' ? 'profileImageCameraInput' : 'profileImageInput';
     } else if (imageType === 'panImage') {
-      inputId = isMultiple ? 'panImageInput' : 'panImageCameraInput';
+      inputId = source === 'camera' ? 'panImageCameraInput' : 'panImageInput';
     } else if (imageType === 'gstImage') {
-      inputId = isMultiple ? 'gstImageInput' : 'gstImageCameraInput';
+      inputId = source === 'camera' ? 'gstImageCameraInput' : 'gstImageInput';
     } else if (imageType === 'fssaiImage') {
-      inputId = isMultiple ? 'fssaiImageInput' : 'fssaiImageCameraInput';
+      inputId = source === 'camera' ? 'fssaiImageCameraInput' : 'fssaiImageInput';
     }
 
     if (inputId) {
@@ -240,7 +252,7 @@ export default function RestaurantOnboarding() {
   const handleFlutterCamera = (imageType, isMultiple = false) => {
     if (!window.flutter_inappwebview) {
       console.warn('Flutter WebView not available, falling back to native file input');
-      triggerFileInputFallback(imageType, isMultiple);
+      triggerFileInputFallback(imageType, { isMultiple, source: 'camera' });
       return;
     }
 
@@ -264,11 +276,11 @@ export default function RestaurantOnboarding() {
           setStep3((prev) => ({ ...prev, fssaiImage: file }));
         }
       }
-    }).catch((error) => {
+      }).catch((error) => {
       console.error('Error calling Flutter openCamera:', error);
       toast.error('Failed to capture image from camera');
       // Fallback to HTML file input if Flutter handler fails
-      triggerFileInputFallback(imageType, isMultiple);
+      triggerFileInputFallback(imageType, { isMultiple, source: 'camera' });
     });
   };
 
@@ -276,7 +288,7 @@ export default function RestaurantOnboarding() {
   const handleFlutterGallery = (imageType, isMultiple = false) => {
     if (!window.flutter_inappwebview) {
       console.warn('Flutter WebView not available, falling back to native file input');
-      triggerFileInputFallback(imageType, isMultiple);
+      triggerFileInputFallback(imageType, { isMultiple, source: 'gallery' });
       return;
     }
 
@@ -305,7 +317,7 @@ export default function RestaurantOnboarding() {
         }
 
         if (!entries.length) {
-          triggerFileInputFallback(imageType, isMultiple);
+          triggerFileInputFallback(imageType, { isMultiple, source: 'gallery' });
           return;
         }
 
@@ -340,13 +352,13 @@ export default function RestaurantOnboarding() {
         console.error('Error processing Flutter gallery result:', err);
         toast.error('Failed to process image from gallery');
         // Fallback if processing fails
-        triggerFileInputFallback(imageType, isMultiple);
+        triggerFileInputFallback(imageType, { isMultiple, source: 'gallery' });
       }
     }).catch((error) => {
       console.error('Error calling Flutter openGallery:', error);
       toast.error('Failed to select image from gallery');
       // Fallback to HTML file input if Flutter handler fails
-      triggerFileInputFallback(imageType, isMultiple);
+      triggerFileInputFallback(imageType, { isMultiple, source: 'gallery' });
     });
   };
 
@@ -1343,9 +1355,7 @@ export default function RestaurantOnboarding() {
               <button
                 type="button"
                 onClick={() => {
-                  // Always use native file picker for Gallery so mobile users
-                  // can choose from phone gallery (even inside Flutter WebView)
-                  triggerFileInputFallback('menuImages', true);
+                  triggerFileInputFallback('menuImages', { isMultiple: true, source: 'gallery' });
                 }}
                 className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
               >
@@ -1490,9 +1500,7 @@ export default function RestaurantOnboarding() {
             <button
               type="button"
               onClick={() => {
-                // Always use native file picker for Gallery so mobile users
-                // can choose from phone gallery (even inside Flutter WebView)
-                triggerFileInputFallback('profileImage', false);
+                triggerFileInputFallback('profileImage', { source: 'gallery' });
               }}
               className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
             >
@@ -1673,9 +1681,7 @@ export default function RestaurantOnboarding() {
             <button
               type="button"
               onClick={() => {
-                // Always use native file picker for Gallery so mobile users
-                // can choose from phone gallery (even inside Flutter WebView)
-                triggerFileInputFallback('panImage', false);
+                triggerFileInputFallback('panImage', { source: 'gallery' });
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
             >
@@ -1797,9 +1803,7 @@ export default function RestaurantOnboarding() {
                 <button
                   type="button"
                   onClick={() => {
-                    // Always use native file picker for Gallery so mobile users
-                    // can choose from phone gallery (even inside Flutter WebView)
-                    triggerFileInputFallback('gstImage', false);
+                    triggerFileInputFallback('gstImage', { source: 'gallery' });
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
                 >
@@ -1945,9 +1949,7 @@ export default function RestaurantOnboarding() {
           <button
             type="button"
             onClick={() => {
-              // Always use native file picker for Gallery so mobile users
-              // can choose from phone gallery (even inside Flutter WebView)
-              triggerFileInputFallback('fssaiImage', false);
+              triggerFileInputFallback('fssaiImage', { source: 'gallery' });
             }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
           >
