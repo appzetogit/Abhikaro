@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { checkOnboardingStatus } from "../utils/onboardingUtils"
 import { motion, AnimatePresence } from "framer-motion"
 import Lenis from "lenis"
 import { Printer, Volume2, VolumeX, ChevronDown, ChevronUp, Minus, Plus, X, AlertCircle, Loader2, Calendar, Clock, Users, MessageSquare } from "lucide-react"
@@ -239,7 +238,7 @@ function CompletedOrders({ onSelectOrder }) {
 }
 
 // Cancelled Orders List Component
-function CancelledOrders({ onSelectOrder }) {
+function CancelledOrders({ onSelectOrder, fetchAllOrders }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -249,13 +248,16 @@ function CancelledOrders({ onSelectOrder }) {
 
     const fetchOrders = async () => {
       try {
-        const response = await restaurantAPI.getOrders()
+        // Use shared fetch function if provided, otherwise fallback to direct API call
+        const allOrders = fetchAllOrders 
+          ? await fetchAllOrders() 
+          : (await restaurantAPI.getOrders()).data?.data?.orders || []
 
         if (!isMounted) return
 
-        if (response.data?.success && response.data.data?.orders) {
+        if (Array.isArray(allOrders) && allOrders.length > 0) {
           // Filter cancelled orders (both restaurant and user cancelled)
-          const cancelledOrders = response.data.data.orders.filter(
+          const cancelledOrders = allOrders.filter(
             order => order.status === 'cancelled'
           )
 
@@ -463,7 +465,7 @@ function CancelledOrders({ onSelectOrder }) {
 }
 
 // Table Bookings List Component
-function TableBookings() {
+function TableBookings({ fetchRestaurantData }) {
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -472,8 +474,13 @@ function TableBookings() {
 
     const fetchBookings = async () => {
       try {
-        const res = await restaurantAPI.getCurrentRestaurant()
-        const restaurant = res.data?.data?.restaurant || res.data?.restaurant || res.data?.data
+        // Use shared restaurant data function to avoid duplicate API calls
+        let restaurant = fetchRestaurantData ? await fetchRestaurantData() : null
+        if (!restaurant) {
+          // Fallback if fetchRestaurantData not provided
+          const res = await restaurantAPI.getCurrentRestaurant()
+          restaurant = res.data?.data?.restaurant || res.data?.restaurant || res.data?.data
+        }
         const restaurantId = restaurant?._id || restaurant?.id
 
         if (restaurantId) {
@@ -496,7 +503,7 @@ function TableBookings() {
       isMounted = false
       clearInterval(interval)
     }
-  }, [])
+  }, [fetchRestaurantData])
 
   if (loading) return <div className="text-center py-10 text-gray-400">Loading bookings...</div>
 
@@ -615,6 +622,46 @@ export default function OrdersMain() {
   })
   const [isReverifying, setIsReverifying] = useState(false)
   const [restaurantLocationMissing, setRestaurantLocationMissing] = useState(false)
+  
+  // Shared restaurant data ref to avoid duplicate API calls
+  const restaurantDataRef = useRef(null)
+  
+  // Shared orders cache to avoid duplicate API calls across order components
+  const ordersCacheRef = useRef({
+    data: null,
+    timestamp: 0,
+    ttl: 5000 // 5 second cache
+  })
+  
+  // Shared function to fetch all orders (used by multiple order components)
+  const fetchAllOrders = async (forceRefresh = false) => {
+    const now = Date.now()
+    // Return cached data if available and not expired
+    if (!forceRefresh && ordersCacheRef.current.data && 
+        (now - ordersCacheRef.current.timestamp) < ordersCacheRef.current.ttl) {
+      return ordersCacheRef.current.data
+    }
+    
+    try {
+      const response = await restaurantAPI.getOrders()
+      if (response.data?.success && response.data.data?.orders) {
+        // Cache the orders data
+        ordersCacheRef.current = {
+          data: response.data.data.orders,
+          timestamp: now,
+          ttl: 5000
+        }
+        return response.data.data.orders
+      }
+    } catch (error) {
+      // Return cached data if available, even if expired, on error
+      if (ordersCacheRef.current.data) {
+        return ordersCacheRef.current.data
+      }
+      throw error
+    }
+    return []
+  }
 
   // Restaurant notifications hook for real-time orders
   const { newOrder, clearNewOrder, isConnected } = useRestaurantNotifications()
@@ -628,48 +675,69 @@ export default function OrdersMain() {
     "Other reason"
   ]
 
+  // Shared function to fetch restaurant data (used by multiple components)
+  const fetchRestaurantData = async () => {
+    // Return cached data if available and recent (within last 5 seconds)
+    if (restaurantDataRef.current && Date.now() - restaurantDataRef.current.timestamp < 5000) {
+      return restaurantDataRef.current.data
+    }
+    
+    try {
+      const response = await restaurantAPI.getCurrentRestaurant()
+      const restaurant = response?.data?.data?.restaurant || response?.data?.restaurant
+      if (restaurant) {
+        // Cache the restaurant data
+        restaurantDataRef.current = {
+          data: restaurant,
+          timestamp: Date.now()
+        }
+        return restaurant
+      }
+    } catch (error) {
+      // Only log error if it's not a network/timeout error (backend might be down/slow)
+      if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+        console.error("Error fetching restaurant data:", error)
+      }
+    }
+    return null
+  }
+
   // Fetch restaurant verification status
   useEffect(() => {
     const fetchRestaurantStatus = async () => {
-      try {
-        const response = await restaurantAPI.getCurrentRestaurant()
-        const restaurant = response?.data?.data?.restaurant || response?.data?.restaurant
-        if (restaurant) {
-          // Store restaurant data for receipt generation
-          setCurrentRestaurantData(restaurant)
-          setRestaurantStatus({
-            isActive: restaurant.isActive,
-            rejectionReason: restaurant.rejectionReason || null,
-            onboarding: restaurant.onboarding || null,
-            isLoading: false
-          })
+      const restaurant = await fetchRestaurantData()
+      if (restaurant) {
+        // Store restaurant data for receipt generation
+        setCurrentRestaurantData(restaurant)
+        setRestaurantStatus({
+          isActive: restaurant.isActive,
+          rejectionReason: restaurant.rejectionReason || null,
+          onboarding: restaurant.onboarding || null,
+          isLoading: false
+        })
 
-          // FIXED: Check if restaurant location is set (coordinates required for order processing)
-          const hasLocation = restaurant.location && 
-            restaurant.location.coordinates && 
-            Array.isArray(restaurant.location.coordinates) &&
-            restaurant.location.coordinates.length >= 2 &&
-            restaurant.location.coordinates[0] !== 0 &&
-            restaurant.location.coordinates[1] !== 0
-          
-          setRestaurantLocationMissing(!hasLocation)
+        // FIXED: Check if restaurant location is set (coordinates required for order processing)
+        const hasLocation = restaurant.location && 
+          restaurant.location.coordinates && 
+          Array.isArray(restaurant.location.coordinates) &&
+          restaurant.location.coordinates.length >= 2 &&
+          restaurant.location.coordinates[0] !== 0 &&
+          restaurant.location.coordinates[1] !== 0
+        
+        setRestaurantLocationMissing(!hasLocation)
 
-          // Check if onboarding is incomplete and redirect if needed
-          const completedSteps = restaurant.onboarding?.completedSteps || 0
-          if (completedSteps < 4) {
-            // Onboarding is incomplete, redirect to onboarding page
-            const incompleteStep = await checkOnboardingStatus()
-            if (incompleteStep) {
-              navigate(`/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
-              return
-            }
+        // Check if onboarding is incomplete and redirect if needed
+        const completedSteps = restaurant.onboarding?.completedSteps || 0
+        if (completedSteps < 4) {
+          // Onboarding is incomplete, use restaurant.onboarding data directly to avoid duplicate API call
+          const { determineStepToShow } = await import('../utils/onboardingUtils')
+          const incompleteStep = determineStepToShow(restaurant.onboarding)
+          if (incompleteStep) {
+            navigate(`/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
+            return
           }
         }
-      } catch (error) {
-        // Only log error if it's not a network/timeout error (backend might be down/slow)
-        if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
-          console.error("Error fetching restaurant status:", error)
-        }
+      } else {
         // Set loading to false so UI doesn't stay in loading state
         setRestaurantStatus(prev => ({ ...prev, isLoading: false }))
       }
@@ -679,6 +747,8 @@ export default function OrdersMain() {
 
     // Listen for restaurant profile updates
     const handleProfileRefresh = () => {
+      // Clear cache and refetch
+      restaurantDataRef.current = null
       fetchRestaurantStatus()
     }
 
@@ -686,6 +756,8 @@ export default function OrdersMain() {
     
     // FIXED: Also refresh when returning from zone-setup page
     const handleLocationSet = () => {
+      // Clear cache and refetch
+      restaurantDataRef.current = null
       fetchRestaurantStatus()
     }
     window.addEventListener('restaurantLocationSet', handleLocationSet)
@@ -702,9 +774,9 @@ export default function OrdersMain() {
       setIsReverifying(true)
       await restaurantAPI.reverify()
 
-      // Refresh restaurant status
-      const response = await restaurantAPI.getCurrentRestaurant()
-      const restaurant = response?.data?.data?.restaurant || response?.data?.restaurant
+      // Clear cache and refresh restaurant status
+      restaurantDataRef.current = null
+      const restaurant = await fetchRestaurantData()
       if (restaurant) {
         // Store restaurant data for receipt generation
         setCurrentRestaurantData(restaurant)
@@ -801,10 +873,11 @@ export default function OrdersMain() {
       if (showNewOrderPopupRef.current || newOrderRef.current) return
 
       try {
-        const response = await restaurantAPI.getOrders()
-        if (response.data?.success && response.data.data?.orders) {
+        // Use shared fetch function to avoid duplicate API calls
+        const allOrders = await fetchAllOrders(true) // Force refresh for new orders check
+        if (Array.isArray(allOrders) && allOrders.length > 0) {
           // Find confirmed orders that haven't been shown yet
-          const confirmedOrders = response.data.data.orders.filter(
+          const confirmedOrders = allOrders.filter(
             order => order.status === 'confirmed' &&
               !shownOrdersRef.current.has(order.orderId || order._id)
           )
@@ -859,7 +932,7 @@ export default function OrdersMain() {
     checkConfirmedOrders()
 
     return () => clearInterval(interval)
-  }, []) // Empty dependency array - check runs independently
+  }, [fetchAllOrders]) // Include fetchAllOrders in dependencies
 
   // Play audio when popup opens
   useEffect(() => {
@@ -1493,19 +1566,19 @@ export default function OrdersMain() {
   const renderContent = () => {
     switch (activeFilter) {
       case "preparing":
-        return <PreparingOrders onSelectOrder={handleSelectOrder} onCancel={handleCancelClick} />
+        return <PreparingOrders onSelectOrder={handleSelectOrder} onCancel={handleCancelClick} fetchAllOrders={fetchAllOrders} />
       case "ready":
-        return <ReadyOrders onSelectOrder={handleSelectOrder} />
+        return <ReadyOrders onSelectOrder={handleSelectOrder} fetchAllOrders={fetchAllOrders} />
       case "out-for-delivery":
-        return <OutForDeliveryOrders onSelectOrder={handleSelectOrder} />
+        return <OutForDeliveryOrders onSelectOrder={handleSelectOrder} fetchAllOrders={fetchAllOrders} />
       case "scheduled":
         return <EmptyState message="Scheduled orders will appear here" />
       case "completed":
         return <CompletedOrders onSelectOrder={handleSelectOrder} />
       case "table-booking":
-        return <TableBookings />
+        return <TableBookings fetchRestaurantData={fetchRestaurantData} />
       case "cancelled":
-        return <CancelledOrders onSelectOrder={handleSelectOrder} />
+        return <CancelledOrders onSelectOrder={handleSelectOrder} fetchAllOrders={fetchAllOrders} />
       default:
         return <EmptyState />
     }
@@ -2543,7 +2616,7 @@ function OrderCard({
 }
 
 // Preparing Orders List
-function PreparingOrders({ onSelectOrder, onCancel }) {
+function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -2577,16 +2650,18 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
 
     const fetchOrders = async () => {
       try {
-        // Fetch all orders and filter for 'preparing' status on frontend
-        const response = await restaurantAPI.getOrders()
+        // Use shared fetch function if provided, otherwise fallback to direct API call
+        const allOrders = fetchAllOrders 
+          ? await fetchAllOrders() 
+          : (await restaurantAPI.getOrders()).data?.data?.orders || []
 
         if (!isMounted) return
 
-        if (response.data?.success && response.data.data?.orders) {
+        if (Array.isArray(allOrders) && allOrders.length > 0) {
           // Filter orders with 'preparing' status only
           // 'confirmed' orders should only appear in popup notification, not in preparing list
           // After accepting, order status changes to 'preparing' and then appears here
-          const preparingOrders = response.data.data.orders.filter(
+          const preparingOrders = allOrders.filter(
             order => order.status === 'preparing' || order.status === 'confirmed'
           )
 
@@ -2689,7 +2764,7 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
         clearInterval(countdownIntervalId)
       }
     }
-  }, []) // Empty dependency array is correct here - we want this to run once on mount
+  }, [fetchAllOrders]) // Include fetchAllOrders in dependencies
 
   // Track which orders have been marked as ready to avoid duplicate API calls
   const markedReadyOrdersRef = useRef(new Set())
@@ -2837,7 +2912,7 @@ function PreparingOrders({ onSelectOrder, onCancel }) {
 }
 
 // Ready Orders List
-function ReadyOrders({ onSelectOrder }) {
+function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -2853,14 +2928,16 @@ function ReadyOrders({ onSelectOrder }) {
 
     const fetchOrders = async () => {
       try {
-        // Fetch all orders and filter for 'ready' status on frontend
-        const response = await restaurantAPI.getOrders()
+        // Use shared fetch function if provided, otherwise fallback to direct API call
+        const allOrders = fetchAllOrders 
+          ? await fetchAllOrders() 
+          : (await restaurantAPI.getOrders()).data?.data?.orders || []
 
         if (!isMounted) return
 
-        if (response.data?.success && response.data.data?.orders) {
+        if (Array.isArray(allOrders) && allOrders.length > 0) {
           // Filter orders with 'ready' status
-          const readyOrders = response.data.data.orders.filter(
+          const readyOrders = allOrders.filter(
             order => order.status === 'ready'
           )
 
@@ -2931,7 +3008,7 @@ function ReadyOrders({ onSelectOrder }) {
         clearInterval(intervalId)
       }
     }
-  }, []) // Empty dependency array is correct here - we want this to run once on mount
+  }, [fetchAllOrders]) // Include fetchAllOrders in dependencies
 
   if (loading) {
     return (
@@ -2976,7 +3053,7 @@ function ReadyOrders({ onSelectOrder }) {
 }
 
 // Out for Delivery Orders List
-const OutForDeliveryOrders = ({ onSelectOrder }) => {
+const OutForDeliveryOrders = ({ onSelectOrder, fetchAllOrders }) => {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -2986,14 +3063,16 @@ const OutForDeliveryOrders = ({ onSelectOrder }) => {
 
     const fetchOrders = async () => {
       try {
-        // Fetch all orders and filter for 'out_for_delivery' status on frontend
-        const response = await restaurantAPI.getOrders()
+        // Use shared fetch function if provided, otherwise fallback to direct API call
+        const allOrders = fetchAllOrders 
+          ? await fetchAllOrders() 
+          : (await restaurantAPI.getOrders()).data?.data?.orders || []
 
         if (!isMounted) return
 
-        if (response.data?.success && response.data.data?.orders) {
+        if (Array.isArray(allOrders) && allOrders.length > 0) {
           // Filter orders with 'out_for_delivery' status
-          const outForDeliveryOrders = response.data.data.orders.filter(
+          const outForDeliveryOrders = allOrders.filter(
             order => order.status === 'out_for_delivery'
           )
 

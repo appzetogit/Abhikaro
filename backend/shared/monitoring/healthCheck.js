@@ -129,6 +129,31 @@ export async function comprehensiveHealthCheck() {
     };
   }
 
+  // Cloudinary check
+  try {
+    const { cloudinary } = await import('../../config/cloudinary.js');
+    // Test Cloudinary connectivity by attempting to get account info
+    // This is a lightweight operation that verifies credentials and connectivity
+    const testResult = await cloudinary.api.ping();
+    checks.checks.cloudinary = {
+      status: testResult && testResult.status === 'ok' ? 'healthy' : 'degraded',
+      configured: true,
+      cloudName: cloudinary.config().cloud_name || 'unknown',
+    };
+    // Cloudinary is critical for uploads, so mark as unhealthy if ping fails
+    if (!testResult || testResult.status !== 'ok') {
+      checks.status = 'unhealthy';
+    }
+  } catch (error) {
+    checks.checks.cloudinary = {
+      status: 'error',
+      configured: false,
+      error: error.message,
+    };
+    // Cloudinary errors are critical - mark as unhealthy
+    checks.status = 'unhealthy';
+  }
+
   return checks;
 }
 

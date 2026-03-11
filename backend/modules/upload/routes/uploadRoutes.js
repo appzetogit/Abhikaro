@@ -8,6 +8,7 @@ import Admin from '../../admin/models/Admin.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import Hotel from '../../hotel/models/Hotel.js';
 import { errorResponse } from '../../../shared/utils/response.js';
+import { ipRateLimit } from '../../../shared/middleware/redisRateLimit.js';
 
 const router = express.Router();
 
@@ -139,9 +140,20 @@ const authenticateFlexible = async (req, res, next) => {
 };
 
 // POST /api/upload/media - Accepts admin, user, restaurant, delivery, and hotel tokens
+// Apply IP-based rate limiting for unauthenticated uploads to prevent abuse
 // Handle multer errors before controller
 router.post(
   '/media',
+  // Rate limit unauthenticated uploads more strictly to prevent abuse
+  (req, res, next) => {
+    // Only apply strict rate limiting if no auth token is provided
+    if (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) {
+      // Apply IP-based rate limiting for unauthenticated uploads
+      return ipRateLimit(req, res, next);
+    }
+    // Authenticated requests use standard rate limiting (handled by other middleware)
+    next();
+  },
   authenticateFlexible,
   (req, res, next) => {
     uploadMiddleware.single('file')(req, res, (err) => {
@@ -167,8 +179,19 @@ router.post(
 
 // POST /api/upload/base64 - Upload image from base64 string (for Flutter app)
 // Accepts JSON body with base64, mimeType, fileName, and optional folder
+// Apply IP-based rate limiting for unauthenticated uploads to prevent abuse
 router.post(
   '/base64',
+  // Rate limit unauthenticated uploads more strictly to prevent abuse
+  (req, res, next) => {
+    // Only apply strict rate limiting if no auth token is provided
+    if (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) {
+      // Apply IP-based rate limiting for unauthenticated uploads
+      return ipRateLimit(req, res, next);
+    }
+    // Authenticated requests use standard rate limiting (handled by other middleware)
+    next();
+  },
   authenticateFlexible,
   uploadBase64Media
 );

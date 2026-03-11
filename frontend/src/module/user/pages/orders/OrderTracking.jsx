@@ -1,5 +1,5 @@
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import {
@@ -216,6 +216,9 @@ export default function OrderTracking() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [restaurantPhone, setRestaurantPhone] = useState(null)
+  
+  // Cache restaurant data to avoid duplicate API calls
+  const restaurantCacheRef = useRef(new Map())
 
   const [showConfirmation, setShowConfirmation] = useState(confirmed)
   const [orderStatus, setOrderStatus] = useState('placed')
@@ -297,16 +300,26 @@ export default function OrderTracking() {
               apiOrder.restaurantId.location.coordinates.length >= 2) {
               restaurantCoords = apiOrder.restaurantId.location.coordinates;
             } else if (typeof apiOrder.restaurantId === 'string') {
-              try {
-                const restaurantResponse = await restaurantAPI.getRestaurantById(apiOrder.restaurantId);
-                if (restaurantResponse?.data?.success && restaurantResponse.data.data?.restaurant) {
-                  const restaurant = restaurantResponse.data.data.restaurant;
-                  if (restaurant.location?.coordinates && Array.isArray(restaurant.location.coordinates) && restaurant.location.coordinates.length >= 2) {
-                    restaurantCoords = restaurant.location.coordinates;
-                  }
+              // Check cache first to avoid duplicate API calls
+              const cachedRestaurant = restaurantCacheRef.current.get(apiOrder.restaurantId);
+              if (cachedRestaurant) {
+                if (cachedRestaurant.location?.coordinates && Array.isArray(cachedRestaurant.location.coordinates) && cachedRestaurant.location.coordinates.length >= 2) {
+                  restaurantCoords = cachedRestaurant.location.coordinates;
                 }
-              } catch (err) {
-                console.error('❌ Error fetching restaurant details:', err);
+              } else {
+                try {
+                  const restaurantResponse = await restaurantAPI.getRestaurantById(apiOrder.restaurantId);
+                  if (restaurantResponse?.data?.success && restaurantResponse.data.data?.restaurant) {
+                    const restaurant = restaurantResponse.data.data.restaurant;
+                    // Cache the restaurant data
+                    restaurantCacheRef.current.set(apiOrder.restaurantId, restaurant);
+                    if (restaurant.location?.coordinates && Array.isArray(restaurant.location.coordinates) && restaurant.location.coordinates.length >= 2) {
+                      restaurantCoords = restaurant.location.coordinates;
+                    }
+                  }
+                } catch (err) {
+                  console.error('❌ Error fetching restaurant details:', err);
+                }
               }
             }
 
@@ -418,55 +431,79 @@ export default function OrderTracking() {
           // Note: restaurantId in Order model is always a STRING, not populated
           // We need to fetch restaurant details to get phone number
           if (typeof apiOrder.restaurantId === 'string' && apiOrder.restaurantId) {
-            console.log('📞 Fetching restaurant details for phone and coordinates...', apiOrder.restaurantId);
-            try {
-              const restaurantResponse = await restaurantAPI.getRestaurantById(apiOrder.restaurantId);
-              if (restaurantResponse?.data?.success && restaurantResponse.data.data?.restaurant) {
-                const restaurant = restaurantResponse.data.data.restaurant;
-                // Get coordinates if not already found
-                if (!restaurantCoords && restaurant.location?.coordinates && Array.isArray(restaurant.location.coordinates) && restaurant.location.coordinates.length >= 2) {
-                  restaurantCoords = restaurant.location.coordinates;
-                  console.log('✅ Fetched restaurant coordinates from API:', restaurantCoords);
-                }
-                // ALWAYS fetch restaurant phone number (check multiple fields)
-                const phone = restaurant.primaryContactNumber || 
-                             restaurant.phone || 
-                             restaurant.ownerPhone ||
-                             restaurant.contactNumber || 
-                             null;
-                if (phone) {
-                  console.log('✅ Found restaurant phone:', phone);
-                  setRestaurantPhone(phone);
+            // Check cache first to avoid duplicate API calls
+            const cachedRestaurant = restaurantCacheRef.current.get(apiOrder.restaurantId);
+            if (cachedRestaurant) {
+              // Use cached restaurant data
+              const restaurant = cachedRestaurant;
+              // Get coordinates if not already found
+              if (!restaurantCoords && restaurant.location?.coordinates && Array.isArray(restaurant.location.coordinates) && restaurant.location.coordinates.length >= 2) {
+                restaurantCoords = restaurant.location.coordinates;
+                console.log('✅ Using cached restaurant coordinates:', restaurantCoords);
+              }
+              // Get phone number from cached data
+              const phone = restaurant.primaryContactNumber || 
+                           restaurant.phone || 
+                           restaurant.ownerPhone ||
+                           restaurant.contactNumber || 
+                           null;
+              if (phone) {
+                console.log('✅ Found restaurant phone from cache:', phone);
+                setRestaurantPhone(phone);
+              }
+            } else {
+              console.log('📞 Fetching restaurant details for phone and coordinates...', apiOrder.restaurantId);
+              try {
+                const restaurantResponse = await restaurantAPI.getRestaurantById(apiOrder.restaurantId);
+                if (restaurantResponse?.data?.success && restaurantResponse.data.data?.restaurant) {
+                  const restaurant = restaurantResponse.data.data.restaurant;
+                  // Cache the restaurant data for future use
+                  restaurantCacheRef.current.set(apiOrder.restaurantId, restaurant);
+                  // Get coordinates if not already found
+                  if (!restaurantCoords && restaurant.location?.coordinates && Array.isArray(restaurant.location.coordinates) && restaurant.location.coordinates.length >= 2) {
+                    restaurantCoords = restaurant.location.coordinates;
+                    console.log('✅ Fetched restaurant coordinates from API:', restaurantCoords);
+                  }
+                  // ALWAYS fetch restaurant phone number (check multiple fields)
+                  const phone = restaurant.primaryContactNumber || 
+                               restaurant.phone || 
+                               restaurant.ownerPhone ||
+                               restaurant.contactNumber || 
+                               null;
+                  if (phone) {
+                    console.log('✅ Found restaurant phone:', phone);
+                    setRestaurantPhone(phone);
+                  } else {
+                    console.warn('⚠️ Restaurant phone not found in API response. Available fields:', {
+                      restaurantId: apiOrder.restaurantId,
+                      restaurantName: restaurant.name,
+                      restaurantKeys: Object.keys(restaurant || {}),
+                      hasPrimaryContactNumber: !!restaurant.primaryContactNumber,
+                      hasPhone: !!restaurant.phone,
+                      hasOwnerPhone: !!restaurant.ownerPhone,
+                      hasContactNumber: !!restaurant.contactNumber
+                    });
+                  }
                 } else {
-                  console.warn('⚠️ Restaurant phone not found in API response. Available fields:', {
-                    restaurantId: apiOrder.restaurantId,
-                    restaurantName: restaurant.name,
-                    restaurantKeys: Object.keys(restaurant || {}),
-                    hasPrimaryContactNumber: !!restaurant.primaryContactNumber,
-                    hasPhone: !!restaurant.phone,
-                    hasOwnerPhone: !!restaurant.ownerPhone,
-                    hasContactNumber: !!restaurant.contactNumber
+                  console.warn('⚠️ Restaurant API response structure unexpected:', {
+                    success: restaurantResponse?.data?.success,
+                    hasData: !!restaurantResponse?.data?.data,
+                    hasRestaurant: !!restaurantResponse?.data?.data?.restaurant,
+                    fullResponse: restaurantResponse?.data
                   });
                 }
-              } else {
-                console.warn('⚠️ Restaurant API response structure unexpected:', {
-                  success: restaurantResponse?.data?.success,
-                  hasData: !!restaurantResponse?.data?.data,
-                  hasRestaurant: !!restaurantResponse?.data?.data?.restaurant,
-                  fullResponse: restaurantResponse?.data
+              } catch (err) {
+                console.error('❌ Error fetching restaurant details:', err);
+                console.error('❌ Error details:', {
+                  message: err.message,
+                  response: err.response?.data,
+                  restaurantId: apiOrder.restaurantId
                 });
               }
-            } catch (err) {
-              console.error('❌ Error fetching restaurant details:', err);
-              console.error('❌ Error details:', {
-                message: err.message,
-                response: err.response?.data,
-                restaurantId: apiOrder.restaurantId
-              });
             }
           }
-          // Priority 4: Check nested restaurant data
-          else if (apiOrder.restaurant?.location?.coordinates) {
+          // Priority 4: Check nested restaurant data (only if coordinates not found yet)
+          if (!restaurantCoords && apiOrder.restaurant?.location?.coordinates) {
             restaurantCoords = apiOrder.restaurant.location.coordinates;
             console.log('✅ Found coordinates in restaurant.location.coordinates:', restaurantCoords);
           }

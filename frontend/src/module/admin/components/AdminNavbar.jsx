@@ -1,24 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Menu,
-  Search,
   User,
   ChevronDown,
-  UtensilsCrossed,
   LogOut,
   Settings,
-  FileText,
-  Package,
-  Users,
-  AlertCircle,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,18 +16,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { adminAPI } from "@/lib/api";
 import { clearModuleAuth } from "@/lib/utils/auth";
 import { getCachedSettings, loadBusinessSettings } from "@/lib/utils/businessSettings";
 
 export default function AdminNavbar({ onMenuClick }) {
   const navigate = useNavigate();
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [adminData, setAdminData] = useState(null);
   const [businessSettings, setBusinessSettings] = useState(null);
-  const searchInputRef = useRef(null);
 
   // Load admin data from localStorage
   useEffect(() => {
@@ -99,44 +83,6 @@ export default function AdminNavbar({ onMenuClick }) {
       window.removeEventListener('businessSettingsUpdated', handleSettingsUpdate);
     };
   }, []);
-
-  // Keyboard shortcut for search (Ctrl+K)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-        e.preventDefault();
-        setSearchOpen(true);
-      }
-      if (e.key === "Escape" && searchOpen) {
-        setSearchOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [searchOpen]);
-
-  // Focus search input when modal opens
-  useEffect(() => {
-    if (searchOpen && searchInputRef.current) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 100);
-    }
-  }, [searchOpen]);
-
-  // Mock search results - replace with actual search logic
-  const searchResults = [
-    { type: "Order", title: "Order #12345", description: "Pending delivery", icon: Package },
-    { type: "User", title: "Sumit Jaiswal", description: "Customer profile", icon: Users },
-    { type: "Product", title: "Chicken Biryani", description: "Food item", icon: UtensilsCrossed },
-    { type: "Report", title: "Sales Report", description: "Monthly analytics", icon: FileText },
-  ].filter((item) =>
-    searchQuery.trim() === "" ||
-    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
 
   // Handle logout
   const handleLogout = async () => {
@@ -222,22 +168,8 @@ export default function AdminNavbar({ onMenuClick }) {
             </div>
           </div>
 
-          {/* Center: Search Bar */}
-          <div className="flex-1 flex justify-center max-w-md mx-8">
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-neutral-100 text-neutral-600 cursor-pointer hover:bg-neutral-200 transition-colors w-full border border-neutral-200"
-            >
-              <Search className="w-4 h-4 text-neutral-700" />
-              <span className="text-sm flex-1 text-left text-neutral-700">Search</span>
-              <span className="text-xs px-2 py-0.5 rounded bg-white text-neutral-600 border border-neutral-200">
-                Ctrl+K
-              </span>
-            </button>
-          </div>
-
           {/* Right: User Profile */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 ml-auto">
             {/* User Profile */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -339,100 +271,6 @@ export default function AdminNavbar({ onMenuClick }) {
           </div>
         </div>
       </header>
-
-      {/* Search Modal */}
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="max-w-2xl p-0 bg-white opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 ease-in-out data-[state=open]:scale-100 data-[state=closed]:scale-100 border border-neutral-200">
-          <DialogHeader className="p-6 pb-4 border-b border-neutral-200">
-            <DialogTitle className="text-xl font-semibold text-neutral-900">
-              Universal Search
-            </DialogTitle>
-          </DialogHeader>
-          <div className="p-6">
-            <div className="relative mb-6">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-              <Input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Search orders, users, products, reports..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 py-3 text-base border-neutral-300 bg-white text-neutral-900 placeholder:text-neutral-500 focus:border-black focus:ring-black"
-              />
-            </div>
-
-            {searchQuery.trim() === "" ? (
-              <div className="space-y-4">
-                <div className="text-sm text-neutral-500 mb-4">Quick Actions</div>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { icon: Package, label: "Orders" },
-                    { icon: Users, label: "Users" },
-                    { icon: UtensilsCrossed, label: "Products" },
-                    { icon: FileText, label: "Reports" },
-                  ].map((action, idx) => (
-                    <button
-                      key={idx}
-                      className="flex items-center gap-3 p-4 rounded-lg border border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50 transition-all"
-                    >
-                      <div className="p-2 rounded-md bg-black text-white">
-                        <action.icon className="w-5 h-5" />
-                      </div>
-                      <span className="text-sm font-medium text-neutral-900">{action.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-6 pt-4 border-t border-neutral-200">
-                  <p className="text-xs text-neutral-500 mb-2">Recent Searches</p>
-                  <div className="flex flex-wrap gap-2">
-                    {["Order #12345", "Sumit Jaiswal", "Chicken Biryani"].map((term, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setSearchQuery(term)}
-                        className="px-3 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 rounded-full text-neutral-700 transition-colors"
-                      >
-                        {term}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {searchResults.length === 0 ? (
-                  <div className="text-center py-12">
-                    <AlertCircle className="w-12 h-12 text-neutral-300 mx-auto mb-3" />
-                    <p className="text-sm text-neutral-500">No results found for "{searchQuery}"</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-sm text-neutral-600 mb-3">
-                      {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} found
-                    </div>
-                    {searchResults.map((result, idx) => (
-                      <button
-                        key={idx}
-                        className="w-full flex items-center gap-4 p-4 rounded-lg border border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 transition-all text-left"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-neutral-900">{result.title}</p>
-                            <span className="text-xs px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded">
-                              {result.type}
-                            </span>
-                          </div>
-                          <p className="text-xs text-neutral-600 mt-1">{result.description}</p>
-                        </div>
-                        <ArrowRight className="w-4 h-4 text-neutral-400" />
-                      </button>
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
