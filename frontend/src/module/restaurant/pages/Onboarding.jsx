@@ -1490,11 +1490,9 @@ export default function RestaurantOnboarding() {
             <button
               type="button"
               onClick={() => {
-                if (isFlutterApp()) {
-                  handleFlutterGallery('profileImage', false);
-                } else {
-                  document.getElementById('profileImageInput')?.click();
-                }
+                // Always use native file picker for Gallery so mobile users
+                // can choose from phone gallery (even inside Flutter WebView)
+                triggerFileInputFallback('profileImage', false);
               }}
               className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
             >
@@ -1675,11 +1673,9 @@ export default function RestaurantOnboarding() {
             <button
               type="button"
               onClick={() => {
-                if (isFlutterApp()) {
-                  handleFlutterGallery('panImage', false);
-                } else {
-                  document.getElementById('panImageInput')?.click();
-                }
+                // Always use native file picker for Gallery so mobile users
+                // can choose from phone gallery (even inside Flutter WebView)
+                triggerFileInputFallback('panImage', false);
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
             >
@@ -1801,11 +1797,9 @@ export default function RestaurantOnboarding() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (isFlutterApp()) {
-                      handleFlutterGallery('gstImage', false);
-                    } else {
-                      document.getElementById('gstImageInput')?.click();
-                    }
+                    // Always use native file picker for Gallery so mobile users
+                    // can choose from phone gallery (even inside Flutter WebView)
+                    triggerFileInputFallback('gstImage', false);
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
                 >
@@ -1951,11 +1945,9 @@ export default function RestaurantOnboarding() {
           <button
             type="button"
             onClick={() => {
-              if (isFlutterApp()) {
-                handleFlutterGallery('fssaiImage', false);
-              } else {
-                document.getElementById('fssaiImageInput')?.click();
-              }
+              // Always use native file picker for Gallery so mobile users
+              // can choose from phone gallery (even inside Flutter WebView)
+              triggerFileInputFallback('fssaiImage', false);
             }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
           >
