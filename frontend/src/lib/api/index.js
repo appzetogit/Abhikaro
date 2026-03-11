@@ -471,6 +471,11 @@ export const restaurantAPI = {
   updateMenu: (menuData) => {
     return apiClient.put(API_ENDPOINTS.RESTAURANT.MENU, menuData);
   },
+  deleteMenuItem: (sectionId, itemId) => {
+    return apiClient.delete(
+      `${API_ENDPOINTS.RESTAURANT.MENU}/section/${sectionId}/item/${itemId}`,
+    );
+  },
   addSection: (name) => {
     return apiClient.post(`${API_ENDPOINTS.RESTAURANT.MENU}/section`, { name });
   },

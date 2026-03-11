@@ -179,11 +179,12 @@ export const updateMenu = asyncHandler(async (req, res) => {
           return [];
         }
       })(),
-      // CRITICAL: Preserve approval status fields from existing item
-      // Restaurant should NOT be able to overwrite these fields
+      // CRITICAL: Preserve approval status fields from existing item.
+      // NEW items from restaurant app should go for admin approval,
+      // so default to 'pending' when there is no existing status.
       approvalStatus: existingItem?.approvalStatus || item.approvalStatus || 'pending',
       rejectionReason: existingItem?.rejectionReason || item.rejectionReason || '',
-      requestedAt: existingItem?.requestedAt || item.requestedAt || (item.approvalStatus === 'pending' ? new Date() : undefined),
+      requestedAt: existingItem?.requestedAt || item.requestedAt || (item.approvalStatus ? new Date(item.requestedAt || Date.now()) : new Date()),
       approvedAt: existingItem?.approvedAt || item.approvedAt,
       approvedBy: existingItem?.approvedBy || item.approvedBy,
       rejectedAt: existingItem?.rejectedAt || item.rejectedAt,
@@ -252,11 +253,12 @@ export const updateMenu = asyncHandler(async (req, res) => {
             return [];
           }
         })(),
-        // CRITICAL: Preserve approval status fields from existing item
-        // Restaurant should NOT be able to overwrite these fields
+        // CRITICAL: Preserve approval status fields from existing item.
+        // NEW items from restaurant app should go for admin approval,
+        // so default to 'pending' when there is no existing status.
         approvalStatus: existingItem?.approvalStatus || item.approvalStatus || 'pending',
         rejectionReason: existingItem?.rejectionReason || item.rejectionReason || '',
-        requestedAt: existingItem?.requestedAt || item.requestedAt || (item.approvalStatus === 'pending' ? new Date() : undefined),
+        requestedAt: existingItem?.requestedAt || item.requestedAt || (item.approvalStatus ? new Date(item.requestedAt || Date.now()) : new Date()),
         approvedAt: existingItem?.approvedAt || item.approvedAt,
         approvedBy: existingItem?.approvedBy || item.approvedBy,
         rejectedAt: existingItem?.rejectedAt || item.rejectedAt,
@@ -455,7 +457,8 @@ export const addItemToSection = asyncHandler(async (req, res) => {
       ? item.images.filter(img => img && typeof img === 'string' && img.trim() !== '')
       : (item.image && item.image.trim() !== '' ? [item.image] : []),
     preparationTime: item.preparationTime || "",
-    approvalStatus: 'pending', // New items require admin approval
+    // New items require admin approval
+    approvalStatus: 'pending',
     requestedAt: new Date(),
   };
 
@@ -593,7 +596,8 @@ export const addItemToSubsection = asyncHandler(async (req, res) => {
       ? item.images.filter(img => img && typeof img === 'string' && img.trim() !== '')
       : (item.image && item.image.trim() !== '' ? [item.image] : []),
     preparationTime: item.preparationTime || "",
-    approvalStatus: 'pending', // New items require admin approval
+    // New items require admin approval
+    approvalStatus: 'pending',
     requestedAt: new Date(),
   };
 
@@ -602,6 +606,64 @@ export const addItemToSubsection = asyncHandler(async (req, res) => {
 
   return successResponse(res, 201, 'Item added to subsection successfully', {
     item: newItem,
+    menu: {
+      sections: menu.sections,
+      isActive: menu.isActive,
+    },
+  });
+});
+
+// Delete a menu item (from section and all subsections)
+export const deleteMenuItem = asyncHandler(async (req, res) => {
+  const restaurantId = req.restaurant._id;
+  const { sectionId, itemId } = req.params;
+
+  if (!sectionId || !itemId) {
+    return errorResponse(res, 400, 'Section ID and Item ID are required');
+  }
+
+  const menu = await Menu.findOne({ restaurant: restaurantId });
+
+  if (!menu) {
+    return errorResponse(res, 404, 'Menu not found');
+  }
+
+  const section = menu.sections.find(s => String(s.id) === String(sectionId));
+  if (!section) {
+    return errorResponse(res, 404, 'Section not found');
+  }
+
+  // Remove from top-level items
+  const initialItemsLength = (section.items || []).length;
+  section.items = (section.items || []).filter(item => String(item.id) !== String(itemId));
+
+  // Remove from all subsections
+  let removedFromSubsections = 0;
+  section.subsections = (section.subsections || []).map(subsection => {
+    const before = (subsection.items || []).length;
+    const filteredItems = (subsection.items || []).filter(item => String(item.id) !== String(itemId));
+    if (before !== filteredItems.length) {
+      removedFromSubsections += before - filteredItems.length;
+    }
+    return {
+      ...subsection,
+      items: filteredItems,
+    };
+  });
+
+  const removedFromItems = initialItemsLength - (section.items || []).length;
+
+  if (removedFromItems === 0 && removedFromSubsections === 0) {
+    return errorResponse(res, 404, 'Item not found in this section');
+  }
+
+  menu.markModified('sections');
+  await menu.save();
+
+  // Invalidate menu cache for this restaurant
+  await invalidateCachePattern(`menu:${restaurantId}*`);
+
+  return successResponse(res, 200, 'Menu item deleted successfully', {
     menu: {
       sections: menu.sections,
       isActive: menu.isActive,

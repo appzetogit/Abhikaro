@@ -856,12 +856,6 @@ export default function ItemDetailsPage() {
         return
       }
 
-      // Get current menu
-      const menuResponse = await restaurantAPI.getMenu()
-      let menu = menuResponse.data?.data?.menu
-      let sections = menu?.sections || []
-
-      // Prepare item data according to menu model
       // For editing, use the existing ID; for new items, generate a new ID
       // Ensure we use the ID from itemData if available, otherwise use the URL param id
       let itemId
@@ -876,6 +870,102 @@ export default function ItemDetailsPage() {
         // Ensure ID is a string
         itemId = String(itemId)
       }
+
+      // Prepare nutrition data as strings (as per menu model)
+      const nutritionStrings = []
+
+      // Prepare variations array
+      const variations = hasVariants && variants.length > 0
+        ? variants.map((v) => ({
+          id: String(v.id),
+          name: v.name.trim(),
+          price: parseFloat(v.price) || 0,
+          stock: v.stock || "Unlimited",
+        }))
+        : []
+
+      // Prepare item data according to menu model
+      const itemDataToSave = {
+        id: String(itemId), // Ensure ID is a string
+        name: itemName.trim(),
+        nameArabic: "",
+        image: allImageUrls.length > 0 ? allImageUrls[0] : "",
+        images: allImageUrls.length > 0 ? allImageUrls : [], // Multiple images support - all Cloudinary URLs (ensure it's always an array)
+        // CRITICAL: Ensure images is always an array, never undefined or null
+        category: category,
+        rating: itemData?.rating || 0.0,
+        reviews: itemData?.reviews || 0,
+        price: hasVariants && variations.length > 0
+          ? Math.min(...variations.map(v => v.price)) // Base price as minimum variant price
+          : parseFloat(basePrice) || 0,
+        preparationTime: preparationTime || "",
+        stock: "Unlimited",
+        discount: null,
+        originalPrice: null,
+        // Always save as Veg (platform is Veg-only)
+        foodType: "Veg",
+        availabilityTimeStart: "12:01 AM",
+        availabilityTimeEnd: "11:57 PM",
+        description: itemDescription.trim(),
+        discountType: "Percent",
+        discountAmount: 0.0,
+        isAvailable: isInStock,
+        isRecommended: isRecommended,
+        variations: variations,
+        tags: [],
+        nutrition: nutritionStrings,
+        allergies: [],
+        photoCount: allImageUrls.length || 1,
+        // Additional fields for complete item details
+        subCategory: subCategory || "",
+        servesInfo: "",
+        itemSize: "",
+        itemSizeQuantity: "",
+        itemSizeUnit: "piece",
+        gst: parseFloat(gst) || 0,
+        // Approval flow:
+        // - Restaurant-created items should always start as 'pending'
+        //   so that they appear in admin's food approval queue.
+        // - If we're editing an existing item, preserve its current status.
+        approvalStatus: itemData?.approvalStatus || 'pending',
+        rejectionReason: itemData?.rejectionReason || '',
+        requestedAt: itemData?.requestedAt || new Date().toISOString(),
+        approvedAt: itemData?.approvedAt || null,
+        approvedBy: itemData?.approvedBy || null,
+      }
+
+      // If this is a NEW item and we know the target section ID from navigation
+      // (groupId or sectionId passed in location.state), use the dedicated API
+      // to add an item to a section instead of rewriting the whole menu.
+      const targetSectionIdFromState = groupId || location.state?.sectionId
+      if (isNewItem && targetSectionIdFromState) {
+        const response = await restaurantAPI.addItemToSection(
+          targetSectionIdFromState,
+          {
+            ...itemDataToSave,
+            // Backend will set its own approval fields; we mainly care about core item shape here.
+          }
+        )
+
+        if (response.data?.success) {
+          const imageCount = allImageUrls.length
+          toast.success(`Item created successfully with ${imageCount} image(s)`)
+          await new Promise(resolve => setTimeout(resolve, 300))
+          navigate("/restaurant/hub-menu", { replace: true })
+          window.dispatchEvent(new CustomEvent('foodsChanged'))
+          setUploadingImages(false)
+          return
+        } else {
+          toast.error(response.data?.message || "Failed to save item")
+          setUploadingImages(false)
+          return
+        }
+      }
+
+      // Fallback: full menu update (used for editing items or when section id is not known)
+      const menuResponse = await restaurantAPI.getMenu()
+      let menu = menuResponse.data?.data?.menu
+      let sections = menu?.sections || []
 
       // If editing, remove item from its current location (in case category changed or it's in a subsection)
       if (!isNewItem && itemId) {
@@ -944,60 +1034,6 @@ export default function ItemDetailsPage() {
       // Ensure items array exists
       if (!targetSection.items) {
         targetSection.items = []
-      }
-
-      // Prepare nutrition data as strings (as per menu model)
-      const nutritionStrings = []
-
-      // Prepare variations array
-      const variations = hasVariants && variants.length > 0
-        ? variants.map((v) => ({
-          id: String(v.id),
-          name: v.name.trim(),
-          price: parseFloat(v.price) || 0,
-          stock: v.stock || "Unlimited",
-        }))
-        : []
-
-      // Prepare item data according to menu model
-      const itemDataToSave = {
-        id: String(itemId), // Ensure ID is a string
-        name: itemName.trim(),
-        nameArabic: "",
-        image: allImageUrls.length > 0 ? allImageUrls[0] : "",
-        images: allImageUrls.length > 0 ? allImageUrls : [], // Multiple images support - all Cloudinary URLs (ensure it's always an array)
-        // CRITICAL: Ensure images is always an array, never undefined or null
-        category: category,
-        rating: itemData?.rating || 0.0,
-        reviews: itemData?.reviews || 0,
-        price: hasVariants && variations.length > 0
-          ? Math.min(...variations.map(v => v.price)) // Base price as minimum variant price
-          : parseFloat(basePrice) || 0,
-        preparationTime: preparationTime || "",
-        stock: "Unlimited",
-        discount: null,
-        originalPrice: null,
-        // Always save as Veg (platform is Veg-only)
-        foodType: "Veg",
-        availabilityTimeStart: "12:01 AM",
-        availabilityTimeEnd: "11:57 PM",
-        description: itemDescription.trim(),
-        discountType: "Percent",
-        discountAmount: 0.0,
-        isAvailable: isInStock,
-        isRecommended: isRecommended,
-        variations: variations,
-        tags: [],
-        nutrition: nutritionStrings,
-        allergies: [],
-        photoCount: allImageUrls.length || 1,
-        // Additional fields for complete item details
-        subCategory: subCategory || "",
-        servesInfo: "",
-        itemSize: "",
-        itemSizeQuantity: "",
-        itemSizeUnit: "piece",
-        gst: parseFloat(gst) || 0,
       }
 
       // Add or update item in target section

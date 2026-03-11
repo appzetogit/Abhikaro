@@ -11,7 +11,7 @@ import {
 } from "./controllers/restaurantFinanceController.js";
 import { getWallet, getWalletTransactions, getWalletStats } from './controllers/restaurantWalletController.js';
 import { createWithdrawalRequest, getRestaurantWithdrawalRequests } from './controllers/withdrawalController.js';
-import { getMenu, updateMenu, getMenuByRestaurantId, addSection, addItemToSection, addSubsectionToSection, addItemToSubsection, addAddon, getAddons, getAddonsByRestaurantId, updateAddon, deleteAddon } from './controllers/menuController.js';
+import { getMenu, updateMenu, getMenuByRestaurantId, addSection, addItemToSection, addSubsectionToSection, addItemToSubsection, addAddon, getAddons, getAddonsByRestaurantId, updateAddon, deleteAddon, deleteMenuItem } from './controllers/menuController.js';
 import { scheduleItemAvailability, cancelScheduledAvailability, getItemSchedule } from './controllers/menuScheduleController.js';
 import { getInventory, updateInventory, getInventoryByRestaurantId } from './controllers/inventoryController.js';
 import { addStaff, getStaff, getStaffById, updateStaff, deleteStaff } from './controllers/staffManagementController.js';
@@ -50,6 +50,7 @@ router.post('/menu/section', authenticate, addSection);
 router.post('/menu/section/item', authenticate, addItemToSection);
 router.post('/menu/section/subsection', authenticate, addSubsectionToSection);
 router.post('/menu/subsection/item', authenticate, addItemToSubsection);
+router.delete('/menu/section/:sectionId/item/:itemId', authenticate, deleteMenuItem);
 
 // Add-on routes
 router.post('/menu/addon', authenticate, addAddon);

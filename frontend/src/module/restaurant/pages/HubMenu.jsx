@@ -188,9 +188,24 @@ export default function HubMenu() {
 
       if (response.data && response.data.success && response.data.data && response.data.data.menu) {
         const menuSections = response.data.data.menu.sections || []
-        setMenuData(menuSections)
 
-        // Menu data is now directly from backend, no need to transform
+        // Normalize sections so All items view always sees items from
+        // both top-level items and all subsections
+        const normalizedSections = menuSections.map((section) => {
+          const topLevelItems = Array.isArray(section.items) ? section.items : []
+          const subsectionItems = Array.isArray(section.subsections)
+            ? section.subsections.flatMap((sub) =>
+                Array.isArray(sub.items) ? sub.items : [],
+              )
+            : []
+
+          return {
+            ...section,
+            items: [...topLevelItems, ...subsectionItems],
+          }
+        })
+
+        setMenuData(normalizedSections)
       } else {
         // Empty menu - start fresh
         setMenuData([])
@@ -236,13 +251,21 @@ export default function HubMenu() {
       }
     }
 
+    // Listen for global foodsChanged events (e.g. from ItemDetailsPage)
+    const handleFoodsChanged = () => {
+      console.log('foodsChanged event received - refreshing menu')
+      safeFetchMenu(false)
+    }
+
     window.addEventListener('focus', handleFocus)
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('foodsChanged', handleFoodsChanged)
 
     return () => {
       isMounted = false
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('foodsChanged', handleFoodsChanged)
     }
   }, [])
 
@@ -711,6 +734,62 @@ export default function HubMenu() {
           i.id === itemId ? { ...i, isAvailable: true } : i
         )
       })))
+    }
+  }
+
+
+  // Handle delete menu item
+  const handleDeleteItem = async (itemId, groupId, itemName) => {
+    if (!window.confirm(`Are you sure you want to delete "${itemName}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await restaurantAPI.deleteMenuItem(groupId, itemId)
+
+      // If backend returns updated menu, sync it
+      const updatedMenu =
+        response?.data?.data?.menu ||
+        response?.data?.menu ||
+        null
+
+      if (updatedMenu && Array.isArray(updatedMenu.sections)) {
+        setMenuData(updatedMenu.sections)
+      } else {
+        // Fallback: remove locally
+        setMenuData(prev =>
+          prev.map(section => {
+            if (section.id !== groupId) return section
+
+            const updatedItems = Array.isArray(section.items)
+              ? section.items.filter(item => item.id !== itemId)
+              : []
+
+            const updatedSubsections = Array.isArray(section.subsections)
+              ? section.subsections.map(subsection => ({
+                  ...subsection,
+                  items: Array.isArray(subsection.items)
+                    ? subsection.items.filter(item => item.id !== itemId)
+                    : [],
+                }))
+              : section.subsections
+
+            return {
+              ...section,
+              items: updatedItems,
+              subsections: updatedSubsections,
+            }
+          }),
+        )
+      }
+
+      toast.success('Item deleted successfully')
+    } catch (error) {
+      console.error('Error deleting menu item:', error)
+      toast.error(
+        error?.response?.data?.message ||
+          'Failed to delete item. Please try again.',
+      )
     }
   }
 
@@ -1338,13 +1417,22 @@ export default function HubMenu() {
                                   <span>Edit & Resubmit</span>
                                 </button>
                               ) : (
-                                <button
-                                  onClick={() => navigate(`/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId: group.id } })}
-                                  className="flex items-center gap-1.5 bg-transparent text-gray-700 text-sm font-medium"
-                                >
-                                  <Edit className="w-3.5 h-3.5" />
-                                  <span>Edit</span>
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => navigate(`/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId: group.id } })}
+                                    className="flex items-center gap-1.5 bg-transparent text-gray-700 text-sm font-medium"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteItem(item.id, group.id, item.name)}
+                                    className="flex items-center justify-center p-2 rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                                    title="Delete item"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -1461,7 +1549,19 @@ export default function HubMenu() {
               <div className="px-4 py-4 space-y-2">
                 <button
                   onClick={() => {
-                    navigate(`/restaurant/hub-menu/item/new`)
+                    // When adding an item from the global +ADD button, default to
+                    // the first available section so the new dish is actually
+                    // attached to a real menu category.
+                    const firstSection = menuData && menuData.length > 0 ? menuData[0] : null
+                    navigate(`/restaurant/hub-menu/item/new`, {
+                      state: firstSection
+                        ? {
+                            groupId: firstSection.id,
+                            category: firstSection.name,
+                          }
+                        : undefined,
+                    })
+                    setIsAddPopupOpen(false)
                   }}
                   className="w-full py-3 px-4 text-left rounded-lg hover:bg-gray-50 transition-colors"
                 >
