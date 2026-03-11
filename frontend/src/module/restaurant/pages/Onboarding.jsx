@@ -1343,11 +1343,9 @@ export default function RestaurantOnboarding() {
               <button
                 type="button"
                 onClick={() => {
-                  if (isFlutterApp()) {
-                    handleFlutterGallery('menuImages', true);
-                  } else {
-                    document.getElementById('menuImagesInput')?.click();
-                  }
+                  // Always use native file picker for Gallery so mobile users
+                  // can choose from phone gallery (even inside Flutter WebView)
+                  triggerFileInputFallback('menuImages', true);
                 }}
                 className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
               >
