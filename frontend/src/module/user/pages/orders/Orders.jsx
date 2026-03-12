@@ -173,9 +173,12 @@ export default function Orders() {
 
   // Fetch orders from backend API
   useEffect(() => {
+    // Track active controller only inside this effect scope
+    let activeController = null
+
     const fetchOrders = async () => {
       const controller = new AbortController()
-      activeFetchRef.current = controller
+      activeController = controller
 
       try {
         setLoading(true)
@@ -307,8 +310,8 @@ export default function Orders() {
         toast.error(errorMessage)
         setOrders([])
       } finally {
-        if (activeFetchRef.current === controller) {
-          activeFetchRef.current = null
+        if (activeController === controller) {
+          activeController = null
         }
         setLoading(false)
       }
@@ -320,7 +323,7 @@ export default function Orders() {
     // This ensures rating popup shows quickly when order is delivered
     // Only poll when page is visible to reduce unnecessary requests
     const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !activeFetchRef.current) {
+      if (document.visibilityState === 'visible' && !activeController) {
         fetchOrders()
       }
     }, 30000) // Increased from 20000ms to 30000ms
@@ -335,8 +338,8 @@ export default function Orders() {
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
-      if (activeFetchRef.current) {
-        activeFetchRef.current.abort()
+      if (activeController) {
+        activeController.abort()
       }
       clearInterval(pollInterval)
       document.removeEventListener('visibilitychange', handleVisibilityChange)

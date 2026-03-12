@@ -385,6 +385,7 @@ export default function DeliveryHome() {
   const [deliveryStatus, setDeliveryStatus] = useState(null) // Store delivery partner status
   const [rejectionReason, setRejectionReason] = useState(null) // Store rejection reason
   const [isReverifying, setIsReverifying] = useState(false) // Loading state for reverify
+  const [hasInitiallyCenteredOnBike, setHasInitiallyCenteredOnBike] = useState(false) // Track if map has been initially centered on bike
 
   // Firebase live location update: always enabled so long as we have a location and delivery partner is online
   const deliveryBoyId = notifications?.deliveryPartnerId || null
@@ -615,7 +616,7 @@ export default function DeliveryHome() {
   const [showDirectionsMap, setShowDirectionsMap] = useState(false)
   const [navigationMode, setNavigationMode] = useState('restaurant') // 'restaurant' or 'customer'
   const [showreachedPickupPopup, setShowreachedPickupPopup] = useState(false)
-  const [showOrderIdConfirmationPopup, setShowOrderIdConfirmationPopup] = useState(false)
+  const [showOrderIdConfirmationPopup, setShowOrderIdConfirmationPopup] = useState(false) // Confirm Order ID popup visibility
   const [showReachedDropPopup, setShowReachedDropPopup] = useState(false)
   const [showOrderDeliveredAnimation, setShowOrderDeliveredAnimation] = useState(false)
   const [showCustomerReviewPopup, setShowCustomerReviewPopup] = useState(false)
@@ -982,6 +983,113 @@ export default function DeliveryHome() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []) // Empty dependency - Firebase listener handles real-time updates
+
+  // Restore active order & Reached Pickup popup from BACKEND after refresh.
+  // Keeps the pickup card sticky on home until the delivery partner swipes to confirm,
+  // using backend order status instead of any localStorage-based status flags.
+  useEffect(() => {
+    const restoreActiveOrderFromBackend = async () => {
+      try {
+        // Fetch active orders directly from backend (no reliance on localStorage)
+        const response = await deliveryAPI.getOrders({
+          limit: 1,
+          page: 1,
+          includeDelivered: false // only active / in-progress orders
+        })
+
+        const activeOrders = response?.data?.data?.orders || []
+        if (!activeOrders.length) return
+
+        // Prefer an order that is already accepted / in pickup flow
+        const primaryOrder =
+          activeOrders.find(o =>
+            o.deliveryState?.status === 'accepted' ||
+            o.deliveryState?.status === 'reached_pickup' ||
+            o.deliveryState?.status === 'order_confirmed' ||
+            o.deliveryState?.currentPhase === 'en_route_to_pickup' ||
+            o.deliveryState?.currentPhase === 'at_pickup'
+          ) || activeOrders[0]
+
+        const order = primaryOrder
+
+        if (!order) return
+
+        // Build selectedRestaurant object purely from backend data
+        const restaurant = order.restaurantId || {}
+        const addressObj = restaurant.address || order.address || {}
+
+        const restaurantName =
+          order.restaurantName ||
+          restaurant.onboarding?.step1?.restaurantName ||
+          restaurant.name ||
+          selectedRestaurant?.name ||
+          'Restaurant'
+
+        const restaurantAddress =
+          (typeof addressObj === 'string' && addressObj) ||
+          addressObj.formattedAddress ||
+          [addressObj.street, addressObj.city, addressObj.state]
+            .filter(Boolean)
+            .join(', ') ||
+          selectedRestaurant?.address ||
+          'Restaurant address'
+
+        const deliveryState = order.deliveryState || {}
+        const deliveryPhase =
+          deliveryState.currentPhase ||
+          order.deliveryPhase ||
+          order.status ||
+          ''
+
+        const restoredRestaurant = {
+          id: order._id || order.orderId,
+          orderId: order.orderId,
+          name: restaurantName,
+          address: restaurantAddress,
+          lat:
+            order.restaurantLocation?.coordinates?.[1] ??
+            restaurant.location?.coordinates?.[1] ??
+            selectedRestaurant?.lat ??
+            null,
+          lng:
+            order.restaurantLocation?.coordinates?.[0] ??
+            restaurant.location?.coordinates?.[0] ??
+            selectedRestaurant?.lng ??
+            null,
+          customerName:
+            order.userId?.name || selectedRestaurant?.customerName || 'Customer',
+          customerPhone:
+            order.userId?.phone ||
+            order.userId?.mobile ||
+            selectedRestaurant?.customerPhone ||
+            null,
+          customerAddress:
+            order.address?.formattedAddress ||
+            (order.address?.street
+              ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim()
+              : '') ||
+            selectedRestaurant?.customerAddress,
+          items: order.items || [],
+          total: order.pricing?.total || 0,
+          paymentMethod: (() => {
+            const method = order.paymentMethod ?? order.payment?.method ?? 'razorpay'
+            return method === 'cod' || method === 'cash' ? 'cash' : method
+          })(),
+          phone: restaurant.phone || restaurant.ownerPhone || null,
+          ownerPhone: restaurant.ownerPhone || null,
+          orderStatus: order.status || 'preparing',
+          deliveryState,
+          deliveryPhase
+        }
+
+        setSelectedRestaurant(restoredRestaurant)
+      } catch (error) {
+        console.error('Failed to restore active delivery order from backend', error)
+      }
+    }
+
+    restoreActiveOrderFromBackend()
+  }, [])
 
   // Calculate bonus earnings from earning_addon transactions (only for active offer)
   const calculateBonusEarnings = () => {
@@ -1574,9 +1682,13 @@ export default function DeliveryHome() {
 
             // Map will be initialized in the map initialization useEffect with this location
           } else if (window.deliveryMapInstance) {
-            // Map already initialized - recenter map (marker will be updated from Firebase listener)
-            window.deliveryMapInstance.setCenter({ lat: smoothedLocation[0], lng: smoothedLocation[1] })
-            window.deliveryMapInstance.setZoom(18)
+            // Map already initialized - only recenter if not already centered initially
+            // After initial centering, only update marker position, not map viewport
+            if (!hasInitiallyCenteredOnBike) {
+              window.deliveryMapInstance.setCenter({ lat: smoothedLocation[0], lng: smoothedLocation[1] })
+              window.deliveryMapInstance.setZoom(18)
+              setHasInitiallyCenteredOnBike(true)
+            }
             // Note: Marker position will be updated from Firebase listener, not directly from GPS
             updateRoutePolyline()
 
@@ -1603,10 +1715,13 @@ export default function DeliveryHome() {
                     lastValidLocationRef.current = newLocation
                     locationHistoryRef.current = [newLocation]
 
-                    // Recenter map if already initialized, otherwise it will initialize when location is set
+                    // Recenter map if already initialized and not yet centered, otherwise it will initialize when location is set
                     if (window.deliveryMapInstance) {
-                      window.deliveryMapInstance.setCenter({ lat, lng })
-                      window.deliveryMapInstance.setZoom(18)
+                      if (!hasInitiallyCenteredOnBike) {
+                        window.deliveryMapInstance.setCenter({ lat, lng })
+                        window.deliveryMapInstance.setZoom(18)
+                        setHasInitiallyCenteredOnBike(true)
+                      }
 
                       // Update bike marker
                       if (bikeMarkerRef.current) {
@@ -5013,12 +5128,18 @@ export default function DeliveryHome() {
           if (!bikeMarkerRef.current) {
 
             createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, true);
+            // Set flag after initial bike marker creation
+            setHasInitiallyCenteredOnBike(true)
           } else {
             // Ensure marker is on map
             if (bikeMarkerRef.current.getMap() === null) {
               bikeMarkerRef.current.setMap(map);
             }
-            map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
+            // Only pan on initial setup
+            if (!hasInitiallyCenteredOnBike) {
+              map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
+              setHasInitiallyCenteredOnBike(true)
+            }
           }
         }
 
@@ -5231,6 +5352,102 @@ export default function DeliveryHome() {
     }
   }, [showOrderIdConfirmationPopup])
 
+  // Persist "Confirm Order ID" required state in localStorage so refresh pe bhi popup na hatay
+  useEffect(() => {
+    try {
+      if (!selectedRestaurant) return
+
+      const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+      const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+      const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+      const storageKey = 'abhi_delivery_order_id_confirmation'
+
+      // If order is already picked / out_for_delivery / delivered -> clear flag + close popup
+      const isAlreadyPickedUpOrBeyond =
+        orderStatus === 'out_for_delivery' ||
+        orderStatus === 'picked_up' ||
+        orderStatus === 'delivered' ||
+        deliveryPhase === 'en_route_to_delivery' ||
+        deliveryPhase === 'picked_up' ||
+        deliveryPhase === 'en_route_to_drop' ||
+        deliveryPhase === 'completed' ||
+        deliveryPhase === 'delivered' ||
+        deliveryStateStatus === 'order_confirmed' ||
+        deliveryStateStatus === 'delivered'
+
+      if (isAlreadyPickedUpOrBeyond) {
+        window.localStorage.removeItem(storageKey)
+        if (showOrderIdConfirmationPopup) {
+          setShowOrderIdConfirmationPopup(false)
+        }
+        return
+      }
+
+      // If rider is at pickup (or reached_pickup) and order ID still not confirmed, ensure flag is set
+      const isAtPickupButNotPicked =
+        deliveryPhase === 'at_pickup' ||
+        deliveryStateStatus === 'reached_pickup'
+
+      if (isAtPickupButNotPicked) {
+        const payload = {
+          required: true,
+          // store when flag was set (optional, for future cleanup/debugging)
+          setAt: new Date().toISOString()
+        }
+        window.localStorage.setItem(storageKey, JSON.stringify(payload))
+
+        // Close reached pickup popup (if any) and force-show Confirm Order ID popup
+        setShowreachedPickupPopup(false)
+        if (!showOrderIdConfirmationPopup) {
+          setShowOrderIdConfirmationPopup(true)
+        }
+      }
+    } catch (e) {
+      // Fail silently if localStorage not available
+    }
+  }, [selectedRestaurant, showOrderIdConfirmationPopup])
+
+  // On first load, restore "Confirm Order ID" popup from localStorage (in case of refresh)
+  useEffect(() => {
+    try {
+      if (!selectedRestaurant) return
+
+      const storageKey = 'abhi_delivery_order_id_confirmation'
+      const stored = window.localStorage.getItem(storageKey)
+      if (!stored) return
+
+      const parsed = JSON.parse(stored)
+      if (!parsed?.required) return
+
+      // Double-check order is not already picked / delivered before forcing popup
+      const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+      const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+      const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+      const isAlreadyPickedUpOrBeyond =
+        orderStatus === 'out_for_delivery' ||
+        orderStatus === 'picked_up' ||
+        orderStatus === 'delivered' ||
+        deliveryPhase === 'en_route_to_delivery' ||
+        deliveryPhase === 'picked_up' ||
+        deliveryPhase === 'en_route_to_drop' ||
+        deliveryPhase === 'completed' ||
+        deliveryPhase === 'delivered' ||
+        deliveryStateStatus === 'order_confirmed' ||
+        deliveryStateStatus === 'delivered'
+
+      if (!isAlreadyPickedUpOrBeyond) {
+        setShowreachedPickupPopup(false)
+        setShowOrderIdConfirmationPopup(true)
+      } else {
+        window.localStorage.removeItem(storageKey)
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+  }, [selectedRestaurant])
+
   // When order is accepted (selectedRestaurant set), ensure map exists and trigger resize
   useEffect(() => {
     if (!selectedRestaurant || showHomeSections) return
@@ -5328,20 +5545,22 @@ export default function DeliveryHome() {
   }, [showHomeSections])
 
   // STEP 3: Map should only be initialized once by the main useEffect
-  // If map exists and rider location changes, just update the center (no re-initialization)
+  // If map exists and rider location changes, only update center on initial setup (not on every update)
   useEffect(() => {
     if (showHomeSections) return
     if (!riderLocation || riderLocation.length !== 2) return
 
-    // STEP 3: Never recreate map - only update center if map already exists
-    if (window.deliveryMapInstance) {
+    // STEP 3: Never recreate map - only pan to center if not already centered initially
+    // After initial centering, marker will update but map viewport stays stable
+    if (window.deliveryMapInstance && !hasInitiallyCenteredOnBike) {
       try {
         window.deliveryMapInstance.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
+        setHasInitiallyCenteredOnBike(true)
       } catch (error) {
 
       }
     }
-  }, [riderLocation, showHomeSections]) // Update center when location changes
+  }, [riderLocation, showHomeSections, hasInitiallyCenteredOnBike]) // Only pan on initial setup
 
   // Firebase listener for delivery boy location updates (reduces Google Maps API calls)
   useEffect(() => {
@@ -5407,9 +5626,11 @@ export default function DeliveryHome() {
                   });
                 }
 
-                // Auto-center map if user hasn't manually panned
-                if (!isUserPanningRef.current) {
+                // Auto-center map only on initial setup if user hasn't manually panned
+                // After initial centering, don't auto-pan to prevent map jumping
+                if (!isUserPanningRef.current && !hasInitiallyCenteredOnBike) {
                   window.deliveryMapInstance.panTo(position);
+                  setHasInitiallyCenteredOnBike(true)
                 }
 
                 // Update state for consistency
@@ -7354,6 +7575,58 @@ export default function DeliveryHome() {
     showreachedPickupPopup
   ])
 
+  // Restore Reached Pickup popup after refresh purely from BACKEND status.
+  // If backend says we are still in pickup phase (order accepted / preparing / ready),
+  // keep the Reached Pickup card visible even after reload, until swipe confirm.
+  useEffect(() => {
+    if (!selectedRestaurant) return
+
+    const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+    const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+    const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+    const isDelivered = orderStatus === 'delivered' ||
+      orderStatus === 'completed' ||
+      deliveryPhase === 'completed' ||
+      deliveryPhase === 'delivered' ||
+      deliveryPhase === 'at_delivery' ||
+      deliveryStateStatus === 'delivered'
+
+    if (isDelivered) {
+      setShowreachedPickupPopup(false)
+      return
+    }
+
+    const isReachedPickupConfirmed = deliveryStateStatus === 'reached_pickup' ||
+      deliveryPhase === 'at_pickup'
+
+    const isOrderIdConfirmed = deliveryPhase === 'en_route_to_delivery' ||
+      deliveryPhase === 'picked_up' ||
+      deliveryPhase === 'en_route_to_drop' ||
+      deliveryPhase === 'at_delivery' ||
+      orderStatus === 'out_for_delivery' ||
+      deliveryStateStatus === 'order_confirmed' ||
+      deliveryStateStatus === 'en_route_to_delivery' ||
+      deliveryStateStatus === 'en_route_to_drop' ||
+      selectedRestaurant?.deliveryState?.currentPhase === 'en_route_to_delivery' ||
+      selectedRestaurant?.deliveryState?.currentPhase === 'en_route_to_drop' ||
+      selectedRestaurant?.deliveryState?.currentPhase === 'at_delivery'
+
+    const isInPickupPhase = deliveryPhase === 'en_route_to_pickup' ||
+      orderStatus === 'ready' ||
+      orderStatus === 'preparing'
+
+    if (isInPickupPhase && !isReachedPickupConfirmed && !isOrderIdConfirmed) {
+      setShowreachedPickupPopup(true)
+    }
+  }, [
+    selectedRestaurant?.orderStatus,
+    selectedRestaurant?.status,
+    selectedRestaurant?.deliveryPhase,
+    selectedRestaurant?.deliveryState?.status,
+    selectedRestaurant?.deliveryState?.currentPhase
+  ])
+
   // Monitor order status changes - close Order ID Confirmation popup if order is already picked up
   useEffect(() => {
     if (!selectedRestaurant || !showOrderIdConfirmationPopup) {
@@ -7448,6 +7721,37 @@ export default function DeliveryHome() {
     }
   }, [location.pathname, selectedRestaurant])
 
+  // Restore Reached Drop popup automatically after refresh based on BACKEND status
+  // (independent of any localStorage flags)
+  useEffect(() => {
+    if (!selectedRestaurant) return
+
+    const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+    const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+    const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+    const isInDeliveryPhase = orderStatus === 'out_for_delivery' ||
+      deliveryPhase === 'en_route_to_delivery' ||
+      deliveryPhase === 'picked_up' ||
+      deliveryPhase === 'en_route_to_drop' ||
+      deliveryPhase === 'at_delivery' ||
+      deliveryStateStatus === 'order_confirmed' ||
+      deliveryStateStatus === 'en_route_to_delivery' ||
+      deliveryStateStatus === 'en_route_to_drop' ||
+      selectedRestaurant?.deliveryState?.currentPhase === 'en_route_to_drop' ||
+      selectedRestaurant?.deliveryState?.currentPhase === 'at_delivery'
+
+    const isDelivered = orderStatus === 'delivered' ||
+      deliveryPhase === 'completed' ||
+      deliveryPhase === 'delivered' ||
+      deliveryStateStatus === 'delivered'
+
+    // If order is in delivery phase and not yet delivered, keep Reached Drop popup visible
+    if (isInDeliveryPhase && !isDelivered) {
+      setShowReachedDropPopup(true)
+    }
+  }, [selectedRestaurant])
+
   // Calculate trip distance and time when Order Delivered popup is shown
   useEffect(() => {
     if (!showOrderDeliveredAnimation) {
@@ -7469,6 +7773,26 @@ export default function DeliveryHome() {
     }
 
   }, [showOrderDeliveredAnimation, tripDistance, tripTime])
+
+  // Restore Order Delivered popup after refresh purely from BACKEND status
+  useEffect(() => {
+    if (!selectedRestaurant) return
+
+    const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+    const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+    const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+    const isDelivered = orderStatus === 'delivered' ||
+      orderStatus === 'completed' ||
+      deliveryPhase === 'completed' ||
+      deliveryPhase === 'delivered' ||
+      deliveryStateStatus === 'delivered'
+
+    // If backend says delivered and review/payment overlays are not blocking, keep delivered popup visible
+    if (isDelivered && !showOrderDeliveredAnimation) {
+      setShowOrderDeliveredAnimation(true)
+    }
+  }, [selectedRestaurant, showOrderDeliveredAnimation])
 
   // CRITICAL: Monitor order status and close all pickup/delivery popups when order is delivered
   // Also clear selectedRestaurant if order is completed and payment page is closed
@@ -7879,13 +8203,15 @@ export default function DeliveryHome() {
 
 
       // Center map on bike location initially - preserve current zoom if user has zoomed in
-      if (shouldCenterMap) {
+      // Only center if not already centered initially (prevents map jumping after initial setup)
+      if (shouldCenterMap && !hasInitiallyCenteredOnBike) {
         const currentZoom = map.getZoom();
         map.setCenter(position);
         // Only set zoom to 18 if current zoom is less than 18 (don't reduce user's zoom)
         if (currentZoom < 18) {
           map.setZoom(18); // Full zoom in for better visibility
         }
+        setHasInitiallyCenteredOnBike(true)
       }
 
       // Remove animation after drop completes
@@ -7925,10 +8251,12 @@ export default function DeliveryHome() {
       // Ensure z-index is high
       bikeMarkerRef.current.setZIndex(1000);
 
-      // Auto-center map on bike location (like Zomato) - only if user hasn't manually panned
-      if (shouldCenterMap && !isUserPanningRef.current) {
+      // Auto-center map on bike location (like Zomato) - only if user hasn't manually panned and not already centered initially
+      // After initial centering, don't auto-pan to prevent map jumping
+      if (shouldCenterMap && !isUserPanningRef.current && !hasInitiallyCenteredOnBike) {
         // Smooth pan to bike location
         map.panTo(position);
+        setHasInitiallyCenteredOnBike(true)
       }
 
       // Double-check marker is still on map after update
@@ -10122,9 +10450,12 @@ export default function DeliveryHome() {
             deliveryPhase === 'en_route_to_drop' ||
             deliveryStateStatus === 'order_confirmed'
         })()}
-        onClose={() => setShowOrderIdConfirmationPopup(false)}
+        // Popup ko manually dismiss nahi karne dena; ye tab tak rahega
+        // jab tak order pickup / out_for_delivery state me nahi chala jata.
+        onClose={() => { }}
         showCloseButton={false}
         closeOnBackdropClick={false}
+        disableSwipeToClose={true}
         maxHeight="60vh"
         showHandle={false}
         showBackdrop={false}

@@ -115,6 +115,29 @@ export default function FeedNavbar({ className = "" }) {
 
     const next = !isOnline;
     
+    // Check for active orders before allowing offline toggle
+    if (!next) {
+      // User is trying to go offline - check for active orders
+      try {
+        const response = await deliveryAPI.getOrders({ includeDelivered: false });
+        const activeOrders = response?.data?.data?.orders || [];
+        
+        if (activeOrders.length > 0) {
+          // Prevent going offline if there are active orders
+          toast.error("You cannot go offline while you have active orders. Please complete all orders first.", {
+            id: TOAST_ID_KEY,
+            style: { marginTop: '80px' }
+          });
+          return; // Don't proceed with offline toggle
+        }
+      } catch (error) {
+        // If API call fails, allow offline toggle (fail-safe)
+        // Log error but don't block user
+        console.error('Error checking active orders:', error);
+        // Continue with offline toggle
+      }
+    }
+    
     // Update state immediately for better UX
     setIsOnline(next);
     showSingleToast(next);

@@ -717,6 +717,12 @@ export default function ItemDetailsPage() {
       return
     }
 
+    // Validate preparation time (mandatory)
+    if (!preparationTime || !preparationTime.trim()) {
+      toast.error("Please select preparation time")
+      return
+    }
+
     // Validate variants if enabled
     if (hasVariants) {
       if (variants.length === 0) {
@@ -862,17 +868,43 @@ export default function ItemDetailsPage() {
       if (isNewItem) {
         itemId = `item-${Date.now()}-${Math.random()}`
       } else {
-        // Try to get ID from itemData first (most reliable), then from URL param
-        itemId = itemData?.id || id
+        // Try multiple sources for ID to ensure we find the right item
+        itemId = itemData?.id || itemData?._id || id || location.state?.item?.id || location.state?.item?._id
         if (!itemId) {
-          itemId = `item-${Date.now()}-${Math.random()}`
+          console.error('Could not determine item ID for update')
+          toast.error('Error: Could not identify item to update. Please try again.')
+          setUploadingImages(false)
+          return
         }
-        // Ensure ID is a string
-        itemId = String(itemId)
+        // Ensure ID is a string and trim whitespace
+        itemId = String(itemId).trim()
       }
 
       // Prepare nutrition data as strings (as per menu model)
       const nutritionStrings = []
+      if (weightPerServing && weightPerServing.trim()) {
+        nutritionStrings.push(`Weight per serving: ${weightPerServing} grams`)
+      }
+      if (calorieCount && calorieCount.trim()) {
+        nutritionStrings.push(`Calorie count: ${calorieCount} Kcal`)
+      }
+      if (proteinCount && proteinCount.trim()) {
+        nutritionStrings.push(`Protein count: ${proteinCount} mg`)
+      }
+      if (carbohydrates && carbohydrates.trim()) {
+        nutritionStrings.push(`Carbohydrates: ${carbohydrates} mg`)
+      }
+      if (fatCount && fatCount.trim()) {
+        nutritionStrings.push(`Fat count: ${fatCount} mg`)
+      }
+      if (fibreCount && fibreCount.trim()) {
+        nutritionStrings.push(`Fibre count: ${fibreCount} mg`)
+      }
+
+      // Parse allergies from allergens string
+      const allergiesArray = allergens && allergens.trim()
+        ? allergens.split(',').map(a => a.trim()).filter(a => a.length > 0)
+        : []
 
       // Prepare variations array
       const variations = hasVariants && variants.length > 0
@@ -898,7 +930,7 @@ export default function ItemDetailsPage() {
         price: hasVariants && variations.length > 0
           ? Math.min(...variations.map(v => v.price)) // Base price as minimum variant price
           : parseFloat(basePrice) || 0,
-        preparationTime: preparationTime || "",
+        preparationTime: preparationTime.trim(), // Now mandatory, so it will always have a value
         stock: "Unlimited",
         discount: null,
         originalPrice: null,
@@ -912,16 +944,16 @@ export default function ItemDetailsPage() {
         isAvailable: isInStock,
         isRecommended: isRecommended,
         variations: variations,
-        tags: [],
+        tags: selectedTags || [],
         nutrition: nutritionStrings,
-        allergies: [],
+        allergies: allergiesArray,
         photoCount: allImageUrls.length || 1,
-        // Additional fields for complete item details
+        // Additional fields for complete item details - now properly saving all fields
         subCategory: subCategory || "",
-        servesInfo: "",
-        itemSize: "",
-        itemSizeQuantity: "",
-        itemSizeUnit: "piece",
+        servesInfo: servesInfo || "",
+        itemSize: itemSizeQuantity && itemSizeUnit ? `${itemSizeQuantity} ${itemSizeUnit}` : "",
+        itemSizeQuantity: itemSizeQuantity || "",
+        itemSizeUnit: itemSizeUnit || "piece",
         gst: parseFloat(gst) || 0,
         // Approval flow:
         // - Restaurant-created items should always start as 'pending'
@@ -933,6 +965,17 @@ export default function ItemDetailsPage() {
         approvedAt: itemData?.approvedAt || null,
         approvedBy: itemData?.approvedBy || null,
       }
+      
+      // CRITICAL: Log what we're sending to backend for debugging
+      console.log('[FRONTEND] Item data being saved:', {
+        id: itemDataToSave.id,
+        name: itemDataToSave.name,
+        description: itemDataToSave.description,
+        price: itemDataToSave.price,
+        preparationTime: itemDataToSave.preparationTime,
+        category: itemDataToSave.category,
+        isNewItem: isNewItem
+      })
 
       // If this is a NEW item and we know the target section ID from navigation
       // (groupId or sectionId passed in location.state), use the dedicated API
@@ -967,12 +1010,25 @@ export default function ItemDetailsPage() {
       let menu = menuResponse.data?.data?.menu
       let sections = menu?.sections || []
 
-      // If editing, remove item from its current location (in case category changed or it's in a subsection)
+      // CRITICAL: For editing, we need to find and update the item in place
+      // OR remove it from old location and add to new location if category changed
+      let itemFoundAndUpdated = false
+      let oldSectionName = null
+
       if (!isNewItem && itemId) {
         const searchId = String(itemId).trim()
         const urlId = String(id || '').trim()
-        let itemRemoved = false
-
+        const itemDataId = String(itemData?.id || itemData?._id || '').trim()
+        
+        // Helper function to check if IDs match
+        const idsMatch = (itemId1, itemId2) => {
+          if (!itemId1 || !itemId2) return false
+          const id1 = String(itemId1).trim()
+          const id2 = String(itemId2).trim()
+          return id1 === id2 || id1 === String(id2) || String(id1) === id2
+        }
+        
+        // First, try to find the item and check if category changed
         for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
           const section = sections[sectionIndex]
 
@@ -980,76 +1036,114 @@ export default function ItemDetailsPage() {
           if (section.items && Array.isArray(section.items)) {
             const itemIndex = section.items.findIndex(item => {
               const itemIdStr = String(item.id || item._id || '').trim()
-              // Try multiple ID formats
-              return itemIdStr === searchId || itemIdStr === urlId ||
-                String(item.id) === String(itemId) || String(item.id) === String(id)
+              return idsMatch(itemIdStr, searchId) || 
+                     idsMatch(itemIdStr, urlId) || 
+                     idsMatch(itemIdStr, itemDataId) ||
+                     idsMatch(item.id, itemId) || 
+                     idsMatch(item.id, id)
             })
+            
             if (itemIndex !== -1) {
-              section.items.splice(itemIndex, 1)
-              itemRemoved = true
-              break
+              oldSectionName = section.name
+              
+              // If category hasn't changed, update in place
+              if (section.name === category) {
+                // Preserve the original ID format (could be _id or id)
+                const originalId = section.items[itemIndex].id || section.items[itemIndex]._id || itemId
+                itemDataToSave.id = String(originalId)
+                section.items[itemIndex] = itemDataToSave
+                itemFoundAndUpdated = true
+                console.log(`[UPDATE] Item updated in place in section "${section.name}"`)
+                break
+              } else {
+                // Category changed - remove from old section
+                section.items.splice(itemIndex, 1)
+                console.log(`[UPDATE] Item removed from old section "${section.name}", will add to new section "${category}"`)
+                break
+              }
             }
           }
 
           // Check items in subsections
-          if (!itemRemoved && section.subsections && Array.isArray(section.subsections)) {
+          if (!itemFoundAndUpdated && section.subsections && Array.isArray(section.subsections)) {
             for (let subIndex = 0; subIndex < section.subsections.length; subIndex++) {
               const subsection = section.subsections[subIndex]
               if (subsection.items && Array.isArray(subsection.items)) {
                 const subItemIndex = subsection.items.findIndex(item => {
                   const itemIdStr = String(item.id || item._id || '').trim()
-                  // Try multiple ID formats
-                  return itemIdStr === searchId || itemIdStr === urlId ||
-                    String(item.id) === String(itemId) || String(item.id) === String(id)
+                  return idsMatch(itemIdStr, searchId) || 
+                         idsMatch(itemIdStr, urlId) || 
+                         idsMatch(itemIdStr, itemDataId) ||
+                         idsMatch(item.id, itemId) || 
+                         idsMatch(item.id, id)
                 })
+                
                 if (subItemIndex !== -1) {
-                  subsection.items.splice(subItemIndex, 1)
-                  itemRemoved = true
-                  break
+                  oldSectionName = section.name
+                  
+                  // If category hasn't changed, update in place
+                  if (section.name === category) {
+                    // Preserve the original ID format
+                    const originalId = subsection.items[subItemIndex].id || subsection.items[subItemIndex]._id || itemId
+                    itemDataToSave.id = String(originalId)
+                    subsection.items[subItemIndex] = itemDataToSave
+                    itemFoundAndUpdated = true
+                    console.log(`[UPDATE] Item updated in place in subsection of section "${section.name}"`)
+                    break
+                  } else {
+                    // Category changed - remove from old subsection
+                    subsection.items.splice(subItemIndex, 1)
+                    console.log(`[UPDATE] Item removed from old subsection, will add to new section "${category}"`)
+                    break
+                  }
                 }
               }
             }
-            if (itemRemoved) break
+            if (itemFoundAndUpdated) break
           }
         }
-
-        // Item will be added as new if not found
-      }
-
-      // Find or create the category section
-      let targetSection = sections.find(s => s.name === category)
-      if (!targetSection) {
-        // Create new section for this category
-        targetSection = {
-          id: `section-${Date.now()}`,
-          name: category,
-          items: [],
-          subsections: [],
-          isEnabled: true,
-          order: sections.length
+        
+        if (!isNewItem && !itemFoundAndUpdated) {
+          console.warn(`[UPDATE] Item with ID ${itemId} not found in menu. Will add as new item.`)
         }
-        sections.push(targetSection)
       }
 
-      // Ensure items array exists
-      if (!targetSection.items) {
-        targetSection.items = []
-      }
+      // If item was updated in place, we're done - just save the menu
+      // Otherwise, we need to add it to the target section
+      if (!itemFoundAndUpdated) {
+        // Find or create the category section
+        let targetSection = sections.find(s => s.name === category)
+        if (!targetSection) {
+          // Create new section for this category
+          targetSection = {
+            id: `section-${Date.now()}`,
+            name: category,
+            items: [],
+            subsections: [],
+            isEnabled: true,
+            order: sections.length
+          }
+          sections.push(targetSection)
+        }
 
-      // Add or update item in target section
-      // Since we already removed the item from its old location, we should always add it here
-      // But check if it somehow still exists (shouldn't happen, but safety check)
-      const existingItemIndex = targetSection.items.findIndex(item => {
-        const itemIdStr = String(item.id || item._id || '').trim()
-        return itemIdStr === String(itemId).trim()
-      })
+        // Ensure items array exists
+        if (!targetSection.items) {
+          targetSection.items = []
+        }
 
-      if (existingItemIndex !== -1) {
-        // Update existing item (shouldn't happen if removal worked, but handle it)
-        targetSection.items[existingItemIndex] = itemDataToSave
-      } else {
-        // Add new item (or re-add after removal)
-        targetSection.items.push(itemDataToSave)
+        // Check if item already exists in target section (shouldn't happen, but safety check)
+        const existingItemIndex = targetSection.items.findIndex(item => {
+          const itemIdStr = String(item.id || item._id || '').trim()
+          return itemIdStr === String(itemId).trim()
+        })
+
+        if (existingItemIndex !== -1) {
+          // Update existing item
+          targetSection.items[existingItemIndex] = itemDataToSave
+        } else {
+          // Add new item (or re-add after removal from old location)
+          targetSection.items.push(itemDataToSave)
+        }
       }
 
       // Update menu with new sections
@@ -1066,6 +1160,25 @@ export default function ItemDetailsPage() {
         itemDataToSave.image = allImageUrls[0]
       }
 
+      // CRITICAL: Log sections being sent to backend
+      console.log('[FRONTEND] Sending menu update with sections:', sections.length)
+      sections.forEach((section, idx) => {
+        if (section.items && section.items.length > 0) {
+          console.log(`[FRONTEND] Section ${idx} (${section.name}): ${section.items.length} items`)
+          section.items.forEach((item, itemIdx) => {
+            if (item.id === itemId) {
+              console.log(`[FRONTEND] Found our item at Section ${idx}, Item ${itemIdx}:`, {
+                id: item.id,
+                name: item.name,
+                description: item.description,
+                price: item.price,
+                preparationTime: item.preparationTime
+              })
+            }
+          })
+        }
+      })
+      
       const updateResponse = await restaurantAPI.updateMenu({ sections })
 
       if (updateResponse.data?.success) {
@@ -1082,6 +1195,7 @@ export default function ItemDetailsPage() {
         // Trigger a page refresh event
         window.dispatchEvent(new CustomEvent('foodsChanged'))
       } else {
+        console.error('[FRONTEND] Update failed:', updateResponse.data)
         toast.error(updateResponse.data?.message || "Failed to save item")
       }
     } catch (error) {
@@ -1556,23 +1670,33 @@ export default function ItemDetailsPage() {
                 })()}
               </div>
 
-              {/* Preparation Time */}
+              {/* Preparation Time - Mandatory */}
               <div className="relative">
-                <label className="block text-xs text-gray-600 mb-1">Preparation Time</label>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Preparation Time <span className="text-red-500">*</span>
+                </label>
                 <div className="relative">
                   <select
                     value={preparationTime}
                     onChange={(e) => setPreparationTime(e.target.value)}
-                    className="w-full pl-4 pr-10 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+                    required
+                    className={`w-full pl-4 pr-10 py-3 border rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${
+                      !preparationTime ? 'border-red-300' : 'border-gray-300'
+                    }`}
                   >
                     <option value="">Select timing</option>
                     <option value="10-20 mins">10-20 mins</option>
                     <option value="20-25 mins">20-25 mins</option>
                     <option value="25-35 mins">25-35 mins</option>
                     <option value="35-45 mins">35-45 mins</option>
+                    <option value="45-60 mins">45-60 mins</option>
+                    <option value="60+ mins">60+ mins</option>
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
                 </div>
+                {!preparationTime && (
+                  <p className="text-xs text-red-500 mt-1">Preparation time is required</p>
+                )}
               </div>
               {/* <div>
                 <label className="block text-xs text-gray-600 mb-1">GST</label>
@@ -1770,10 +1894,10 @@ export default function ItemDetailsPage() {
             {uploadingImages ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Uploading...</span>
+                <span>{isNewItem ? "Saving..." : "Updating..."}</span>
               </>
             ) : (
-              "Save"
+              isNewItem ? "Save" : "Update"
             )}
           </button>
         </div>

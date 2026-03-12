@@ -282,112 +282,15 @@ export default function HubMenu() {
     return () => clearInterval(interval)
   }, [loadingMenu])
 
-  // Save menu to API whenever menuData changes (debounced)
+  // IMPORTANT:
+  // Previously this effect auto-saved the entire menu to the backend whenever
+  // menuData changed. That could overwrite fresh edits (e.g. updated prices)
+  // coming from ItemDetailsPage with stale data from an older menu snapshot.
+  // Menu persistence is now handled explicitly from dedicated pages, so this
+  // auto-save has been disabled to avoid conflicts.
   useEffect(() => {
-    if (!loadingMenu && menuData.length >= 0) {
-      const timeoutId = setTimeout(async () => {
-        try {
-          // Normalize menuData before saving to ensure proper structure matching backend schema
-          const normalizedSections = menuData.map((section, index) => ({
-            id: section.id || `section-${index}`,
-            name: section.name || "Unnamed Section",
-            items: Array.isArray(section.items) ? section.items.map(item => ({
-              id: String(item.id || Date.now() + Math.random()),
-              name: item.name || "Unnamed Item",
-              nameArabic: item.nameArabic || "",
-              image: item.image || "",
-              category: item.category || section.name,
-              rating: item.rating ?? 0.0,
-              reviews: item.reviews ?? 0,
-              price: item.price || 0,
-              stock: item.stock || "Unlimited",
-              discount: item.discount || null,
-              originalPrice: item.originalPrice || null,
-              foodType: item.foodType || "Non-Veg",
-              availabilityTimeStart: item.availabilityTimeStart || "12:01 AM",
-              availabilityTimeEnd: item.availabilityTimeEnd || "11:57 PM",
-              description: item.description || "",
-              discountType: item.discountType || "Percent",
-              discountAmount: item.discountAmount ?? 0.0,
-              isAvailable: item.isAvailable !== undefined ? item.isAvailable : true,
-              isRecommended: item.isRecommended || false,
-              variations: Array.isArray(item.variations) ? item.variations.map(v => ({
-                id: String(v.id || Date.now() + Math.random()),
-                name: v.name || "",
-                price: v.price || 0,
-                stock: v.stock || "Unlimited",
-              })) : [],
-              tags: Array.isArray(item.tags) ? item.tags : [],
-              nutrition: Array.isArray(item.nutrition) ? item.nutrition : [],
-              allergies: Array.isArray(item.allergies) ? item.allergies : [],
-              photoCount: item.photoCount ?? 1,
-              // Approval status fields
-              approvalStatus: item.approvalStatus || 'pending',
-              rejectionReason: item.rejectionReason || '',
-              requestedAt: item.requestedAt,
-              approvedAt: item.approvedAt,
-            })) : [],
-            subsections: Array.isArray(section.subsections) ? section.subsections.map(subsection => ({
-              id: subsection.id || `subsection-${Date.now()}`,
-              name: subsection.name || "Unnamed Subsection",
-              items: Array.isArray(subsection.items) ? subsection.items.map(item => ({
-                id: String(item.id || Date.now() + Math.random()),
-                name: item.name || "Unnamed Item",
-                nameArabic: item.nameArabic || "",
-                image: item.image || "",
-                category: item.category || section.name,
-                rating: item.rating ?? 0.0,
-                reviews: item.reviews ?? 0,
-                price: item.price || 0,
-                stock: item.stock || "Unlimited",
-                discount: item.discount || null,
-                originalPrice: item.originalPrice || null,
-                foodType: item.foodType || "Non-Veg",
-                availabilityTimeStart: item.availabilityTimeStart || "12:01 AM",
-                availabilityTimeEnd: item.availabilityTimeEnd || "11:57 PM",
-                description: item.description || "",
-                discountType: item.discountType || "Percent",
-                discountAmount: item.discountAmount ?? 0.0,
-                isAvailable: item.isAvailable !== undefined ? item.isAvailable : true,
-                isRecommended: item.isRecommended || false,
-                variations: Array.isArray(item.variations) ? item.variations.map(v => ({
-                  id: String(v.id || Date.now() + Math.random()),
-                  name: v.name || "",
-                  price: v.price || 0,
-                  stock: v.stock || "Unlimited",
-                })) : [],
-                tags: Array.isArray(item.tags) ? item.tags : [],
-                nutrition: Array.isArray(item.nutrition) ? item.nutrition : [],
-                allergies: Array.isArray(item.allergies) ? item.allergies : [],
-                photoCount: item.photoCount ?? 1,
-                // Approval status fields
-                approvalStatus: item.approvalStatus || 'pending',
-                rejectionReason: item.rejectionReason || '',
-                requestedAt: item.requestedAt,
-                approvedAt: item.approvedAt,
-              })) : [],
-            })) : [],
-            isEnabled: section.isEnabled !== undefined ? section.isEnabled : true,
-            order: section.order !== undefined ? section.order : index,
-          }))
-
-          await restaurantAPI.updateMenu({ sections: normalizedSections })
-          console.log('✅ Menu saved successfully with', normalizedSections.length, 'sections')
-        } catch (error) {
-          console.error('Error saving menu:', error)
-          // Check if it's a network error (backend not running)
-          if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-            console.warn('Backend server may not be running. Menu changes will be saved when connection is restored.')
-            // Don't show error toast for network errors during auto-save to avoid spam
-            // The user will see the error when they manually try to save
-          } else {
-            toast.error('Failed to save menu changes')
-          }
-        }
-      }, 1000) // Debounce: save 1 second after last change
-
-      return () => clearTimeout(timeoutId)
-    }
+    // Intentionally no-op: keep dependency array so React knows we considered
+    // menuData/loadingMenu changes, but do not auto-save.
   }, [menuData, loadingMenu])
 
   // Fetch add-ons when add-ons tab is active
@@ -886,7 +789,7 @@ export default function HubMenu() {
     setIsCategoryOptionsOpen(false)
   }
 
-  const handleSaveCategoryName = () => {
+  const handleSaveCategoryName = async () => {
     if (!editCategoryName.trim() || !selectedCategory) return
 
     const newCategoryName = editCategoryName.trim()
@@ -896,36 +799,69 @@ export default function HubMenu() {
       return
     }
 
-    // Update all foods in this category
-    // Update category name inside menuData so that backend menu (via updateMenu)
-    // stays the single source of truth instead of localStorage.
-    setMenuData(prevSections =>
-      prevSections.map(section => {
-        if (section.name === selectedCategory.name) {
-          return { ...section, name: newCategoryName };
-        }
-        if (Array.isArray(section.subsections) && section.subsections.length > 0) {
-          return {
-            ...section,
-            subsections: section.subsections.map(subsection => ({
-              ...subsection,
-              items: Array.isArray(subsection.items)
-                ? subsection.items.map(item =>
-                    item.category === selectedCategory.name
-                      ? { ...item, category: newCategoryName }
-                      : item
-                  )
-                : subsection.items,
-            })),
-          };
-        }
-        return section;
-      }),
-    )
+    try {
+      // 1) Get fresh menu from backend so we always work on latest data
+      const menuResponse = await restaurantAPI.getMenu()
+      const currentMenu = menuResponse?.data?.data?.menu
+      const sections = currentMenu?.sections || []
 
-    setIsEditCategoryOpen(false)
-    setSelectedCategory(null)
-    setEditCategoryName("")
+      // 2) Rename category in sections + all its items
+      const updatedSections = sections.map(section => {
+        let updatedSection = { ...section }
+
+        if (section.name === selectedCategory.name) {
+          updatedSection.name = newCategoryName
+        }
+
+        // Update top-level items that belong to this category
+        if (Array.isArray(section.items)) {
+          updatedSection.items = section.items.map(item =>
+            item.category === selectedCategory.name
+              ? { ...item, category: newCategoryName }
+              : item
+          )
+        }
+
+        // Update subsection items as well
+        if (Array.isArray(section.subsections)) {
+          updatedSection.subsections = section.subsections.map(subsection => ({
+            ...subsection,
+            items: Array.isArray(subsection.items)
+              ? subsection.items.map(item =>
+                  item.category === selectedCategory.name
+                    ? { ...item, category: newCategoryName }
+                    : item
+                )
+              : subsection.items,
+          }))
+        }
+
+        return updatedSection
+      })
+
+      // 3) Persist to backend
+      const updateResponse = await restaurantAPI.updateMenu({ sections: updatedSections })
+
+      if (updateResponse?.data?.success) {
+        toast.success('Category name updated')
+
+        // 4) Refresh menuData from backend so UI instantly reflects DB
+        await fetchMenu(false)
+      } else {
+        toast.error(updateResponse?.data?.message || 'Failed to update category name')
+      }
+    } catch (error) {
+      console.error('Failed to update category name:', error)
+      toast.error(
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update category name'
+      )
+    } finally {
+      setIsEditCategoryOpen(false)
+      setSelectedCategory(null)
+      setEditCategoryName("")
+    }
   }
 
   // Sub-category handlers

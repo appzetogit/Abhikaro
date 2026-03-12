@@ -111,44 +111,56 @@ export const updateMenu = asyncHandler(async (req, res) => {
         // CRITICAL: Find existing item to preserve approval status fields
         const existingItem = existingSection?.items?.find(i => String(i.id) === String(item.id));
         
+        // CRITICAL: Log the incoming item data to debug update issues
+        console.log(`[NORMALIZE] Processing item "${item.name}" (ID: ${item.id}):`);
+        console.log(`  - name: "${item.name}"`);
+        console.log(`  - description: "${item.description}"`);
+        console.log(`  - price: ${item.price}`);
+        console.log(`  - preparationTime: "${item.preparationTime}"`);
+        
         return {
       id: String(item.id || Date.now() + Math.random()),
-      name: item.name || "Unnamed Item",
-      nameArabic: item.nameArabic || "",
-      image: item.image || "",
-      category: item.category || section.name,
-      rating: item.rating ?? 0.0,
-      reviews: item.reviews ?? 0,
-      price: item.price || 0,
-      stock: item.stock || "Unlimited",
-      discount: item.discount || null,
-      originalPrice: item.originalPrice || null,
-      foodType: item.foodType || "Non-Veg",
-      availabilityTimeStart: item.availabilityTimeStart || "12:01 AM",
-      availabilityTimeEnd: item.availabilityTimeEnd || "11:57 PM",
-      description: item.description || "",
-      discountType: item.discountType || "Percent",
-      discountAmount: item.discountAmount ?? 0.0,
+      // CRITICAL: Use item.name directly, only fallback if undefined/null (not empty string)
+      name: item.name !== undefined && item.name !== null ? item.name : "Unnamed Item",
+      nameArabic: item.nameArabic !== undefined && item.nameArabic !== null ? item.nameArabic : "",
+      image: item.image !== undefined && item.image !== null ? item.image : "",
+      category: item.category !== undefined && item.category !== null ? item.category : section.name,
+      // Preserve rating and reviews from existing item (these are user-generated, not restaurant-editable)
+      rating: existingItem?.rating ?? item.rating ?? 0.0,
+      reviews: existingItem?.reviews ?? item.reviews ?? 0,
+      // CRITICAL: Use item.price directly, handle 0 as valid value
+      price: item.price !== undefined && item.price !== null ? Number(item.price) : 0,
+      stock: item.stock !== undefined && item.stock !== null ? item.stock : "Unlimited",
+      discount: item.discount !== undefined ? item.discount : null,
+      originalPrice: item.originalPrice !== undefined ? item.originalPrice : null,
+      foodType: item.foodType !== undefined && item.foodType !== null ? item.foodType : "Non-Veg",
+      availabilityTimeStart: item.availabilityTimeStart !== undefined && item.availabilityTimeStart !== null ? item.availabilityTimeStart : "12:01 AM",
+      availabilityTimeEnd: item.availabilityTimeEnd !== undefined && item.availabilityTimeEnd !== null ? item.availabilityTimeEnd : "11:57 PM",
+      // CRITICAL: Use item.description directly, allow empty strings
+      description: item.description !== undefined && item.description !== null ? item.description : "",
+      discountType: item.discountType !== undefined && item.discountType !== null ? item.discountType : "Percent",
+      discountAmount: item.discountAmount !== undefined && item.discountAmount !== null ? Number(item.discountAmount) : 0.0,
       isAvailable: item.isAvailable !== undefined ? item.isAvailable : true,
-      isRecommended: item.isRecommended || false,
+      isRecommended: item.isRecommended !== undefined ? item.isRecommended : false,
       variations: Array.isArray(item.variations) ? item.variations.map(v => ({
         id: String(v.id || Date.now() + Math.random()),
-        name: v.name || "",
-        price: v.price || 0,
-        stock: v.stock || "Unlimited",
+        name: v.name !== undefined && v.name !== null ? v.name : "",
+        price: v.price !== undefined && v.price !== null ? Number(v.price) : 0,
+        stock: v.stock !== undefined && v.stock !== null ? v.stock : "Unlimited",
       })) : [],
       tags: Array.isArray(item.tags) ? item.tags : [],
       nutrition: Array.isArray(item.nutrition) ? item.nutrition : [],
       allergies: Array.isArray(item.allergies) ? item.allergies : [],
-      photoCount: item.photoCount ?? 1,
-      // Additional fields for complete item details
-      subCategory: item.subCategory || "",
-      servesInfo: item.servesInfo || "",
-      itemSize: item.itemSize || "",
-      itemSizeQuantity: item.itemSizeQuantity || "",
-      itemSizeUnit: item.itemSizeUnit || "piece",
-      gst: item.gst ?? 0,
-      preparationTime: existingItem?.preparationTime || item.preparationTime || "",
+      photoCount: item.photoCount !== undefined && item.photoCount !== null ? Number(item.photoCount) : 1,
+      // Additional fields for complete item details - USE NEW VALUES FROM ITEM (not existingItem)
+      subCategory: item.subCategory !== undefined && item.subCategory !== null ? item.subCategory : "",
+      servesInfo: item.servesInfo !== undefined && item.servesInfo !== null ? item.servesInfo : "",
+      itemSize: item.itemSize !== undefined && item.itemSize !== null ? item.itemSize : "",
+      itemSizeQuantity: item.itemSizeQuantity !== undefined && item.itemSizeQuantity !== null ? item.itemSizeQuantity : "",
+      itemSizeUnit: item.itemSizeUnit !== undefined && item.itemSizeUnit !== null ? item.itemSizeUnit : "piece",
+      gst: item.gst !== undefined && item.gst !== null ? Number(item.gst) : 0,
+      // CRITICAL: Use NEW preparationTime from item, fallback to existing only if new is undefined/null
+      preparationTime: item.preparationTime !== undefined && item.preparationTime !== null ? item.preparationTime : (existingItem?.preparationTime || ""),
       images: (() => {
         // Ensure images array is properly handled - CRITICAL: Preserve all images
         console.log(`[NORMALIZE] Item "${item.name || 'unnamed'}": Processing images...`);
@@ -201,44 +213,56 @@ export const updateMenu = asyncHandler(async (req, res) => {
           // CRITICAL: Find existing item to preserve approval status fields
           const existingItem = existingSubsection?.items?.find(i => String(i.id) === String(item.id));
           
+          // CRITICAL: Log the incoming item data to debug update issues
+          console.log(`[NORMALIZE] Processing subsection item "${item.name}" (ID: ${item.id}):`);
+          console.log(`  - name: "${item.name}"`);
+          console.log(`  - description: "${item.description}"`);
+          console.log(`  - price: ${item.price}`);
+          console.log(`  - preparationTime: "${item.preparationTime}"`);
+          
           return {
         id: String(item.id || Date.now() + Math.random()),
-        name: item.name || "Unnamed Item",
-        nameArabic: item.nameArabic || "",
-        image: item.image || "",
-        category: item.category || section.name,
-        rating: item.rating ?? 0.0,
-        reviews: item.reviews ?? 0,
-        price: item.price || 0,
-        stock: item.stock || "Unlimited",
-        discount: item.discount || null,
-        originalPrice: item.originalPrice || null,
-        foodType: item.foodType || "Non-Veg",
-        availabilityTimeStart: item.availabilityTimeStart || "12:01 AM",
-        availabilityTimeEnd: item.availabilityTimeEnd || "11:57 PM",
-        description: item.description || "",
-        discountType: item.discountType || "Percent",
-        discountAmount: item.discountAmount ?? 0.0,
+        // CRITICAL: Use item.name directly, only fallback if undefined/null (not empty string)
+        name: item.name !== undefined && item.name !== null ? item.name : "Unnamed Item",
+        nameArabic: item.nameArabic !== undefined && item.nameArabic !== null ? item.nameArabic : "",
+        image: item.image !== undefined && item.image !== null ? item.image : "",
+        category: item.category !== undefined && item.category !== null ? item.category : section.name,
+        // Preserve rating and reviews from existing item (these are user-generated, not restaurant-editable)
+        rating: existingItem?.rating ?? item.rating ?? 0.0,
+        reviews: existingItem?.reviews ?? item.reviews ?? 0,
+        // CRITICAL: Use item.price directly, handle 0 as valid value
+        price: item.price !== undefined && item.price !== null ? Number(item.price) : 0,
+        stock: item.stock !== undefined && item.stock !== null ? item.stock : "Unlimited",
+        discount: item.discount !== undefined ? item.discount : null,
+        originalPrice: item.originalPrice !== undefined ? item.originalPrice : null,
+        foodType: item.foodType !== undefined && item.foodType !== null ? item.foodType : "Non-Veg",
+        availabilityTimeStart: item.availabilityTimeStart !== undefined && item.availabilityTimeStart !== null ? item.availabilityTimeStart : "12:01 AM",
+        availabilityTimeEnd: item.availabilityTimeEnd !== undefined && item.availabilityTimeEnd !== null ? item.availabilityTimeEnd : "11:57 PM",
+        // CRITICAL: Use item.description directly, allow empty strings
+        description: item.description !== undefined && item.description !== null ? item.description : "",
+        discountType: item.discountType !== undefined && item.discountType !== null ? item.discountType : "Percent",
+        discountAmount: item.discountAmount !== undefined && item.discountAmount !== null ? Number(item.discountAmount) : 0.0,
         isAvailable: item.isAvailable !== undefined ? item.isAvailable : true,
-        isRecommended: item.isRecommended || false,
+        isRecommended: item.isRecommended !== undefined ? item.isRecommended : false,
         variations: Array.isArray(item.variations) ? item.variations.map(v => ({
           id: String(v.id || Date.now() + Math.random()),
-          name: v.name || "",
-          price: v.price || 0,
-          stock: v.stock || "Unlimited",
+          name: v.name !== undefined && v.name !== null ? v.name : "",
+          price: v.price !== undefined && v.price !== null ? Number(v.price) : 0,
+          stock: v.stock !== undefined && v.stock !== null ? v.stock : "Unlimited",
         })) : [],
         tags: Array.isArray(item.tags) ? item.tags : [],
         nutrition: Array.isArray(item.nutrition) ? item.nutrition : [],
         allergies: Array.isArray(item.allergies) ? item.allergies : [],
-        photoCount: item.photoCount ?? 1,
-        // Additional fields for complete item details
-        subCategory: item.subCategory || "",
-        servesInfo: item.servesInfo || "",
-        itemSize: item.itemSize || "",
-        itemSizeQuantity: item.itemSizeQuantity || "",
-        itemSizeUnit: item.itemSizeUnit || "piece",
-        gst: item.gst ?? 0,
-        preparationTime: existingItem?.preparationTime || item.preparationTime || "",
+        photoCount: item.photoCount !== undefined && item.photoCount !== null ? Number(item.photoCount) : 1,
+        // Additional fields for complete item details - USE NEW VALUES FROM ITEM (not existingItem)
+        subCategory: item.subCategory !== undefined && item.subCategory !== null ? item.subCategory : "",
+        servesInfo: item.servesInfo !== undefined && item.servesInfo !== null ? item.servesInfo : "",
+        itemSize: item.itemSize !== undefined && item.itemSize !== null ? item.itemSize : "",
+        itemSizeQuantity: item.itemSizeQuantity !== undefined && item.itemSizeQuantity !== null ? item.itemSizeQuantity : "",
+        itemSizeUnit: item.itemSizeUnit !== undefined && item.itemSizeUnit !== null ? item.itemSizeUnit : "piece",
+        gst: item.gst !== undefined && item.gst !== null ? Number(item.gst) : 0,
+        // CRITICAL: Use NEW preparationTime from item, fallback to existing only if new is undefined/null
+        preparationTime: item.preparationTime !== undefined && item.preparationTime !== null ? item.preparationTime : (existingItem?.preparationTime || ""),
         images: (() => {
           // Ensure images array is properly handled
           if (Array.isArray(item.images) && item.images.length > 0) {
@@ -274,12 +298,17 @@ export const updateMenu = asyncHandler(async (req, res) => {
   // Find or create menu
   let menu = await Menu.findOne({ restaurant: restaurantId });
   
-  // Debug: Log normalized sections before saving
+  // Debug: Log normalized sections before saving - CRITICAL for debugging updates
   console.log('[UPDATE MENU] Normalized sections before save:');
   normalizedSections.forEach((section, sIdx) => {
     if (section.items && Array.isArray(section.items)) {
       section.items.forEach((item, iIdx) => {
-        console.log(`[UPDATE MENU] Section ${sIdx}, Item ${iIdx} (${item.name}): images array =`, item.images, `length = ${item.images?.length || 0}`);
+        console.log(`[UPDATE MENU] Section ${sIdx}, Item ${iIdx} (${item.name}):`);
+        console.log(`  - name: "${item.name}"`);
+        console.log(`  - description: "${item.description}"`);
+        console.log(`  - price: ${item.price}`);
+        console.log(`  - preparationTime: "${item.preparationTime}"`);
+        console.log(`  - images array length = ${item.images?.length || 0}`);
       });
     }
   });
@@ -291,20 +320,42 @@ export const updateMenu = asyncHandler(async (req, res) => {
       isActive: true,
     });
     console.log('[UPDATE MENU] Creating new menu');
+    await menu.save();
+    console.log('[UPDATE MENU] New menu saved successfully');
   } else {
     console.log('[UPDATE MENU] Updating existing menu');
-    // Use set method to ensure Mongoose properly tracks changes
-    menu.set('sections', normalizedSections);
-    // Mark sections as modified to ensure Mongoose saves nested arrays properly
-    // This is CRITICAL for nested arrays in Mongoose
-    menu.markModified('sections');
-    // Force Mongoose to treat this as a direct assignment
-    menu.isNew = false;
+    
+    // CRITICAL: Use findOneAndUpdate with $set for nested arrays - more reliable than save()
+    // This ensures Mongoose properly updates nested arrays in the database
+    const updateResult = await Menu.findOneAndUpdate(
+      { restaurant: restaurantId },
+      { 
+        $set: { 
+          sections: normalizedSections,
+          updatedAt: new Date()
+        } 
+      },
+      { 
+        new: true, // Return updated document
+        runValidators: true, // Run schema validators
+        upsert: false // Don't create if doesn't exist
+      }
+    );
+    
+    if (!updateResult) {
+      console.error('[UPDATE MENU] Failed to update menu - findOneAndUpdate returned null');
+      throw new Error('Failed to update menu in database');
+    }
+    
+    menu = updateResult;
+    console.log('[UPDATE MENU] Menu updated successfully using findOneAndUpdate');
+    
+    // Also try the save method as fallback (though findOneAndUpdate should work)
+    // menu.set('sections', normalizedSections);
+    // menu.markModified('sections');
+    // menu.isNew = false;
+    // await menu.save();
   }
-
-  console.log('[UPDATE MENU] About to save menu...');
-  await menu.save();
-  console.log('[UPDATE MENU] Menu saved successfully');
   
   // Invalidate menu cache for this restaurant
   await invalidateCachePattern(`menu:${restaurantId}*`);
