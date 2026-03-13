@@ -27,7 +27,7 @@ import {
 import { formatCurrency } from "../../restaurant/utils/currency"
 import { useGigStore } from "../store/gigStore"
 import { useProgressStore } from "../store/progressStore"
-import { getAllDeliveryOrders } from "../utils/deliveryOrderStatus"
+import { getAllDeliveryOrders, getDeliveryOrdersCount } from "../utils/deliveryOrderStatus"
 import { deliveryAPI } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
 import FeedNavbar from "../components/FeedNavbar"
@@ -62,6 +62,16 @@ export default function PocketPage() {
   const [dashboardLoading, setDashboardLoading] = useState(true)
   const [activeEarningAddon, setActiveEarningAddon] = useState(null)
   const [earningAddonLoading, setEarningAddonLoading] = useState(true)
+
+  // Orders stats for Pocket cards (Completed / Ongoing / Cancelled)
+  const [orderStats, setOrderStats] = useState({
+    completed: 0,
+    ongoing: 0,
+    cancelled: 0,
+    total: 0,
+    loading: false
+  })
+  const [showOrdersStats, setShowOrdersStats] = useState(false)
 
   const {
     isOnline,
@@ -313,6 +323,55 @@ export default function PocketPage() {
   const weekEndDate = getWeekEndDate()
   // Offer is live if it's valid (started) or upcoming (not started yet but active)
   const isOfferLive = activeEarningAddon?.isValid || activeEarningAddon?.isUpcoming || false
+
+  // Fetch real orders stats from backend (end-to-end) using trip history
+  useEffect(() => {
+    const fetchOrderStats = async () => {
+      try {
+        setOrderStats(prev => ({ ...prev, loading: true }))
+
+        const today = new Date()
+        const fromDate = new Date()
+        // Last 3 months window for stats (configurable)
+        fromDate.setMonth(fromDate.getMonth() - 3)
+
+        const format = (d) => d.toISOString().split("T")[0]
+        const baseParams = {
+          period: "custom",
+          fromDate: format(fromDate),
+          toDate: format(today),
+          limit: 1 // we only care about pagination.total
+        }
+
+        const [completedRes, pendingRes, cancelledRes] = await Promise.all([
+          deliveryAPI.getTripHistory({ ...baseParams, status: "Completed" }),
+          deliveryAPI.getTripHistory({ ...baseParams, status: "Pending" }),
+          deliveryAPI.getTripHistory({ ...baseParams, status: "Cancelled" })
+        ])
+
+        const getTotal = (res) =>
+          res?.data?.data?.pagination?.total
+            ? Number(res.data.data.pagination.total)
+            : 0
+
+        const completed = getTotal(completedRes)
+        const pending = getTotal(pendingRes)
+        const cancelled = getTotal(cancelledRes)
+
+        setOrderStats({
+          completed,
+          ongoing: pending,
+          cancelled,
+          total: completed + pending + cancelled,
+          loading: false
+        })
+      } catch (error) {
+        setOrderStats(prev => ({ ...prev, loading: false }))
+      }
+    }
+
+    fetchOrderStats()
+  }, [])
 
   // Calculate total bonus amount from all bonus transactions (for display only)
   const totalBonus = walletState?.transactions
@@ -977,16 +1036,22 @@ export default function PocketPage() {
               </CardContent>
             </Card>
 
-            {/* Deduction Statement */}
+            {/* Orders Summary Stats */}
             <Card
               className=" py-0  bg-white border-0 shadow-none cursor-pointer hover:bg-gray-200 transition-colors"
-              onClick={() => navigate("/delivery/deduction-statement")}
+              onClick={() => setShowOrdersStats(true)}
             >
               <CardContent className="p-4 flex flex-col items-start text-start">
                 <div className="w-12 h-12 flex items-center justify-center mb-3">
-                  <FileTextIcon className="w-8 h-8 text-black" />
+                  <CheckCircle className="w-8 h-8 text-black" />
                 </div>
-                <div className="text-black text-sm font-medium">Deduction statement</div>
+                <div className="text-black text-sm font-medium mb-1">Order summary</div>
+                <div className="text-gray-600 text-xs flex items-center gap-1">
+                  <span>Total orders:</span>
+                  <span className="font-semibold text-black">
+                    {orderStats.loading ? "…" : orderStats.total}
+                  </span>
+                </div>
               </CardContent>
             </Card>
 
@@ -1030,6 +1095,42 @@ export default function PocketPage() {
             settlementAdjustment: 0
           }}
         />
+      </BottomPopup>
+
+      {/* Orders Stats Bottom Sheet */}
+      <BottomPopup
+        isOpen={showOrdersStats}
+        onClose={() => setShowOrdersStats(false)}
+        title="Order summary"
+        showCloseButton={true}
+        closeOnBackdropClick={true}
+        maxHeight="50vh"
+      >
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Completed</p>
+              <p className="text-lg font-bold text-green-700">
+                {orderStats.loading ? "…" : orderStats.completed}
+              </p>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Ongoing</p>
+              <p className="text-lg font-bold text-yellow-700">
+                {orderStats.loading ? "…" : orderStats.ongoing}
+              </p>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Cancelled</p>
+              <p className="text-lg font-bold text-red-700">
+                {orderStats.loading ? "…" : orderStats.cancelled}
+              </p>
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-gray-500">
+            These counts are based on your latest orders activity on this device.
+          </div>
+        </div>
       </BottomPopup>
 
       <BottomPopup

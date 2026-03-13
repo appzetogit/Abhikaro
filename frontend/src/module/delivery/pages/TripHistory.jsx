@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { ArrowLeft, ChevronDown, Loader2, Gift, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -11,6 +11,8 @@ export default function TripHistory() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState("daily")
   const [selectedDate, setSelectedDate] = useState(new Date())
+  const [rangeStartDate, setRangeStartDate] = useState(null)
+  const [rangeEndDate, setRangeEndDate] = useState(null)
   const [selectedTripType, setSelectedTripType] = useState("ALL TRIPS")
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showTripTypePicker, setShowTripTypePicker] = useState(false)
@@ -22,7 +24,11 @@ export default function TripHistory() {
   const [bonusLoading, setBonusLoading] = useState(false)
   const [hasViewedBonus, setHasViewedBonus] = useState(false)
 
-  const tripTypes = ["ALL TRIPS", "Completed", "Cancelled", "Pending"]
+  // Refs for native date pickers (so that calendar icon can manually trigger them)
+  const rangeStartRef = useRef(null)
+  const rangeEndRef = useRef(null)
+
+  const tripTypes = ["ALL TRIPS", "Completed", "Pending", "Cancelled"]
 
   const { updateTodayTrips } = useProgressStore()
 
@@ -33,12 +39,26 @@ export default function TripHistory() {
       setError("")
       
       try {
-        const params = {
-          period: activeTab,
-          date: selectedDate.toISOString().split('T')[0],
-          status: selectedTripType !== "ALL TRIPS" ? selectedTripType : undefined,
-          limit: 1000
-        }
+        const isCustomRange = rangeStartDate && rangeEndDate
+
+        const params = isCustomRange
+          ? {
+              period: "custom",
+              fromDate: rangeStartDate.toISOString().split("T")[0],
+              toDate: rangeEndDate.toISOString().split("T")[0],
+              // Always fetch all trip statuses for the selected period/date.
+              // We will filter on the client side so that we can also show
+              // accurate counts for each status in the "ALL TRIPS" dropdown.
+              limit: 1000
+            }
+          : {
+              period: activeTab,
+              date: selectedDate.toISOString().split("T")[0],
+              // Always fetch all trip statuses for the selected period/date.
+              // We will filter on the client side so that we can also show
+              // accurate counts for each status in the "ALL TRIPS" dropdown.
+              limit: 1000
+            }
         
         const response = await deliveryAPI.getTripHistory(params)
         
@@ -68,7 +88,24 @@ export default function TripHistory() {
     }
 
     fetchTrips()
-  }, [selectedDate, activeTab, selectedTripType, updateTodayTrips])
+  }, [selectedDate, activeTab, selectedTripType, rangeStartDate, rangeEndDate, updateTodayTrips])
+
+  // Derive per‑status counts and filtered list from the loaded trips
+  const statusSummary = trips.reduce(
+    (acc, trip) => {
+      const status = (trip.status || "").toLowerCase()
+      if (status === "completed") acc.completed += 1
+      else if (status === "pending") acc.pending += 1
+      else if (status === "cancelled" || status === "canceled") acc.cancelled += 1
+      return acc
+    },
+    { completed: 0, pending: 0, cancelled: 0 }
+  )
+
+  const filteredTrips =
+    selectedTripType === "ALL TRIPS"
+      ? trips
+      : trips.filter((trip) => (trip.status || "").toLowerCase() === selectedTripType.toLowerCase())
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -98,18 +135,24 @@ export default function TripHistory() {
     }
   }
 
-  // Generate recent dates for picker
-  const generateRecentDates = () => {
-    const dates = []
-    for (let i = 0; i < 30; i++) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      dates.push(date)
-    }
-    return dates
+  // Format range display
+  const formatRangeDisplay = (start, end) => {
+    if (!start || !end) return ""
+    const options = { day: "numeric", month: "short" }
+    const startStr = start.toLocaleDateString("en-US", options)
+    const endStr = end.toLocaleDateString("en-US", options)
+    return `${startStr} - ${endStr}`
   }
 
-  const recentDates = generateRecentDates()
+  const openNativeDatePicker = (ref) => {
+    if (!ref?.current) return
+    // Modern browsers support showPicker(); fallback to focus for others
+    if (typeof ref.current.showPicker === "function") {
+      ref.current.showPicker()
+    } else {
+      ref.current.focus()
+    }
+  }
 
   // Fetch bonus transactions when modal opens
   useEffect(() => {
@@ -246,7 +289,12 @@ export default function TripHistory() {
           className="flex-1 flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
         >
           <span className="text-sm font-medium text-black">
-            {formatDateDisplay(selectedDate)}: {selectedDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
+            {rangeStartDate && rangeEndDate
+              ? formatRangeDisplay(rangeStartDate, rangeEndDate)
+              : `${formatDateDisplay(selectedDate)}: ${selectedDate.toLocaleDateString('en-US', {
+                  day: 'numeric',
+                  month: 'short'
+                })}`}
           </span>
           <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${showDatePicker ? 'rotate-180' : ''}`} />
         </button>
@@ -267,30 +315,121 @@ export default function TripHistory() {
 
       {/* Date Picker Dropdown */}
       {showDatePicker && (
-        <div className="fixed left-4 right-4 top-[201px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-          {recentDates.map((date, index) => (
+        <div className="fixed left-4 right-4 top-[201px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-4 space-y-4">
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <p className="text-xs text-gray-500 mb-1">From date</p>
+              <input
+                type="date"
+                ref={rangeStartRef}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm appearance-none pr-9"
+                value={
+                  rangeStartDate
+                    ? rangeStartDate.toISOString().split("T")[0]
+                    : selectedDate.toISOString().split("T")[0]
+                }
+                onChange={(e) => {
+                  const next = new Date(e.target.value)
+                  setRangeStartDate(next)
+                  // If end is before start, sync end to start
+                  if (rangeEndDate && next > rangeEndDate) {
+                    setRangeEndDate(next)
+                  }
+                  setSelectedDate(next)
+                }}
+              />
+              <button
+                type="button"
+                className="absolute right-3 bottom-[9px] text-gray-500"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  openNativeDatePicker(rangeStartRef)
+                }}
+              >
+                📅
+              </button>
+            </div>
+            <div className="relative">
+              <p className="text-xs text-gray-500 mb-1">To date</p>
+              <input
+                type="date"
+                ref={rangeEndRef}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm appearance-none pr-9"
+                value={
+                  rangeEndDate
+                    ? rangeEndDate.toISOString().split("T")[0]
+                    : rangeStartDate
+                    ? rangeStartDate.toISOString().split("T")[0]
+                    : selectedDate.toISOString().split("T")[0]
+                }
+                min={
+                  (rangeStartDate || selectedDate).toISOString().split("T")[0]
+                }
+                onChange={(e) => {
+                  const next = new Date(e.target.value)
+                  setRangeEndDate(next)
+                }}
+              />
+              <button
+                type="button"
+                className="absolute right-3 bottom-[9px] text-gray-500"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  openNativeDatePicker(rangeEndRef)
+                }}
+              >
+                📅
+              </button>
+            </div>
+          </div>
+          <div className="flex justify-between gap-3">
             <button
-              key={index}
+              className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg"
               onClick={() => {
-                setSelectedDate(date)
+                // Clear custom range and go back to single-date mode (today)
+                const today = new Date()
+                setRangeStartDate(null)
+                setRangeEndDate(null)
+                setSelectedDate(today)
                 setShowDatePicker(false)
               }}
-              className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors ${
-                date.toDateString() === selectedDate.toDateString() ? 'bg-gray-50 font-medium' : ''
-              }`}
             >
-              <span className="text-sm text-black">
-                {formatDateDisplay(date)}: {date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
-              </span>
+              Clear
             </button>
-          ))}
+            <button
+              className="flex-1 py-2 text-sm font-medium text-white bg-green-600 rounded-lg"
+              onClick={() => {
+                // If only start selected, treat it as single-day range
+                if (rangeStartDate && !rangeEndDate) {
+                  setRangeEndDate(rangeStartDate)
+                }
+                setShowDatePicker(false)
+              }}
+            >
+              Apply
+            </button>
+          </div>
         </div>
       )}
 
       {/* Trip Type Picker Dropdown */}
       {showTripTypePicker && (
         <div className="fixed right-4 top-[201px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[150px]">
-          {tripTypes.map((type, index) => (
+          {tripTypes.map((type, index) => {
+            const label =
+              type === "ALL TRIPS"
+                ? `ALL TRIPS (${trips.length})`
+                : type === "Completed"
+                ? `Completed (${statusSummary.completed})`
+                : type === "Pending"
+                ? `Pending (${statusSummary.pending})`
+                : type === "Cancelled"
+                ? `Cancelled (${statusSummary.cancelled})`
+                : type
+
+            return (
             <button
               key={index}
               onClick={() => {
@@ -301,9 +440,9 @@ export default function TripHistory() {
                 type === selectedTripType ? 'bg-gray-50 font-medium' : ''
               }`}
             >
-              <span className="text-sm text-black">{type}</span>
+              <span className="text-sm text-black">{label}</span>
             </button>
-          ))}
+          )})}
         </div>
       )}
 
@@ -324,13 +463,13 @@ export default function TripHistory() {
               Retry
             </button>
           </div>
-        ) : trips.length === 0 ? (
+        ) : filteredTrips.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500 text-base">No trips found</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {trips.map((trip) => (
+            {filteredTrips.map((trip) => (
               <div
                 key={trip.id || trip.orderId}
                 className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"

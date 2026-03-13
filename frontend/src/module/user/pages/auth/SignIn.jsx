@@ -446,49 +446,66 @@ export default function SignIn() {
   const handleGoogleSignIn = async () => {
     setApiError("")
     setIsLoading(true)
-    redirectHandledRef.current = false // Reset flag when starting new sign-in
+    redirectHandledRef.current = false // New sign-in flow starting
 
     try {
-      // Ensure Firebase is initialized before use
       await ensureFirebaseInitialized()
 
-      // Validate Firebase Auth instance
       if (!firebaseAuth) {
         throw new Error("Firebase Auth is not initialized. Please check your Firebase configuration.")
       }
 
-      const { signInWithPopup } = await import("firebase/auth")
+      // 📱 1. Flutter in-app webview (native Google Sign-In via bridge)
+      if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === "function") {
+        try {
+          console.log("📱 Starting Google sign-in via Flutter native bridge...")
 
-      // Log current origin for debugging
-      console.log("🚀 Starting Google sign-in popup...")
+          // 2. Call the native Google Sign-In in Flutter (account chooser)
+          const result = await window.flutter_inappwebview.callHandler("nativeGoogleSignIn")
 
-      // Use popup for better UX and error handling
-      const result = await signInWithPopup(firebaseAuth, googleProvider)
+          if (result && result.success && result.idToken) {
+            const idToken = result.idToken
 
-      console.log("✅ Popup sign-in successful:", {
-        user: result?.user?.email,
-        operationType: result.operationType
-      })
+            const { GoogleAuthProvider, signInWithCredential } = await import("firebase/auth")
 
-      if (result && result.user) {
-        // Process signed-in user
-        await processSignedInUser(result.user, "popup-result")
+            // 3. Authenticate with Firebase on the website using Flutter's ID token
+            const credential = GoogleAuthProvider.credential(idToken)
+            const userCredential = await signInWithCredential(firebaseAuth, credential)
+
+            console.log("✅ Website login successful via Flutter App!")
+            await processSignedInUser(userCredential.user, "flutter-bridge")
+            return
+          } else {
+            console.log("ℹ️ User cancelled native sign-in or no idToken returned.")
+            redirectHandledRef.current = true
+            setIsLoading(false)
+            return
+          }
+        } catch (e) {
+          console.error("❌ Flutter Bridge Error during Google sign-in:", e)
+          redirectHandledRef.current = true
+          setIsLoading(false)
+          return
+        }
       }
+
+      // 🌐 2. Fallback: normal browser (Chrome/Safari etc.) -> redirect flow
+      console.log("🚀 Starting Google sign-in (web browser redirect)...")
+
+      const { signInWithRedirect } = await import("firebase/auth")
+
+      await signInWithRedirect(firebaseAuth, googleProvider)
+      // Redirect result will be handled by getRedirectResult / onAuthStateChanged
     } catch (error) {
-      console.error("❌ Google sign-in redirect error:", error)
-      console.error("Error code:", error?.code)
-      console.error("Error message:", error?.message)
+      console.error("❌ Google sign-in error:", error)
       setIsLoading(false)
-      redirectHandledRef.current = false
+      redirectHandledRef.current = true
 
       const errorCode = error?.code || ""
       const errorMessage = error?.message || ""
 
       let message = "Google sign-in failed. Please try again."
 
-      // This happens when another auth popup/redirect was already in progress,
-      // or the user closed/restarted the popup. It's not a real failure, so we
-      // just ignore it and avoid showing an error toast.
       if (errorCode === "auth/cancelled-popup-request") {
         return
       } else if (errorCode === "auth/configuration-not-found") {

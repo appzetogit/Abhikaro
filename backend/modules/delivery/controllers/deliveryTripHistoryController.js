@@ -20,14 +20,20 @@ const logger = winston.createLogger({
 /**
  * Get Delivery Partner Trip History
  * GET /api/delivery/trip-history
- * Query params: period (daily/weekly/monthly), date, status, page, limit
+ * Query params:
+ *  - period: daily | weekly | monthly | custom
+ *  - date: base date for daily/weekly/monthly
+ *  - fromDate, toDate: ISO dates for custom range
+ *  - status, page, limit
  */
 export const getTripHistory = asyncHandler(async (req, res) => {
   try {
     const delivery = req.delivery;
     const { 
       period = 'daily', 
-      date, 
+      date,
+      fromDate,
+      toDate,
       status,
       page = 1, 
       limit = 50 
@@ -35,38 +41,46 @@ export const getTripHistory = asyncHandler(async (req, res) => {
 
     // Build date range based on period
     let startDate, endDate;
-    const selectedDate = date ? new Date(date) : new Date();
-    
-    // Set time to start of day
-    selectedDate.setHours(0, 0, 0, 0);
+    // If custom range is provided, use fromDate/toDate directly
+    if (period === 'custom' && fromDate && toDate) {
+      startDate = new Date(fromDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(toDate);
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      const selectedDate = date ? new Date(date) : new Date();
+      
+      // Set time to start of day
+      selectedDate.setHours(0, 0, 0, 0);
 
-    switch (period) {
-      case 'daily':
-        startDate = new Date(selectedDate);
-        endDate = new Date(selectedDate);
-        endDate.setHours(23, 59, 59, 999);
-        break;
-      case 'weekly':
-        // Get start of week (Monday)
-        const dayOfWeek = selectedDate.getDay();
-        const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Adjust for Monday start
-        startDate = new Date(selectedDate);
-        startDate.setDate(selectedDate.getDate() + diff);
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date(startDate);
-        endDate.setDate(startDate.getDate() + 6);
-        endDate.setHours(23, 59, 59, 999);
-        break;
-      case 'monthly':
-        startDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
-        endDate.setHours(23, 59, 59, 999);
-        break;
-      default:
-        startDate = new Date(selectedDate);
-        endDate = new Date(selectedDate);
-        endDate.setHours(23, 59, 59, 999);
+      switch (period) {
+        case 'daily':
+          startDate = new Date(selectedDate);
+          endDate = new Date(selectedDate);
+          endDate.setHours(23, 59, 59, 999);
+          break;
+        case 'weekly':
+          // Get start of week (Monday)
+          const dayOfWeek = selectedDate.getDay();
+          const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Adjust for Monday start
+          startDate = new Date(selectedDate);
+          startDate.setDate(selectedDate.getDate() + diff);
+          startDate.setHours(0, 0, 0, 0);
+          endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + 6);
+          endDate.setHours(23, 59, 59, 999);
+          break;
+        case 'monthly':
+          startDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+          startDate.setHours(0, 0, 0, 0);
+          endDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+          endDate.setHours(23, 59, 59, 999);
+          break;
+        default:
+          startDate = new Date(selectedDate);
+          endDate = new Date(selectedDate);
+          endDate.setHours(23, 59, 59, 999);
+      }
     }
 
     // Build query
