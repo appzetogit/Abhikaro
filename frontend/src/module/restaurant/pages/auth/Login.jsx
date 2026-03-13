@@ -362,17 +362,64 @@ export default function RestaurantLogin() {
     redirectHandledRef.current = false
 
     try {
-      const { signInWithPopup } = await import("firebase/auth")
-      const result = await signInWithPopup(firebaseAuth, googleProvider)
-      if (result?.user) {
-        await processSignedInUser(result.user, "popup-result")
+      // 1. Ensure Firebase is ready
+      if (!firebaseAuth) {
+        throw new Error("Firebase Auth is not initialized. Please check your Firebase configuration.")
       }
+
+      // 2. Check if running inside Flutter InAppWebView (mobile app)
+      if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === "function") {
+        try {
+          console.log("📱 Restaurant: starting Google sign-in via Flutter native bridge...")
+
+          // 3. Call the native Android/iOS Google Sign-In (shows account list)
+          const result = await window.flutter_inappwebview.callHandler("nativeGoogleSignIn")
+
+          if (result && result.success && result.idToken) {
+            const idToken = result.idToken
+
+            const { GoogleAuthProvider, signInWithCredential } = await import("firebase/auth")
+
+            // 4. Authenticate with Firebase on web using Flutter's ID token
+            const credential = GoogleAuthProvider.credential(idToken)
+            const userCredential = await signInWithCredential(firebaseAuth, credential)
+
+            console.log("✅ Restaurant website login successful via Flutter App!")
+            await processSignedInUser(userCredential.user, "flutter-bridge")
+            return
+          } else {
+            console.log("ℹ️ Restaurant: user cancelled native sign-in or no idToken returned.")
+            redirectHandledRef.current = true
+            setIsSending(false)
+            return
+          }
+        } catch (e) {
+          console.error("❌ Restaurant Flutter Bridge Error during Google sign-in:", e)
+          redirectHandledRef.current = true
+          setIsSending(false)
+          return
+        }
+      }
+
+      // 3. Fallback: normal browser (Chrome/Safari etc.) – use redirect flow
+      console.log("🚀 Restaurant: starting Google sign-in (web browser redirect)...")
+
+      const { signInWithRedirect } = await import("firebase/auth")
+      await signInWithRedirect(firebaseAuth, googleProvider)
+      // Redirect result handled by getRedirectResult / onAuthStateChanged above
     } catch (error) {
       console.error("Firebase Google login error:", error)
       setIsSending(false)
-      if (error?.code !== "auth/popup-closed-by-user") {
-        setApiError(error?.message || "Google sign-in failed")
+      redirectHandledRef.current = true
+
+      const code = error?.code || ""
+      let message = error?.message || "Google sign-in failed"
+
+      if (code === "auth/popup-closed-by-user") {
+        return
       }
+
+      setApiError(message)
     }
   }
 
