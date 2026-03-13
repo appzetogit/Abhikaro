@@ -483,7 +483,7 @@ export default function HomePage() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#f6e9dc] overflow-x-hidden pb-20">
+    <div className="min-h-screen bg-[#f6e9dc] overflow-x-hidden pb-20 pt-6">
       {/* Toast Notification */}
       <Toast show={toast.show} message={toast.message} />
       {/* Top Header - Orange Bar - Reduced Size */}
@@ -524,8 +524,8 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Search Bar Container - Adjusted */}
-      <div className="px-4 pt-3 pb-4 relative -mt-5">
+      {/* Search Bar Container - Adjusted (moved further down from top) */}
+      <div className="px-4 pt-5 pb-4 relative mt-2">
         {/* Search Bar - Half above header, half below, more rounded, less width */}
         <div className="bg-white rounded-2xl flex items-center gap-3 px-4 py-3 shadow-lg mx-auto max-w-[90%] relative z-10">
           <Search className="w-5 h-5 text-gray-400" />

@@ -1243,7 +1243,7 @@ export default function Home() {
 
         {/* Navbar */}
         <motion.div
-          className="relative z-20 pt-2 sm:pt-3 lg:pt-4"
+          className="relative z-20 pt-4 sm:pt-5 lg:pt-6"
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
@@ -1252,13 +1252,13 @@ export default function Home() {
         </motion.div>
 
         {/* Hero Section */}
-        <section className="relative z-20 w-full py-4 sm:py-6 md:py-12 lg:py-12">
+        <section className="relative z-20 w-full py-6 sm:py-8 md:py-12 lg:py-12">
           {/* Content */}
           <div className="relative z-20 max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-6 lg:px-8">
             {/* Search Bar and VEG MODE Container - Sticky */}
             {!isSearchOpen && (
             <motion.div
-              className="sticky top-4 z-30 flex items-center gap-3 sm:gap-4 lg:gap-6"
+              className="sticky top-6 z-30 flex items-center gap-3 sm:gap-4 lg:gap-6"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
