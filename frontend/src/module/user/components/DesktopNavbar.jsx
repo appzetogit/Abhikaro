@@ -73,7 +73,7 @@ export default function DesktopNavbar() {
     const dining = location.pathname === "/dining" || location.pathname === "/user/dining"
     const under250 = location.pathname === "/under-250" || location.pathname === "/user/under-250"
     const profile = location.pathname.startsWith("/profile") || location.pathname.startsWith("/user/profile")
-    const delivery = !dining && !under250 && !profile && (location.pathname === "/" || location.pathname === "/user" || (location.pathname.startsWith("/") && !location.pathname.startsWith("/restaurant") && !location.pathname.startsWith("/delivery") && !location.pathname.startsWith("/admin") && !location.pathname.startsWith("/usermain")))
+    const delivery = !dining && !under250 && !profile && (location.pathname === "/" || location.pathname === "/user" || (location.pathname.startsWith("/") && !location.pathname.startsWith("/restaurant") && !location.pathname.startsWith("/delivery") && !location.pathname.startsWith("/admin")))
     return { isDining: dining, isUnder250: under250, isProfile: profile, isDelivery: delivery }
   }, [location.pathname])
 

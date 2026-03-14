@@ -18,8 +18,6 @@ export default defineConfig({
       "@emotion/styled",
       "@mui/material",
       "@mui/x-date-pickers",
-      "mapbox-gl",
-      "react-map-gl",
     ],
   },
   server: {
@@ -57,7 +55,7 @@ export default defineConfig({
           react: ["react", "react-dom"],
           router: ["react-router-dom"],
           mui: ["@mui/material", "@mui/x-date-pickers", "@emotion/react", "@emotion/styled"],
-          maps: ["mapbox-gl", "react-map-gl", "leaflet", "react-leaflet", "@react-google-maps/api"],
+          maps: ["leaflet", "react-leaflet", "@react-google-maps/api"],
           charts: ["recharts"],
         },
       },

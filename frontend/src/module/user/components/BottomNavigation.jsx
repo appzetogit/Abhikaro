@@ -15,8 +15,7 @@ export default function BottomNavigation() {
     (location.pathname.startsWith("/") && 
      !location.pathname.startsWith("/restaurant") && 
      !location.pathname.startsWith("/delivery") && 
-     !location.pathname.startsWith("/admin") && 
-     !location.pathname.startsWith("/usermain"))
+     !location.pathname.startsWith("/admin"))
   )
 
   return (

@@ -73,7 +73,6 @@ function getTokenForCurrentRoute() {
     return localStorage.getItem("hotel_accessToken");
   } else if (
     path.startsWith("/user") ||
-    path.startsWith("/usermain") ||
     path === "/" ||
     (!path.startsWith("/admin") &&
       !(path.startsWith("/restaurant") && !path.startsWith("/restaurants")) &&
@@ -340,11 +339,10 @@ apiClient.interceptors.response.use(
         expectedRole = "hotel";
       } else if (
         currentPath.startsWith("/user") ||
-        currentPath.startsWith("/usermain") ||
         currentPath === "/" ||
         currentPath.startsWith("/restaurants")
       ) {
-        // User module includes /restaurants/* and /usermain/* paths
+        // User module includes /restaurants/* paths
         tokenKey = "user_accessToken";
         expectedRole = "user";
       }

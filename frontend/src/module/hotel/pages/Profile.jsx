@@ -244,11 +244,97 @@ export default function HotelProfile() {
   const handleSave = async () => {
     try {
       setUploading(true)
-      const updateData = {
-        ...formData,
-        profileImage,
-        ...documents,
+      
+      // Helper function to normalize image objects to match schema
+      // Schema expects: null or {url: string (valid URI), publicId?: string}
+      const normalizeImage = (img) => {
+        if (!img || img === null || img === undefined) return null
+        
+        // Handle string URLs
+        if (typeof img === 'string') {
+          const trimmedUrl = img.trim()
+          if (trimmedUrl === '' || trimmedUrl === 'null' || trimmedUrl === 'undefined') {
+            return null
+          }
+          // Validate it's a proper URL format
+          try {
+            new URL(trimmedUrl)
+            return { url: trimmedUrl }
+          } catch {
+            // Invalid URL, return null
+            return null
+          }
+        }
+        
+        // Handle object format
+        if (typeof img === 'object') {
+          const url = img.url || img.secure_url
+          if (!url || typeof url !== 'string') {
+            return null
+          }
+          const trimmedUrl = url.trim()
+          if (trimmedUrl === '' || trimmedUrl === 'null' || trimmedUrl === 'undefined') {
+            return null
+          }
+          // Validate URL format
+          try {
+            new URL(trimmedUrl)
+            return {
+              url: trimmedUrl,
+              publicId: img.publicId || img.public_id || null
+            }
+          } catch {
+            // Invalid URL, return null
+            return null
+          }
+        }
+        
+        return null
       }
+      
+      // Build updateData object, only including fields with valid values
+      const updateData = {}
+      
+      // Only include hotelName if it has at least 2 characters (matches schema min)
+      if (formData.hotelName && formData.hotelName.trim().length >= 2) {
+        updateData.hotelName = formData.hotelName.trim()
+      }
+      
+      // Only include email if it's a valid email (not empty string)
+      // Basic email validation (backend will do full validation)
+      if (formData.email && formData.email.trim() !== '') {
+        const trimmedEmail = formData.email.trim()
+        // Basic check for email format (contains @ and .)
+        if (trimmedEmail.includes('@') && trimmedEmail.includes('.')) {
+          updateData.email = trimmedEmail
+        }
+      }
+      
+      // Only include address if it has at least 2 characters (matches schema min)
+      if (formData.address && formData.address.trim().length >= 2) {
+        updateData.address = formData.address.trim()
+      }
+      
+      // Normalize and include profileImage
+      const normalizedProfileImage = normalizeImage(profileImage)
+      if (normalizedProfileImage !== null) {
+        updateData.profileImage = normalizedProfileImage
+      }
+      
+      // Normalize and include documents (only if they exist)
+      const normalizedDocuments = {}
+      Object.keys(documents).forEach(key => {
+        const normalizedDoc = normalizeImage(documents[key])
+        if (normalizedDoc !== null) {
+          normalizedDocuments[key] = normalizedDoc
+        }
+      })
+      
+      // Merge documents into updateData
+      Object.assign(updateData, normalizedDocuments)
+      
+      console.log('📤 Sending update data:', JSON.stringify(updateData, null, 2))
+      
       await hotelAPI.updateProfile(updateData)
       setEditing(false)
       toast.success("Profile updated successfully")
@@ -267,7 +353,24 @@ export default function HotelProfile() {
       }
     } catch (error) {
       console.error("Error updating profile:", error)
-      toast.error("Failed to update profile")
+      console.error("Error response:", error?.response?.data)
+      
+      // Extract detailed error messages from validation errors
+      let errorMessage = "Failed to update profile"
+      if (error?.response?.data) {
+        const errorData = error.response.data
+        if (errorData.errors && Array.isArray(errorData.errors)) {
+          // Multiple validation errors
+          const errorDetails = errorData.errors.map(e => `${e.field}: ${e.message}`).join(', ')
+          errorMessage = `Validation failed: ${errorDetails}`
+        } else if (errorData.message) {
+          errorMessage = errorData.message
+        }
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
+      
+      toast.error(errorMessage)
     } finally {
       setUploading(false)
     }
@@ -392,6 +495,36 @@ export default function HotelProfile() {
     }
   }
 
+  // Helper function to split hotel name intelligently
+  const splitHotelName = (hotelName) => {
+    if (!hotelName || typeof hotelName !== 'string') {
+      return [hotelName || 'Hotel']
+    }
+
+    const trimmedName = hotelName.trim()
+    
+    // Keywords to split on (case-insensitive)
+    const splitKeywords = ['Hotel', 'Place', 'Restaurant', 'Resort', 'Lodge', 'Inn', 'Palace']
+    
+    // Find the first occurrence of any keyword
+    for (const keyword of splitKeywords) {
+      const index = trimmedName.toLowerCase().indexOf(keyword.toLowerCase())
+      if (index > 0) {
+        // Split before the keyword
+        const firstPart = trimmedName.substring(0, index).trim()
+        const secondPart = trimmedName.substring(index).trim()
+        
+        // Only split if first part is not empty and has at least 2 characters
+        if (firstPart.length >= 2) {
+          return [firstPart, secondPart]
+        }
+      }
+    }
+    
+    // If no split point found, return as single line
+    return [trimmedName]
+  }
+
   const handleDownloadQR = async () => {
     if (!qrCodeData || !hotel) return
 
@@ -452,10 +585,30 @@ export default function HotelProfile() {
       const welcomeY = posterHeight * 0.09
       ctx.fillText("Welcome To", posterWidth / 2, welcomeY)
       
-      // Hotel name - larger, bold, positioned higher with less spacing
-      ctx.font = "bold " + Math.round(posterHeight * 0.055) + "px Arial, sans-serif"
-      const hotelNameY = welcomeY + (posterHeight * 0.06)
-      ctx.fillText(hotel.hotelName || "Hotel", posterWidth / 2, hotelNameY)
+      // Split hotel name intelligently
+      const hotelNameParts = splitHotelName(hotel.hotelName)
+      
+      // Hotel name - further reduced font size to ensure both lines fit in white area
+      const hotelNameFontSize = Math.round(posterHeight * 0.038) // Further reduced to fit both lines
+      ctx.font = "bold " + hotelNameFontSize + "px Arial, sans-serif"
+      
+      if (hotelNameParts.length === 2) {
+        // Two-line display: "Radha Krishna" on first line, "Hotel and Place" on second line
+        // Tighter spacing to keep both lines within white area
+        const lineHeight = hotelNameFontSize * 0.8 // Tighter line spacing
+        const firstLineY = welcomeY + (posterHeight * 0.045) // Reduced gap from Welcome To
+        const secondLineY = firstLineY + lineHeight
+        
+        // Draw first line (e.g., "Radha Krishna")
+        ctx.fillText(hotelNameParts[0], posterWidth / 2, firstLineY)
+        
+        // Draw second line (e.g., "Hotel and Place") - ensure it stays within white area
+        ctx.fillText(hotelNameParts[1], posterWidth / 2, secondLineY)
+      } else {
+        // Single line display (no split needed)
+        const hotelNameY = welcomeY + (posterHeight * 0.048)
+        ctx.fillText(hotelNameParts[0], posterWidth / 2, hotelNameY)
+      }
 
       // Calculate QR placement inside white box area of template
       // (Approximate based on template layout: left-centre big white area)

@@ -10,16 +10,6 @@ import { restoreUserSession } from "@/lib/utils/auth.js"
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@/module/user/components/UserRouter"))
-const HomePage = lazy(() => import("@/module/usermain/pages/HomePage"))
-const CategoriesPage = lazy(() => import("@/module/usermain/pages/CategoriesPage"))
-const CategoryFoodsPage = lazy(() => import("@/module/usermain/pages/CategoryFoodsPage"))
-const FoodDetailPage = lazy(() => import("@/module/usermain/pages/FoodDetailPage"))
-const CartPage = lazy(() => import("@/module/usermain/pages/CartPage"))
-const CheckoutPage = lazy(() => import("@/module/usermain/pages/CheckoutPage"))
-const PaymentPage = lazy(() => import("@/module/usermain/pages/PaymentPage"))
-const OrdersPage = lazy(() => import("@/module/usermain/pages/OrdersPage"))
-const OrderDetailsPage = lazy(() => import("@/module/usermain/pages/OrderDetailsPage"))
-const WishlistPage = lazy(() => import("@/module/usermain/pages/WishlistPage"))
 const HotelMenuLanding = lazy(() => import("@/module/user/pages/HotelMenuLanding"))
 
 
@@ -36,7 +26,6 @@ const OrderDetails = lazy(() => import("@/module/restaurant/pages/OrderDetails")
 const OrdersMain = lazy(() => import("@/module/restaurant/pages/OrdersMain"))
 const RestaurantOnboarding = lazy(() => import("@/module/restaurant/pages/Onboarding"))
 
-const RestaurantSignIn = lazy(() => import("@/module/restaurant/pages/auth/SignIn"))
 const RestaurantLogin = lazy(() => import("@/module/restaurant/pages/auth/Login"))
 const RestaurantSignup = lazy(() => import("@/module/restaurant/pages/auth/Signup"))
 const RestaurantSignupEmail = lazy(() => import("@/module/restaurant/pages/auth/SignupEmail"))
@@ -151,7 +140,6 @@ export default function App() {
     const path = window.location.pathname;
     const isUserRoute =
       path === "/" ||
-      path.startsWith("/usermain") ||
       path.startsWith("/restaurants") ||
       path.startsWith("/hotel-menu");
 
@@ -192,8 +180,7 @@ export default function App() {
           currentPath.startsWith("/notifications") ||
           currentPath.startsWith("/collections") ||
           currentPath.startsWith("/gift-card") ||
-          currentPath.startsWith("/complaints") ||
-          currentPath.startsWith("/usermain");
+          currentPath.startsWith("/complaints");
 
         if (!isUserPath) return;
 
@@ -237,7 +224,6 @@ export default function App() {
 
         {/* Restaurant Public Routes */}
         <Route path="/restaurant/welcome" element={<AuthRedirect module="restaurant"><RestaurantWelcome /></AuthRedirect>} />
-        <Route path="/restaurant/auth/sign-in" element={<AuthRedirect module="restaurant"><RestaurantSignIn /></AuthRedirect>} />
         <Route path="/restaurant/login" element={<AuthRedirect module="restaurant"><RestaurantLogin /></AuthRedirect>} />
         <Route path="/restaurant/signup" element={<AuthRedirect module="restaurant"><RestaurantSignup /></AuthRedirect>} />
         <Route path="/restaurant/signup-email" element={<AuthRedirect module="restaurant"><RestaurantSignupEmail /></AuthRedirect>} />
@@ -256,16 +242,6 @@ export default function App() {
         />
 
 
-        <Route path="/usermain" element={<HomePage />} />
-        <Route path="/usermain/categories" element={<CategoriesPage />} />
-        <Route path="/usermain/category/:categoryName" element={<CategoryFoodsPage />} />
-        <Route path="/usermain/food/:id" element={<FoodDetailPage />} />
-        <Route path="/usermain/cart" element={<CartPage />} />
-        <Route path="/usermain/checkout" element={<CheckoutPage />} />
-        <Route path="/usermain/payment" element={<PaymentPage />} />
-        <Route path="/usermain/orders" element={<OrdersPage />} />
-        <Route path="/usermain/orders/:orderId" element={<OrderDetailsPage />} />
-        <Route path="/usermain/wishlist" element={<WishlistPage />} />
 
         {/* Restaurant Protected Routes - Old Routes */}
         <Route
@@ -273,31 +249,6 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
               <OrdersMain />
-            </ProtectedRoute>
-          }
-        />
-        {/* Hotel Dashboard Route (default /hotel redirects to signup, authenticated users go to dashboard) */}
-        <Route
-          path="/hotel/dashboard"
-          element={
-            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
-              <HotelDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/hotel/orders"
-          element={
-            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
-              <HotelOrders />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/hotel/settlement"
-          element={
-            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
-              <HotelSettlement />
             </ProtectedRoute>
           }
         />
@@ -489,14 +440,6 @@ export default function App() {
         />
         <Route
           path="/restaurant/terms"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <TermsAndConditionsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/restaurant/code-of-conduct"
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
               <TermsAndConditionsPage />
@@ -948,6 +891,14 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
               <HotelWallet />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hotel/settlement"
+          element={
+            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
+              <HotelSettlement />
             </ProtectedRoute>
           }
         />
