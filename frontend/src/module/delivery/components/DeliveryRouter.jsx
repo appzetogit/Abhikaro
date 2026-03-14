@@ -23,10 +23,6 @@ const Conversation = lazy(() => import("../pages/Conversation"))
 const TermsAndConditions = lazy(() => import("../pages/TermsAndConditions"))
 const PrivacyPolicy = lazy(() => import("../pages/PrivacyPolicy"))
 const Payout = lazy(() => import("../pages/Payout"))
-const DeductionStatement = lazy(() => import("../pages/DeductionStatement"))
-const TipsStatement = lazy(() => import("../pages/TipsStatement"))
-const PocketStatement = lazy(() => import("../pages/PocketStatement"))
-const FuelPayment = lazy(() => import("../pages/FuelPayment"))
 const LimitSettlement = lazy(() => import("../pages/LimitSettlement"))
 const OffersPage = lazy(() => import("../pages/OffersPage"))
 const UpdatesPage = lazy(() => import("../pages/UpdatesPage"))
@@ -34,15 +30,11 @@ const SupportTickets = lazy(() => import("../pages/SupportTickets"))
 const CreateSupportTicket = lazy(() => import("../pages/CreateSupportTicket"))
 const ViewSupportTicket = lazy(() => import("../pages/ViewSupportTicket"))
 const ShowIdCard = lazy(() => import("../pages/ShowIdCard"))
-const ChangeLanguage = lazy(() => import("../pages/ChangeLanguage"))
-const SelectDropLocation = lazy(() => import("../pages/SelectDropLocation"))
 const ReferAndEarn = lazy(() => import("../pages/ReferAndEarn"))
 const YourReferrals = lazy(() => import("../pages/YourReferrals"))
 const Earnings = lazy(() => import("../pages/Earnings"))
 const TripHistory = lazy(() => import("../pages/TripHistory"))
-const TimeOnOrders = lazy(() => import("../pages/TimeOnOrders"))
 const PocketBalancePage = lazy(() => import("../pages/PocketBalance"))
-const CustomerTipsBalancePage = lazy(() => import("../pages/CustomerTips"))
 const PocketDetails = lazy(() => import("../pages/PocketDetails"))
 const OrderChat = lazy(() => import("../pages/OrderChat"))
 
@@ -100,14 +92,6 @@ export default function DeliveryRouter() {
             </ProtectedRoute>
           }
           path="/gig"
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <SelectDropLocation />
-            </ProtectedRoute>
-          }
-          path="/select-drop-location"
         />
         <Route
           element={
@@ -213,16 +197,6 @@ export default function DeliveryRouter() {
           element={
             <ProtectedRoute>
               <DeliveryLayout>
-                <TimeOnOrders />
-              </DeliveryLayout>
-            </ProtectedRoute>
-          }
-          path="/time-on-orders"
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <DeliveryLayout>
                 <TransactionHistory />
               </DeliveryLayout>
             </ProtectedRoute>
@@ -243,61 +217,11 @@ export default function DeliveryRouter() {
           element={
             <ProtectedRoute>
               <DeliveryLayout>
-                <DeductionStatement />
-              </DeliveryLayout>
-            </ProtectedRoute>
-          }
-          path="/deduction-statement"
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <DeliveryLayout>
-                <CustomerTipsBalancePage />
-              </DeliveryLayout>
-            </ProtectedRoute>
-          }
-          path="/customer-tips-balance"
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <DeliveryLayout>
                 <PocketBalancePage />
               </DeliveryLayout>
             </ProtectedRoute>
           }
           path="/pocket-balance"
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <DeliveryLayout>
-                <TipsStatement />
-              </DeliveryLayout>
-            </ProtectedRoute>
-          }
-          path="/tips-statement"
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <DeliveryLayout>
-                <PocketStatement />
-              </DeliveryLayout>
-            </ProtectedRoute>
-          }
-          path="/pocket-statement"
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <DeliveryLayout>
-                <FuelPayment />
-              </DeliveryLayout>
-            </ProtectedRoute>
-          }
-          path="/fuel-payment"
         />
         <Route
           element={
@@ -418,16 +342,6 @@ export default function DeliveryRouter() {
             </ProtectedRoute>
           }
           path="/help/id-card"
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <DeliveryLayout>
-                <ChangeLanguage />
-              </DeliveryLayout>
-            </ProtectedRoute>
-          }
-          path="/help/language"
         />
         <Route
           element={

@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
+import { toast } from "sonner"
 
 // Import banner
 // Using placeholder for gift card banner
@@ -282,9 +283,9 @@ export default function GiftCards() {
               {/* Redeem Link */}
               <div className="flex items-center gap-1 pt-1">
                 <span className="text-gray-600 dark:text-gray-400 text-sm">Do you have a gift card?</span>
-                <Link to="/user/gift-card/redeem" className="text-green-700 dark:text-green-400 text-sm font-medium underline underline-offset-2 decoration-dashed hover:text-green-800 dark:hover:text-green-500">
+                <button onClick={() => toast.info("Gift card redemption feature coming soon")} className="text-green-700 dark:text-green-400 text-sm font-medium underline underline-offset-2 decoration-dashed hover:text-green-800 dark:hover:text-green-500">
                   Redeem now
-                </Link>
+                </button>
               </div>
             </CardContent>
           </Card>

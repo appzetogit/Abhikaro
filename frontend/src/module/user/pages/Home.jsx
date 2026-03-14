@@ -1170,8 +1170,8 @@ export default function Home() {
       <div className="relative w-full overflow-hidden min-h-[39vh] lg:min-h-[50vh] md:pt-16">
         {/* Hero Banner Carousel Background */}
         {loadingBanners ? (
-          <div className="absolute top-0 left-0 right-0 bottom-0 z-0 bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center">
-            <div className="text-white text-center">
+          <div className="absolute top-0 left-0 right-0 bottom-0 z-0 bg-white flex items-center justify-center">
+            <div className="text-gray-600 text-center">
               <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
               <p className="text-sm">Loading banners...</p>
             </div>
@@ -1238,17 +1238,17 @@ export default function Home() {
             </motion.div>
           </div>
         ) : (
-          <div className="absolute top-0 left-0 right-0 bottom-0 z-0 bg-gradient-to-br from-green-400 to-green-600" />
+          <div className="absolute top-0 left-0 right-0 bottom-0 z-0 bg-white" />
         )}
 
         {/* Navbar */}
         <motion.div
-          className="relative z-20 pt-4 sm:pt-5 lg:pt-6"
+          className="relative z-20 pt-7 sm:pt-7 lg:pt-7"
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <PageNavbar textColor="white" zIndex={20} />
+          <PageNavbar textColor="black" zIndex={20} />
         </motion.div>
 
         {/* Hero Section */}
@@ -1661,8 +1661,8 @@ export default function Home() {
                   whileTap={{ scale: 0.95 }}
                 >
                   <Link to={item.href} className="flex-shrink-0 bg-white  dark:bg-[#1a1a1a]/80 dark:text-white">
-                    <div className="flex flex-col items-center gap-2.5 w-24 sm:w-28 md:w-32 group">
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-2xl bg-white dark:bg-[#1a1a1a]/80 dark:text-white flex items-center justify-center shadow-sm group-hover:shadow-lg transition-all duration-300 overflow-hidden p-2.5">
+                    <div className="flex flex-col items-center gap-2.5 w-[88px] sm:w-[104px] md:w-[112px] group">
+                      <div className="w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] md:w-[96px] md:h-[96px] rounded-2xl bg-white dark:bg-[#1a1a1a]/80 dark:text-white flex items-center justify-center shadow-sm group-hover:shadow-lg transition-all duration-300 overflow-hidden p-2.5">
                         <OptimizedImage
                           src={item.image}
                           alt={item.label}
@@ -1700,8 +1700,8 @@ export default function Home() {
                     whileTap={{ scale: 0.95 }}
                   >
                     <Link to={item.link} className="flex-shrink-0 bg-white dark:bg-[#1a1a1a]/80 dark:text-white">
-                      <div className="flex flex-col items-center gap-2.5 w-24 sm:w-28 md:w-32 group">
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-2xl bg-white dark:bg-[#1a1a1a]/80 dark:text-white  flex items-center justify-center shadow-sm group-hover:shadow-lg transition-all duration-300 overflow-hidden p-2.5">
+                      <div className="flex flex-col items-center gap-2.5 w-[88px] sm:w-[104px] md:w-[112px] group">
+                        <div className="w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] md:w-[96px] md:h-[96px] rounded-2xl bg-white dark:bg-[#1a1a1a]/80 dark:text-white  flex items-center justify-center shadow-sm group-hover:shadow-lg transition-all duration-300 overflow-hidden p-2.5">
                           <OptimizedImage
                             src={item.imageUrl}
                             alt={item.label}
@@ -1809,9 +1809,9 @@ export default function Home() {
                     }}
                   >
                     <div className="h-full group">
-                      <Link to={`/user/restaurants/${restaurantSlug}`} className="h-full flex">
-                        <Card className={`overflow-hidden gap-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] border-background transition-all duration-500 py-0 rounded-2xl sm:rounded-3xl flex flex-col h-full w-full relative ${isOutOfService || restaurant.isAcceptingOrders === false || restaurant.isAcceptingOrders === 0 ? 'grayscale-[100%] opacity-80' : ''
-                          }`}>
+                      {(restaurant.isAcceptingOrders === false || restaurant.isAcceptingOrders === 0) ? (
+                        <div className="h-full flex cursor-not-allowed">
+                          <Card className={`overflow-hidden gap-0 cursor-not-allowed border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] border-background transition-all duration-500 py-0 rounded-2xl sm:rounded-3xl flex flex-col h-full w-full relative grayscale-[100%] opacity-80`}>
                           {/* Image Section with Carousel */}
                           <div className="relative">
                             <RestaurantImageCarousel
@@ -1902,7 +1902,92 @@ export default function Home() {
                           {/* Border Glow Effect */}
                           <div className="absolute inset-0 rounded-2xl sm:rounded-3xl pointer-events-none z-0 transition-all duration-300 border border-transparent group-hover:border-green-500/30 group-hover:shadow-[inset_0_0_0_1px_rgba(34,197,94,0.2)]" />
                         </Card>
-                      </Link>
+                      </div>
+                      ) : (
+                        <Link to={`/user/restaurants/${restaurantSlug}`} className="h-full flex">
+                          <Card className={`overflow-hidden gap-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] border-background transition-all duration-500 py-0 rounded-2xl sm:rounded-3xl flex flex-col h-full w-full relative ${isOutOfService ? 'grayscale-[100%] opacity-80' : ''
+                            }`}>
+                            {/* Image Section with Carousel */}
+                            <div className="relative">
+                              <RestaurantImageCarousel
+                                restaurant={restaurant}
+                                priority={index < 3}
+                              />
+
+                              {/* Featured Dish Badge - Top Left */}
+                              <div className="absolute top-3 left-3 md:top-4 md:left-4 flex items-center z-10 transform transition-transform duration-300 group-hover:scale-105 group-hover:-translate-y-0.5">
+                                <div className="bg-gray-800/90 backdrop-blur-sm text-white px-2 py-1 md:px-4 md:py-1.5 rounded-md text-xs font-medium flex items-center shadow-lg">
+                                  {restaurant.featuredDish} · ₹{restaurant.featuredPrice}
+                                </div>
+                              </div>
+
+                              {/* Bookmark Icon - Top Right */}
+                              <div className="absolute top-3 right-3 md:top-4 md:right-4 z-10 transform transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={handleToggleFavorite}
+                                  aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+                                  className={`h-9 w-9 md:h-11 md:w-11 rounded-full border flex items-center justify-center transition-all duration-300 ${favorite
+                                    ? "border-red-500 bg-red-50 text-red-500"
+                                    : "border-white bg-white/90 text-gray-600 hover:bg-white"
+                                    }`}
+                                >
+                                  <Bookmark
+                                    className={`h-5 w-5 lg:h-6 lg:w-6 transition-all duration-300 ${favorite ? "fill-red-500" : ""
+                                      }`} />
+                                </Button>
+                              </div>
+
+                              {/* FREE delivery Badge - Bottom Left (only for first 3 restaurants) */}
+                              {index < 3 && (
+                                <div className="absolute bottom-2 left-0 sm:bottom-2 sm:left-0 z-10 transform transition-all duration-300 group-hover:translate-x-1">
+                                  <div className="bg-gradient-to-r from-blue-600 via-blue-500/80 to-transparent text-white px-2.5 py-1 rounded-r-sm text-[10px] sm:text-xs font-bold shadow-lg backdrop-blur-sm">
+                                    FREE delivery
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Content Section */}
+                            <div className="transform transition-transform duration-300 group-hover:-translate-y-1">
+                              <CardContent className="p-3 sm:p-4 lg:p-5 pt-3 sm:pt-4 lg:pt-5 flex flex-col flex-grow">
+                                {/* Restaurant Name & Rating */}
+                                <div className="flex items-start justify-between gap-2 mb-2 lg:mb-3">
+                                  <div className="flex-1 min-w-0">
+                                    <h3 className="text-md sm:text-md lg:text-xl font-bold text-gray-900 dark:text-white line-clamp-1 lg:line-clamp-2 transition-colors duration-300 group-hover:text-green-600">
+                                      {restaurant.name}
+                                    </h3>
+                                  </div>
+                                  <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 lg:px-3 lg:py-1.5 rounded-lg flex items-center gap-1 transform transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
+                                    <span className="text-sm lg:text-base font-bold">{restaurant.rating}</span>
+                                    <Star className="h-3 w-3 lg:h-4 lg:w-4 fill-white text-white" />
+                                  </div>
+                                </div>
+
+                                {/* Delivery Time & Distance */}
+                                <div className="flex items-center gap-1 text-sm lg:text-base text-gray-500 mb-2 lg:mb-3 transition-opacity duration-300 opacity-70 group-hover:opacity-100">
+                                  <Clock className="h-4 w-4 lg:h-5 lg:w-5 text-gray-500 dark:text-gray-400" strokeWidth={1.5} />
+                                  <span className="font-medium dark:text-gray-300 text-gray-700">{restaurant.deliveryTime}</span>
+                                  <span className="mx-1">|</span>
+                                  <span className="font-medium dark:text-gray-300 text-gray-700">{restaurant.distance}</span>
+                                </div>
+
+                                {/* Offer Badge */}
+                                {restaurant.offer && (
+                                  <div className="flex items-center gap-2 text-sm lg:text-base mt-auto transform transition-transform duration-300 group-hover:translate-x-1">
+                                    <BadgePercent className="h-4 w-4 lg:h-5 lg:w-5 text-black" strokeWidth={2} />
+                                    <span className="text-gray-700 dark:text-gray-300 font-medium">{restaurant.offer}</span>
+                                  </div>
+                                )}
+                              </CardContent>
+                            </div>
+
+                            {/* Border Glow Effect */}
+                            <div className="absolute inset-0 rounded-2xl sm:rounded-3xl pointer-events-none z-0 transition-all duration-300 border border-transparent group-hover:border-green-500/30 group-hover:shadow-[inset_0_0_0_1px_rgba(34,197,94,0.2)]" />
+                          </Card>
+                        </Link>
+                      )}
                     </div>
                   </div>
                 )

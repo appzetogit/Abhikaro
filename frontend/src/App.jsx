@@ -68,11 +68,9 @@ const EditRestaurantAddress = lazy(() => import("@/module/restaurant/pages/EditR
 const Inventory = lazy(() => import("@/module/restaurant/pages/Inventory"))
 const Feedback = lazy(() => import("@/module/restaurant/pages/Feedback"))
 const ShareFeedback = lazy(() => import("@/module/restaurant/pages/ShareFeedback"))
-const DishRatings = lazy(() => import("@/module/restaurant/pages/DishRatings"))
 const HelpCentre = lazy(() => import("@/module/restaurant/pages/HelpCentre"))
 const FssaiDetails = lazy(() => import("@/module/restaurant/pages/FssaiDetails"))
 const FssaiUpdate = lazy(() => import("@/module/restaurant/pages/FssaiUpdate"))
-const Hyperpure = lazy(() => import("@/module/restaurant/pages/Hyperpure"))
 const HubGrowth = lazy(() => import("@/module/restaurant/pages/HubGrowth"))
 const CreateOffers = lazy(() => import("@/module/restaurant/pages/CreateOffers"))
 const ChooseDiscountType = lazy(() => import("@/module/restaurant/pages/ChooseDiscountType"))
@@ -89,8 +87,6 @@ const ItemDetailsPage = lazy(() => import("@/module/restaurant/pages/ItemDetails
 const HubFinance = lazy(() => import("@/module/restaurant/pages/HubFinance"))
 const FinanceDetailsPage = lazy(() => import("@/module/restaurant/pages/FinanceDetailsPage"))
 const WithdrawalHistoryPage = lazy(() => import("@/module/restaurant/pages/WithdrawalHistoryPage"))
-const PhoneNumbersPage = lazy(() => import("@/module/restaurant/pages/PhoneNumbersPage"))
-const DownloadReport = lazy(() => import("@/module/restaurant/pages/DownloadReport"))
 const ToHub = lazy(() => import("@/module/restaurant/pages/ToHub"))
 const ManageOutlets = lazy(() => import("@/module/restaurant/pages/ManageOutlets"))
 const UpdateBankDetails = lazy(() => import("@/module/restaurant/pages/UpdateBankDetails"))
@@ -610,14 +606,6 @@ export default function App() {
           }
         />
         <Route
-          path="/restaurant/dish-ratings"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <DishRatings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/restaurant/help-centre"
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
@@ -638,14 +626,6 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
               <FssaiUpdate />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/restaurant/hyperpure"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <Hyperpure />
             </ProtectedRoute>
           }
         />
@@ -794,22 +774,6 @@ export default function App() {
           }
         />
         <Route
-          path="/restaurant/phone"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <PhoneNumbersPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/restaurant/download-report"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <DownloadReport />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/restaurant/to-hub"
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
@@ -877,7 +841,14 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
+        <Route
+          path="/hotel/orders"
+          element={
+            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
+              <HotelOrders />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/hotel/profile"
           element={
@@ -899,15 +870,6 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
               <HotelSettlement />
-            </ProtectedRoute>
-          }
-        />
-        {/* Default hotel route - redirect authenticated users to dashboard */}
-        <Route
-          path="/hotel"
-          element={
-            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
-              <HotelDashboard />
             </ProtectedRoute>
           }
         />

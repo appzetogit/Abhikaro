@@ -324,7 +324,7 @@ export default function ToHub() {
     { id: "order-history", label: "Order history", icon: FaHistory, route: "/restaurant/orders/all" },
     { id: "complaints", label: "Complaints", icon: FaExclamationTriangle, route: "/restaurant/feedback?tab=complaints" },
     { id: "reviews", label: "Reviews", icon: FaStar, route: "/restaurant/feedback" },
-    { id: "feedback", label: "Share your feedback", icon: FaCommentDots, route: "/restaurant/Share-Feedback" },
+    { id: "feedback", label: "Share your feedback", icon: FaCommentDots, route: "/restaurant/share-feedback" },
     { id: "zone-setup", label: "Zone Setup", icon: MapPin, route: "/restaurant/zone-setup" },
     { id: "settings", label: "Settings", icon: FaCog, route: "/restaurant/delivery-settings" },
     { id: "show-all", label: "Show all", icon: FaThLarge, route: "/restaurant/explore" },

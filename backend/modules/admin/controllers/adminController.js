@@ -1871,43 +1871,16 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
     const query = {};
 
     // Status filter
-    // Pending = restaurants with ALL onboarding steps completed (step 4) but not yet active
+    // Pending = all inactive restaurants without rejection reason (regardless of onboarding completion)
     // Rejected = restaurants that have rejectionReason
     if (status === "pending") {
-      // Build conditions array for $and - ensures all conditions are met
-      // Check for rejectionReason: either doesn't exist OR is null
-      const conditions = [
-        { isActive: false },
-        {
-          $or: [
-            { rejectionReason: { $exists: false } },
-            { rejectionReason: null },
-          ],
-        },
+      // Show ALL inactive restaurants that don't have a rejection reason
+      // This includes restaurants at any stage of onboarding, not just completed ones
+      query.isActive = false;
+      query.$or = [
+        { rejectionReason: { $exists: false } },
+        { rejectionReason: null },
       ];
-
-      // Only show restaurants that have completed ALL onboarding steps (all 4 steps)
-      // Check if onboarding.completedSteps is 4, OR if restaurant has all required data filled
-      // This handles both cases: restaurants with proper tracking AND restaurants that completed onboarding before tracking was added
-      const completionCheck = {
-        $or: [
-          { "onboarding.completedSteps": 4 },
-          // Fallback: If completedSteps is not 4 (or doesn't exist), check if restaurant has all main fields filled
-          // This matches restaurants that have completed onboarding even if completedSteps field wasn't set to 4
-          {
-            $and: [
-              { name: { $exists: true, $ne: null, $ne: "" } }, // Has restaurant name
-              { cuisines: { $exists: true, $ne: null, $not: { $size: 0 } } }, // Has cuisines (array with items)
-              { openDays: { $exists: true, $ne: null, $not: { $size: 0 } } }, // Has open days (array with items)
-              { estimatedDeliveryTime: { $exists: true, $ne: null, $ne: "" } }, // Has delivery time (from step 4)
-              { featuredDish: { $exists: true, $ne: null, $ne: "" } }, // Has featured dish (from step 4)
-            ],
-          },
-        ],
-      };
-
-      conditions.push(completionCheck);
-      query.$and = conditions;
     } else if (status === "rejected") {
       query["rejectionReason"] = { $exists: true, $ne: null };
       // For rejected, also check if onboarding is complete

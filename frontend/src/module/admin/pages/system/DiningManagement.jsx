@@ -369,9 +369,12 @@ export default function DiningManagement() {
                                             onChange={e => setBannerRestaurant(e.target.value)}
                                         >
                                             <option value="">Select Restaurant</option>
-                                            {restaurantsList.map(r => (
-                                                <option key={r._id} value={r._id}>{r.name}</option>
-                                            ))}
+                                            {restaurantsList.map(r => {
+                                                const restaurantName = r?.onboarding?.step1?.restaurantName || r?.name || `Restaurant ${r._id?.slice(-4) || ''}`
+                                                return (
+                                                    <option key={r._id} value={r._id}>{restaurantName}</option>
+                                                )
+                                            })}
                                         </select>
                                     </div>
                                     <Button onClick={handleSubmitBanner} disabled={bannersUploading} className="w-full bg-blue-600 hover:bg-blue-700">
@@ -396,7 +399,9 @@ export default function DiningManagement() {
                                                 <div className="p-3 bg-white">
                                                     <p className="font-bold text-slate-900">{banner.percentageOff}</p>
                                                     <p className="text-sm text-slate-600">{banner.tagline}</p>
-                                                    <p className="text-xs text-blue-600 mt-1">{banner.restaurant?.name}</p>
+                                                    <p className="text-xs text-blue-600 mt-1">
+                                                        {banner.restaurant?.onboarding?.step1?.restaurantName || banner.restaurant?.name || 'Restaurant'}
+                                                    </p>
                                                 </div>
                                                 <button onClick={() => handleDeleteBanner(banner._id)} className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                                                     {bannersDeleting === banner._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}

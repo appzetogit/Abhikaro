@@ -729,7 +729,7 @@ export default function ExploreMore() {
 
   const helpItems = [
     { id: 1, label: "Help centre", icon: HelpCircle, route: "/restaurant/help-centre" },
-    { id: 3, label: "Share your feedback", icon: Edit, route: "/restaurant/Share-Feedback" },
+    { id: 3, label: "Share your feedback", icon: Edit, route: "/restaurant/share-feedback" },
   ]
 
   const accountingItems = [

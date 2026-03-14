@@ -69,10 +69,26 @@ export const deleteDiningCategory = async (req, res) => {
 export const getAdminDiningOfferBanners = async (req, res) => {
     try {
         const banners = await DiningOfferBanner.find()
-            .populate('restaurant', 'name')
+            .populate('restaurant', 'name onboarding')
             .sort({ createdAt: -1 })
             .lean();
-        return successResponse(res, 200, 'Banners retrieved successfully', { banners });
+        
+        // Map banners to include correct restaurant name
+        const bannersWithCorrectName = banners.map(banner => {
+            if (banner.restaurant) {
+                const restaurantName = banner.restaurant?.onboarding?.step1?.restaurantName || banner.restaurant?.name || 'Restaurant';
+                return {
+                    ...banner,
+                    restaurant: {
+                        ...banner.restaurant,
+                        name: restaurantName
+                    }
+                };
+            }
+            return banner;
+        });
+        
+        return successResponse(res, 200, 'Banners retrieved successfully', { banners: bannersWithCorrectName });
     } catch (error) {
         console.error('Error fetching banners:', error);
         return errorResponse(res, 500, 'Failed to fetch banners');
@@ -102,7 +118,12 @@ export const createDiningOfferBanner = async (req, res) => {
 
         await banner.save();
 
-        await banner.populate('restaurant', 'name');
+        await banner.populate('restaurant', 'name onboarding');
+        
+        // Ensure correct restaurant name is shown
+        if (banner.restaurant) {
+            banner.restaurant.name = banner.restaurant?.onboarding?.step1?.restaurantName || banner.restaurant?.name || 'Restaurant';
+        }
 
         return successResponse(res, 201, 'Banner created successfully', { banner });
     } catch (error) {
@@ -160,7 +181,12 @@ export const updateDiningOfferBanner = async (req, res) => {
         }
 
         await banner.save();
-        await banner.populate('restaurant', 'name');
+        await banner.populate('restaurant', 'name onboarding');
+        
+        // Ensure correct restaurant name is shown
+        if (banner.restaurant) {
+            banner.restaurant.name = banner.restaurant?.onboarding?.step1?.restaurantName || banner.restaurant?.name || 'Restaurant';
+        }
 
         return successResponse(res, 200, 'Banner updated successfully', { banner });
     } catch (error) {
@@ -171,8 +197,17 @@ export const updateDiningOfferBanner = async (req, res) => {
 
 export const getActiveRestaurants = async (req, res) => {
     try {
-        const restaurants = await Restaurant.find().select('name _id').lean();
-        return successResponse(res, 200, 'Restaurants retrieved successfully', { restaurants });
+        const restaurants = await Restaurant.find()
+            .select('name _id onboarding')
+            .lean();
+        
+        // Map restaurants to include the correct name (from onboarding.step1.restaurantName or name field)
+        const restaurantsWithCorrectName = restaurants.map(restaurant => ({
+            _id: restaurant._id,
+            name: restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || `Restaurant ${restaurant._id?.toString().slice(-4) || ''}`
+        }));
+        
+        return successResponse(res, 200, 'Restaurants retrieved successfully', { restaurants: restaurantsWithCorrectName });
     } catch (error) {
         console.error('Error fetching restaurants:', error);
         return errorResponse(res, 500, 'Failed to fetch restaurants');

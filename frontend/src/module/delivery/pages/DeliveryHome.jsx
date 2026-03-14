@@ -4489,8 +4489,12 @@ export default function DeliveryHome() {
     if (option.phone) {
       window.location.href = `tel:${option.phone}`
     } else if (option.id === "insurance") {
-      // Navigate to insurance page or show insurance details
-      navigate("/delivery/insurance")
+      // Insurance - show toast or handle via phone call
+      if (option.phone) {
+        window.location.href = `tel:${option.phone}`
+      } else {
+        toast.info("Insurance details will be available soon")
+      }
     }
     setShowEmergencyPopup(false)
   }

@@ -9,7 +9,6 @@ const PointOfSale = lazy(() => import("../pages/PointOfSale"));
 const AdminProfile = lazy(() => import("../pages/AdminProfile"));
 const AdminSettings = lazy(() => import("../pages/AdminSettings"));
 const CommissionManagement = lazy(() => import("../pages/CommissionManagement"));
-const NewRefundRequests = lazy(() => import("../pages/refunds/NewRefundRequests"));
 const FoodApproval = lazy(() => import("../pages/restaurant/FoodApproval"));
 const OrdersPage = lazy(() => import("../pages/orders/OrdersPage"));
 const OrderDetectDelivery = lazy(() => import("../pages/OrderDetectDelivery"));
@@ -29,8 +28,6 @@ const JoiningRequest = lazy(() => import("../pages/restaurant/JoiningRequest"));
 const RestaurantCommission = lazy(() => import("../pages/restaurant/RestaurantCommission"));
 const RestaurantComplaints = lazy(() => import("../pages/restaurant/RestaurantComplaints"));
 const MenuAdd = lazy(() => import("../pages/restaurant/MenuAdd"));
-const RestaurantsBulkImport = lazy(() => import("../pages/restaurant/RestaurantsBulkImport"));
-const RestaurantsBulkExport = lazy(() => import("../pages/restaurant/RestaurantsBulkExport"));
 // Hotel Management
 const HotelsList = lazy(() => import("../pages/hotels/HotelsList"));
 const HotelRequests = lazy(() => import("../pages/hotels/HotelRequests"));
@@ -42,26 +39,14 @@ const HotelWithdrawal = lazy(() => import("../pages/HotelWithdrawal"));
 const FoodsList = lazy(() => import("../pages/foods/FoodsList"));
 const AddonsList = lazy(() => import("../pages/addons/AddonsList"));
 // Promotions Management
-const BasicCampaign = lazy(() => import("../pages/campaigns/BasicCampaign"));
-const FoodCampaign = lazy(() => import("../pages/campaigns/FoodCampaign"));
 const Coupons = lazy(() => import("../pages/Coupons"));
-const Cashback = lazy(() => import("../pages/Cashback"));
-const Banners = lazy(() => import("../pages/Banners"));
-const PromotionalBanner = lazy(() => import("../pages/PromotionalBanner"));
 const NewAdvertisement = lazy(() => import("../pages/advertisement/NewAdvertisement"));
-const AdRequests = lazy(() => import("../pages/advertisement/AdRequests"));
-const AdsList = lazy(() => import("../pages/advertisement/AdsList"));
 const PushNotification = lazy(() => import("../pages/PushNotification"));
 // Help & Support
-const Chattings = lazy(() => import("../pages/Chattings"));
 const ContactMessages = lazy(() => import("../pages/ContactMessages"));
 const SafetyEmergencyReports = lazy(() => import("../pages/SafetyEmergencyReports"));
 // Customer Management
 const Customers = lazy(() => import("../pages/Customers"));
-const AddFund = lazy(() => import("../pages/wallet/AddFund"));
-const Bonus = lazy(() => import("../pages/wallet/Bonus"));
-const LoyaltyPointReport = lazy(() => import("../pages/loyalty-point/Report"));
-const SubscribedMailList = lazy(() => import("../pages/SubscribedMailList"));
 // Deliveryman Management
 const DeliveryBoyCommission = lazy(() => import("../pages/DeliveryBoyCommission"));
 const DeliveryCashLimit = lazy(() => import("../pages/DeliveryCashLimit"));
@@ -78,54 +63,21 @@ const DeliverymanBonus = lazy(() => import("../pages/delivery-partners/Deliverym
 const EarningAddon = lazy(() => import("../pages/delivery-partners/EarningAddon"));
 const EarningAddonHistory = lazy(() => import("../pages/delivery-partners/EarningAddonHistory"));
 const DeliveryEarnings = lazy(() => import("../pages/delivery-partners/DeliveryEarnings"));
-// Disbursement Management
-const RestaurantDisbursement = lazy(() => import("../pages/RestaurantDisbursement"));
-const DeliverymanDisbursement = lazy(() => import("../pages/DeliverymanDisbursement"));
 // Report Management
 const TransactionReport = lazy(() => import("../pages/reports/TransactionReport"));
-const ExpenseReport = lazy(() => import("../pages/reports/ExpenseReport"));
-const DisbursementReportRestaurants = lazy(() => import("../pages/reports/DisbursementReportRestaurants"));
-const DisbursementReportDeliverymen = lazy(() => import("../pages/reports/DisbursementReportDeliverymen"));
 const RegularOrderReport = lazy(() => import("../pages/reports/RegularOrderReport"));
-const CampaignOrderReport = lazy(() => import("../pages/reports/CampaignOrderReport"));
 const RestaurantReport = lazy(() => import("../pages/reports/RestaurantReport"));
 const FeedbackExperienceReport = lazy(() => import("../pages/reports/FeedbackExperienceReport"));
-const TaxReport = lazy(() => import("../pages/reports/TaxReport"));
-const RestaurantVATReport = lazy(() => import("../pages/reports/RestaurantVATReport"));
 // Transaction Management
 const RestaurantWithdraws = lazy(() => import("../pages/transactions/RestaurantWithdraws"));
-const WithdrawMethod = lazy(() => import("../pages/transactions/WithdrawMethod"));
-// Employee Management
-const EmployeeRole = lazy(() => import("../pages/employees/EmployeeRole"));
-const AddEmployee = lazy(() => import("../pages/employees/AddEmployee"));
-const EmployeeList = lazy(() => import("../pages/employees/EmployeeList"));
 // Business Settings
 const BusinessSetup = lazy(() => import("../pages/settings/BusinessSetup"));
-const EmailTemplate = lazy(() => import("../pages/settings/EmailTemplate"));
-const ThemeSettings = lazy(() => import("../pages/settings/ThemeSettings"));
-const Gallery = lazy(() => import("../pages/settings/Gallery"));
-const LoginSetup = lazy(() => import("../pages/settings/LoginSetup"));
 const TermsAndCondition = lazy(() => import("../pages/settings/TermsAndCondition"));
 const PrivacyPolicy = lazy(() => import("../pages/settings/PrivacyPolicy"));
 const AboutUs = lazy(() => import("../pages/settings/AboutUs"));
 const RefundPolicy = lazy(() => import("../pages/settings/RefundPolicy"));
 const ShippingPolicy = lazy(() => import("../pages/settings/ShippingPolicy"));
 const CancellationPolicy = lazy(() => import("../pages/settings/CancellationPolicy"));
-const ReactRegistration = lazy(() => import("../pages/settings/ReactRegistration"));
-// System Settings
-const ThirdParty = lazy(() => import("../pages/system/ThirdParty"));
-const FirebaseNotification = lazy(() => import("../pages/system/FirebaseNotification"));
-const OfflinePaymentSetup = lazy(() => import("../pages/system/OfflinePaymentSetup"));
-const JoinUsPageSetup = lazy(() => import("../pages/system/JoinUsPageSetup"));
-const AnalyticsScript = lazy(() => import("../pages/system/AnalyticsScript"));
-const AISetup = lazy(() => import("../pages/system/AISetup"));
-const AppWebSettings = lazy(() => import("../pages/system/AppWebSettings"));
-const NotificationChannels = lazy(() => import("../pages/system/NotificationChannels"));
-const LandingPageSettings = lazy(() => import("../pages/system/LandingPageSettings"));
-const PageMetaData = lazy(() => import("../pages/system/PageMetaData"));
-const ReactSite = lazy(() => import("../pages/system/ReactSite"));
-const CleanDatabase = lazy(() => import("../pages/system/CleanDatabase"));
-const AddonActivation = lazy(() => import("../pages/system/AddonActivation"));
 // ENV Setup (formerly System Addons)
 const SystemAddons = lazy(() => import("../pages/system/SystemAddons"));
 const LandingPageManagement = lazy(() => import("../pages/system/LandingPageManagement"));
@@ -211,8 +163,6 @@ export default function AdminRouter() {
           <Route path="order-detect-delivery" element={<OrderDetectDelivery />} />
           <Route path="order-setting" element={<OrderSetting />} />
           <Route path="manual-assignment" element={<ManualAssignment />} />
-          {/* Order Refunds */}
-          <Route path="order-refunds/new" element={<NewRefundRequests />} />
 
           {/* RESTAURANT MANAGEMENT */}
           <Route path="zone-setup" element={<ZoneSetup />} />
@@ -229,8 +179,6 @@ export default function AdminRouter() {
           <Route path="restaurants/commission" element={<RestaurantCommission />} />
           <Route path="restaurants/complaints" element={<RestaurantComplaints />} />
           <Route path="restaurants/menu-add" element={<MenuAdd />} />
-          <Route path="restaurants/bulk-import" element={<RestaurantsBulkImport />} />
-          <Route path="restaurants/bulk-export" element={<RestaurantsBulkExport />} />
 
           {/* HOTEL MANAGEMENT */}
           <Route
@@ -254,37 +202,21 @@ export default function AdminRouter() {
           <Route path="fee-settings" element={<FeeSettings />} />
           {/* Foods */}
           <Route path="foods" element={<FoodsList />} />
-          <Route path="food/list" element={<FoodsList />} />
           {/* Addons */}
           <Route path="addons" element={<AddonsList />} />
 
           {/* PROMOTIONS MANAGEMENT */}
-          {/* Campaigns */}
-          <Route path="campaigns/basic" element={<BasicCampaign />} />
-          <Route path="campaigns/food" element={<FoodCampaign />} />
           <Route path="coupons" element={<Coupons />} />
-          <Route path="cashback" element={<Cashback />} />
-          <Route path="banners" element={<Banners />} />
-          <Route path="promotional-banner" element={<PromotionalBanner />} />
           {/* Advertisement */}
           <Route path="advertisement/new" element={<NewAdvertisement />} />
-          <Route path="advertisement/requests" element={<AdRequests />} />
-          <Route path="advertisement" element={<AdsList />} />
           <Route path="push-notification" element={<PushNotification />} />
 
           {/* HELP & SUPPORT */}
-          <Route path="chattings" element={<Chattings />} />
           <Route path="contact-messages" element={<ContactMessages />} />
           <Route path="safety-emergency-reports" element={<SafetyEmergencyReports />} />
 
           {/* CUSTOMER MANAGEMENT */}
           <Route path="customers" element={<Customers />} />
-          {/* Wallet */}
-          <Route path="wallet/add-fund" element={<AddFund />} />
-          <Route path="wallet/bonus" element={<Bonus />} />
-          {/* Loyalty Point */}
-          <Route path="loyalty-point/report" element={<LoyaltyPointReport />} />
-          <Route path="subscribed-mail-list" element={<SubscribedMailList />} />
 
           {/* DELIVERYMAN MANAGEMENT */}
           <Route path="delivery-boy-commission" element={<DeliveryBoyCommission />} />
@@ -304,44 +236,22 @@ export default function AdminRouter() {
           <Route path="delivery-partners/earning-addon-history" element={<EarningAddonHistory />} />
           <Route path="delivery-partners/earnings" element={<DeliveryEarnings />} />
 
-          {/* DISBURSEMENT MANAGEMENT */}
-          <Route path="restaurant-disbursement" element={<RestaurantDisbursement />} />
-          <Route path="deliveryman-disbursement" element={<DeliverymanDisbursement />} />
 
           {/* REPORT MANAGEMENT */}
           <Route path="transaction-report" element={<TransactionReport />} />
-          <Route path="expense-report" element={<ExpenseReport />} />
-          {/* Disbursement Report */}
-          <Route path="disbursement-report/restaurants" element={<DisbursementReportRestaurants />} />
-          <Route path="disbursement-report/deliverymen" element={<DisbursementReportDeliverymen />} />
           {/* Order Report */}
           <Route path="order-report/regular" element={<RegularOrderReport />} />
-          <Route path="order-report/campaign" element={<CampaignOrderReport />} />
           {/* Restaurant Report */}
           <Route path="restaurant-report" element={<RestaurantReport />} />
           {/* Customer Report */}
           <Route path="customer-report/feedback-experience" element={<FeedbackExperienceReport />} />
-          <Route path="tax-report" element={<TaxReport />} />
-          <Route path="restaurant-vat-report" element={<RestaurantVATReport />} />
 
           {/* TRANSACTION MANAGEMENT */}
           <Route path="restaurant-withdraws" element={<RestaurantWithdraws />} />
-          <Route path="withdraw-method" element={<WithdrawMethod />} />
 
-          {/* EMPLOYEE MANAGEMENT */}
-          <Route path="employee-role" element={<EmployeeRole />} />
-          {/* Employees */}
-          <Route path="employees/add" element={<AddEmployee />} />
-          <Route path="employees" element={<EmployeeList />} />
 
           {/* BUSINESS SETTINGS */}
           <Route path="business-setup" element={<BusinessSetup />} />
-          <Route path="email-template" element={<EmailTemplate />} />
-          <Route path="theme-settings" element={<ThemeSettings />} />
-          <Route path="gallery" element={<Gallery />} />
-          <Route path="login-setup" element={<LoginSetup />} />
-          {/* Business Settings - FCM */}
-          <Route path="business-settings/fcm-index" element={<FirebaseNotification />} />
           {/* Pages & Social Media */}
           <Route path="pages-social-media/terms" element={<TermsAndCondition />} />
           <Route path="pages-social-media/privacy" element={<PrivacyPolicy />} />
@@ -349,25 +259,8 @@ export default function AdminRouter() {
           <Route path="pages-social-media/refund" element={<RefundPolicy />} />
           <Route path="pages-social-media/shipping" element={<ShippingPolicy />} />
           <Route path="pages-social-media/cancellation" element={<CancellationPolicy />} />
-          <Route path="pages-social-media/react-registration" element={<ReactRegistration />} />
 
           {/* SYSTEM SETTINGS */}
-          {/* 3rd Party & Configurations */}
-          <Route path="3rd-party-configurations/party" element={<ThirdParty />} />
-          <Route path="3rd-party-configurations/firebase" element={<FirebaseNotification />} />
-          <Route path="3rd-party-configurations/offline-payment" element={<OfflinePaymentSetup />} />
-          <Route path="3rd-party-configurations/join-us" element={<JoinUsPageSetup />} />
-          <Route path="3rd-party-configurations/analytics" element={<AnalyticsScript />} />
-          <Route path="3rd-party-configurations/ai" element={<AISetup />} />
-          <Route path="app-web-settings" element={<AppWebSettings />} />
-          <Route path="notification-channels" element={<NotificationChannels />} />
-          {/* Landing Page Settings */}
-          <Route path="landing-page-settings/admin" element={<LandingPageSettings type="admin" />} />
-          <Route path="landing-page-settings/react" element={<LandingPageSettings type="react" />} />
-          <Route path="page-meta-data" element={<PageMetaData />} />
-          <Route path="react-site" element={<ReactSite />} />
-          <Route path="clean-database" element={<CleanDatabase />} />
-          <Route path="addon-activation" element={<AddonActivation />} />
 
           {/* ENV SETUP */}
           <Route path="system-addons" element={<SystemAddons />} />

@@ -12,10 +12,6 @@ import Loader from "@/components/Loader"
 const Home = lazy(() => import("../pages/Home"))
 const Dining = lazy(() => import("../pages/Dining"))
 const DiningRestaurants = lazy(() => import("../pages/DiningRestaurants"))
-const DiningCategory = lazy(() => import("../pages/DiningCategory"))
-const DiningExplore50 = lazy(() => import("../pages/DiningExplore50"))
-const DiningExploreNear = lazy(() => import("../pages/DiningExploreNear"))
-const Coffee = lazy(() => import("../pages/Coffee"))
 const Under250 = lazy(() => import("../pages/Under250"))
 const CategoryPage = lazy(() => import("../pages/CategoryPage"))
 
@@ -26,7 +22,6 @@ const TableBookingConfirmation = lazy(() => import("../pages/dining/TableBooking
 const TableBookingSuccess = lazy(() => import("../pages/dining/TableBookingSuccess"))
 const MyBookings = lazy(() => import("../pages/dining/MyBookings"))
 const SearchResults = lazy(() => import("../pages/SearchResults"))
-const ProductDetail = lazy(() => import("../pages/ProductDetail"))
 
 // Cart
 const Cart = lazy(() => import("../pages/cart/Cart"))
@@ -65,7 +60,6 @@ const EditPayment = lazy(() => import("../pages/profile/EditPayment"))
 const Favorites = lazy(() => import("../pages/profile/Favorites"))
 const Settings = lazy(() => import("../pages/profile/Settings"))
 const Coupons = lazy(() => import("../pages/profile/Coupons"))
-const RedeemGoldCoupon = lazy(() => import("../pages/profile/RedeemGoldCoupon"))
 const About = lazy(() => import("../pages/profile/About"))
 const Terms = lazy(() => import("../pages/profile/Terms"))
 const Privacy = lazy(() => import("../pages/profile/Privacy"))
@@ -74,7 +68,6 @@ const Shipping = lazy(() => import("../pages/profile/Shipping"))
 const Cancellation = lazy(() => import("../pages/profile/Cancellation"))
 const SendFeedback = lazy(() => import("../pages/profile/SendFeedback"))
 const ReportSafetyEmergency = lazy(() => import("../pages/profile/ReportSafetyEmergency"))
-const Accessibility = lazy(() => import("../pages/profile/Accessibility"))
 const Logout = lazy(() => import("../pages/profile/Logout"))
 
 // Auth
@@ -84,7 +77,6 @@ const AuthCallback = lazy(() => import("../pages/auth/AuthCallback"))
 
 // Help
 const Help = lazy(() => import("../pages/help/Help"))
-const OrderHelp = lazy(() => import("../pages/help/OrderHelp"))
 
 // Notifications
 const Notifications = lazy(() => import("../pages/Notifications"))
@@ -122,10 +114,6 @@ export default function UserRouter() {
           <Route path="/" element={<UserPreventRedirect><Home /></UserPreventRedirect>} />
           <Route path="/dining" element={<Dining />} />
           <Route path="/dining/restaurants" element={<DiningRestaurants />} />
-          <Route path="/dining/:category" element={<DiningCategory />} />
-          <Route path="/dining/explore/upto50" element={<DiningExplore50 />} />
-          <Route path="/dining/explore/near-rated" element={<DiningExploreNear />} />
-          <Route path="/dining/coffee" element={<Coffee />} />
           <Route path="/dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
           <Route path="/dining/book/:slug" element={<TableBooking />} />
             <Route
@@ -157,7 +145,6 @@ export default function UserRouter() {
 
           <Route path="/restaurants/:slug" element={<RestaurantDetails />} />
           <Route path="/search" element={<SearchResults />} />
-          <Route path="/product/:id" element={<ProductDetail />} />
 
           {/* Cart - Protected */}
             <Route
@@ -316,14 +303,6 @@ export default function UserRouter() {
             }
           />
             <Route
-            path="/profile/redeem-gold-coupon"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <RedeemGoldCoupon />
-              </ProtectedRoute>
-            }
-          />
-            <Route
             path="/profile/about"
             element={
               <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
@@ -393,14 +372,6 @@ export default function UserRouter() {
             }
           />
             <Route
-            path="/profile/accessibility"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Accessibility />
-              </ProtectedRoute>
-            }
-          />
-            <Route
             path="/profile/logout"
             element={
               <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
@@ -416,7 +387,6 @@ export default function UserRouter() {
 
           {/* Help */}
           <Route path="/help" element={<Help />} />
-          <Route path="/help/orders/:orderId" element={<OrderHelp />} />
 
           {/* Notifications - Protected */}
           <Route

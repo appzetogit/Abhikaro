@@ -13,11 +13,26 @@ export function useLocation() {
   const retryCountRef = useRef(0) // Track retry attempts for reverse geocoding
   const isFetchingLocationRef = useRef(false) // Prevent multiple simultaneous location fetches
   const hasInitializedRef = useRef(false) // Prevent multiple initializations
+  const lastSavedLocationRef = useRef({ latitude: null, longitude: null }) // Store last saved location for distance check
 
   // Helper to check if user is authenticated (used to decide live watch / DB updates)
   const isUserAuthenticated = () => {
     const userToken = localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken')
     return !!userToken && userToken !== 'null' && userToken !== 'undefined'
+  }
+
+  /* ===================== DISTANCE CALCULATION (HAVERSINE FORMULA) ===================== */
+  // Calculate distance between two coordinates in meters
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in meters
   }
 
   /* ===================== DB UPDATE (LIVE LOCATION TRACKING) ===================== */
@@ -28,6 +43,23 @@ export function useLocation() {
       // Address can be retried later without losing coordinates
       if (!locationData?.latitude || !locationData?.longitude) {
         return;
+      }
+
+      // Check distance from last saved location (200 meters range)
+      const lastSaved = lastSavedLocationRef.current;
+      if (lastSaved.latitude !== null && lastSaved.longitude !== null) {
+        const distance = calculateDistance(
+          lastSaved.latitude,
+          lastSaved.longitude,
+          locationData.latitude,
+          locationData.longitude
+        );
+        
+        // Only save if location is within 200 meters of last saved location
+        if (distance > 200) {
+          console.log(`⚠️ Location update skipped: ${distance.toFixed(2)}m away from last saved location (max 200m)`);
+          return;
+        }
       }
 
       // Check if address has placeholder values (for logging only)
@@ -106,6 +138,12 @@ export function useLocation() {
 
       // Save to backend (which also saves to Firebase)
       const response = await userAPI.updateLocation(locationPayload)
+      
+      // Update last saved location after successful save
+      lastSavedLocationRef.current = {
+        latitude: locationPayload.latitude,
+        longitude: locationPayload.longitude
+      };
     } catch (err) {
       // Only log non-network and non-auth errors
       if (err.code !== "ERR_NETWORK" && err.response?.status !== 404 && err.response?.status !== 401) {
@@ -1153,6 +1191,13 @@ export function useLocation() {
       let dbLocation = !forceFresh ? await fetchLocationFromDB() : null
       if (dbLocation && !forceFresh) {
         setLocation(dbLocation)
+        // Initialize last saved location from DB
+        if (dbLocation.latitude && dbLocation.longitude) {
+          lastSavedLocationRef.current = {
+            latitude: dbLocation.latitude,
+            longitude: dbLocation.longitude
+          };
+        }
         if (showLoading) setLoading(false)
         isFetchingLocationRef.current = false
         return dbLocation
@@ -1667,6 +1712,14 @@ export function useLocation() {
           setLoading(false) // Set loading to false immediately
           hasInitialLocation = true
           
+          // Initialize last saved location from localStorage
+          if (parsedLocation.latitude && parsedLocation.longitude) {
+            lastSavedLocationRef.current = {
+              latitude: parsedLocation.latitude,
+              longitude: parsedLocation.longitude
+            };
+          }
+          
           // If address is placeholder, trigger reverse geocoding retry in background
           if (parsedLocation.formattedAddress === "Select location" || 
               parsedLocation.formattedAddress === "Current Location" ||
@@ -1702,6 +1755,14 @@ export function useLocation() {
             setPermissionGranted(true)
             setLoading(false)
             hasInitialLocation = true
+            
+            // Initialize last saved location from DB
+            if (dbLoc.latitude && dbLoc.longitude) {
+              lastSavedLocationRef.current = {
+                latitude: dbLoc.latitude,
+                longitude: dbLoc.longitude
+              };
+            }
 
             // Check if we should refresh for better address
             const hasCompleteAddress = dbLoc?.formattedAddress &&
