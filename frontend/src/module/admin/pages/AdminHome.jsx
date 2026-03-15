@@ -23,7 +23,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { Activity, ArrowUpRight, ShoppingBag, CreditCard, Truck, Receipt, DollarSign, Store, UserCheck, Package, UserCircle, Clock, CheckCircle, Plus, QrCode } from "lucide-react"
+import { Activity, ArrowUpRight, ShoppingBag, CreditCard, Truck, Receipt, DollarSign, Store, UserCheck, Package, UserCircle, Clock, CheckCircle, Plus, QrCode, UtensilsCrossed, TrendingUp } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 
 export default function AdminHome() {
@@ -35,6 +35,11 @@ export default function AdminHome() {
   const [isLoading, setIsLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState(null)
   const [hotelCountOverride, setHotelCountOverride] = useState(null)
+  const [diningData, setDiningData] = useState({
+    enabledRestaurantsCount: 0,
+    totalCommission: 0,
+    restaurantEarnings: 0
+  })
   const filtersRequestRef = useRef({ zone: "all", timeFilter: "overall", startDate: "", endDate: "" })
   const debounceRef = useRef(null)
 
@@ -69,6 +74,34 @@ export default function AdminHome() {
     }
 
     fetchHotelCount()
+  }, [])
+
+  // Fetch dining data (enabled restaurants count, commission, earnings)
+  useEffect(() => {
+    const fetchDiningData = async () => {
+      try {
+        // Fetch enabled dining restaurants count
+        const restaurantsRes = await adminAPI.getRestaurants({ page: 1, limit: 1000 })
+        const restaurants = restaurantsRes.data?.data?.restaurants || []
+        const enabledDiningCount = restaurants.filter(
+          (r) => r.isActive === true && r.diningSettings?.isEnabled === true
+        ).length
+
+        // Fetch dining earnings summary
+        const earningsRes = await adminAPI.getDiningEarnings({})
+        const summary = earningsRes.data?.data?.summary || {}
+        
+        setDiningData({
+          enabledRestaurantsCount: enabledDiningCount,
+          totalCommission: summary.totalCommissionEarned || 0,
+          restaurantEarnings: summary.totalRestaurantEarnings || 0
+        })
+      } catch (error) {
+        console.error("❌ Error fetching dining data:", error)
+      }
+    }
+
+    fetchDiningData()
   }, [])
 
   // Fetch dashboard stats when filters change (single combined request, debounced)
@@ -428,6 +461,30 @@ export default function AdminHome() {
               icon={<CheckCircle className="h-5 w-5 text-emerald-600" />}
               accent="bg-emerald-200/40"
               onClick={() => navigate("/admin/orders/delivered")}
+            />
+            <MetricCard
+              title="Dining restaurants enabled"
+              value={diningData.enabledRestaurantsCount.toLocaleString("en-IN")}
+              helper="Active dining restaurants"
+              icon={<UtensilsCrossed className="h-5 w-5 text-teal-600" />}
+              accent="bg-teal-200/40"
+              onClick={() => navigate("/admin/restaurants")}
+            />
+            <MetricCard
+              title="Total dining commission"
+              value={`₹${diningData.totalCommission.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              helper="Admin commission from dining"
+              icon={<DollarSign className="h-5 w-5 text-rose-600" />}
+              accent="bg-rose-200/40"
+              onClick={() => navigate("/admin/dining-earnings")}
+            />
+            <MetricCard
+              title="Restaurant dining earnings"
+              value={`₹${diningData.restaurantEarnings.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              helper="Total restaurant earnings"
+              icon={<TrendingUp className="h-5 w-5 text-violet-600" />}
+              accent="bg-violet-200/40"
+              onClick={() => navigate("/admin/dining-earnings")}
             />
           </div>
 

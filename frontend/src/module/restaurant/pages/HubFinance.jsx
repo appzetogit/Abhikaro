@@ -1058,9 +1058,16 @@ export default function HubFinance() {
                           <div key={order.orderId || index} className="border-b border-gray-200 pb-3 last:border-b-0 last:pb-0">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
-                                <p className="text-sm font-semibold text-gray-900 mb-1">
-                                  Order ID: {order.orderId || 'N/A'}
-                                </p>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="text-sm font-semibold text-gray-900">
+                                    {order.isDining ? 'Booking ID' : 'Order ID'}: {order.orderId || 'N/A'}
+                                  </p>
+                                  {order.isDining && (
+                                    <span className="px-2 py-0.5 bg-teal-100 text-teal-700 text-xs font-medium rounded">
+                                      Dining
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-xs text-gray-600">
                                   {order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'}
                                 </p>
@@ -1085,9 +1092,16 @@ export default function HubFinance() {
                           <div key={order.orderId || index} className="border-b border-gray-200 pb-3 last:border-b-0 last:pb-0">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
-                                <p className="text-sm font-semibold text-gray-900 mb-1">
-                                  Order ID: {order.orderId || 'N/A'}
-                                </p>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="text-sm font-semibold text-gray-900">
+                                    {order.isDining ? 'Booking ID' : 'Order ID'}: {order.orderId || 'N/A'}
+                                  </p>
+                                  {order.isDining && (
+                                    <span className="px-2 py-0.5 bg-teal-100 text-teal-700 text-xs font-medium rounded">
+                                      Dining
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-xs text-gray-600">
                                   {order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'}
                                 </p>

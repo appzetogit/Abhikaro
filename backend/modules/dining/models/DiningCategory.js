@@ -19,7 +19,11 @@ const diningCategorySchema = new mongoose.Schema({
     isActive: {
         type: Boolean,
         default: true
-    }
+    },
+    linkedRestaurants: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Restaurant'
+    }]
 }, {
     timestamps: true
 });

@@ -13,7 +13,7 @@ import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
  */
 export const getDiningConfig = asyncHandler(async (req, res) => {
   const restaurant = await Restaurant.findById(req.restaurant._id)
-    .select("name slug location profileImage deliveryTimings diningConfig diningSettings ownerName ownerPhone")
+    .select("name slug location profileImage deliveryTimings diningConfig diningSettings ownerName ownerPhone onboarding")
     .lean();
   if (!restaurant) return errorResponse(res, 404, "Restaurant not found");
 
@@ -32,10 +32,57 @@ export const getDiningConfig = asyncHandler(async (req, res) => {
     ? Math.max(1, Number(diningSettings.maxGuests))
     : null;
 
+  // Get the actual restaurant name from onboarding if available, otherwise use restaurant.name
+  let actualRestaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || "";
+  
+  // If restaurant.name itself is a default name, prefer onboarding name
+  if (actualRestaurantName && /^restaurant\s*\d+$/i.test(actualRestaurantName.trim()) && restaurant.onboarding?.step1?.restaurantName) {
+    actualRestaurantName = restaurant.onboarding.step1.restaurantName;
+  }
+  
+  // Check if the saved name in diningConfig is a default/placeholder name (like "Restaurant 6911")
+  // If so, replace it with the actual restaurant name
+  const savedName = diningConfig.basicDetails?.name;
+  const isDefaultName = savedName && /^restaurant\s*\d+$/i.test(savedName.trim());
+  const displayName = (savedName && !isDefaultName) ? savedName : actualRestaurantName;
+  
+  // Auto-fix: If we detected a default name and have a valid actual name, update the database
+  // This is a one-time fix to correct saved default names
+  const needsNameUpdate = isDefaultName && actualRestaurantName && actualRestaurantName.trim() && !/^restaurant\s*\d+$/i.test(actualRestaurantName.trim());
+  const existingSlug = diningConfig.pageControls?.diningSlug || restaurant.slug || "";
+  const isDefaultSlug = existingSlug && /^restaurant-?\d+$/i.test(existingSlug);
+  const needsSlugUpdate = isDefaultSlug && actualRestaurantName && !/^restaurant\s*\d+$/i.test(actualRestaurantName.trim());
+  
+  if (needsNameUpdate || needsSlugUpdate) {
+    const updateData = {};
+    if (needsNameUpdate) {
+      updateData['diningConfig.basicDetails.name'] = actualRestaurantName;
+    }
+    if (needsSlugUpdate) {
+      const newSlug = actualRestaurantName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+      if (newSlug) {
+        updateData['diningConfig.pageControls.diningSlug'] = newSlug;
+      }
+    }
+    
+    // Update the restaurant document (fire and forget)
+    if (Object.keys(updateData).length > 0) {
+      Restaurant.findByIdAndUpdate(req.restaurant._id, {
+        $set: updateData
+      }).catch(err => {
+        // Log error but don't fail the request
+        console.error('Failed to auto-update diningConfig:', err);
+      });
+    }
+  }
+
   const merged = {
     ...diningConfig,
     basicDetails: {
-      name: diningConfig.basicDetails?.name ?? restaurant.name,
+      name: displayName,
       address:
         diningConfig.basicDetails?.address ??
         restaurant.location?.formattedAddress ??
@@ -63,11 +110,30 @@ export const getDiningConfig = asyncHandler(async (req, res) => {
       approvalMode: "manual",
     },
     seatingCapacity: diningConfig.seatingCapacity ?? null,
-    pageControls: diningConfig.pageControls || {
-      reviewsEnabled: true,
-      shareEnabled: true,
-      diningSlug: restaurant.slug || "",
-    },
+    pageControls: (() => {
+      const existingPageControls = diningConfig.pageControls || {};
+      let diningSlug = existingPageControls.diningSlug || restaurant.slug || "";
+      
+      // If the slug is based on a default name pattern (like "restaurant-6911"), generate a new one from actual name
+      if (diningSlug && /^restaurant-?\d+$/i.test(diningSlug) && actualRestaurantName && !/^restaurant\s*\d+$/i.test(actualRestaurantName.trim())) {
+        // Generate slug from actual restaurant name
+        diningSlug = actualRestaurantName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+        
+        // If generated slug is empty, fall back to restaurant.slug
+        if (!diningSlug) {
+          diningSlug = restaurant.slug || "";
+        }
+      }
+      
+      return {
+        reviewsEnabled: existingPageControls.reviewsEnabled !== false,
+        shareEnabled: existingPageControls.shareEnabled !== false,
+        diningSlug: diningSlug,
+      };
+    })(),
     categories: diningConfig.categories || [],
     enabled: diningConfig.enabled ?? false,
     effectiveEnabled:

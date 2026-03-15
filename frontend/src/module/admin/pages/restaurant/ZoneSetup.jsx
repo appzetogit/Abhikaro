@@ -29,6 +29,7 @@ export default function ZoneSetup() {
   const [deliveryLoading, setDeliveryLoading] = useState(false)
   const [deliverySearch, setDeliverySearch] = useState("")
   const [updatingPartnerId, setUpdatingPartnerId] = useState(null)
+  const [togglingZoneId, setTogglingZoneId] = useState(null)
 
   const isZoneModeOn = deliveryAssignmentMode === "manual"
 
@@ -94,6 +95,42 @@ export default function ZoneSetup() {
     }
   }
 
+
+  const handleToggleZoneStatus = async (zoneId) => {
+    // Prevent double-clicks: if already toggling this zone, ignore
+    if (togglingZoneId === zoneId) {
+      return
+    }
+
+    try {
+      setTogglingZoneId(zoneId)
+      const response = await adminAPI.toggleZoneStatus(zoneId)
+      
+      if (response.data?.success) {
+        // Update local state immediately for better UX
+        setZones((prevZones) =>
+          prevZones.map((zone) =>
+            (zone._id || zone.id) === zoneId
+              ? { ...zone, isActive: !zone.isActive }
+              : zone
+          )
+        )
+        
+        const updatedZone = response.data?.data?.zone
+        const newStatus = updatedZone?.isActive ?? false
+        toast.success(
+          `Zone ${newStatus ? "activated" : "deactivated"} successfully`
+        )
+      }
+    } catch (error) {
+      console.error("Error toggling zone status:", error)
+      toast.error(
+        error?.response?.data?.message || "Failed to toggle zone status"
+      )
+    } finally {
+      setTogglingZoneId(null)
+    }
+  }
 
   const handleDeleteZone = async (zoneId) => {
     if (!window.confirm("Are you sure you want to delete this zone?")) {
@@ -302,35 +339,60 @@ export default function ZoneSetup() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredZones.map((zone) => (
+            {filteredZones.map((zone) => {
+              const isZoneActive = zone.isActive === true
+              return (
               <div
                 key={zone._id || zone.id}
-                className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow"
+                className={`bg-white rounded-lg shadow-sm border p-6 transition-all ${
+                  isZoneActive 
+                    ? "border-slate-200 hover:shadow-md" 
+                    : "border-slate-300 opacity-60"
+                }`}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-1">{zone.name || "Unnamed Zone"}</h3>
-                    <p className="text-sm text-slate-600">{zone.serviceLocation || "N/A"}</p>
+                    <h3 className={`text-lg font-semibold mb-1 ${
+                      isZoneActive ? "text-slate-900" : "text-slate-500"
+                    }`}>{zone.name || "Unnamed Zone"}</h3>
+                    <p className={`text-sm ${
+                      isZoneActive ? "text-slate-600" : "text-slate-400"
+                    }`}>{zone.serviceLocation || "N/A"}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => navigate(`/admin/zone-setup/view/${zone._id || zone.id}`)}
-                      className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="View"
+                      disabled={!isZoneActive}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isZoneActive
+                          ? "text-slate-600 hover:text-blue-600 hover:bg-blue-50"
+                          : "text-slate-300 cursor-not-allowed"
+                      }`}
+                      title={isZoneActive ? "View" : "Zone is inactive"}
                     >
                       <Eye className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => navigate(`/admin/zone-setup/edit/${zone._id || zone.id}`)}
-                      className="p-2 text-slate-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                      title="Edit"
+                      disabled={!isZoneActive}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isZoneActive
+                          ? "text-slate-600 hover:text-green-600 hover:bg-green-50"
+                          : "text-slate-300 cursor-not-allowed"
+                      }`}
+                      title={isZoneActive ? "Edit" : "Zone is inactive"}
                     >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteZone(zone._id || zone.id)}
-                      className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Delete"
+                      disabled={!isZoneActive}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isZoneActive
+                          ? "text-slate-600 hover:text-red-600 hover:bg-red-50"
+                          : "text-slate-300 cursor-not-allowed"
+                      }`}
+                      title={isZoneActive ? "Delete" : "Zone is inactive"}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -338,21 +400,32 @@ export default function ZoneSetup() {
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-600">Unit:</span>
-                    <span className="font-medium text-slate-900">{zone.unit || "km"}</span>
+                    <span className={isZoneActive ? "text-slate-600" : "text-slate-400"}>Unit:</span>
+                    <span className={`font-medium ${
+                      isZoneActive ? "text-slate-900" : "text-slate-400"
+                    }`}>{zone.unit || "km"}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-600">Status:</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      zone.isActive ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-800"
-                    }`}>
-                      {zone.isActive ? "Active" : "Inactive"}
-                    </span>
+                    <span className={isZoneActive ? "text-slate-600" : "text-slate-400"}>Status:</span>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={zone.isActive === true}
+                        onCheckedChange={() => handleToggleZoneStatus(zone._id || zone.id)}
+                        disabled={togglingZoneId === (zone._id || zone.id)}
+                      />
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        zone.isActive ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-800"
+                      }`}>
+                        {zone.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
                   </div>
                   {zone.coordinates && zone.coordinates.length > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-600">Points:</span>
-                      <span className="font-medium text-slate-900">{zone.coordinates.length}</span>
+                      <span className={isZoneActive ? "text-slate-600" : "text-slate-400"}>Points:</span>
+                      <span className={`font-medium ${
+                        isZoneActive ? "text-slate-900" : "text-slate-400"
+                      }`}>{zone.coordinates.length}</span>
                     </div>
                   )}
                    {canManageAssignment && (
@@ -360,9 +433,9 @@ export default function ZoneSetup() {
                       <button
                         type="button"
                          onClick={() => openAssignDialog(zone)}
-                         disabled={!isZoneModeOn}
+                         disabled={!isZoneModeOn || !isZoneActive}
                          className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
-                           isZoneModeOn
+                           isZoneModeOn && isZoneActive
                              ? "border-slate-300 text-slate-700 hover:bg-slate-50"
                              : "border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed"
                          }`}
@@ -374,7 +447,7 @@ export default function ZoneSetup() {
                   )}
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>

@@ -9,7 +9,7 @@ import AnimatedPage from "../components/AnimatedPage"
 import { useSearchOverlay, useLocationSelector } from "../components/UserLayout"
 import { useLocation as useLocationHook } from "../hooks/useLocation"
 import { useProfile } from "../context/ProfileContext"
-import { diningAPI } from "@/lib/api"
+import { diningAPI, restaurantAPI } from "@/lib/api"
 import api from "@/lib/api"
 import PageNavbar from "../components/PageNavbar"
 import OptimizedImage from "@/components/OptimizedImage"
@@ -97,11 +97,27 @@ export default function Dining() {
   useEffect(() => {
     const fetchDiningData = async () => {
       try {
+        // Prepare params for restaurantAPI.getRestaurants()
+        const restaurantParams = {
+          limit: 100, // Get more restaurants to filter
+        }
+        
+        // Add location coordinates if available for geospatial queries
+        if (location?.latitude && location?.longitude) {
+          restaurantParams.latitude = location.latitude
+          restaurantParams.longitude = location.longitude
+        }
+        
+        // Add city if available
+        if (location?.city) {
+          restaurantParams.city = location.city
+        }
+
         const [cats, limes, tries, rests, offers] = await Promise.all([
           diningAPI.getCategories(),
           diningAPI.getOfferBanners(),
           diningAPI.getStories(),
-          diningAPI.getRestaurants(location?.city ? { city: location.city } : {}),
+          restaurantAPI.getRestaurants(restaurantParams),
           diningAPI.getBankOffers()
         ])
 
@@ -110,7 +126,22 @@ export default function Dining() {
           setLimelightItems(limes.data.data)
         }
         if (tries.data.success && tries.data.data.length > 0) setMustTryItems(tries.data.data)
-        if (rests.data.success && rests.data.data.length > 0) setRestaurantList(rests.data.data)
+        if (rests.data.success) {
+          // restaurantAPI returns { restaurants: [], total: 0 } structure
+          const restaurants = rests.data.data?.restaurants || rests.data.data || []
+          const restaurantsArray = Array.isArray(restaurants) ? restaurants : []
+          
+          // Only update if we got restaurants (don't overwrite with empty array)
+          if (restaurantsArray.length > 0) {
+            setRestaurantList(restaurantsArray)
+            console.log("Fetched dining restaurants:", restaurantsArray.length)
+            console.log("Sample restaurant:", restaurantsArray[0])
+            console.log("Sample restaurant diningSettings:", restaurantsArray[0]?.diningSettings)
+            console.log("Sample restaurant isActive:", restaurantsArray[0]?.isActive)
+          } else {
+            console.log("No restaurants in response, keeping existing list")
+          }
+        }
         if (offers.data.success && offers.data.data.length > 0) setBankOfferItems(offers.data.data)
       } catch (error) {
         console.error("Failed to fetch dining data", error)
@@ -119,7 +150,8 @@ export default function Dining() {
       }
     }
     fetchDiningData()
-  }, [location?.city])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.city, location?.latitude, location?.longitude])
 
   const toggleFilter = (filterId) => {
     setActiveFilters(prev => {
@@ -297,7 +329,7 @@ export default function Dining() {
             {categories.map((category, index) => (
               <Link
                 key={category._id || category.id}
-                to={`/user/dining/${category.name.toLowerCase().replace(/\s+/g, '-')}`}
+                to={`/dining/${category.name.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <motion.div
                   className="group relative rounded-2xl overflow-hidden bg-gray-100 cursor-pointer h-[110px] sm:h-[120px] md:h-[130px] shadow-sm hover:shadow-md transition-all duration-300"
@@ -455,8 +487,7 @@ export default function Dining() {
               {mustTryItems.map((item, index) => (
                 <motion.div
                   key={item._id || item.id}
-                  className="relative flex-shrink-0 rounded-xl overflow-hidden shadow-sm cursor-pointer"
-                  onClick={() => navigate(`/user/search?q=${encodeURIComponent(item.name)}`)}
+                  className="relative flex-shrink-0 rounded-xl overflow-hidden shadow-sm"
                   style={{
                     width: 'calc((100vw - 3rem) / 2.5)',
                     minWidth: '140px',
@@ -466,7 +497,6 @@ export default function Dining() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
                   transition={{ duration: 0.4, delay: index * 0.05 }}
-                  whileHover={{ y: -8, scale: 1.05 }}
                 >
                   <div className="relative h-48 sm:h-56 md:h-64 overflow-hidden">
                     <motion.div
@@ -505,6 +535,295 @@ export default function Dining() {
             </Button>
           </div> */}
         </div>
+
+        {/* All Dining Restaurants Section */}
+        {(() => {
+          // Filter restaurants where diningSettings.isEnabled === true and isActive === true (per plan)
+          const enabledRestaurants = restaurantList.filter(restaurant => {
+            if (!restaurant) return false
+            
+            // Restaurant model structure - direct access
+            // Filter for restaurants with dining enabled (per plan requirements)
+            
+            // Must be active (isActive === true per plan)
+            if (restaurant.isActive !== true) return false
+            
+            // Must have diningSettings.isEnabled === true (explicitly true, per plan)
+            if (!restaurant.diningSettings || restaurant.diningSettings.isEnabled !== true) {
+              return false
+            }
+            
+            // Include restaurants that pass both filters
+            return true
+          })
+          
+          console.log("Total restaurants:", restaurantList.length, "Enabled dining restaurants:", enabledRestaurants.length)
+          if (restaurantList.length > 0) {
+            console.log("Sample restaurant:", {
+              name: restaurantList[0]?.name || restaurantList[0]?.onboarding?.step1?.restaurantName,
+              isActive: restaurantList[0]?.isActive,
+              diningSettings: restaurantList[0]?.diningSettings,
+              hasDiningConfig: !!restaurantList[0]?.diningConfig
+            })
+            // Log all restaurants to see their diningSettings
+            console.log("All restaurants diningSettings:", restaurantList.map(r => ({
+              name: r?.name || r?.onboarding?.step1?.restaurantName,
+              isActive: r?.isActive,
+              diningEnabled: r?.diningSettings?.isEnabled
+            })))
+          }
+          
+          // Temporarily show all active restaurants if no dining-enabled ones found (for debugging)
+          // Remove this after confirming restaurants are showing
+          const restaurantsToShow = enabledRestaurants.length > 0 
+            ? enabledRestaurants 
+            : restaurantList.filter(r => r && r.isActive === true).slice(0, 10) // Show first 10 active restaurants as fallback
+          
+          if (restaurantsToShow.length === 0) return null
+          
+          return (
+            <div className="mb-6 mt-8 sm:mt-12">
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4 px-1">
+                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight">
+                    All Dining Restaurants ({restaurantsToShow.length})
+                  </h3>
+                </div>
+              </div>
+
+              {/* Restaurant Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
+                {restaurantsToShow.map((restaurant) => {
+                  // Restaurant model structure - direct access
+                  const restaurantName = restaurant?.onboarding?.step1?.restaurantName || 
+                                         restaurant?.name || 
+                                         'Restaurant'
+                  const restaurantSlug = restaurant?.slug || 
+                                        restaurant?._id || 
+                                        restaurantName.toLowerCase().replace(/\s+/g, '-')
+                  
+                  // Get image - prioritize dining restaurant's uploaded cover images
+                  // Priority order: coverImages > diningConfig images > menuImages > profileImage
+                  
+                  // 1. Check root level coverImages (from dining management)
+                  let coverImages = []
+                  if (restaurant?.coverImages && Array.isArray(restaurant.coverImages)) {
+                    coverImages = restaurant.coverImages.map(img => img?.url || img).filter(Boolean)
+                  }
+                  
+                  // 2. Check diningConfig for cover images
+                  let diningCoverImages = []
+                  if (restaurant?.diningConfig) {
+                    if (restaurant.diningConfig.coverImages && Array.isArray(restaurant.diningConfig.coverImages)) {
+                      diningCoverImages = restaurant.diningConfig.coverImages.map(img => img?.url || img).filter(Boolean)
+                    } else if (restaurant.diningConfig.coverImage) {
+                      diningCoverImages = [restaurant.diningConfig.coverImage?.url || restaurant.diningConfig.coverImage]
+                    } else if (restaurant.diningConfig.images && Array.isArray(restaurant.diningConfig.images)) {
+                      diningCoverImages = restaurant.diningConfig.images.map(img => img?.url || img).filter(Boolean)
+                    }
+                  }
+                  
+                  // 3. Check menuImages
+                  let menuImages = []
+                  if (restaurant?.menuImages && Array.isArray(restaurant.menuImages)) {
+                    menuImages = restaurant.menuImages.map(img => img?.url || img).filter(Boolean)
+                  } else if (restaurant?.onboarding?.step2?.menuImageUrls && Array.isArray(restaurant.onboarding.step2.menuImageUrls)) {
+                    menuImages = restaurant.onboarding.step2.menuImageUrls.map(img => img?.url || img).filter(Boolean)
+                  }
+                  
+                  // 4. Check profileImage
+                  const profileImage = restaurant?.onboarding?.step2?.profileImageUrl?.url || 
+                                     restaurant?.profileImage?.url ||
+                                     (typeof restaurant?.profileImage === 'string' ? restaurant.profileImage : null)
+                  
+                  // Priority: coverImages > diningConfig images > menuImages > profileImage > fallback
+                  let image = null
+                  
+                  if (coverImages.length > 0) {
+                    image = coverImages[0]
+                  } else if (diningCoverImages.length > 0) {
+                    image = diningCoverImages[0]
+                  } else if (menuImages.length > 0) {
+                    image = menuImages[0]
+                  } else if (profileImage) {
+                    image = profileImage
+                  } else {
+                    image = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"
+                  }
+                  
+                  // Debug logging for missing images
+                  if (!image || image.includes('unsplash.com')) {
+                    console.log("Restaurant image debug:", {
+                      name: restaurantName,
+                      hasCoverImages: coverImages.length > 0,
+                      hasDiningCoverImages: diningCoverImages.length > 0,
+                      hasMenuImages: menuImages.length > 0,
+                      hasProfileImage: !!profileImage,
+                      diningConfig: restaurant?.diningConfig,
+                      finalImage: image
+                    })
+                  }
+                  
+                  // Get cuisine - Restaurant model has cuisines array
+                  const cuisineStr = restaurant?.cuisines && Array.isArray(restaurant.cuisines) && restaurant.cuisines.length > 0
+                    ? restaurant.cuisines[0]
+                    : (restaurant?.cuisine || "Multi-cuisine")
+                  
+                  // Get rating - ensure it's a number
+                  const rating = Number(restaurant?.rating || restaurant?.avgRating || 0) || 0
+                  
+                  // Get offer from dining management (priority order)
+                  const offer = restaurant?.diningConfig?.offer ||
+                               restaurant?.diningConfig?.basicDetails?.offer ||
+                               restaurant?.diningConfig?.offers?.[0]?.title ||
+                               restaurant?.diningConfig?.offers?.[0]?.description ||
+                               restaurant?.onboarding?.step4?.offer ||
+                               restaurant?.offer ||
+                               "Special Offer"
+                  
+                  // Debug logging for offer
+                  if (offer === "Special Offer" && restaurant?.diningConfig) {
+                    console.log("Offer debug for", restaurantName, ":", {
+                      diningConfig: restaurant.diningConfig,
+                      hasOffer: !!restaurant.diningConfig.offer,
+                      hasBasicDetailsOffer: !!restaurant.diningConfig.basicDetails?.offer,
+                      hasOffersArray: Array.isArray(restaurant.diningConfig.offers),
+                      offersLength: restaurant.diningConfig.offers?.length
+                    })
+                  }
+                  
+                  // Get featured dish and price
+                  const featuredDish = restaurant?.onboarding?.step4?.featuredDish || 
+                                      restaurant?.featuredDish ||
+                                      (restaurant?.cuisines && Array.isArray(restaurant.cuisines) && restaurant.cuisines.length > 0
+                                        ? `${restaurant.cuisines[0]} Special`
+                                        : "Special Dish")
+                  const featuredPrice = restaurant?.onboarding?.step4?.featuredPrice || 
+                                       restaurant?.featuredPrice ||
+                                       restaurant?.diningConfig?.basicDetails?.costForTwo ||
+                                       249
+                  
+                  // Calculate distance - Restaurant model has location.coordinates as [longitude, latitude]
+                  let distance = restaurant?.distance || restaurant?.onboarding?.step4?.distance || "2.5 km"
+                  if (location?.latitude && location?.longitude && restaurant?.location?.coordinates) {
+                    const coords = restaurant.location.coordinates
+                    if (Array.isArray(coords) && coords.length >= 2) {
+                      // Coordinates are [longitude, latitude] in MongoDB
+                      const restaurantLng = coords[0]
+                      const restaurantLat = coords[1]
+                      
+                      if (restaurantLat && restaurantLng) {
+                        const R = 6371 // Earth's radius in kilometers
+                        const dLat = (restaurantLat - location.latitude) * Math.PI / 180
+                        const dLng = (restaurantLng - location.longitude) * Math.PI / 180
+                        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                                 Math.cos(location.latitude * Math.PI / 180) * Math.cos(restaurantLat * Math.PI / 180) *
+                                 Math.sin(dLng / 2) * Math.sin(dLng / 2)
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+                        const distanceInKm = R * c
+                        
+                        if (distanceInKm >= 1) {
+                          distance = `${distanceInKm.toFixed(1)} km`
+                        } else {
+                          distance = `${Math.round(distanceInKm * 1000)} m`
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Delivery time (for dining, this might be table booking time)
+                  const deliveryTime = restaurant?.onboarding?.step4?.estimatedDeliveryTime || "25-30 mins"
+                  
+                  const favorite = isFavorite(restaurantSlug)
+                  
+                  const handleToggleFavorite = (e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (favorite) {
+                      removeFavorite(restaurantSlug)
+                    } else {
+                      addFavorite({
+                        slug: restaurantSlug,
+                        name: restaurantName,
+                        cuisine: cuisineStr,
+                        rating,
+                        deliveryTime,
+                        distance,
+                        image
+                      })
+                    }
+                  }
+                  
+                  // Get dining type from diningSettings
+                  const diningType = restaurant?.diningSettings?.diningType || "dining"
+                  
+                  return (
+                    <Link
+                      key={restaurant?._id || restaurant?.id || restaurantSlug}
+                      to={`/dining/${diningType}/${restaurantSlug}`}
+                    >
+                      <Card className="overflow-hidden gap-0 cursor-pointer border-0 group bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-2xl">
+                        {/* Image Section */}
+                        <div className="relative h-48 sm:h-56 md:h-60 w-full overflow-hidden rounded-t-2xl">
+                          <img
+                            src={image}
+                            alt={restaurantName}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              e.target.src = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"
+                            }}
+                          />
+                          
+                          {/* Bookmark Icon - Top Right */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-3 right-3 h-9 w-9 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors"
+                            onClick={handleToggleFavorite}
+                          >
+                            <Bookmark className={`h-5 w-5 ${favorite ? "fill-gray-800 text-gray-800" : "text-gray-600"}`} strokeWidth={2} />
+                          </Button>
+                          
+                        </div>
+                        
+                        {/* Content Section */}
+                        <CardContent className="p-4 sm:p-5">
+                          {/* Restaurant Name & Rating */}
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white line-clamp-1 group-hover:text-[#FD0134] transition-colors">
+                                {restaurantName}
+                              </h3>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                {cuisineStr}
+                              </p>
+                            </div>
+                            <div className="flex-shrink-0 bg-[#FD0134] text-white px-2 py-1 rounded-lg flex items-center gap-1">
+                              <span className="text-sm font-bold">{typeof rating === 'number' ? rating.toFixed(1) : '0.0'}</span>
+                              <Star className="h-3 w-3 fill-white text-white" />
+                            </div>
+                          </div>
+                          
+                          {/* Distance & Time */}
+                          <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400 mt-3">
+                            <div className="flex items-center gap-1">
+                              <MapPin className="h-4 w-4" />
+                              <span>{distance}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-4 w-4" />
+                              <span>{deliveryTime}</span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
 
       </div>
 

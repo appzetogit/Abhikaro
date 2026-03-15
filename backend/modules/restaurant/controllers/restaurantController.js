@@ -1,6 +1,7 @@
 import Restaurant from '../models/Restaurant.js';
 import Menu from '../models/Menu.js';
 import Zone from '../../admin/models/Zone.js';
+import DiningCategory from '../../dining/models/DiningCategory.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../../../shared/utils/cloudinaryService.js';
 import { initializeCloudinary } from '../../../config/cloudinary.js';
@@ -129,7 +130,8 @@ export const getRestaurants = async (req, res) => {
       hasOffers,
       zoneId, // User's zone ID (optional)
       latitude, // User's latitude - CRITICAL for geospatial queries
-      longitude // User's longitude - CRITICAL for geospatial queries
+      longitude, // User's longitude - CRITICAL for geospatial queries
+      diningCategory // Dining category name/slug to filter restaurants
     } = req.query;
 
     // Generate cache key based on query parameters
@@ -146,7 +148,8 @@ export const getRestaurants = async (req, res) => {
       hasOffers,
       zoneId,
       latitude,
-      longitude
+      longitude,
+      diningCategory
     );
 
     // Try to get from cache first
@@ -165,9 +168,133 @@ export const getRestaurants = async (req, res) => {
       }
     }
     
+    // Dining category filter - if diningCategory is provided, filter restaurants by linked restaurants
+    let categoryLinkedRestaurantIds = null;
+    if (diningCategory) {
+      try {
+        // Find category by name (case-insensitive) or slug
+        // The diningCategory param comes as a slug (e.g., "aaaa", "bbbb")
+        // We need to match against category names converted to slugs
+        const categorySlug = diningCategory.toLowerCase().replace(/\s+/g, '-');
+        
+        // Fetch all active categories and match by slug
+        // Populate linkedRestaurants to get the actual ObjectIds
+        const allCategories = await DiningCategory.find({ isActive: true })
+          .populate('linkedRestaurants', '_id')
+          .lean();
+        
+        const category = allCategories.find(cat => {
+          const catSlug = cat.name.toLowerCase().replace(/\s+/g, '-');
+          const matchesSlug = catSlug === categorySlug;
+          const matchesName = cat.name.toLowerCase() === diningCategory.toLowerCase();
+          return matchesSlug || matchesName;
+        });
+        
+        console.log(`🔍 Searching for category with slug: "${categorySlug}"`);
+        console.log(`📋 Available categories: ${allCategories.map(c => c.name.toLowerCase().replace(/\s+/g, '-')).join(', ')}`);
+        
+        if (!category) {
+          console.log(`⚠️ Category not found for slug: ${categorySlug}`);
+          return successResponse(res, 200, 'Category not found', {
+            restaurants: [],
+            total: 0,
+            filters: {
+              sortBy,
+              cuisine,
+              minRating,
+              maxDeliveryTime,
+              maxDistance,
+              maxPrice,
+              hasOffers,
+              diningCategory
+            },
+            queryType: 'regular',
+            userCoordinates: null
+          });
+        }
+        
+        console.log(`✅ Found category: ${category.name} with ${category.linkedRestaurants?.length || 0} linked restaurants`);
+        
+        const categoryId = category._id;
+        const restaurantIdsFromLinked = [];
+        
+        // Method 1: Get restaurants from linkedRestaurants array
+        if (category.linkedRestaurants && category.linkedRestaurants.length > 0) {
+          const linkedIds = category.linkedRestaurants
+            .map(id => {
+              // Handle populated objects
+              if (typeof id === 'object' && id._id) {
+                return id._id.toString();
+              }
+              // Handle ObjectId objects
+              if (typeof id === 'object' && id.toString) {
+                return id.toString();
+              }
+              // Handle string IDs
+              return String(id);
+            })
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+          
+          restaurantIdsFromLinked.push(...linkedIds);
+          console.log(`📋 Linked restaurant IDs from linkedRestaurants (${linkedIds.length}): ${linkedIds.join(', ')}`);
+        }
+        
+        // Method 2: Get restaurants that have this category in their diningConfig.categories array
+        const restaurantsWithCategory = await Restaurant.find({
+          isActive: true,
+          'diningConfig.categories': categoryId
+        }).select('_id').lean();
+        
+        const restaurantIdsFromConfig = restaurantsWithCategory.map(r => r._id.toString());
+        console.log(`📋 Restaurant IDs from diningConfig.categories (${restaurantIdsFromConfig.length}): ${restaurantIdsFromConfig.join(', ')}`);
+        
+        // Combine both methods and remove duplicates
+        const allRestaurantIds = [...new Set([...restaurantIdsFromLinked, ...restaurantIdsFromConfig])];
+        
+        if (allRestaurantIds.length > 0) {
+          categoryLinkedRestaurantIds = allRestaurantIds
+            .filter(id => mongoose.Types.ObjectId.isValid(id))
+            .map(id => new mongoose.Types.ObjectId(id));
+          
+          console.log(`📋 Total unique restaurant IDs (${categoryLinkedRestaurantIds.length}): ${categoryLinkedRestaurantIds.map(id => id.toString()).join(', ')}`);
+        } else {
+          console.log(`⚠️ Category "${category.name}" has no linked restaurants (checked both linkedRestaurants and diningConfig.categories)`);
+          return successResponse(res, 200, 'No restaurants linked to this category', {
+            restaurants: [],
+            total: 0,
+            filters: {
+              sortBy,
+              cuisine,
+              minRating,
+              maxDeliveryTime,
+              maxDistance,
+              maxPrice,
+              hasOffers,
+              diningCategory
+            },
+            queryType: 'regular',
+            userCoordinates: null
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching dining category:', err);
+        return errorResponse(res, 500, 'Failed to fetch dining category');
+      }
+    }
+    
     // Build base query - Show all active restaurants (including offline ones)
     // Offline restaurants will be displayed with "CURRENTLY CLOSED" tag on frontend
     const query = { isActive: true };
+    
+    // Add dining category filter - only show restaurants linked to this category
+    if (categoryLinkedRestaurantIds && categoryLinkedRestaurantIds.length > 0) {
+      query._id = { $in: categoryLinkedRestaurantIds };
+      console.log(`🔍 Filtering restaurants by IDs: ${categoryLinkedRestaurantIds.length} restaurants`);
+    }
+    
+    // Ensure restaurants have dining enabled (for table booking)
+    // Note: We'll filter this after fetching to allow restaurants without diningConfig
+    // query['diningConfig.enabled'] = true;
     
     // CRITICAL: Use MongoDB geospatial query if user coordinates provided
     // This replaces Google Places API Nearby Search
@@ -286,6 +413,27 @@ export const getRestaurants = async (req, res) => {
       .skip(offsetNum)
       .lean();
     
+    // Filter restaurants for dining category - ensure they have dining enabled
+    // Note: We allow restaurants even if diningConfig is not set, as long as they're linked to category
+    if (diningCategory && restaurants.length > 0) {
+      const beforeCount = restaurants.length;
+      restaurants = restaurants.filter(r => {
+        // If diningConfig exists, it should be enabled
+        // If diningConfig doesn't exist, we still show it (might be a new restaurant)
+        if (r.diningConfig !== undefined && r.diningConfig !== null) {
+          const hasDiningEnabled = r.diningConfig?.enabled === true;
+          if (!hasDiningEnabled) {
+            console.log(`⚠️ Restaurant ${r.name || r._id} excluded: diningConfig.enabled is false`);
+          }
+          return hasDiningEnabled;
+        }
+        // If diningConfig doesn't exist, include it anyway
+        console.log(`ℹ️ Restaurant ${r.name || r._id} has no diningConfig, including anyway`);
+        return true;
+      });
+      console.log(`✅ After dining filter: ${restaurants.length} restaurants remaining (from ${beforeCount})`);
+    }
+    
     // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
     // This ensures correct names are shown even if restaurant was created with default name
     restaurants = restaurants.map(restaurant => {
@@ -380,7 +528,8 @@ export const getRestaurants = async (req, res) => {
         maxDeliveryTime,
         maxDistance,
         maxPrice,
-        hasOffers
+        hasOffers,
+        diningCategory
       },
       // Include metadata about query type
       queryType: useGeospatialQuery ? 'geospatial' : 'regular',

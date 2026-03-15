@@ -33,6 +33,7 @@ export default function DiningRestaurantDetails() {
     const [selectedGuests, setSelectedGuests] = useState(2)
     const [diningOffers, setDiningOffers] = useState([])
     const [diningMenu, setDiningMenu] = useState(null)
+    const [menuLoading, setMenuLoading] = useState(false)
 
     // Share handler (Web Share API + clipboard fallback)
     const copyToClipboard = async (text) => {
@@ -96,6 +97,8 @@ export default function DiningRestaurantDetails() {
                     const apiRestaurant = response.data.data
                     // Check if this is a dining restaurant with nested restaurant data
                     const actualRestaurant = apiRestaurant?.restaurant || apiRestaurant
+                    console.log("Restaurant fetched:", actualRestaurant)
+                    console.log("Restaurant ID:", actualRestaurant?._id, "Slug:", actualRestaurant?.slug)
                     setRestaurant(actualRestaurant)
                 } else {
                     // Fallback: search by name if slug lookup fails directly (though getRestaurantById usually handles slugs)
@@ -104,11 +107,14 @@ export default function DiningRestaurantDetails() {
                     setError("Restaurant not found")
                 }
             } catch (err) {
-                // If 404, we might need to search list. For now, simple error.
-                console.error("Failed to load restaurant", err)
+                // If 404, try fallback: search list and find match
+                // Only log error if it's not a 404 (expected when slug doesn't exist)
+                if (err?.response?.status !== 404) {
+                    console.error("Failed to load restaurant", err)
+                }
 
-                // FAILSAFE: If API by slug fails, let's try to get list and find match (temporary fix for development if slug isn't unique ID)
-                // In a real app, backend should support slug lookup reliably.
+                // FAILSAFE: If API by slug fails, try to get list and find match
+                // This handles cases where slug format might differ or restaurant exists but slug lookup fails
                 try {
                     const listResp = await diningAPI.getRestaurants()
                     const list = listResp?.data?.data || []
@@ -117,17 +123,27 @@ export default function DiningRestaurantDetails() {
                             r?._id === slug ||
                             r?.slug === slug ||
                             (r?.name && r.name.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase()) ||
-                            (r?.onboarding?.step1?.restaurantName && r.onboarding.step1.restaurantName.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase())
+                            (r?.onboarding?.step1?.restaurantName && r.onboarding.step1.restaurantName.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase()) ||
+                            (r?.restaurant?.slug === slug) ||
+                            (r?.restaurant?._id === slug)
                         )
                         if (match) {
                             const actualMatch = match?.restaurant || match
                             setRestaurant(actualMatch)
                             setError(null)
+                            // Successfully found via fallback, no need to log error
+                            return
                         } else {
                             setError("Restaurant not found")
                         }
+                    } else {
+                        setError("Restaurant not found")
                     }
                 } catch (e) {
+                    // Only log if it's not a network/404 error
+                    if (e?.response?.status !== 404 && e?.response?.status !== 0) {
+                        console.error("Fallback restaurant search failed", e)
+                    }
                     setError("Restaurant not found")
                 }
             } finally {
@@ -157,18 +173,46 @@ export default function DiningRestaurantDetails() {
 
     // Fetch restaurant menu for Menu tab (with images)
     useEffect(() => {
-        if (!restaurant?._id) return
+        if (!restaurant) {
+            console.log("No restaurant available for menu fetch")
+            return
+        }
+        
+        // Try multiple ID formats: _id, id, slug, restaurantId
+        const restaurantId = restaurant._id || restaurant.id || restaurant.slug || restaurant.restaurantId
+        
+        if (!restaurantId) {
+            console.log("No restaurant ID available for menu fetch. Restaurant object:", restaurant)
+            return
+        }
+        
         const fetchMenu = async () => {
             try {
-                const res = await restaurantAPI.getMenuByRestaurantId(restaurant._id)
+                setMenuLoading(true)
+                console.log("Fetching menu for restaurant ID:", restaurantId, "Type:", typeof restaurantId)
+                const res = await restaurantAPI.getMenuByRestaurantId(restaurantId)
+                console.log("Menu API response:", res?.data)
                 const data = res?.data?.data || res?.data
-                setDiningMenu(data?.menu || data || null)
-            } catch {
+                const menuData = data?.menu || data || null
+                console.log("Menu data:", menuData)
+                if (menuData?.sections && menuData.sections.length > 0) {
+                    const totalItems = menuData.sections.reduce((sum, sec) => 
+                        sum + (sec.items?.length || 0) + (sec.subsections?.reduce((s, sub) => s + (sub.items?.length || 0), 0) || 0), 0)
+                    console.log(`Found ${menuData.sections.length} menu sections with ${totalItems} total items`)
+                } else {
+                    console.log("No menu sections found or menu is empty")
+                }
+                setDiningMenu(menuData)
+            } catch (err) {
+                console.error("Failed to fetch menu:", err)
+                console.error("Error details:", err.response?.data || err.message)
                 setDiningMenu(null)
+            } finally {
+                setMenuLoading(false)
             }
         }
         fetchMenu()
-    }, [restaurant?._id])
+    }, [restaurant?._id, restaurant?.id, restaurant?.slug])
 
     if (loading) {
         return (
@@ -496,7 +540,12 @@ export default function DiningRestaurantDetails() {
                 {activeTab === "Menu" && (
                     <div className="space-y-4">
                         <p className="text-gray-600 text-sm">View the full menu when you dine. You can also order for delivery from this restaurant.</p>
-                        {diningMenu?.sections?.length > 0 ? (
+                        {menuLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 animate-spin text-[#2B9C64]" />
+                                <span className="ml-2 text-gray-600">Loading menu...</span>
+                            </div>
+                        ) : diningMenu?.sections?.length > 0 ? (
                             <div className="space-y-6">
                                 {diningMenu.sections.map((sec, secIdx) => (
                                     <div key={sec.id || sec.name || secIdx}>

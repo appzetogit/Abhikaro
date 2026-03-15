@@ -2,16 +2,13 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowLeft,
-  UtensilsCrossed,
   Info,
   Image as ImageIcon,
   Users,
-  Tag,
   Utensils,
   Settings,
   Loader2,
   Save,
-  Plus,
   Trash2,
   ChevronDown,
   ChevronRight,
@@ -31,7 +28,6 @@ const SECTION_IDS = {
   COVER: "cover",
   SEATING: "seating",
   CATEGORIES: "categories",
-  OFFERS: "offers",
   MENU: "menu",
   PAGE_CONTROLS: "page-controls",
 }
@@ -50,7 +46,6 @@ export default function DiningManagement() {
     recommendedCategorySlug: null,
     maxGuests: null,
   })
-  const [offers, setOffers] = useState([])
   const [diningMenu, setDiningMenu] = useState({ sections: [], addons: [] })
   const [allDiningCategories, setAllDiningCategories] = useState([])
 
@@ -85,16 +80,14 @@ export default function DiningManagement() {
 
   const [uploadingCover, setUploadingCover] = useState(false)
   const [uploadingGallery, setUploadingGallery] = useState(false)
-  const [offerForm, setOfferForm] = useState({ type: "prebook", title: "", description: "", discountType: "percentage", discountValue: "", validFrom: "", validTo: "", isActive: true })
 
   useEffect(() => {
     const fetch = async () => {
       try {
         setLoading(true)
         setError(null)
-        const [configRes, offersRes, menuRes, categoriesRes] = await Promise.all([
+        const [configRes, menuRes, categoriesRes] = await Promise.all([
           restaurantAPI.getDiningConfig(),
-          restaurantAPI.getDiningOffers(),
           restaurantAPI.getDiningMenu(),
           diningAPI.getCategories(),
         ])
@@ -122,7 +115,7 @@ export default function DiningManagement() {
           setForm({
             enabled: c.enabled ?? false,
             basicDetails: {
-              name: (c.basicDetails?.name && c.basicDetails.name.trim()) ? c.basicDetails.name : (ownerName || (c.basicDetails?.name ?? "")),
+              name: (c.basicDetails?.name && c.basicDetails.name.trim()) ? c.basicDetails.name : (ownerName || ""),
               address: c.basicDetails?.address ?? "",
               description: c.basicDetails?.description ?? "",
               costForTwo: c.basicDetails?.costForTwo ?? "",
@@ -148,7 +141,6 @@ export default function DiningManagement() {
             },
           })
         }
-        if (offersRes.data?.success && Array.isArray(offersRes.data?.data?.offers)) setOffers(offersRes.data.data.offers)
         if (menuRes.data?.success && menuRes.data?.data) setDiningMenu(menuRes.data.data)
         if (categoriesRes?.data?.success && Array.isArray(categoriesRes?.data?.data)) {
           setAllDiningCategories(categoriesRes.data.data)
@@ -266,40 +258,6 @@ export default function DiningManagement() {
     setForm((p) => ({ ...p, gallery: (p.gallery || []).filter((_, i) => i !== index) }))
   }
 
-  const createOffer = async () => {
-    if (!offerForm.title || offerForm.discountValue === "" || !offerForm.validFrom || !offerForm.validTo) return
-    try {
-      await restaurantAPI.createDiningOffer({
-        ...offerForm,
-        discountValue: Number(offerForm.discountValue),
-      })
-      const res = await restaurantAPI.getDiningOffers()
-      if (res.data?.success) setOffers(res.data.data?.offers || [])
-      setOfferForm({ type: "prebook", title: "", description: "", discountType: "percentage", discountValue: "", validFrom: "", validTo: "", isActive: true })
-    } catch (e) {
-      setError(e.response?.data?.message || "Failed to create offer")
-    }
-  }
-
-  const deleteOffer = async (offerId) => {
-    if (!confirm("Delete this offer?")) return
-    try {
-      await restaurantAPI.deleteDiningOffer(offerId)
-      setOffers((prev) => prev.filter((o) => o._id !== offerId))
-    } catch (e) {
-      setError(e.response?.data?.message || "Failed to delete")
-    }
-  }
-
-  const toggleOfferActive = async (offer) => {
-    try {
-      await restaurantAPI.updateDiningOffer(offer._id, { isActive: !offer.isActive })
-      setOffers((prev) => prev.map((o) => (o._id === offer._id ? { ...o, isActive: !o.isActive } : o)))
-    } catch (e) {
-      setError(e.response?.data?.message || "Failed to update offer")
-    }
-  }
-
   const updateMenuItemDining = async (sectionId, itemId, subsectionId, dineInPrice, availableForDining) => {
     try {
       await restaurantAPI.updateDiningMenuItem({ sectionId, itemId, subsectionId, dineInPrice, availableForDining })
@@ -358,10 +316,7 @@ export default function DiningManagement() {
               <button onClick={() => navigate("/restaurant")} className="p-2 rounded-lg hover:bg-slate-100" aria-label="Back">
                 <ArrowLeft className="w-5 h-5 text-slate-700" />
               </button>
-              <div className="flex items-center gap-2">
-                <UtensilsCrossed className="w-6 h-6 text-slate-700" />
-                <h1 className="text-xl font-bold text-gray-900">Dining Management</h1>
-              </div>
+              <h1 className="text-xl font-bold text-gray-900">Dining</h1>
               {!adminControls.isEnabledByAdmin && adminControls.requestStatus === "pending" && (
                 <span className="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                   Request pending
@@ -646,44 +601,6 @@ export default function DiningManagement() {
             </div>
           </Section>
         )}
-
-        {/* Pre-book & Walk-in Offers */}
-        <Section id={SECTION_IDS.OFFERS} title="Pre-book & Walk-in Offers" icon={Tag} expanded={expandedSection === SECTION_IDS.OFFERS} onToggle={() => setExpandedSection(expandedSection === SECTION_IDS.OFFERS ? null : SECTION_IDS.OFFERS)}>
-          <div className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input value={offerForm.title} onChange={(e) => setOfferForm((p) => ({ ...p, title: e.target.value }))} placeholder="Offer title" />
-              <select value={offerForm.type} onChange={(e) => setOfferForm((p) => ({ ...p, type: e.target.value }))} className="border rounded-lg px-3 py-2 text-sm">
-                <option value="prebook">Pre-book</option>
-                <option value="walkin">Walk-in</option>
-              </select>
-              <select value={offerForm.discountType} onChange={(e) => setOfferForm((p) => ({ ...p, discountType: e.target.value }))} className="border rounded-lg px-3 py-2 text-sm">
-                <option value="percentage">Percentage</option>
-                <option value="flat">Flat</option>
-              </select>
-              <Input type="number" value={offerForm.discountValue} onChange={(e) => setOfferForm((p) => ({ ...p, discountValue: e.target.value }))} placeholder="Discount value" />
-              <Input type="date" value={offerForm.validFrom} onChange={(e) => setOfferForm((p) => ({ ...p, validFrom: e.target.value }))} />
-              <Input type="date" value={offerForm.validTo} onChange={(e) => setOfferForm((p) => ({ ...p, validTo: e.target.value }))} />
-            </div>
-            <Button onClick={createOffer} disabled={!offerForm.title || offerForm.discountValue === "" || !offerForm.validFrom || !offerForm.validTo}>
-              <Plus className="w-4 h-4 mr-2" /> Add offer
-            </Button>
-            <ul className="divide-y divide-slate-200">
-              {offers.map((o) => (
-                <li key={o._id} className="py-3 flex items-center justify-between gap-4">
-                  <div>
-                    <span className="font-medium">{o.title}</span>
-                    <span className="ml-2 text-sm text-slate-500">{o.type} · {o.discountType} {o.discountValue}{o.discountType === "percentage" ? "%" : "₹"}</span>
-                    {!o.isActive && <span className="ml-2 text-amber-600 text-sm">Disabled</span>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => toggleOfferActive(o)} className="text-sm text-slate-600 hover:underline">{o.isActive ? "Disable" : "Enable"}</button>
-                    <button type="button" onClick={() => deleteOffer(o._id)} className="text-red-600 hover:underline"><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Section>
 
         {/* Dining Menu */}
         <Section id={SECTION_IDS.MENU} title="Dining Menu Management" icon={Utensils} expanded={expandedSection === SECTION_IDS.MENU} onToggle={() => setExpandedSection(expandedSection === SECTION_IDS.MENU ? null : SECTION_IDS.MENU)}>

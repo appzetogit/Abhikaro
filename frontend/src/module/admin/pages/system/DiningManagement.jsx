@@ -16,6 +16,8 @@ export default function DiningManagement() {
     const [categoriesDeleting, setCategoriesDeleting] = useState(null)
     const [categoryName, setCategoryName] = useState("")
     const [categoryFile, setCategoryFile] = useState(null)
+    const [categoryLinkedRestaurants, setCategoryLinkedRestaurants] = useState([])
+    const [editingCategoryId, setEditingCategoryId] = useState(null)
     const categoryFileInputRef = useRef(null)
 
     // Banners
@@ -74,26 +76,51 @@ export default function DiningManagement() {
     }
 
     const handleCreateCategory = async () => {
-        if (!categoryName || !categoryFile) return setError("Name and Image are required")
+        if (!categoryName || (!categoryFile && !editingCategoryId)) return setError("Name and Image are required")
         try {
             setCategoriesUploading(true)
             const formData = new FormData()
             formData.append('name', categoryName)
-            formData.append('image', categoryFile)
+            if (categoryFile) formData.append('image', categoryFile)
+            // Append linked restaurants as JSON array
+            if (categoryLinkedRestaurants.length > 0) {
+                formData.append('linkedRestaurants', JSON.stringify(categoryLinkedRestaurants))
+            }
 
-            const response = await api.post('/admin/dining/categories', formData, getAuthConfig({
-                headers: { 'Content-Type': 'multipart/form-data' }
-            }))
+            let response;
+            if (editingCategoryId) {
+                response = await api.put(`/admin/dining/categories/${editingCategoryId}`, formData, getAuthConfig({
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                }))
+            } else {
+                response = await api.post('/admin/dining/categories', formData, getAuthConfig({
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                }))
+            }
 
             if (response.data.success) {
-                setSuccess("Category created successfully")
-                setCategoryName("")
-                setCategoryFile(null)
-                if (categoryFileInputRef.current) categoryFileInputRef.current.value = ""
+                setSuccess(editingCategoryId ? "Category updated successfully" : "Category created successfully")
+                resetCategoryForm()
                 fetchCategories()
             }
-        } catch (err) { setError(err.response?.data?.message || "Failed to create category") }
+        } catch (err) { setError(err.response?.data?.message || (editingCategoryId ? "Failed to update category" : "Failed to create category")) }
         finally { setCategoriesUploading(false) }
+    }
+
+    const resetCategoryForm = () => {
+        setCategoryName("")
+        setCategoryFile(null)
+        setCategoryLinkedRestaurants([])
+        setEditingCategoryId(null)
+        if (categoryFileInputRef.current) categoryFileInputRef.current.value = ""
+    }
+
+    const handleEditCategory = (category) => {
+        setEditingCategoryId(category._id)
+        setCategoryName(category.name)
+        setCategoryLinkedRestaurants(category.linkedRestaurants?.map(r => r._id || r) || [])
+        setCategoryFile(null)
+        if (categoryFileInputRef.current) categoryFileInputRef.current.value = ""
     }
 
     const handleDeleteCategory = async (id) => {
@@ -303,7 +330,7 @@ export default function DiningManagement() {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-1">
                             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <h2 className="text-lg font-bold text-slate-900 mb-4">Add Category</h2>
+                                <h2 className="text-lg font-bold text-slate-900 mb-4">{editingCategoryId ? "Edit Category" : "Add Category"}</h2>
                                 <div className="space-y-4">
                                     <div>
                                         <Label>Name</Label>
@@ -312,10 +339,36 @@ export default function DiningManagement() {
                                     <div>
                                         <Label>Image</Label>
                                         <Input type="file" ref={categoryFileInputRef} onChange={e => setCategoryFile(e.target.files[0])} accept="image/*" className="mt-1" />
+                                        {editingCategoryId && <p className="text-xs text-slate-500 mt-1">Leave empty to keep current image</p>}
+                                    </div>
+                                    <div>
+                                        <Label>Link Restaurants</Label>
+                                        <select
+                                            multiple
+                                            value={categoryLinkedRestaurants}
+                                            onChange={e => {
+                                                const selected = Array.from(e.target.selectedOptions, option => option.value)
+                                                setCategoryLinkedRestaurants(selected)
+                                            }}
+                                            className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
+                                        >
+                                            {restaurantsList.map(r => {
+                                                const restaurantName = r?.onboarding?.step1?.restaurantName || r?.name || `Restaurant ${r._id?.slice(-4) || ''}`
+                                                return (
+                                                    <option key={r._id} value={r._id}>{restaurantName}</option>
+                                                )
+                                            })}
+                                        </select>
+                                        <p className="text-xs text-slate-500 mt-1">Hold Ctrl/Cmd to select multiple restaurants</p>
                                     </div>
                                     <Button onClick={handleCreateCategory} disabled={categoriesUploading} className="w-full bg-blue-600 hover:bg-blue-700">
-                                        {categoriesUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Category"}
+                                        {categoriesUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingCategoryId ? "Update Category" : "Create Category")}
                                     </Button>
+                                    {editingCategoryId && (
+                                        <Button onClick={resetCategoryForm} variant="outline" className="w-full mt-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+                                            Cancel Edit
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -329,9 +382,15 @@ export default function DiningManagement() {
                                                 <img src={cat.imageUrl} alt={cat.name} className="w-full h-32 object-cover" />
                                                 <div className="p-3 bg-white">
                                                     <p className="font-medium text-slate-900">{cat.name}</p>
+                                                    <p className="text-xs text-slate-500 mt-1">
+                                                        {cat.linkedRestaurants?.length || 0} restaurant{(cat.linkedRestaurants?.length || 0) !== 1 ? 's' : ''} linked
+                                                    </p>
                                                 </div>
                                                 <button onClick={() => handleDeleteCategory(cat._id)} className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                                                     {categoriesDeleting === cat._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                                </button>
+                                                <button onClick={() => handleEditCategory(cat)} className="absolute top-2 right-10 p-1.5 bg-blue-100 text-blue-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Edit className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         ))}

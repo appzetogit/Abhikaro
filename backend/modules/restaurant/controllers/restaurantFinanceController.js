@@ -3,6 +3,7 @@ import Restaurant from "../models/Restaurant.js";
 import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
 import WithdrawalRequest from "../models/WithdrawalRequest.js";
 import RestaurantWallet from "../models/RestaurantWallet.js";
+import TableBooking from "../../dining/models/TableBooking.js";
 import {
   successResponse,
   errorResponse,
@@ -355,6 +356,66 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       };
     }));
 
+    // Fetch dining table bookings for current cycle (completed and paid)
+    let currentCycleDiningTotal = 0;
+    let currentCycleDiningCommission = 0;
+    const currentCycleDiningBookings = await TableBooking.find({
+      restaurant: restaurantId,
+      status: { $in: ['completed', 'dining_completed'] },
+      paymentStatus: 'paid',
+      paidAt: { $gte: currentCycleStart, $lte: currentCycleEnd }
+    })
+    .populate('user', 'name phone email')
+    .lean();
+
+    console.log(`🍽️ Finance API - Current cycle dining bookings found: ${currentCycleDiningBookings.length}`);
+
+    const currentCycleDiningData = currentCycleDiningBookings.map((booking) => {
+      const finalAmount = booking.finalAmount || booking.billAmount || 0;
+      const restaurantEarning = booking.restaurantEarning || 0;
+      const commissionAmount = booking.commissionAmount || booking.adminEarning || 0;
+      
+      currentCycleDiningTotal += finalAmount;
+      currentCycleDiningCommission += commissionAmount;
+
+      // Get customer info
+      let customerName = 'N/A';
+      let customerPhone = 'N/A';
+      let customerEmail = 'N/A';
+      
+      if (booking.user) {
+        if (typeof booking.user === 'object' && booking.user._id) {
+          customerName = booking.user.name || 'N/A';
+          customerPhone = booking.user.phone || 'N/A';
+          customerEmail = booking.user.email || 'N/A';
+        }
+      }
+
+      return {
+        orderId: booking.bookingId || booking._id?.toString() || 'N/A',
+        orderTotal: finalAmount,
+        totalAmount: finalAmount,
+        commission: commissionAmount,
+        payout: restaurantEarning,
+        deliveredAt: booking.paidAt || booking.checkOutTime || booking.createdAt,
+        createdAt: booking.createdAt,
+        items: [],
+        foodNames: 'Dining Table Booking',
+        customerName: customerName,
+        customerPhone: customerPhone,
+        customerEmail: customerEmail,
+        paymentMethod: 'Online',
+        orderStatus: 'Completed',
+        address: {},
+        isDining: true // Flag to identify dining bookings
+      };
+    });
+
+    // Combine delivery orders and dining bookings
+    const allCurrentCycleData = [...currentCycleOrdersData, ...currentCycleDiningData];
+    const totalCurrentCycleValue = currentCycleTotal + currentCycleDiningTotal;
+    const totalCurrentCycleCommission = currentCycleCommission + currentCycleDiningCommission;
+
     // Format current cycle dates
     const formatCycleDate = (date) => {
       const day = date.getDate();
@@ -530,8 +591,8 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       };
     }
 
-    // Calculate current cycle payout (total - commission)
-    const currentCyclePayout = Math.round((currentCycleTotal - currentCycleCommission) * 100) / 100;
+    // Calculate current cycle payout (total - commission) - includes both delivery orders and dining bookings
+    const currentCyclePayout = Math.round((totalCurrentCycleValue - totalCurrentCycleCommission) * 100) / 100;
 
     // Get all withdrawal requests (pending + approved) to subtract from estimatedPayout
     // This ensures that once a withdrawal is made, it's immediately reflected in the available balance
@@ -581,13 +642,16 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       currentCycle: {
         start: currentCycleStartFormatted,
         end: currentCycleEndFormatted,
-        totalOrders: currentCycleOrders.length,
-        totalOrderValue: Math.round(currentCycleTotal * 100) / 100,
-        totalCommission: Math.round(currentCycleCommission * 100) / 100,
+        totalOrders: currentCycleOrders.length + currentCycleDiningBookings.length,
+        totalOrderValue: Math.round(totalCurrentCycleValue * 100) / 100,
+        totalCommission: Math.round(totalCurrentCycleCommission * 100) / 100,
         estimatedPayout: availablePayout, // Calculated from orders (for display)
         withdrawableBalance, // Actual wallet balance - use this for withdrawal validation
         payoutDate: null, // Will be set when payout is processed
-        orders: currentCycleOrdersData // Include orders array in response
+        orders: allCurrentCycleData, // Include both delivery orders and dining bookings
+        diningEarnings: Math.round(currentCycleDiningTotal * 100) / 100,
+        diningCommission: Math.round(currentCycleDiningCommission * 100) / 100,
+        diningPayout: Math.round((currentCycleDiningTotal - currentCycleDiningCommission) * 100) / 100
       },
       pastCycles: pastCyclesData,
       restaurant: {

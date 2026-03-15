@@ -4,6 +4,7 @@ import { authenticateAdmin } from '../../admin/middleware/adminAuth.js';
 import {
     getAdminDiningCategories,
     createDiningCategory,
+    updateDiningCategory,
     deleteDiningCategory,
     getAdminDiningOfferBanners,
     createDiningOfferBanner,
@@ -21,6 +22,7 @@ const router = express.Router();
 // Categories
 router.get('/categories', authenticateAdmin, getAdminDiningCategories);
 router.post('/categories', authenticateAdmin, uploadMiddleware.single('image'), createDiningCategory);
+router.put('/categories/:id', authenticateAdmin, uploadMiddleware.single('image'), updateDiningCategory);
 router.delete('/categories/:id', authenticateAdmin, deleteDiningCategory);
 
 // Offer Banners

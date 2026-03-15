@@ -31,45 +31,66 @@ export default function DiningCategory() {
 
   // Fetch restaurants
   useEffect(() => {
+    if (!category) return;
+    
     const fetchRestaurants = async () => {
       try {
         setIsLoading(true)
+        setError(null)
+        console.log("Fetching restaurants for category:", category)
         const response = await restaurantAPI.getRestaurants({
           diningCategory: category,
           limit: 100
         })
+        console.log("Restaurants API response:", response.data)
         if (response.data && response.data.success) {
           // Map backend data to UI format
-          const mappedData = (response.data.data.restaurants || response.data.data || [])
-            .map(r => ({
-              id: r._id || r.id,
-              slug: r.slug,
-              name: r.name,
-              rating: r.rating || r.avgRating || 0,
-              location: r.location?.addressLine1 || r.address || "Indore",
-              distance: "2.5 km", // Placeholder
-              cuisine: Array.isArray(r.cuisines) ? r.cuisines[0] : (r.cuisine || "Multi-cuisine"),
-              price: r.diningConfig?.basicDetails?.costForTwo
-                ? `₹${r.diningConfig.basicDetails.costForTwo} for two`
-                : "Price not available",
-              image: r.diningConfig?.coverImage?.url || r.profileImage?.url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop",
-              offer: r.offer || "Great Offers",
-              deliveryTime: r.estimatedDeliveryTime || "30-40 mins",
-              featuredDish: r.featuredDish || "Special",
-              featuredPrice: r.featuredPrice || 250,
-              diningEnabled: r.diningConfig?.enabled,
-            }))
-          setRestaurants(mappedData)
+          const restaurantsData = response.data.data?.restaurants || response.data.data || [];
+          console.log("Raw restaurants data:", restaurantsData.length, restaurantsData);
+          
+          const mappedData = restaurantsData
+            .filter(r => r && (r._id || r.id)) // Filter out invalid entries
+            .map(r => {
+              // Use onboarding name if available
+              const restaurantName = r.onboarding?.step1?.restaurantName || r.name || 'Restaurant';
+              return {
+                id: r._id || r.id,
+                slug: r.slug || r._id || r.id,
+                name: restaurantName,
+                rating: r.rating || r.avgRating || 0,
+                location: r.location?.addressLine1 || r.location?.address || r.address || "Indore",
+                distance: r.distance || "2.5 km",
+                cuisine: Array.isArray(r.cuisines) && r.cuisines.length > 0 
+                  ? r.cuisines[0] 
+                  : (r.cuisine || "Multi-cuisine"),
+                price: r.diningConfig?.basicDetails?.costForTwo
+                  ? `₹${r.diningConfig.basicDetails.costForTwo} for two`
+                  : r.price || "Price not available",
+                image: r.diningConfig?.coverImage?.url || r.profileImage?.url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop",
+                offer: r.offer || "Great Offers",
+                deliveryTime: r.estimatedDeliveryTime || "30-40 mins",
+                featuredDish: r.featuredDish || "Special",
+                featuredPrice: r.featuredPrice || 250,
+                diningEnabled: r.diningConfig?.enabled,
+                onboarding: r.onboarding, // Keep for reference
+              };
+            });
+          console.log("Mapped restaurants:", mappedData.length, mappedData);
+          setRestaurants(mappedData);
+        } else {
+          console.warn("API response not successful:", response.data);
+          setRestaurants([]);
         }
       } catch (err) {
         console.error("Failed to fetch restaurants", err)
         setError("Failed to load restaurants")
+        setRestaurants([])
       } finally {
         setIsLoading(false)
       }
     }
     fetchRestaurants()
-  }, [])
+  }, [category])
 
   // Category headings mapping
   const categoryHeadings = {
@@ -250,16 +271,58 @@ export default function DiningCategory() {
               </div>
             </section>
 
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
-                FEATURED RESTAURANTS
-              </h3>
-              <span className="text-xs font-medium text-gray-400 bg-gray-200 px-2 py-1 rounded-full">{filteredRestaurants.length} places</span>
-            </div>
+            {/* Loading State */}
+            {isLoading && (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2B9C64] mb-4"></div>
+                <p className="text-gray-500 text-sm">Loading restaurants...</p>
+              </div>
+            )}
 
-            {/* Restaurant Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-              {filteredRestaurants.map((restaurant, index) => {
+            {/* Error State */}
+            {!isLoading && error && (
+              <div className="flex flex-col items-center justify-center py-20">
+                <p className="text-red-500 text-lg font-semibold mb-2">Error loading restaurants</p>
+                <p className="text-gray-500 text-sm">{error}</p>
+                <Button 
+                  onClick={() => window.location.reload()} 
+                  className="mt-4 bg-[#2B9C64] hover:bg-[#2B9C64]/90"
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && !error && filteredRestaurants.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20">
+                <UtensilsCrossed className="h-16 w-16 text-gray-300 mb-4" />
+                <p className="text-gray-500 text-lg font-semibold mb-2">No restaurants found</p>
+                <p className="text-gray-400 text-sm text-center max-w-md">
+                  {category ? `No restaurants are linked to the "${category}" category yet.` : "No restaurants available."}
+                </p>
+                <Button 
+                  onClick={() => navigate('/user/dining')} 
+                  className="mt-4 bg-[#2B9C64] hover:bg-[#2B9C64]/90"
+                >
+                  Back to Dining
+                </Button>
+              </div>
+            )}
+
+            {/* Restaurants List */}
+            {!isLoading && !error && filteredRestaurants.length > 0 && (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
+                    FEATURED RESTAURANTS
+                  </h3>
+                  <span className="text-xs font-medium text-gray-400 bg-gray-200 px-2 py-1 rounded-full">{filteredRestaurants.length} places</span>
+                </div>
+
+                {/* Restaurant Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+                  {filteredRestaurants.map((restaurant, index) => {
                 // Prefer onboarding.step1.restaurantName if available (more accurate)
                 const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
                 const restaurantSlug = restaurant.slug || restaurant._id || restaurantName.toLowerCase().replace(/\s+/g, "-")
@@ -363,7 +426,9 @@ export default function DiningCategory() {
                   </Link>
                 )
               })}
-            </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

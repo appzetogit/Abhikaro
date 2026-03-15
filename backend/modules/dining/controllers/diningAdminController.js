@@ -10,7 +10,10 @@ import { cloudinary } from '../../../config/cloudinary.js';
 
 export const getAdminDiningCategories = async (req, res) => {
     try {
-        const categories = await DiningCategory.find().sort({ createdAt: -1 }).lean();
+        const categories = await DiningCategory.find()
+            .populate('linkedRestaurants', 'name onboarding')
+            .sort({ createdAt: -1 })
+            .lean();
         return successResponse(res, 200, 'Categories retrieved successfully', { categories });
     } catch (error) {
         console.error('Error fetching categories:', error);
@@ -20,7 +23,7 @@ export const getAdminDiningCategories = async (req, res) => {
 
 export const createDiningCategory = async (req, res) => {
     try {
-        const { name } = req.body;
+        const { name, linkedRestaurants } = req.body;
         if (!name) return errorResponse(res, 400, 'Name is required');
         if (!req.file) return errorResponse(res, 400, 'Image is required');
 
@@ -29,18 +32,86 @@ export const createDiningCategory = async (req, res) => {
             resource_type: 'image'
         });
 
+        // Parse linkedRestaurants if provided as JSON string
+        let linkedRestaurantsArray = [];
+        if (linkedRestaurants) {
+            try {
+                linkedRestaurantsArray = typeof linkedRestaurants === 'string' 
+                    ? JSON.parse(linkedRestaurants) 
+                    : Array.isArray(linkedRestaurants) 
+                        ? linkedRestaurants 
+                        : [];
+            } catch (err) {
+                console.error('Error parsing linkedRestaurants:', err);
+                linkedRestaurantsArray = [];
+            }
+        }
+
         const category = new DiningCategory({
             name,
             imageUrl: result.secure_url,
-            cloudinaryPublicId: result.public_id
+            cloudinaryPublicId: result.public_id,
+            linkedRestaurants: linkedRestaurantsArray
         });
 
         await category.save();
+        await category.populate('linkedRestaurants', 'name onboarding');
 
         return successResponse(res, 201, 'Category created successfully', { category });
     } catch (error) {
         console.error('Error creating category:', error);
         return errorResponse(res, 500, 'Failed to create category');
+    }
+};
+
+export const updateDiningCategory = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, linkedRestaurants } = req.body;
+
+        const category = await DiningCategory.findById(id);
+        if (!category) return errorResponse(res, 404, 'Category not found');
+
+        if (name) category.name = name;
+
+        // Parse and update linkedRestaurants if provided
+        if (linkedRestaurants !== undefined) {
+            try {
+                const linkedRestaurantsArray = typeof linkedRestaurants === 'string' 
+                    ? JSON.parse(linkedRestaurants) 
+                    : Array.isArray(linkedRestaurants) 
+                        ? linkedRestaurants 
+                        : [];
+                category.linkedRestaurants = linkedRestaurantsArray;
+            } catch (err) {
+                console.error('Error parsing linkedRestaurants:', err);
+            }
+        }
+
+        // Update image if provided
+        if (req.file) {
+            try {
+                await cloudinary.uploader.destroy(category.cloudinaryPublicId);
+            } catch (err) {
+                console.error('Error deleting old image from Cloudinary:', err);
+            }
+
+            const result = await uploadToCloudinary(req.file.buffer, {
+                folder: 'appzeto/dining/categories',
+                resource_type: 'image'
+            });
+
+            category.imageUrl = result.secure_url;
+            category.cloudinaryPublicId = result.public_id;
+        }
+
+        await category.save();
+        await category.populate('linkedRestaurants', 'name onboarding');
+
+        return successResponse(res, 200, 'Category updated successfully', { category });
+    } catch (error) {
+        console.error('Error updating category:', error);
+        return errorResponse(res, 500, 'Failed to update category');
     }
 };
 

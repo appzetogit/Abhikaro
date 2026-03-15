@@ -12,6 +12,7 @@ import Loader from "@/components/Loader"
 const Home = lazy(() => import("../pages/Home"))
 const Dining = lazy(() => import("../pages/Dining"))
 const DiningRestaurants = lazy(() => import("../pages/DiningRestaurants"))
+const DiningCategory = lazy(() => import("../pages/DiningCategory"))
 const Under250 = lazy(() => import("../pages/Under250"))
 const CategoryPage = lazy(() => import("../pages/CategoryPage"))
 
@@ -114,6 +115,7 @@ export default function UserRouter() {
           <Route path="/" element={<UserPreventRedirect><Home /></UserPreventRedirect>} />
           <Route path="/dining" element={<Dining />} />
           <Route path="/dining/restaurants" element={<DiningRestaurants />} />
+          <Route path="/dining/:category" element={<DiningCategory />} />
           <Route path="/dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
           <Route path="/dining/book/:slug" element={<TableBooking />} />
             <Route
