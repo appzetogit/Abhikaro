@@ -339,6 +339,18 @@ export const useDeliveryNotifications = () => {
     setNewOrder(null);
   };
 
+  // Stop/pause any currently playing notification sound
+  const stopNotificationSound = useCallback(() => {
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    } catch (e) {
+      // Silently ignore audio stop errors
+    }
+  }, []);
+
   // Mark an order as explicitly rejected by this delivery partner (client-side)
   const markOrderRejected = (orderId) => {
     if (!orderId) return;
@@ -375,6 +387,7 @@ export const useDeliveryNotifications = () => {
     orderReady,
     clearOrderReady,
     isConnected,
-    playNotificationSound
+    playNotificationSound,
+    stopNotificationSound
   };
 };

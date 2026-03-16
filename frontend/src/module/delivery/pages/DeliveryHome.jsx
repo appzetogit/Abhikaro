@@ -376,7 +376,7 @@ export default function DeliveryHome() {
 
   // Delivery notifications from shared socket (provided by DeliveryLayout)
   const notifications = useDeliveryNotificationsContext()
-  const { newOrder, clearNewOrder, markOrderRejected, orderReady, clearOrderReady, isConnected } = notifications || {}
+  const { newOrder, clearNewOrder, markOrderRejected, orderReady, clearOrderReady, isConnected, stopNotificationSound } = notifications || {}
 
   // Default location - will be set from saved location or GPS, not hardcoded
   const [riderLocation, setRiderLocation] = useState(null) // Will be set from GPS or saved location
@@ -2095,11 +2095,14 @@ export default function DeliveryHome() {
     const threshold = maxSwipe * 0.7 // 70% of max swipe
 
     if (deltaX > threshold) {
-      // Stop audio immediately when user accepts
+      // Stop any notification sounds immediately when user accepts
       if (alertAudioRef.current) {
         alertAudioRef.current.pause()
         alertAudioRef.current.currentTime = 0
         alertAudioRef.current = null
+      }
+      if (typeof stopNotificationSound === 'function') {
+        stopNotificationSound()
       }
 
       // Animate to completion
