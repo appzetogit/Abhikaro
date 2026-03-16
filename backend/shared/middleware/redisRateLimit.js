@@ -6,6 +6,13 @@
 
 import { getRedisClient } from '../../config/redis.js';
 
+// Simple correlation ID generator for rate-limit events
+function createRateLimitCorrelationId() {
+  const rand = Math.random().toString(36).substring(2, 8);
+  const ts = Date.now().toString(36);
+  return `rl_${ts}_${rand}`;
+}
+
 /**
  * Create rate limiter middleware
  * @param {Object} options - Rate limit options
@@ -49,14 +56,29 @@ export function createRedisRateLimit(options = {}) {
 
       if (count >= maxRequests) {
         // Get TTL to show when limit resets
-        const ttl = await redisClient.ttl(rateLimitKey);
+        const ttlSeconds = await redisClient.ttl(rateLimitKey);
+        const correlationId = createRateLimitCorrelationId();
+
+        console.warn('[RateLimit] Blocked request', {
+          correlationId,
+          type: 'generic',
+          path: req.path,
+          method: req.method,
+          rateLimitKey,
+          maxRequests,
+          windowMs,
+          currentCount: count,
+          retryAfterSeconds: ttlSeconds,
+          ip: req.ip || req.connection.remoteAddress
+        });
         
         return res.status(429).json({
           success: false,
           message,
-          retryAfter: Math.ceil(ttl / 1000), // seconds
+          retryAfter: Math.max(0, ttlSeconds), // seconds
           limit: maxRequests,
-          window: Math.ceil(windowMs / 1000) // seconds
+          window: Math.ceil(windowMs / 1000), // seconds
+          correlationId
         });
       }
 
@@ -92,13 +114,18 @@ export function createRedisRateLimit(options = {}) {
  * Different limits for different user types
  */
 const ROLE_RATE_LIMITS = {
-  admin: { maxRequests: 1500, windowMs: 15 * 60 * 1000 }, // Admins get highest limit (increased from 1000)
-  restaurant: { maxRequests: 800, windowMs: 15 * 60 * 1000 }, // Restaurants need higher limits (increased from 500)
-  // Delivery partners send frequent location updates + order status pings,
-  // so we keep this limit very high to avoid impacting normal usage.
-  delivery: { maxRequests: 4000, windowMs: 15 * 60 * 1000 }, // Delivery partners (relaxed from 600)
-  user: { maxRequests: 300, windowMs: 15 * 60 * 1000 }, // Regular users (increased from 200)
-  default: { maxRequests: 100, windowMs: 15 * 60 * 1000 }, // Unauthenticated (kept strict)
+  // Admins: heavy dashboards, exports – keep high but sane
+  admin: { maxRequests: 2000, windowMs: 15 * 60 * 1000 },
+  // Restaurants: order lists, menu edits, live dashboards
+  restaurant: { maxRequests: 1200, windowMs: 15 * 60 * 1000 },
+  // Delivery partners send frequent location updates + order status pings
+  delivery: { maxRequests: 5000, windowMs: 15 * 60 * 1000 },
+  // Hotels (QR / stand orders) can have moderate traffic
+  hotel: { maxRequests: 800, windowMs: 15 * 60 * 1000 },
+  // Regular users – allow more browsing while still protecting backend
+  user: { maxRequests: 600, windowMs: 15 * 60 * 1000 },
+  // Unauthenticated/public – still strict, but a bit higher for marketing traffic
+  default: { maxRequests: 200, windowMs: 15 * 60 * 1000 },
 };
 
 /**
@@ -144,7 +171,15 @@ export const tieredUserRateLimit = async (req, res, next) => {
       path === '/order' ||
       path === '/env/public' ||
       path === '/user/location' ||
-      path === '/business-settings/public'
+      path === '/business-settings/public' ||
+      // Public restaurant & hotel listing/detail and hero banners are high‑read, low‑risk
+      path.startsWith('/restaurant/list') ||
+      path.startsWith('/restaurant/under-250') ||
+      path.startsWith('/hotel/public') ||
+      path.startsWith('/hero-banner') ||
+      path.startsWith('/dining/limelight') ||
+      path.startsWith('/dining/bank-offers') ||
+      path.startsWith('/dining/must-tries')
   ) {
       return next();
   }
@@ -186,6 +221,8 @@ export const tieredUserRateLimit = async (req, res, next) => {
       role = 'restaurant';
     } else if (path.startsWith('/delivery/')) {
       role = 'delivery';
+    } else if (path.startsWith('/hotel/')) {
+      role = 'hotel';
     } else {
       role = 'default';
     }
@@ -205,15 +242,32 @@ export const tieredUserRateLimit = async (req, res, next) => {
 
     if (count >= limitConfig.maxRequests) {
       // Get TTL to show when limit resets
-      const ttl = await redisClient.ttl(rateLimitKey);
+      const ttlSeconds = await redisClient.ttl(rateLimitKey);
+      const correlationId = createRateLimitCorrelationId();
+      
+      console.warn('[RateLimit] Tiered limit blocked request', {
+        correlationId,
+        type: 'tiered',
+        path,
+        method: req.method,
+        role,
+        userId: userId || null,
+        rateLimitKey,
+        maxRequests: limitConfig.maxRequests,
+        windowMs: limitConfig.windowMs,
+        currentCount: count,
+        retryAfterSeconds: ttlSeconds,
+        ip: req.ip || req.connection.remoteAddress
+      });
       
       return res.status(429).json({
         success: false,
         message: 'Too many requests from your account. Please try again later.',
-        retryAfter: Math.ceil(ttl),
+        retryAfter: Math.max(0, ttlSeconds),
         limit: limitConfig.maxRequests,
         window: Math.ceil(limitConfig.windowMs / 1000),
-        role: role
+        role: role,
+        correlationId
       });
     }
 

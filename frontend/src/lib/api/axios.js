@@ -618,27 +618,53 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Handle 429 errors (Too Many Requests) with exponential backoff + lightweight queue
+    // Handle 429 errors (Too Many Requests) with conservative retry logic
     if (error.response?.status === 429) {
       const originalRequest = error.config || {};
+      const method = (originalRequest.method || "get").toLowerCase();
+      const url = originalRequest.url || "";
+
+      // Never auto‑retry auth / OTP / login style endpoints – these already have strict backend limits
+      const isAuthOrOtpEndpoint =
+        url.includes("/auth/") ||
+        url.includes("/send-otp") ||
+        url.includes("/verify-otp") ||
+        url.includes("/login") ||
+        url.includes("/register");
+
+      // Only allow auto‑retry for idempotent GET requests that are not auth
+      const isSafeToRetry = method === "get" && !isAuthOrOtpEndpoint;
+
       const retryCount = originalRequest._retryCount || 0;
-      const maxRetries = 3; // Maximum number of retries per request
+      const maxRetries = isSafeToRetry ? 2 : 0; // At most 2 retries for safe GETs, 0 otherwise
 
-      // Get retry-after from response header or use exponential backoff
-      const retryAfter = error.response?.headers?.["retry-after"]
-        ? parseInt(error.response.headers["retry-after"]) * 1000
-        : Math.min(1000 * Math.pow(2, retryCount), 30000); // Max 30 seconds
+      // Prefer backend-provided retryAfter (in seconds) from body, then header
+      const bodyRetryAfter = error.response?.data?.retryAfter;
+      let retryAfterMs;
+      if (typeof bodyRetryAfter === "number" && !Number.isNaN(bodyRetryAfter)) {
+        retryAfterMs = Math.max(1000, bodyRetryAfter * 1000);
+      } else if (error.response?.headers?.["retry-after"]) {
+        const headerSeconds = parseInt(error.response.headers["retry-after"]);
+        retryAfterMs = Math.max(1000, headerSeconds * 1000);
+      } else {
+        // Fallback: small exponential backoff, capped at 15s
+        retryAfterMs = Math.min(1000 * Math.pow(2, retryCount), 15000);
+      }
 
-      const retryAfterSeconds = Math.ceil(retryAfter / 1000);
+      const retryAfterSeconds = Math.ceil(retryAfterMs / 1000);
 
-      // Don't retry if we've exceeded max retries
-      if (retryCount >= maxRetries) {
-        const errorMessage =
-          error.response?.data?.message ||
-          `Too many requests. Please try again after ${retryAfterSeconds} seconds.`;
+      // If we shouldn't retry, just show a clear message and exit
+      if (!isSafeToRetry || retryCount >= maxRetries) {
+        const baseMessage =
+          error.response?.data?.message || "Too many requests. Please try again later.";
+        const correlationId = error.response?.data?.correlationId;
+
+        const errorMessage = correlationId
+          ? `${baseMessage} (Ref: ${correlationId})`
+          : `${baseMessage} Please try again after ${retryAfterSeconds} seconds.`;
 
         toast.error(errorMessage, {
-          duration: 5000,
+          duration: 6000,
           id: "rate-limit-error-toast",
           style: {
             background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
@@ -660,17 +686,16 @@ apiClient.interceptors.response.use(
       // Mark request for retry
       originalRequest._retryCount = retryCount + 1;
 
-      // Log retry attempt
       if (import.meta.env.DEV) {
         console.warn(
-          `⏳ Rate limit hit (429). Retrying in ${retryAfterSeconds}s (attempt ${retryCount + 1}/${maxRetries})...`,
+          `⏳ Rate limit hit (429) for ${method.toUpperCase()} ${url}. Retrying in ${retryAfterSeconds}s (attempt ${retryCount + 1}/${maxRetries})...`,
         );
       }
 
       // Show user-friendly message with countdown
       const retryMessage = `Too many requests. Retrying in ${retryAfterSeconds} seconds...`;
       toast.warning(retryMessage, {
-        duration: retryAfter,
+        duration: retryAfterMs,
         id: "rate-limit-retry-toast",
         style: {
           background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
@@ -688,7 +713,7 @@ apiClient.interceptors.response.use(
       return new Promise((resolve) => {
         setTimeout(() => {
           resolve(apiClient(originalRequest));
-        }, retryAfter);
+        }, retryAfterMs);
       });
     }
 
