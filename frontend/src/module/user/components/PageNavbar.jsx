@@ -780,6 +780,22 @@ export default function PageNavbar({
       }
     }
 
+    // FINAL NORMALIZATION FOR MAIN LOCATION
+    // Always keep only first 1–2 comma-separated parts for display
+    if (mainLocation) {
+      const parts = mainLocation
+        .split(",")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0)
+
+      if (parts.length >= 2) {
+        // e.g. "Dewas Bypass, Karnakhri, Dewas, Dewas Nagar Tahsil" -> "Dewas Bypass, Karnakhri"
+        mainLocation = `${parts[0]}, ${parts[1]}`
+      } else if (parts.length === 1) {
+        mainLocation = parts[0]
+      }
+    }
+
     return {
       main: mainLocation,
       sub: subLocation
@@ -839,27 +855,7 @@ export default function PageNavbar({
           </Button>
         </div>
 
-        {/* Center: Company Logo or Name - Show on mobile only */}
-        <Link to="/user" className="flex items-center justify-center md:hidden">
-          {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt="Company Logo"
-              className="h-14 w-24 mr-3 sm:h-12 sm:w-12 md:h-14 md:w-14 object-contain"
-              crossOrigin="anonymous"
-              onError={(e) => {
-                // Hide image if it fails to load
-                e.target.style.display = 'none'
-              }}
-            />
-          ) : (
-            companyName ? (
-              <span className="text-base font-bold text-gray-900 dark:text-white">
-                {companyName}
-              </span>
-            ) : null
-          )}
-        </Link>
+        {/* Center: (Logo removed as per requirement) */}
 
         {/* Right: Actions - Hidden on desktop, shown on mobile */}
         <div className="flex md:hidden items-center gap-2 sm:gap-3 flex-shrink-0">

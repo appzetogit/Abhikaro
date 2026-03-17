@@ -11,8 +11,30 @@ const logger = winston.createLogger({
   ],
 });
 
+const buildMinimalGeocodeData = (latNum, lngNum) => {
+  return {
+    results: [
+      {
+        formatted_address: `${latNum.toFixed(6)}, ${lngNum.toFixed(6)}`,
+        address_components: {
+          area: "",
+          city: "",
+          
+        },
+        geometry: {
+          location: {
+            lat: latNum,
+            lng: lngNum,
+          },
+        },
+      },
+    ],
+  };
+};
+
 /**
- * Reverse geocode coordinates to address using BigDataCloud (no OLA / Google)
+ * Reverse geocode coordinates to address using free Nominatim (OpenStreetMap) API.
+ * Zero Google Maps API cost.
  */
 export const reverseGeocode = async (req, res) => {
   try {
@@ -28,123 +50,136 @@ export const reverseGeocode = async (req, res) => {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
 
-    if (isNaN(latNum) || isNaN(lngNum)) {
+    if (Number.isNaN(latNum) || Number.isNaN(lngNum)) {
       return res.status(400).json({
         success: false,
         message: "Invalid latitude or longitude",
       });
     }
 
+    let data;
     try {
-      // Single provider: BigDataCloud reverse geocode (free tier, no billing surprises)
-      const fallbackResponse = await axios.get(
-        "https://api.bigdatacloud.net/data/reverse-geocode-client",
+      const response = await axios.get(
+        "https://nominatim.openstreetmap.org/reverse",
         {
           params: {
-            latitude: latNum,
-            longitude: lngNum,
-            localityLanguage: "en",
+            format: "json",
+            lat: latNum,
+            lon: lngNum,
+            addressdetails: 1,
+            "accept-language": "en",
+            zoom: 18,
           },
-          timeout: 5000,
+          headers: {
+            "User-Agent": "AbhiKaro-App/1.0",
+          },
+          timeout: 10000,
         },
       );
 
-      const data = fallbackResponse.data || {};
-
-      // Extract sublocality/area
-      let area = "";
-      if (data.localityInfo?.administrative) {
-        const adminLevels = data.localityInfo.administrative;
-        for (let i = 2; i < adminLevels.length && i < 5; i++) {
-          const level = adminLevels[i];
-          if (
-            level?.name &&
-            level.name !== data.principalSubdivision &&
-            level.name !== data.city &&
-            level.name !== data.locality
-          ) {
-            area = level.name;
-            break;
-          }
-        }
-        if (!area && data.subLocality) {
-          area = data.subLocality;
-        }
-      }
-
-      // Build formatted address
-      let formattedAddress = data.formattedAddress;
-      if (!formattedAddress) {
-        const parts = [];
-        if (area) parts.push(area);
-        if (data.locality || data.city)
-          parts.push(data.locality || data.city);
-        if (data.principalSubdivision)
-          parts.push(data.principalSubdivision);
-        formattedAddress = parts.join(", ");
-      }
-
-      const transformedData = {
-        results: [
-          {
-            formatted_address:
-              formattedAddress ||
-              `${latNum.toFixed(6)}, ${lngNum.toFixed(6)}`,
-            address_components: {
-              city: data.city || data.locality || "Current Location",
-              state:
-                data.principalSubdivision || data.administrativeArea || "",
-              country: data.countryName || "",
-              area: area || "",
-            },
-            geometry: {
-              location: {
-                lat: latNum,
-                lng: lngNum,
-              },
-            },
-          },
-        ],
-      };
-
-      return res.json({
-        success: true,
-        data: transformedData,
-        source: "fallback",
-      });
+      data = response.data;
     } catch (apiError) {
-      logger.error("Location service error (reverse geocode)", {
+      logger.error("Nominatim reverse geocode request failed", {
         error: apiError.message,
         status: apiError.response?.status,
-        data: apiError.response?.data,
       });
 
-      const minimalData = {
-        results: [
-          {
-            formatted_address: `${latNum.toFixed(6)}, ${lngNum.toFixed(6)}`,
-            address_components: {
-              city: "Current Location",
-              state: "",
-              country: "",
-              area: "",
-            },
-            geometry: {
-              location: {
-                lat: latNum,
-                lng: lngNum,
-              },
-            },
-          },
-        ],
-      };
-
+      const minimalData = buildMinimalGeocodeData(latNum, lngNum);
       return res.json({
         success: true,
         data: minimalData,
         source: "coordinates_only",
       });
     }
+
+    if (!data || data.error) {
+      logger.warn("Nominatim reverse geocode returned no usable results", {
+        error: data?.error,
+      });
+      const minimalData = buildMinimalGeocodeData(latNum, lngNum);
+      return res.json({
+        success: true,
+        data: minimalData,
+        source: "coordinates_only",
+      });
+    }
+
+    const addr = data.address || {};
+
+    const city =
+      addr.city ||
+      addr.town ||
+      addr.village ||
+      addr.municipality ||
+      addr.county ||
+      "";
+    const state = addr.state || "";
+    const country = addr.country || "";
+    const area =
+      addr.suburb ||
+      addr.neighbourhood ||
+      addr.quarter ||
+      addr.hamlet ||
+      addr.residential ||
+      "";
+    const road = addr.road || "";
+    const building = addr.building || addr.amenity || addr.shop || "";
+    const postcode = addr.postcode || "";
+
+    let formattedAddress = data.display_name || "";
+
+    // If area is empty, try to extract from display_name
+    let derivedArea = area;
+    if (!derivedArea && formattedAddress) {
+      const parts = formattedAddress
+        .split(",")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+
+      if (parts.length >= 3) {
+        const potentialArea = parts[0];
+        if (
+          potentialArea &&
+          potentialArea.toLowerCase() !== city.toLowerCase() &&
+          potentialArea.toLowerCase() !== state.toLowerCase() &&
+          !potentialArea.toLowerCase().includes("district") &&
+          potentialArea.length > 2 &&
+          potentialArea.length < 80
+        ) {
+          derivedArea = potentialArea;
+        }
+      }
+    }
+
+    const processedData = {
+      results: [
+        {
+          formatted_address:
+            formattedAddress || `${latNum.toFixed(6)}, ${lngNum.toFixed(6)}`,
+          address_components: {
+            city: city,
+            state: state,
+            country: country,
+            area: derivedArea,
+            road: road,
+            building: building,
+            postcode: postcode,
+          },
+          geometry: {
+            location: {
+              lat: latNum,
+              lng: lngNum,
+            },
+          },
+        },
+      ],
+    };
+
+    return res.json({
+      success: true,
+      data: processedData,
+      source: "nominatim",
+    });
   } catch (error) {
     logger.error("Reverse geocode error", {
       error: error.message,
@@ -160,9 +195,9 @@ export const reverseGeocode = async (req, res) => {
 };
 
 /**
- * Get nearby locations/places
- * NOTE: OLA Maps & Google Places removed to avoid external billing.
- * For now this returns an empty list structure.
+ * Get nearby locations/places using free Nominatim search API.
+ * Zero Google Maps API cost.
+ * GET /location/nearby?lat=...&lng=...&radius=...
  */
 export const getNearbyLocations = async (req, res) => {
   try {
@@ -177,21 +212,88 @@ export const getNearbyLocations = async (req, res) => {
 
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
-    const radiusNum = parseFloat(radius);
 
-    if (isNaN(latNum) || isNaN(lngNum)) {
+    if (Number.isNaN(latNum) || Number.isNaN(lngNum)) {
       return res.status(400).json({
         success: false,
         message: "Invalid latitude or longitude",
       });
     }
 
-    // All external providers (OLA Maps, Google Places) removed – just return empty list
+    // Use Nominatim search with viewbox for nearby results
+    const radiusNum = parseFloat(radius) || 500;
+    const degreeOffset = radiusNum / 111000; // rough meter-to-degree
+    const viewbox = [
+      lngNum - degreeOffset,
+      latNum - degreeOffset,
+      lngNum + degreeOffset,
+      latNum + degreeOffset,
+    ].join(",");
+
+    let results = [];
+    try {
+      const response = await axios.get(
+        "https://nominatim.openstreetmap.org/search",
+        {
+          params: {
+            format: "json",
+            q: query || "*",
+            viewbox: viewbox,
+            bounded: 1,
+            addressdetails: 1,
+            limit: 10,
+            "accept-language": "en",
+          },
+          headers: {
+            "User-Agent": "AbhiKaro-App/1.0",
+          },
+          timeout: 8000,
+        },
+      );
+      results = response.data || [];
+    } catch (apiError) {
+      logger.error("Nominatim nearby search failed", {
+        error: apiError.message,
+      });
+      return res.json({
+        success: true,
+        data: { locations: [], source: "none" },
+      });
+    }
+
+    if (!Array.isArray(results) || results.length === 0) {
+      return res.json({
+        success: true,
+        data: { locations: [], source: "nominatim" },
+      });
+    }
+
+    const nearbyPlaces = results.map((place, index) => {
+      const placeLat = parseFloat(place.lat);
+      const placeLng = parseFloat(place.lon);
+      const distance = calculateDistance(latNum, lngNum, placeLat, placeLng);
+
+      return {
+        id: place.place_id ? String(place.place_id) : `place_${index}`,
+        name: place.display_name ? place.display_name.split(",")[0] : "",
+        address: place.display_name || "",
+        distance:
+          distance < 1000
+            ? `${Math.round(distance)} m`
+            : `${(distance / 1000).toFixed(2)} km`,
+        distanceMeters: Math.round(distance),
+        latitude: placeLat,
+        longitude: placeLng,
+      };
+    });
+
+    nearbyPlaces.sort((a, b) => a.distanceMeters - b.distanceMeters);
+
     return res.json({
       success: true,
       data: {
-        locations: [],
-        source: "none",
+        locations: nearbyPlaces,
+        source: "nominatim",
       },
     });
   } catch (error) {
@@ -213,16 +315,16 @@ export const getNearbyLocations = async (req, res) => {
  * Returns distance in meters
  */
 function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371e3; // Earth's radius in meters
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const R = 6371e3;
+  const p1 = (lat1 * Math.PI) / 180;
+  const p2 = (lat2 * Math.PI) / 180;
+  const dp = ((lat2 - lat1) * Math.PI) / 180;
+  const dl = ((lon2 - lon1) * Math.PI) / 180;
 
   const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    Math.sin(dp / 2) * Math.sin(dp / 2) +
+    Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-  return R * c; // Distance in meters
+  return R * c;
 }
