@@ -7,6 +7,7 @@ import { useCart } from "../context/CartContext"
 import { useLocationSelector } from "./UserLayout"
 import { FaLocationDot } from "react-icons/fa6"
 import { getCachedSettings, loadBusinessSettings } from "@/lib/utils/businessSettings"
+import { useProfile } from "../context/ProfileContext"
 
 export default function PageNavbar({
   textColor = "white",
@@ -20,6 +21,16 @@ export default function PageNavbar({
   const cartCount = getCartCount()
   const [logoUrl, setLogoUrl] = useState(null)
   const [companyName, setCompanyName] = useState(null)
+  const { userProfile } = useProfile()
+  const userDisplayName = useMemo(() => {
+    if (!userProfile) return ""
+    return (
+      userProfile.fullName ||
+      userProfile.name ||
+      [userProfile.firstName, userProfile.lastName].filter(Boolean).join(" ") ||
+      ""
+    )
+  }, [userProfile])
 
   // Auto-trigger location fetch if we have placeholder values (only once on mount)
   const hasTriggeredRef = useRef(false)
@@ -822,7 +833,7 @@ export default function PageNavbar({
       onClick={onNavClick}
     >
       <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-3 md:gap-4 lg:gap-6 max-w-7xl mx-auto">
-        {/* Left: Location - Hidden on desktop, shown on mobile */}
+        {/* Left: User name + Location - Hidden on desktop, shown on mobile */}
         <div className="flex md:hidden items-center gap-3 sm:gap-4 min-w-0">
           {/* Location Button */}
           <Button
@@ -838,18 +849,18 @@ export default function PageNavbar({
             ) : (
               <div className="flex flex-col items-start min-w-0">
                 <div className="flex items-center gap-1.5">
-
-                  <span className={`text-md sm:text-lg font-bold ${textColorClass} whitespace-nowrap ${textColor === "white" ? "drop-shadow-lg" : ""}`}>
-                    {mainLocationName}
+                  <FaLocationDot
+                    className={`h-4 w-4 sm:h-5 sm:w-5 ${textColorClass} ${textColor === "white" ? "drop-shadow-lg" : ""}`}
+                  />
+                  <span className={`text-md sm:text-lg font-bold ${textColorClass} max-w-[160px] sm:max-w-[200px] truncate ${textColor === "white" ? "drop-shadow-lg" : ""}`}>
+                    {userDisplayName || mainLocationName}
                   </span>
                   <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 ${textColorClass} flex-shrink-0 ${textColor === "white" ? "drop-shadow-lg" : ""}`} strokeWidth={2.5} />
                 </div>
-                {/* Show sub location (city, state) in second line */}
-                {subLocationName && (
-                  <span className={`text-xs font-bold ${textColorClass}${textColor === "white" ? "/90" : ""} whitespace-nowrap mt-0.5 ${textColor === "white" ? "drop-shadow-md" : ""}`}>
-                    {subLocationName}
-                  </span>
-                )}
+                {/* Second line: cleaned address (mainLocationName) or subLocationName fallback */}
+                <span className={`text-xs font-bold ${textColorClass}${textColor === "white" ? "/90" : ""} max-w-[220px] truncate mt-0.5 ${textColor === "white" ? "drop-shadow-md" : ""}`}>
+                  {mainLocationName || subLocationName || "Select location"}
+                </span>
               </div>
             )}
           </Button>
