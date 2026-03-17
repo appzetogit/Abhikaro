@@ -199,7 +199,25 @@ export default function PageNavbar({
       }
     }
 
-    // Priority 1: Use formattedAddress if it contains complete detailed address (has multiple parts)
+    // Priority 1: Use structured components (building / road / area / city)
+    // Example: building: "", road: "Dewas Bypass", area: "Karnakhri", city: "Dewas"
+    // -> "Dewas Bypass, Karnakhri, Dewas" (and later normalized to first 2 parts)
+    if (!mainLocation && (location?.building || location?.road || location?.area || location?.city)) {
+      const componentParts = [
+        location.building,
+        location.road,
+        location.area,
+        location.city,
+      ]
+        .map((p) => (p || "").trim())
+        .filter((p) => p.length > 0);
+
+      if (componentParts.length > 0) {
+        mainLocation = componentParts.join(", ");
+      }
+    }
+
+    // Priority 2: Use formattedAddress if it contains complete detailed address (has multiple parts)
     // Format: "Mama Loca Cafe, 501 Princess Center, 5th Floor, New Palasia, Indore, Madhya Pradesh 452001"
     if (!mainLocation && location?.formattedAddress && !isCoordinates(location.formattedAddress) && location.formattedAddress !== "Select location") {
       const formattedParts = location.formattedAddress.split(',').map(p => p.trim()).filter(p => p.length > 0)
@@ -792,15 +810,17 @@ export default function PageNavbar({
     }
 
     // FINAL NORMALIZATION FOR MAIN LOCATION
-    // Always keep only first 1–2 comma-separated parts for display
+    // Always keep only first 2–3 comma-separated parts for display
     if (mainLocation) {
       const parts = mainLocation
         .split(",")
         .map((p) => p.trim())
         .filter((p) => p.length > 0)
 
-      if (parts.length >= 2) {
-        // e.g. "Dewas Bypass, Karnakhri, Dewas, Dewas Nagar Tahsil" -> "Dewas Bypass, Karnakhri"
+      if (parts.length >= 3) {
+        // e.g. "Dewas Bypass, Karnakhri, Dewas, Dewas Nagar Tahsil" -> "Dewas Bypass, Karnakhri, Dewas"
+        mainLocation = `${parts[0]}, ${parts[1]}, ${parts[2]}`
+      } else if (parts.length === 2) {
         mainLocation = `${parts[0]}, ${parts[1]}`
       } else if (parts.length === 1) {
         mainLocation = parts[0]

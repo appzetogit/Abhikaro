@@ -17,9 +17,13 @@ const buildMinimalGeocodeData = (latNum, lngNum) => {
       {
         formatted_address: `${latNum.toFixed(6)}, ${lngNum.toFixed(6)}`,
         address_components: {
+          building: "",
           area: "",
+          road: "",
           city: "",
           
+          
+
         },
         geometry: {
           location: {
@@ -137,16 +141,35 @@ export const reverseGeocode = async (req, res) => {
         .filter((p) => p.length > 0);
 
       if (parts.length >= 3) {
-        const potentialArea = parts[0];
-        if (
-          potentialArea &&
-          potentialArea.toLowerCase() !== city.toLowerCase() &&
-          potentialArea.toLowerCase() !== state.toLowerCase() &&
-          !potentialArea.toLowerCase().includes("district") &&
-          potentialArea.length > 2 &&
-          potentialArea.length < 80
-        ) {
-          derivedArea = potentialArea;
+        // For Indian addresses like: "Dewas Bypass, Karnakhri, Dewas, Madhya Pradesh, ..."
+        // If first part matches road, treat SECOND part as area/locality (Karnakhri)
+        if (road && parts[0].toLowerCase() === road.toLowerCase()) {
+          const secondPart = parts[1];
+          if (
+            secondPart &&
+            secondPart.toLowerCase() !== city.toLowerCase() &&
+            secondPart.toLowerCase() !== state.toLowerCase() &&
+            !secondPart.toLowerCase().includes("district") &&
+            secondPart.length > 2 &&
+            secondPart.length < 80
+          ) {
+            derivedArea = secondPart;
+          }
+        }
+
+        // Generic fallback: use first part as area when it looks valid
+        if (!derivedArea) {
+          const potentialArea = parts[0];
+          if (
+            potentialArea &&
+            potentialArea.toLowerCase() !== city.toLowerCase() &&
+            potentialArea.toLowerCase() !== state.toLowerCase() &&
+            !potentialArea.toLowerCase().includes("district") &&
+            potentialArea.length > 2 &&
+            potentialArea.length < 80
+          ) {
+            derivedArea = potentialArea;
+          }
         }
       }
     }
