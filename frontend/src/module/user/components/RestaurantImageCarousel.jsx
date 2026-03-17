@@ -2,24 +2,38 @@ import React, { useState, useRef, useMemo } from "react"
 import OptimizedImage from "@/components/OptimizedImage"
 
 export const RestaurantImageCarousel = React.memo(({ restaurant, priority = false }) => {
-  const images = useMemo(() => restaurant.images || [restaurant.image], [restaurant])
+  // Prefer food/menu photos when available; otherwise fall back to generic images array.
+  const images = useMemo(() => {
+    const collected = []
+
+    if (Array.isArray(restaurant.menuImages) && restaurant.menuImages.length > 0) {
+      collected.push(...restaurant.menuImages)
+    }
+
+    if (Array.isArray(restaurant.images) && restaurant.images.length > 0) {
+      collected.push(...restaurant.images)
+    }
+
+    const unique = Array.from(
+      new Set(
+        collected
+          .filter((src) => typeof src === "string" && src.trim() !== "")
+          .map((src) => src.trim())
+      )
+    )
+
+    return unique.length > 0 ? unique : null
+  }, [restaurant.menuImages, restaurant.images])
   const [currentIndex, setCurrentIndex] = useState(0)
   const touchStartX = useRef(0)
   const touchEndX = useRef(0)
   const isSwiping = useRef(false)
 
   if (!images || images.length === 0) {
+    // No menu images available – show neutral placeholder (no stock photo)
     return (
-      <div className="relative h-48 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-md flex-shrink-0 bg-gray-200">
-        <OptimizedImage
-          src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"
-          alt={restaurant.name}
-          className="w-full h-full rounded-t-2xl sm:rounded-t-3xl"
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          objectFit="cover"
-          placeholder="blur"
-          priority={priority}
-        />
+      <div className="relative h-48 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-2xl sm:rounded-t-3xl flex-shrink-0 bg-gray-100 flex items-center justify-center">
+        <span className="text-xs sm:text-sm text-gray-400">Image unavailable</span>
       </div>
     )
   }
@@ -65,7 +79,7 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
 
   return (
     <div
-      className="relative h-48 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-2xl sm:rounded-t-3xl flex-shrink-0 group"
+      className="relative h-48 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-2xl sm:rounded-t-3xl flex-shrink-0 group bg-gray-100"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -74,7 +88,7 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
         <OptimizedImage
           src={images[currentIndex]}
           alt={`${restaurant.name} - Image ${currentIndex + 1}`}
-          className="w-full h-full rounded-t-2xl sm:rounded-t-3xl"
+          className="w-full h-full rounded-t-2xl sm:rounded-t-3xl object-cover"
           priority={priority && currentIndex === 0}
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           objectFit="cover"

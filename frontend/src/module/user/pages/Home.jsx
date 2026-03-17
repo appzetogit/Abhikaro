@@ -628,8 +628,9 @@ export default function Home() {
             : []
 
           // Fallback to menuImages only if coverImages don't exist (for backward compatibility)
-          const fallbackImages = restaurant.menuImages && restaurant.menuImages.length > 0
-            ? restaurant.menuImages.map(img => img.url)
+          // Backend already normalizes menuImages to simple URL strings
+          const fallbackImages = Array.isArray(restaurant.menuImages) && restaurant.menuImages.length > 0
+            ? restaurant.menuImages
             : []
 
           // Prefer onboarding.step2.profileImageUrl if available (more accurate)
@@ -659,7 +660,8 @@ export default function Home() {
             distance: distance,
             distanceInKm: distanceInKm, // Store numeric distance for sorting
             image: image,
-            images: allImages, // Array of cover images for carousel (separate from menu images)
+            images: allImages, // Array of images for carousel (cover/menu/profile)
+            menuImages: fallbackImages, // Preserve menuImages for components that prefer food photos
             priceRange: restaurant.priceRange || "$$", // Use from API or default
             featuredDish: restaurant.featuredDish || (restaurant.cuisines && restaurant.cuisines.length > 0
               ? `${restaurant.cuisines[0]} Special`

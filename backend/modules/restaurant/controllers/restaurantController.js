@@ -434,15 +434,114 @@ export const getRestaurants = async (req, res) => {
       console.log(`✅ After dining filter: ${restaurants.length} restaurants remaining (from ${beforeCount})`);
     }
     
-    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
-    // This ensures correct names are shown even if restaurant was created with default name
+    // Fix restaurant names & normalize image fields for frontend
+    // - Prefer onboarding.step1.restaurantName for display name
+    // - Normalize menuImages to a simple array of URL strings (if already present)
+    // - Ensure a backward-compatible coverImage field is available
     restaurants = restaurants.map(restaurant => {
       // Update name from onboarding if available
       if (restaurant.onboarding?.step1?.restaurantName) {
         restaurant.name = restaurant.onboarding.step1.restaurantName;
       }
+
+      // Normalize menuImages: support both string URLs and { url, publicId } objects
+      const rawMenuImages = restaurant.menuImages || [];
+      const normalizedMenuImages = Array.isArray(rawMenuImages)
+        ? rawMenuImages
+            .map((img) => {
+              if (!img) return null;
+              if (typeof img === 'string') return img;
+              if (typeof img === 'object' && img.url) return img.url;
+              return null;
+            })
+            .filter((url) => typeof url === 'string' && url.trim() !== '')
+        : [];
+
+      restaurant.menuImages = normalizedMenuImages;
+
+      // Backward-compatible cover image:
+      // 1) explicit coverImage (if already present)
+      // 2) profileImage.url
+      // 3) first menuImages URL
+      if (!restaurant.coverImage) {
+        const profileImageUrl =
+          typeof restaurant.profileImage === 'string'
+            ? restaurant.profileImage
+            : restaurant.profileImage?.url;
+
+        restaurant.coverImage =
+          profileImageUrl ||
+          (normalizedMenuImages.length > 0 ? normalizedMenuImages[0] : undefined);
+      }
+
       return restaurant;
     });
+
+    // If some restaurants still don't have menuImages, derive them from their Menu items.
+    // This lets the user see actual food photos on the listing cards.
+    const restaurantsNeedingMenuImages = restaurants.filter(r => !Array.isArray(r.menuImages) || r.menuImages.length === 0);
+
+    if (restaurantsNeedingMenuImages.length > 0) {
+      const maxImagesPerRestaurant = 6;
+
+      await Promise.all(
+        restaurantsNeedingMenuImages.map(async (restaurant) => {
+          try {
+            const menu = await Menu.findOne({
+              restaurant: restaurant._id,
+              isActive: true,
+            })
+              .select('sections.items.image sections.items.images sections.subsections.items.image sections.subsections.items.images')
+              .lean();
+
+            if (!menu || !Array.isArray(menu.sections)) return;
+
+            const collected = [];
+
+            for (const section of menu.sections) {
+              const items = Array.isArray(section.items) ? section.items : [];
+              for (const item of items) {
+                if (item.images && Array.isArray(item.images) && item.images.length > 0) {
+                  collected.push(item.images[0]);
+                } else if (typeof item.image === 'string') {
+                  collected.push(item.image);
+                }
+                if (collected.length >= maxImagesPerRestaurant) break;
+              }
+              if (collected.length >= maxImagesPerRestaurant) break;
+
+              const subsections = Array.isArray(section.subsections) ? section.subsections : [];
+              for (const subsection of subsections) {
+                const subItems = Array.isArray(subsection.items) ? subsection.items : [];
+                for (const item of subItems) {
+                  if (item.images && Array.isArray(item.images) && item.images.length > 0) {
+                    collected.push(item.images[0]);
+                  } else if (typeof item.image === 'string') {
+                    collected.push(item.image);
+                  }
+                  if (collected.length >= maxImagesPerRestaurant) break;
+                }
+                if (collected.length >= maxImagesPerRestaurant) break;
+              }
+
+              if (collected.length >= maxImagesPerRestaurant) break;
+            }
+
+            const uniqueUrls = Array.from(
+              new Set(
+                collected
+                  .filter((url) => typeof url === 'string' && url.trim() !== '')
+                  .map((url) => url.trim())
+              )
+            );
+
+            restaurant.menuImages = uniqueUrls.slice(0, maxImagesPerRestaurant);
+          } catch (err) {
+            console.error('Error deriving menuImages from Menu for restaurant', restaurant._id, err);
+          }
+        })
+      );
+    }
     
     // Calculate and add distance to each restaurant if user coordinates provided
     if (useGeospatialQuery && userLat && userLng) {
