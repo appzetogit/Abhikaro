@@ -11,6 +11,101 @@ const logger = winston.createLogger({
   ],
 });
 
+// Haversine distance (meters) - reuse for nearest-town lookup
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const p1 = (lat1 * Math.PI) / 180;
+  const p2 = (lat2 * Math.PI) / 180;
+  const dp = ((lat2 - lat1) * Math.PI) / 180;
+  const dl = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dp / 2) * Math.sin(dp / 2) +
+    Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+// Find nearest town/city around given coordinates using Nominatim search
+const findNearestTown = async (latNum, lngNum) => {
+  const radiusMeters = 15000; // 15 km radius
+  const degreeOffset = radiusMeters / 111000; // approx meter-to-degree
+
+  const viewbox = [
+    lngNum - degreeOffset,
+    latNum - degreeOffset,
+    lngNum + degreeOffset,
+    latNum + degreeOffset,
+  ].join(",");
+
+  let results = [];
+  try {
+    const resp = await axios.get(
+      "https://nominatim.openstreetmap.org/search",
+      {
+        params: {
+          format: "json",
+          q: "*",
+          viewbox,
+          bounded: 1,
+          addressdetails: 1,
+          limit: 10,
+          "accept-language": "en",
+        },
+        headers: {
+          "User-Agent": "AbhiKaro-App/1.0",
+        },
+        timeout: 8000,
+      },
+    );
+    results = Array.isArray(resp.data) ? resp.data : [];
+  } catch (err) {
+    logger.warn("Nearest town lookup failed", {
+      error: err.message,
+    });
+    return null;
+  }
+
+  const candidates = results.filter((place) => {
+    const cls = place.class || "";
+    const type = place.type || "";
+    return (
+      cls === "place" &&
+      (type === "town" || type === "city")
+    );
+  });
+
+  if (!candidates.length) return null;
+
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const place of candidates) {
+    const placeLat = parseFloat(place.lat);
+    const placeLng = parseFloat(place.lon);
+    if (Number.isNaN(placeLat) || Number.isNaN(placeLng)) continue;
+
+    const dist = calculateDistance(latNum, lngNum, placeLat, placeLng);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = place;
+    }
+  }
+
+  if (!best) return null;
+
+  const a = best.address || {};
+  const townName =
+    a.city ||
+    a.town ||
+    (best.display_name
+      ? String(best.display_name).split(",")[0].trim()
+      : "");
+
+  return townName || null;
+};
+
 const buildMinimalGeocodeData = (latNum, lngNum) => {
   return {
     results: [
@@ -176,6 +271,27 @@ export const reverseGeocode = async (req, res) => {
       }
     }
 
+    // If city looks like only a small village/area, try to find nearest town/city
+    let nearestTownName = null;
+    try {
+      const shouldLookupNearestTown =
+        !city ||
+        (area &&
+          city &&
+          city.toLowerCase() === area.toLowerCase());
+
+      if (shouldLookupNearestTown) {
+        nearestTownName = await findNearestTown(latNum, lngNum);
+        if (nearestTownName) {
+          city = nearestTownName;
+        }
+      }
+    } catch (lookupError) {
+      logger.warn("Nearest town enhancement failed", {
+        error: lookupError.message,
+      });
+    }
+
     const processedData = {
       results: [
         {
@@ -189,6 +305,7 @@ export const reverseGeocode = async (req, res) => {
             road: road,
             building: building,
             postcode: postcode,
+            nearestTown: nearestTownName || "",
           },
           geometry: {
             location: {
@@ -335,21 +452,4 @@ export const getNearbyLocations = async (req, res) => {
   }
 };
 
-/**
- * Calculate distance between two coordinates using Haversine formula
- * Returns distance in meters
- */
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371e3;
-  const p1 = (lat1 * Math.PI) / 180;
-  const p2 = (lat2 * Math.PI) / 180;
-  const dp = ((lat2 - lat1) * Math.PI) / 180;
-  const dl = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(dp / 2) * Math.sin(dp / 2) +
-    Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
-}
+// calculateDistance now defined at top for reuse
