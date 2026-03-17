@@ -114,6 +114,7 @@ export const reverseGeocode = async (req, res) => {
       addr.city ||
       addr.town ||
       addr.village ||
+      addr.hamlet ||
       addr.municipality ||
       addr.county ||
       "";
@@ -123,10 +124,11 @@ export const reverseGeocode = async (req, res) => {
       addr.suburb ||
       addr.neighbourhood ||
       addr.quarter ||
-      addr.hamlet ||
       addr.residential ||
+      addr.village ||
+      addr.hamlet ||
       "";
-    const road = addr.road || "";
+    const road = addr.road || addr.street || addr.residential || "";
     const building = addr.building || addr.amenity || addr.shop || "";
     const postcode = addr.postcode || "";
 

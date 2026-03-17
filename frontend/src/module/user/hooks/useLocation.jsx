@@ -10,6 +10,7 @@ export function useLocation() {
   const watchIdRef = useRef(null)
   const updateTimerRef = useRef(null)
   const prevLocationCoordsRef = useRef({ latitude: null, longitude: null })
+  const anchorLocationRef = useRef({ latitude: null, longitude: null }) // Anchor point for 200m rule
   const retryCountRef = useRef(0) // Track retry attempts for reverse geocoding
   const isFetchingLocationRef = useRef(false) // Prevent multiple simultaneous location fetches
   const hasInitializedRef = useRef(false) // Prevent multiple initializations
@@ -171,6 +172,9 @@ export function useLocation() {
           const state = addressComponents.state || ""
           const country = addressComponents.country || ""
           const area = addressComponents.area || ""
+          const road = addressComponents.road || addressComponents.street || ""
+          const building = addressComponents.building || ""
+          const postcode = addressComponents.postcode || addressComponents.postalCode || ""
           const formattedAddress = result.formatted_address || ""
           
           // Check if we got valid data (not just coordinates)
@@ -181,8 +185,14 @@ export function useLocation() {
               state: state || "",
               country: country || "",
               area: area || "",
-              address: area || city || formattedAddress || "Current Location",
-              formattedAddress: formattedAddress || `${area ? area + ', ' : ''}${city || 'Current Location'}`,
+              road: road || "",
+              building: building || "",
+              postalCode: postcode || "",
+              address: [road, area, city].filter(Boolean).join(", ") || formattedAddress || "Current Location",
+              formattedAddress:
+                formattedAddress ||
+                [building, road, area, city].filter(Boolean).join(", ") ||
+                `${area ? area + ", " : ""}${city || "Current Location"}`,
             }
           }
         }
@@ -1290,7 +1300,7 @@ export function useLocation() {
 
               // Build location object with ALL fields from reverse geocoding
               const finalLoc = {
-                ...addr, // This includes: city, state, area, street, streetNumber, postalCode, formattedAddress
+                ...addr, // This includes: city, state, area, road, building, postalCode, formattedAddress
                 latitude,
                 longitude,
                 accuracy: accuracy || null,
@@ -1315,6 +1325,11 @@ export function useLocation() {
               }
 
               localStorage.setItem("userLocation", JSON.stringify(finalLoc))
+              // Initialize / refresh anchor location for 200m rule
+              anchorLocationRef.current = {
+                latitude,
+                longitude
+              }
               setLocation(finalLoc)
               setPermissionGranted(true)
               if (showLoading) setLoading(false)
@@ -1560,10 +1575,7 @@ export function useLocation() {
             // Don't check address improvement since we're not calling geocoding
             const prevLoc = location
             if (prevLoc && prevLoc.latitude && prevLoc.longitude) {
-              // Calculate distance in meters (Haversine formula simplified for small distances)
-              const latDiff = latitude - prevLoc.latitude
-              const lngDiff = longitude - prevLoc.longitude
-              const distanceMeters = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111320 // ~111320m per degree
+              const distanceMeters = calculateDistance(latitude, longitude, prevLoc.latitude, prevLoc.longitude)
 
               // Only update if moved >10 meters
               if (distanceMeters <= 10) {
@@ -1593,13 +1605,37 @@ export function useLocation() {
             }
 
             // Debounce DB updates - only update every 5 seconds to avoid too many API calls
-            // Only schedule debounced updates if user is authenticated
+            // Only schedule debounced updates if user is authenticated AND movement from anchor > 200m
             if (isUserAuthenticated()) {
-              clearTimeout(updateTimerRef.current)
-              updateTimerRef.current = setTimeout(() => {
-                updateLocationInDB(loc).catch(err => {
-                })
-              }, 5000)
+              let shouldUpdateDB = true
+
+              if (anchorLocationRef.current.latitude && anchorLocationRef.current.longitude) {
+                const distanceFromAnchor = calculateDistance(
+                  latitude,
+                  longitude,
+                  anchorLocationRef.current.latitude,
+                  anchorLocationRef.current.longitude
+                )
+
+                // If movement is within 200m of anchor, skip DB update to avoid noise
+                if (distanceFromAnchor <= 200) {
+                  shouldUpdateDB = false
+                } else {
+                  // Significant move: shift anchor to new position
+                  anchorLocationRef.current = { latitude, longitude }
+                }
+              } else {
+                // Initialize anchor if not set
+                anchorLocationRef.current = { latitude, longitude }
+              }
+
+              if (shouldUpdateDB) {
+                clearTimeout(updateTimerRef.current)
+                updateTimerRef.current = setTimeout(() => {
+                  updateLocationInDB(loc).catch(err => {
+                  })
+                }, 5000)
+              }
             }
           } catch (err) {
             // On error, preserve existing location (don't update with placeholder)
