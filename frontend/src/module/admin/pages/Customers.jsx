@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { Search, Download, ChevronDown, Calendar, Eye, FileDown, FileSpreadsheet, FileText, X, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle } from "lucide-react"
+import { Search, Download, ChevronDown, Calendar, Eye, FileDown, FileSpreadsheet, FileText, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle, Pencil, Trash2, Wallet } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { exportCustomersToCSV, exportCustomersToExcel, exportCustomersToPDF } from "../components/customers/customersExportUtils"
 import { adminAPI } from "@/lib/api"
@@ -15,6 +15,26 @@ export default function Customers() {
   const [userDetails, setUserDetails] = useState(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [showUserDetails, setShowUserDetails] = useState(false)
+
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editForm, setEditForm] = useState({
+    id: "",
+    name: "",
+    email: "",
+    phone: "",
+    gender: "",
+    dateOfBirth: "",
+  })
+
+  const [isWalletOpen, setIsWalletOpen] = useState(false)
+  const [savingWallet, setSavingWallet] = useState(false)
+  const [walletForm, setWalletForm] = useState({
+    id: "",
+    type: "addition",
+    amount: "",
+    reason: "",
+  })
   const [filters, setFilters] = useState({
     orderDate: "",
     joiningDate: "",
@@ -174,6 +194,92 @@ export default function Customers() {
       setShowUserDetails(false)
     } finally {
       setLoadingDetails(false)
+    }
+  }
+
+  const openEdit = (customer) => {
+    setEditForm({
+      id: customer.id,
+      name: customer.name === "N/A" ? "" : (customer.name || ""),
+      email: customer.email === "N/A" ? "" : (customer.email || ""),
+      phone: customer.phone === "N/A" ? "" : (customer.phone || ""),
+      gender: customer.gender || "",
+      dateOfBirth: customer.dateOfBirth ? String(customer.dateOfBirth).slice(0, 10) : "",
+    })
+    setIsEditOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    try {
+      setSavingEdit(true)
+      const payload = {
+        name: editForm.name,
+        email: editForm.email || null,
+        phone: editForm.phone || null,
+        gender: editForm.gender || null,
+        dateOfBirth: editForm.dateOfBirth || null,
+      }
+      await adminAPI.updateUser(editForm.id, payload)
+      toast.success("Customer updated")
+      setIsEditOpen(false)
+      fetchCustomers()
+    } catch (error) {
+      console.error("Error updating customer:", error)
+      toast.error("Failed to update customer")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const openWalletAdjust = (customer) => {
+    setWalletForm({
+      id: customer.id,
+      type: "addition",
+      amount: "",
+      reason: "",
+    })
+    setIsWalletOpen(true)
+  }
+
+  const handleAdjustWallet = async () => {
+    try {
+      setSavingWallet(true)
+      const payload = {
+        type: walletForm.type,
+        amount: Number(walletForm.amount),
+        reason: walletForm.reason,
+      }
+      const resp = await adminAPI.adjustUserWallet(walletForm.id, payload)
+      const data = resp?.data?.data || resp?.data
+      const newBalance = data?.wallet?.balance
+
+      if (typeof newBalance === "number") {
+        setCustomers(prev =>
+          prev.map(c => (c.id === walletForm.id ? { ...c, walletBalance: newBalance } : c))
+        )
+      }
+
+      toast.success("Wallet updated")
+      setIsWalletOpen(false)
+    } catch (error) {
+      console.error("Error adjusting wallet:", error)
+      toast.error(error?.response?.data?.message || "Failed to adjust wallet")
+    } finally {
+      setSavingWallet(false)
+    }
+  }
+
+  const handleDeleteCustomer = async (customer) => {
+    try {
+      const ok = window.confirm(`Delete customer ${customer.name}? This cannot be undone.`)
+      if (!ok) return
+
+      await adminAPI.deleteUser(customer.id)
+      toast.success("Customer deleted")
+      fetchCustomers()
+    } catch (error) {
+      console.error("Error deleting customer:", error)
+      toast.error(error?.response?.data?.message || "Failed to delete customer")
     }
   }
 
@@ -372,7 +478,7 @@ export default function Customers() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-hidden">
+          <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -381,21 +487,22 @@ export default function Customers() {
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Contact Information</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total Order</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total Order Amount</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Wallet Balance</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Joining Date</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Active/Inactive</th>
-                  <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider min-w-[160px]">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center">
+                    <td colSpan={9} className="px-6 py-8 text-center">
                       <div className="text-sm text-slate-500">Loading customers...</div>
                     </td>
                   </tr>
                 ) : filteredCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center">
+                    <td colSpan={9} className="px-6 py-8 text-center">
                       <div className="text-sm text-slate-500">No customers found</div>
                     </td>
                   </tr>
@@ -403,30 +510,33 @@ export default function Customers() {
                   filteredCustomers.map((customer, index) => (
                     <tr key={customer.id || customer.sl} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                        <span className="text-xs font-medium text-slate-700">{index + 1}</span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
                             <span className="text-sm">👤</span>
                           </div>
-                          <span className="text-sm font-medium text-slate-900">{customer.name}</span>
+                          <span className="text-xs font-medium text-slate-900">{customer.name}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="text-sm text-slate-700">{customer.email}</span>
-                          <span className="text-xs text-slate-500">{customer.phone}</span>
+                          <span className="text-xs text-slate-700">{customer.email}</span>
+                          <span className="text-[11px] text-slate-500">{customer.phone}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-slate-700">{customer.totalOrder || 0}</span>
+                        <span className="text-xs text-slate-700">{customer.totalOrder || 0}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-slate-900">₹{Number(customer.totalOrderAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="text-xs font-medium text-slate-900">₹{Number(customer.totalOrderAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-slate-700">{customer.joiningDate}</span>
+                        <span className="text-xs font-medium text-slate-900">₹{Number(customer.walletBalance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-xs text-slate-700">{customer.joiningDate}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button
@@ -442,13 +552,37 @@ export default function Customers() {
                           />
                         </button>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <button 
-                          onClick={() => handleViewDetails(customer.id || customer.sl)}
-                          className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
+                      <td className="px-6 py-4 whitespace-nowrap text-center min-w-[160px]">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button 
+                            onClick={() => handleViewDetails(customer.id || customer.sl)}
+                            className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
+                            title="View"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openEdit(customer)}
+                            className="p-1.5 rounded text-slate-700 hover:bg-slate-100 transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openWalletAdjust(customer)}
+                            className="p-1.5 rounded text-emerald-700 hover:bg-emerald-50 transition-colors"
+                            title="Adjust Wallet"
+                          >
+                            <Wallet className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCustomer(customer)}
+                            className="p-1.5 rounded text-red-600 hover:bg-red-50 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -631,6 +765,148 @@ export default function Customers() {
               <div className="text-sm text-slate-500">No user details available</div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Customer Modal */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-lg mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-slate-900">Edit Customer</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Name</label>
+              <input
+                value={editForm.name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                placeholder="Customer name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Email</label>
+              <input
+                value={editForm.email}
+                onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                placeholder="Email"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Phone</label>
+              <input
+                value={editForm.phone}
+                onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                placeholder="Phone"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Gender</label>
+                <select
+                  value={editForm.gender}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, gender: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                >
+                  <option value="">N/A</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                  <option value="prefer-not-to-say">Prefer not to say</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Date of Birth</label>
+                <input
+                  type="date"
+                  value={editForm.dateOfBirth}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <button
+              onClick={() => setIsEditOpen(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50"
+              disabled={savingEdit}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveEdit}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+              disabled={savingEdit}
+            >
+              {savingEdit ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Wallet Adjust Modal */}
+      <Dialog open={isWalletOpen} onOpenChange={setIsWalletOpen}>
+        <DialogContent className="max-w-lg mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-slate-900">Adjust Wallet</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Type</label>
+                <select
+                  value={walletForm.type}
+                  onChange={(e) => setWalletForm(prev => ({ ...prev, type: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                >
+                  <option value="addition">Add</option>
+                  <option value="deduction">Deduct</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Amount</label>
+                <input
+                  type="number"
+                  value={walletForm.amount}
+                  onChange={(e) => setWalletForm(prev => ({ ...prev, amount: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  placeholder="Ex: 100"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Reason</label>
+              <input
+                value={walletForm.reason}
+                onChange={(e) => setWalletForm(prev => ({ ...prev, reason: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                placeholder="Reason / note"
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <button
+              onClick={() => setIsWalletOpen(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50"
+              disabled={savingWallet}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAdjustWallet}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+              disabled={savingWallet}
+            >
+              {savingWallet ? "Saving..." : "Update Wallet"}
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

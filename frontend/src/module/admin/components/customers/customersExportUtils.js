@@ -5,14 +5,15 @@ export const exportCustomersToCSV = (customers, filename = "customers") => {
     return
   }
 
-  const headers = ["SI", "Name", "Email", "Phone", "Total Order", "Total Order Amount", "Joining Date", "Status"]
+  const headers = ["SI", "Name", "Email", "Phone", "Total Order", "Total Order Amount", "Wallet Balance", "Joining Date", "Status"]
   const rows = customers.map((customer, index) => [
     customer.sl || index + 1,
     customer.name || "N/A",
     customer.email || "N/A",
     customer.phone || "N/A",
     customer.totalOrder || 0,
-    `$${(customer.totalOrderAmount || 0).toFixed(2)}`,
+    `₹${Number(customer.totalOrderAmount || 0).toFixed(2)}`,
+    `₹${Number(customer.walletBalance || 0).toFixed(2)}`,
     customer.joiningDate || "N/A",
     customer.status ? "Active" : "Inactive"
   ])
@@ -53,14 +54,15 @@ export const exportCustomersToExcel = (customers, filename = "customers") => {
     return
   }
 
-  const headers = ["SI", "Name", "Email", "Phone", "Total Order", "Total Order Amount", "Joining Date", "Status"]
+  const headers = ["SI", "Name", "Email", "Phone", "Total Order", "Total Order Amount", "Wallet Balance", "Joining Date", "Status"]
   const rows = customers.map((customer, index) => [
     customer.sl || index + 1,
     customer.name || "N/A",
     customer.email || "N/A",
     customer.phone || "N/A",
     customer.totalOrder || 0,
-    (customer.totalOrderAmount || 0).toFixed(2),
+    Number(customer.totalOrderAmount || 0).toFixed(2),
+    Number(customer.walletBalance || 0).toFixed(2),
     customer.joiningDate || "N/A",
     customer.status ? "Active" : "Inactive"
   ])
@@ -142,14 +144,15 @@ export const exportCustomersToPDF = (customers, filename = "customers") => {
           customer.email || "N/A",
           customer.phone || "N/A",
           customer.totalOrder || 0,
-          `$${(customer.totalOrderAmount || 0).toFixed(2)}`,
+          `₹${Number(customer.totalOrderAmount || 0).toFixed(2)}`,
+          `₹${Number(customer.walletBalance || 0).toFixed(2)}`,
           customer.joiningDate || "N/A",
           customer.status ? "Active" : "Inactive"
         ])
 
         // Add table using autoTable
         autoTable(doc, {
-          head: [["SI", "Name", "Email", "Phone", "Total Order", "Total Order Amount", "Joining Date", "Status"]],
+          head: [["SI", "Name", "Email", "Phone", "Total Order", "Total Order Amount", "Wallet Balance", "Joining Date", "Status"]],
           body: tableData,
           startY: 28,
           styles: {
@@ -171,8 +174,9 @@ export const exportCustomersToPDF = (customers, filename = "customers") => {
             3: { cellWidth: 30 }, // Phone
             4: { cellWidth: 25 }, // Total Order
             5: { cellWidth: 30 }, // Total Order Amount
-            6: { cellWidth: 30 }, // Joining Date
-            7: { cellWidth: 25 }, // Status
+            6: { cellWidth: 30 }, // Wallet Balance
+            7: { cellWidth: 30 }, // Joining Date
+            8: { cellWidth: 25 }, // Status
           },
           margin: { top: 28, left: 14, right: 14 },
         })

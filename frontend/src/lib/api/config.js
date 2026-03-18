@@ -302,6 +302,7 @@ export const API_ENDPOINTS = {
     USERS: "/admin/users",
     USER_BY_ID: "/admin/users/:id",
     USER_STATUS: "/admin/users/:id/status",
+    USER_WALLET_ADJUSTMENT: "/admin/users/:id/wallet/adjustment",
     RESTAURANTS: "/admin/restaurants",
     RESTAURANT_BY_ID: "/admin/restaurants/:id",
     RESTAURANT_ANALYTICS: "/admin/restaurant-analytics/:restaurantId",

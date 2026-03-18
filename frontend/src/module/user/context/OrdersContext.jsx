@@ -41,6 +41,13 @@ export function OrdersProvider({ children }) {
     }
   }, [orders])
 
+  const removeOrder = useCallback((orderId) => {
+    if (!orderId) return
+    setOrders((prev) =>
+      prev.filter((order) => (order.id || order._id || order.orderId) !== orderId)
+    )
+  }, [])
+
   const createOrder = useCallback((orderData = {}) => {
     const now = new Date().toISOString()
 
@@ -104,8 +111,9 @@ export function OrdersProvider({ children }) {
     createOrder,
     getOrderById,
     getAllOrders,
-    updateOrderStatus
-  }), [orders, createOrder, getOrderById, getAllOrders, updateOrderStatus])
+    updateOrderStatus,
+    removeOrder
+  }), [orders, createOrder, getOrderById, getAllOrders, updateOrderStatus, removeOrder])
 
   return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>
 }

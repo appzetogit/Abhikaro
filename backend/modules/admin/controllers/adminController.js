@@ -1386,6 +1386,19 @@ export const getUsers = asyncHandler(async (req, res) => {
     // Get user IDs
     const userIds = users.map((user) => user._id);
 
+    // Fetch wallet balances for these users (UserWallet is the source of truth)
+    // Note: User model also has `wallet.balance`, but that field may drift from UserWallet.
+    const UserWallet = (await import("../../user/models/UserWallet.js")).default;
+    const wallets = await UserWallet.find({ userId: { $in: userIds } })
+      .select("userId balance")
+      .lean();
+
+    const walletBalanceMap = new Map();
+    wallets.forEach((w) => {
+      if (!w?.userId) return;
+      walletBalanceMap.set(String(w.userId), Number(w.balance) || 0);
+    });
+
     // Get order statistics for each user
     const orderStats = await Order.aggregate([
       {
@@ -1426,6 +1439,9 @@ export const getUsers = asyncHandler(async (req, res) => {
         year: "numeric",
       });
 
+      const walletBalance =
+        walletBalanceMap.get(String(user._id)) ?? Number(user?.wallet?.balance) ?? 0;
+
       return {
         sl: parseInt(offset, 10) + index + 1,
         id: user._id.toString(),
@@ -1434,6 +1450,7 @@ export const getUsers = asyncHandler(async (req, res) => {
         phone: user.phone || "N/A",
         totalOrder: Number(stats.totalOrder) || 0,
         totalOrderAmount: Number(stats.totalOrderAmount) || 0,
+        walletBalance: Number(walletBalance) || 0,
         joiningDate: formattedDate,
         status: user.isActive !== false, // Default to true if not set
         createdAt: user.createdAt,
@@ -1600,6 +1617,100 @@ export const updateUserStatus = asyncHandler(async (req, res) => {
       error: error.stack,
     });
     return errorResponse(res, 500, "Failed to update user status");
+  }
+});
+
+/**
+ * Update User Details (Admin)
+ * PUT /api/admin/users/:id
+ */
+export const updateUser = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const User = (await import("../../auth/models/User.js")).default;
+
+    const user = await User.findById(id);
+    if (!user || user.role !== "user") {
+      return errorResponse(res, 404, "User not found");
+    }
+
+    // Whitelist fields allowed to update by admin
+    const allowedFields = [
+      "name",
+      "email",
+      "phone",
+      "gender",
+      "dateOfBirth",
+      "anniversary",
+      "profileImage",
+    ];
+
+    allowedFields.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        user[field] = req.body[field];
+      }
+    });
+
+    await user.save();
+
+    logger.info(`User updated: ${id}`, { updatedBy: req.user?._id });
+
+    return successResponse(res, 200, "User updated successfully", {
+      user: {
+        id: user._id.toString(),
+        name: user.name || "N/A",
+        email: user.email || "N/A",
+        phone: user.phone || "N/A",
+        gender: user.gender || null,
+        dateOfBirth: user.dateOfBirth || null,
+        anniversary: user.anniversary || null,
+        profileImage: user.profileImage || null,
+        isActive: user.isActive !== false,
+      },
+    });
+  } catch (error) {
+    logger.error(`Error updating user: ${error.message}`, { error: error.stack });
+    return errorResponse(res, 500, error.message || "Failed to update user");
+  }
+});
+
+/**
+ * Delete User (Admin) - Hard delete
+ * DELETE /api/admin/users/:id
+ *
+ * Safety: Do NOT delete users that have orders to avoid orphaned references.
+ */
+export const deleteUser = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const User = (await import("../../auth/models/User.js")).default;
+    const UserWallet = (await import("../../user/models/UserWallet.js")).default;
+
+    const user = await User.findById(id);
+    if (!user || user.role !== "user") {
+      return errorResponse(res, 404, "User not found");
+    }
+
+    const orderCount = await Order.countDocuments({ userId: user._id });
+    if (orderCount > 0) {
+      return errorResponse(
+        res,
+        400,
+        "Cannot delete user with existing orders; deactivate instead.",
+      );
+    }
+
+    await UserWallet.deleteOne({ userId: user._id });
+    await User.deleteOne({ _id: user._id });
+
+    logger.info(`User deleted: ${id}`, {
+      deletedBy: req.user?._id,
+    });
+
+    return successResponse(res, 200, "User deleted successfully");
+  } catch (error) {
+    logger.error(`Error deleting user: ${error.message}`, { error: error.stack });
+    return errorResponse(res, 500, error.message || "Failed to delete user");
   }
 });
 

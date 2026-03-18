@@ -1300,11 +1300,29 @@ export const adminAPI = {
     return apiClient.get(API_ENDPOINTS.ADMIN.USER_BY_ID.replace(":id", id));
   },
 
+  // Update user (admin)
+  updateUser: (id, data) => {
+    return apiClient.put(API_ENDPOINTS.ADMIN.USER_BY_ID.replace(":id", id), data);
+  },
+
+  // Delete user (admin)
+  deleteUser: (id) => {
+    return apiClient.delete(API_ENDPOINTS.ADMIN.USER_BY_ID.replace(":id", id));
+  },
+
   // Update user status
   updateUserStatus: (id, isActive) => {
     return apiClient.put(API_ENDPOINTS.ADMIN.USER_STATUS.replace(":id", id), {
       isActive,
     });
+  },
+
+  // Adjust user wallet (admin)
+  adjustUserWallet: (userId, payload) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.USER_WALLET_ADJUSTMENT.replace(":id", userId),
+      payload,
+    );
   },
 
   // Get restaurants

@@ -16,6 +16,8 @@ import {
   changeAdminPassword,
   getUsers,
   getUserById,
+  updateUser,
+  deleteUser,
   updateUserStatus,
   getRestaurants,
   getRestaurantById,
@@ -36,6 +38,7 @@ import {
   getCustomerWalletReport,
   getAdminPermissionsCatalog,
 } from "../controllers/adminController.js";
+import { adjustUserWallet } from "../controllers/userWalletAdminController.js";
 import {
   getHotels,
   getHotelById,
@@ -348,7 +351,10 @@ router.put(
 // User Management
 router.get("/users", getUsers);
 router.get("/users/:id", getUserById);
+router.put("/users/:id", updateUser);
 router.put("/users/:id/status", updateUserStatus);
+router.delete("/users/:id", deleteUser);
+router.post("/users/:id/wallet/adjustment", adjustUserWallet);
 router.get("/customer-wallet-report", getCustomerWalletReport);
 
 // Restaurant Management

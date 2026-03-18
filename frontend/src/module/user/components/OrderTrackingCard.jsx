@@ -7,7 +7,7 @@ import { orderAPI } from '@/lib/api';
 
 export default function OrderTrackingCard() {
   const navigate = useNavigate();
-  const { orders: contextOrders } = useOrders();
+  const { orders: contextOrders, removeOrder } = useOrders();
   const [activeOrder, setActiveOrder] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [apiOrders, setApiOrders] = useState([]);
@@ -103,12 +103,27 @@ export default function OrderTrackingCard() {
     
     // Add contextOrders that aren't already in apiOrders
     // But only if they're recent (placed within last 5 minutes) or if API hasn't been called yet
+    const nowForCleanup = new Date();
+    const GHOST_MAX_MINUTES = 15; // if not in API and older than this, drop from local cache
+
     contextOrders.forEach(contextOrder => {
       const contextOrderId = contextOrder.id || contextOrder._id || contextOrder.orderId;
       const existsInApi = apiOrders.some(apiOrder => 
         (apiOrder.id || apiOrder._id || apiOrder.orderId) === contextOrderId
       );
-      
+
+      // If API already called and this order is missing from backend, and it's old enough, treat as ghost
+      if (apiCalled && !existsInApi) {
+        const orderTime = getOrderTime(contextOrder);
+        const minutesSinceOrder = orderTime
+          ? Math.floor((nowForCleanup - orderTime) / (1000 * 60))
+          : Number.POSITIVE_INFINITY;
+        if (minutesSinceOrder > GHOST_MAX_MINUTES && typeof removeOrder === 'function') {
+          removeOrder(contextOrderId);
+          return; // skip adding this ghost order
+        }
+      }
+
       if (!existsInApi) {
         // Check if order is recent (placed within last 5 minutes)
         const orderTime = getOrderTime(contextOrder);
@@ -242,8 +257,19 @@ export default function OrderTrackingCard() {
           setActiveOrder(null);
           setTimeRemaining(null);
         }
-      } catch {
-        // Silent: banner still works off context + last known apiOrders
+      } catch (error) {
+        // If backend reports order not found / deleted, clear local tracking immediately
+        const statusCode = error?.response?.status;
+        if (statusCode === 404 || statusCode === 410) {
+          const normalizedId = activeId;
+          if (normalizedId && typeof removeOrder === 'function') {
+            removeOrder(normalizedId);
+          }
+          setActiveOrder(null);
+          setTimeRemaining(null);
+          return;
+        }
+        // Otherwise, keep using last known apiOrders/contextOrders silently
       }
     };
 
