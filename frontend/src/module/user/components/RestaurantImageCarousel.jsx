@@ -89,7 +89,9 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
           src={images[currentIndex]}
           alt={`${restaurant.name} - Image ${currentIndex + 1}`}
           className="w-full h-full rounded-t-2xl sm:rounded-t-3xl object-cover"
+          // Only first image of first few cards should be eager; rest lazy for faster initial render
           priority={priority && currentIndex === 0}
+          loading={priority && currentIndex === 0 ? "eager" : "lazy"}
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           objectFit="cover"
           placeholder="blur"

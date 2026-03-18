@@ -1730,6 +1730,101 @@ export const getRestaurantById = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Update restaurant core details from admin panel
+ * PUT /api/admin/restaurants/:id
+ */
+export const updateRestaurant = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const restaurant = await Restaurant.findById(id);
+    if (!restaurant) {
+      return errorResponse(res, 404, "Restaurant not found");
+    }
+
+    const {
+      name,
+      isActive,
+      ownerName,
+      ownerPhone,
+      ownerEmail,
+      cuisines,
+      location,
+      deliveryTimings,
+      onboarding,
+    } = req.body || {};
+
+    if (name !== undefined) {
+      restaurant.name = name;
+    }
+
+    if (typeof isActive === "boolean") {
+      restaurant.isActive = isActive;
+    }
+
+    if (ownerName !== undefined) restaurant.ownerName = ownerName;
+    if (ownerPhone !== undefined) restaurant.ownerPhone = ownerPhone;
+    if (ownerEmail !== undefined) restaurant.ownerEmail = ownerEmail;
+
+    if (Array.isArray(cuisines)) {
+      restaurant.cuisines = cuisines;
+    }
+
+    if (location && typeof location === "object") {
+      restaurant.location = {
+        ...(restaurant.location || {}),
+        ...location,
+      };
+
+      if (
+        restaurant.location.latitude &&
+        restaurant.location.longitude &&
+        !restaurant.location.coordinates
+      ) {
+        restaurant.location.coordinates = [
+          restaurant.location.longitude,
+          restaurant.location.latitude,
+        ];
+      }
+
+      restaurant.markModified("location");
+    }
+
+    if (deliveryTimings && typeof deliveryTimings === "object") {
+      restaurant.deliveryTimings = {
+        ...(restaurant.deliveryTimings || {}),
+        ...deliveryTimings,
+      };
+      restaurant.markModified("deliveryTimings");
+    }
+
+    if (onboarding && typeof onboarding === "object") {
+      restaurant.onboarding = {
+        ...(restaurant.onboarding || {}),
+        ...onboarding,
+      };
+      restaurant.markModified("onboarding");
+    }
+
+    await restaurant.save();
+
+    logger.info("Restaurant updated from admin panel", {
+      restaurantId: restaurant._id.toString(),
+      updatedBy: req.user?._id,
+    });
+
+    return successResponse(res, 200, "Restaurant updated successfully", {
+      restaurant,
+    });
+  } catch (error) {
+    logger.error(`Error updating restaurant from admin: ${error.message}`, {
+      error: error.stack,
+    });
+    return errorResponse(res, 500, "Failed to update restaurant");
+  }
+});
+
+/**
  * Update Restaurant Status (Active/Inactive/Ban)
  * PUT /api/admin/restaurants/:id/status
  */

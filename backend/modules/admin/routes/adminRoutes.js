@@ -20,6 +20,7 @@ import {
   getRestaurants,
   getRestaurantById,
   createRestaurant,
+  updateRestaurant,
   updateRestaurantStatus,
   updateRestaurantLocation,
   getRestaurantJoinRequests,
@@ -125,6 +126,10 @@ import {
   addWalletAdjustment,
   updateWalletBalances,
 } from "../controllers/deliveryBoyWalletController.js";
+import {
+  getRestaurantWalletOverview,
+  adjustRestaurantWallet,
+} from "../controllers/restaurantWalletController.js";
 import {
   getEmergencyHelp,
   getEmergencyHelpPublic,
@@ -347,22 +352,101 @@ router.put("/users/:id/status", updateUserStatus);
 router.get("/customer-wallet-report", getCustomerWalletReport);
 
 // Restaurant Management
-router.get("/restaurants", getRestaurants);
-router.get("/restaurants/requests", getRestaurantJoinRequests);
-router.get("/restaurants/:id", getRestaurantById);
-router.post("/restaurants", createRestaurant);
-router.get("/restaurant-analytics/:restaurantId", getRestaurantAnalytics);
-router.post("/restaurants/:id/approve", approveRestaurant);
-router.post("/restaurants/:id/reject", rejectRestaurant);
-router.post("/restaurants/:id/reverify", reverifyRestaurant);
-router.put("/restaurants/:id/status", updateRestaurantStatus);
-router.put("/restaurants/:id/location", updateRestaurantLocation);
-router.put("/restaurants/:id/dining-settings", updateRestaurantDiningSettings);
-router.patch("/restaurants/:id/dining-seating", updateDiningSeating);
-router.patch("/restaurants/:id/dining-commission", updateRestaurantDiningCommission);
-router.get("/restaurants/:id/menu", getRestaurantMenu);
-router.put("/restaurants/:id/menu", updateRestaurantMenu);
-router.delete("/restaurants/:id", deleteRestaurant);
+router.get(
+  "/restaurants",
+  requirePermissions("menu.restaurants"),
+  getRestaurants,
+);
+router.get(
+  "/restaurants/requests",
+  requirePermissions("menu.restaurants"),
+  getRestaurantJoinRequests,
+);
+router.get(
+  "/restaurants/wallets",
+  requirePermissions("menu.restaurants"),
+  getRestaurantWalletOverview,
+);
+router.post(
+  "/restaurants/:id/wallet/adjustment",
+  requirePermissions("menu.restaurants"),
+  adjustRestaurantWallet,
+);
+router.get(
+  "/restaurants/:id",
+  requirePermissions("menu.restaurants"),
+  getRestaurantById,
+);
+router.post(
+  "/restaurants",
+  requirePermissions("menu.restaurants"),
+  createRestaurant,
+);
+router.put(
+  "/restaurants/:id",
+  requirePermissions("menu.restaurants"),
+  updateRestaurant,
+);
+router.get(
+  "/restaurant-analytics/:restaurantId",
+  requirePermissions("menu.restaurants"),
+  getRestaurantAnalytics,
+);
+router.post(
+  "/restaurants/:id/approve",
+  requirePermissions("menu.restaurants"),
+  approveRestaurant,
+);
+router.post(
+  "/restaurants/:id/reject",
+  requirePermissions("menu.restaurants"),
+  rejectRestaurant,
+);
+router.post(
+  "/restaurants/:id/reverify",
+  requirePermissions("menu.restaurants"),
+  reverifyRestaurant,
+);
+router.put(
+  "/restaurants/:id/status",
+  requirePermissions("menu.restaurants"),
+  updateRestaurantStatus,
+);
+router.put(
+  "/restaurants/:id/location",
+  requirePermissions("menu.restaurants"),
+  updateRestaurantLocation,
+);
+router.put(
+  "/restaurants/:id/dining-settings",
+  requirePermissions("menu.restaurants"),
+  updateRestaurantDiningSettings,
+);
+router.patch(
+  "/restaurants/:id/dining-seating",
+  requirePermissions("menu.restaurants"),
+  updateDiningSeating,
+);
+router.patch(
+  "/restaurants/:id/dining-commission",
+  requirePermissions("menu.restaurants"),
+  updateRestaurantDiningCommission,
+);
+router.get(
+  "/restaurants/:id/menu",
+  requirePermissions("menu.restaurants"),
+  getRestaurantMenu,
+);
+router.put(
+  "/restaurants/:id/menu",
+  requirePermissions("menu.restaurants"),
+  updateRestaurantMenu,
+);
+router.delete(
+  "/restaurants/:id",
+  requirePermissions("menu.restaurants"),
+  deleteRestaurant,
+);
 
 // Hotel Management
 router.get("/hotels", requirePermissions("hotels.view"), getHotels);

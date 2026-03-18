@@ -573,72 +573,13 @@ export default function OutletInfo() {
         </div>
       </div>
 
-      {/* Main Image Section */}
+      {/* Main Image Section (display only, no cover image field controls) */}
       <div className="relative w-full h-[200px] overflow-visible">
-        <img 
+        <img
           src={mainImage}
           alt="Restaurant banner"
           className="w-full h-full object-cover"
         />
-        
-        {/* Add Image Button - Black background with white text */}
-        <button
-          onClick={() => menuImageInputRef.current?.click()}
-          disabled={uploadingImage}
-          className="absolute top-4 right-4 bg-black/90 hover:bg-black px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-white transition-colors shadow-lg z-10 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Plus className="w-4 h-4" />
-          <span>
-            {uploadingImage && imageType === 'menu' 
-              ? `Uploading ${uploadingCount} image${uploadingCount > 1 ? 's' : ''}...` 
-              : 'Add image'}
-          </span>
-        </button>
-        <input
-          ref={menuImageInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleCoverImageAdd}
-        />
-        
-        {/* Cover Images Gallery - Show all cover images with delete buttons */}
-        {coverImages.length > 0 && (
-          <div className="absolute bottom-2 right-4 flex gap-1.5 z-10">
-            {coverImages.slice(0, 4).map((img, index) => (
-              <div
-                key={index}
-                className="relative w-8 h-8 rounded border-2 border-white overflow-hidden bg-gray-200"
-              >
-                <img
-                  src={typeof img === 'string' ? img : img.url}
-                  alt={`Cover ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-                {/* Delete Button - Top Left */}
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleCoverImageDelete(index)
-                  }}
-                  disabled={uploadingImage}
-                  className="absolute top-0 left-0 bg-red-500/90 hover:bg-red-600 p-0.5 rounded-br-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-10"
-                  aria-label={`Delete cover image ${index + 1}`}
-                >
-                  <Trash2 className="w-2.5 h-2.5 text-white" />
-                </button>
-              </div>
-            ))}
-            {coverImages.length > 4 && (
-              <div className="w-8 h-8 rounded border-2 border-white bg-black/70 flex items-center justify-center">
-                <span className="text-white text-xs font-bold">+{coverImages.length - 4}</span>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Thumbnail Section - Overlapping bottom edge */}
         <div className="absolute bottom-0 left-4 -mb-[45px] flex flex-col gap-2 shrink-0 z-10">
           <div className="relative w-[70px] h-[70px] rounded overflow-hidden">
@@ -665,7 +606,7 @@ export default function OutletInfo() {
         </div>
       </div>
 
-      {/* Thumbnail and Reviews Section */}
+        {/* Thumbnail and Reviews Section */}
       <div className="px-4 pt-[50px] pb-4 bg-white">
         <div className="flex items-start gap-4">
      

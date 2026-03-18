@@ -206,8 +206,8 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
     try {
       const { sendToUser } = await import('../../fcm/services/fcmService.js');
       await sendToUser(restaurantId, 'restaurant', {
-        title: 'New Order Received',
-        body: `Order #${order.orderId} - ₹${order.pricing?.total || 0}`,
+        title: 'Order has arrived',
+        body: `Order #${order.orderId} has arrived. Amount: ₹${order.pricing?.total || 0}`,
       }, { type: 'new_order', orderId: order.orderId });
     } catch (fcmErr) {
       console.warn('FCM restaurant notification:', fcmErr.message);

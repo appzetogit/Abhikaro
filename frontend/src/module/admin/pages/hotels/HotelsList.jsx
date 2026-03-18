@@ -449,6 +449,44 @@ export default function HotelsList() {
       // Background template
       ctx.drawImage(templateImage, 0, 0, posterWidth, posterHeight)
 
+      // Helper function to split hotel name intelligently (match hotel app formatting)
+      const splitHotelName = (hotelName) => {
+        if (!hotelName || typeof hotelName !== "string") {
+          return [hotelName || "Hotel"]
+        }
+
+        const trimmedName = hotelName.trim()
+
+        // Keywords to split on (case-insensitive)
+        const splitKeywords = [
+          "Hotel",
+          "Place",
+          "Restaurant",
+          "Resort",
+          "Lodge",
+          "Inn",
+          "Palace",
+        ]
+
+        // Find the first occurrence of any keyword
+        for (const keyword of splitKeywords) {
+          const index = trimmedName.toLowerCase().indexOf(keyword.toLowerCase())
+          if (index > 0) {
+            // Split before the keyword
+            const firstPart = trimmedName.substring(0, index).trim()
+            const secondPart = trimmedName.substring(index).trim()
+
+            // Only split if first part is not empty and has at least 2 characters
+            if (firstPart.length >= 2) {
+              return [firstPart, secondPart]
+            }
+          }
+        }
+
+        // If no split point found, return as single line
+        return [trimmedName]
+      }
+
       // Text styling
       ctx.textAlign = "center"
       ctx.textBaseline = "middle"
@@ -460,11 +498,21 @@ export default function HotelsList() {
       const welcomeY = posterHeight * 0.09
       ctx.fillText("Welcome To", posterWidth / 2, welcomeY)
 
-      // Hotel name
-      ctx.font =
-        "bold " + Math.round(posterHeight * 0.055) + "px Arial, sans-serif"
-      const hotelNameY = welcomeY + posterHeight * 0.06
-      ctx.fillText(qrCodeDialog.hotelName || "Hotel", posterWidth / 2, hotelNameY)
+      // Hotel name - match hotel app formatting (2-line when possible)
+      const hotelNameParts = splitHotelName(qrCodeDialog.hotelName)
+      const hotelNameFontSize = Math.round(posterHeight * 0.038)
+      ctx.font = "bold " + hotelNameFontSize + "px Arial, sans-serif"
+
+      if (hotelNameParts.length === 2) {
+        const lineHeight = hotelNameFontSize * 0.8
+        const firstLineY = welcomeY + posterHeight * 0.045
+        const secondLineY = firstLineY + lineHeight
+        ctx.fillText(hotelNameParts[0], posterWidth / 2, firstLineY)
+        ctx.fillText(hotelNameParts[1], posterWidth / 2, secondLineY)
+      } else {
+        const hotelNameY = welcomeY + posterHeight * 0.048
+        ctx.fillText(hotelNameParts[0] || "Hotel", posterWidth / 2, hotelNameY)
+      }
 
       // QR placement
       const qrSize = posterWidth * 0.45
@@ -487,10 +535,8 @@ export default function HotelsList() {
           const url = URL.createObjectURL(blob)
           const link = document.createElement("a")
           link.href = url
-          const safeName = (qrCodeDialog.hotelName || "hotel")
-            .toString()
-            .replace(/[^a-z0-9\-]+/gi, "_")
-          link.download = `${safeName}-qr-code-poster-${qrCodeDialog.hotelId || qrCodeDialog._id || ""}.png`
+          // Match hotel app download name formatting
+          link.download = `${qrCodeDialog.hotelName || "hotel"}-qr-code-poster-${qrCodeDialog.hotelId || qrCodeDialog._id}.png`
           document.body.appendChild(link)
           link.click()
           document.body.removeChild(link)

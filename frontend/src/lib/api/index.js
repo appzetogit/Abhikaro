@@ -1317,6 +1317,14 @@ export const adminAPI = {
     return apiClient.post(API_ENDPOINTS.ADMIN.RESTAURANTS, data);
   },
 
+  // Update restaurant (admin)
+  updateRestaurant: (id, data) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.RESTAURANT_BY_ID.replace(":id", id),
+      data,
+    );
+  },
+
   // Get restaurant by ID
   getRestaurantById: (id) => {
     return apiClient.get(
@@ -1508,6 +1516,18 @@ export const adminAPI = {
     return apiClient.get(`/admin/hotels/${hotelId}/wallet/earnings`, {
       params,
     });
+  },
+
+  // Restaurant wallet overview (admin)
+  getRestaurantWalletOverview: (params = {}) => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.RESTAURANT_WALLETS, { params });
+  },
+  // Adjust restaurant wallet (admin)
+  adjustRestaurantWallet: (restaurantId, payload) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.RESTAURANT_WALLET_ADJUSTMENT.replace(":id", restaurantId),
+      payload,
+    );
   },
 
   // Get all offers (with restaurant and dish details)

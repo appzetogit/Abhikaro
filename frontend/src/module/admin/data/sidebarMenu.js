@@ -96,6 +96,11 @@ export const sidebarMenuData = [
             permissionId: "menu.restaurants",
           },
           {
+            label: "Restaurant Finance",
+            path: "/admin/restaurants/finance",
+            permissionId: "menu.restaurants",
+          },
+          {
             label: "Menu Add",
             path: "/admin/restaurants/menu-add",
             permissionId: "menu.restaurants",

@@ -5,6 +5,7 @@ import RestaurantNavbar from "../components/RestaurantNavbar"
 import { restaurantAPI } from "@/lib/api"
 import { getGoogleMapsApiKey } from "@/lib/utils/googleMapsApiKey"
 import { Loader } from "@googlemaps/js-api-loader"
+import { toast } from "sonner"
 
 export default function ZoneSetup() {
   const navigate = useNavigate()
@@ -437,7 +438,7 @@ export default function ZoneSetup() {
 
   const handleSaveLocation = async () => {
     if (!selectedLocation) {
-      alert("Please select a location on the map first")
+      toast.error("Please select a location on the map first")
       return
     }
 
@@ -472,7 +473,7 @@ export default function ZoneSetup() {
       }
     } catch (error) {
       console.error("Error saving location:", error)
-      alert(error.response?.data?.message || "Failed to save location. Please try again.")
+      toast.error(error.response?.data?.message || "Failed to save location. Please try again.")
     } finally {
       setSaving(false)
     }

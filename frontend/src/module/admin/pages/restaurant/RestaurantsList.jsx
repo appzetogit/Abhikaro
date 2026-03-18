@@ -879,6 +879,17 @@ export default function RestaurantsList() {
                               <Eye className="w-4 h-4" />
                             </button>
                             <button
+                              onClick={() =>
+                                navigate(
+                                  `/admin/restaurants/${restaurant._id || restaurant.id}/edit`,
+                                )
+                              }
+                              className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              title="Edit Restaurant"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => handleSendEmail(restaurant)}
                               className="p-1.5 rounded text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
                               title="Send Email"

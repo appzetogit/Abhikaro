@@ -31,6 +31,7 @@ export default function HubFinance() {
     allowed: true,
     message: "",
   })
+  const [walletSummary, setWalletSummary] = useState(null)
 
   const fetchFinanceData = useCallback(async () => {
     try {
@@ -57,12 +58,14 @@ export default function HubFinance() {
         allowed: wallet?.withdrawAllowed ?? true,
         message: wallet?.withdrawMessage || "",
       })
+      setWalletSummary(wallet || null)
     } catch (error) {
       // If wallet API fails, don't block page; just fall back to allowing withdraw
       setWithdrawWindow((prev) => ({
         ...prev,
         allowed: true,
       }))
+      setWalletSummary(null)
       if (import.meta.env.DEV) {
         console.error("Error fetching restaurant wallet withdraw window:", error)
       }
@@ -165,6 +168,10 @@ export default function HubFinance() {
 
   const withdrawAllowed = withdrawWindow.allowed
   const withdrawMessage = withdrawWindow.message
+
+  const cycleEarnings = financeData?.currentCycle?.estimatedPayout ?? 0
+  const withdrawableBalance = financeData?.currentCycle?.withdrawableBalance ?? cycleEarnings
+  const lifetimeEarnings = walletSummary?.totalEarned ?? 0
 
   const handleViewDetails = () => {
     navigate("/restaurant/finance-details")
@@ -814,13 +821,19 @@ export default function HubFinance() {
                   <div className="py-8 text-center text-gray-500">Loading...</div>
                 ) : (
                   <>
+                    <p className="text-xs text-gray-600 mb-1">Available to withdraw</p>
                     <p className="text-4xl font-bold text-gray-900 mb-2">
-                      ₹{(financeData?.currentCycle?.estimatedPayout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹{Number(withdrawableBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-sm text-gray-600 mb-4">
-                      {financeData?.currentCycle?.totalOrders || 0} {financeData?.currentCycle?.totalOrders === 1 ? 'order' : 'orders'}
-                    </p>
-                    {(financeData?.currentCycle?.estimatedPayout || 0) > 0 && (
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <p className="text-sm text-gray-600">
+                        {financeData?.currentCycle?.totalOrders || 0} {financeData?.currentCycle?.totalOrders === 1 ? 'order' : 'orders'}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Total earning: <span className="font-semibold text-gray-900">₹{Number(lifetimeEarnings || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </p>
+                    </div>
+                    {Number(withdrawableBalance || 0) > 0 && (
                       <button
                         onClick={() => {
                           if (!withdrawAllowed) return
@@ -1221,8 +1234,11 @@ export default function HubFinance() {
                 </div>
                 
                 <div className="mb-4">
-                  <p className="text-sm text-gray-600 mb-2">
-                    Available Balance: <span className="font-semibold text-gray-900">₹{(financeData?.currentCycle?.withdrawableBalance ?? financeData?.currentCycle?.estimatedPayout ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <p className="text-sm text-gray-600 mb-1">
+                    Available to withdraw: <span className="font-semibold text-gray-900">₹{Number(withdrawableBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Total earning: ₹{Number(lifetimeEarnings || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Enter Amount to Withdraw
@@ -1240,7 +1256,7 @@ export default function HubFinance() {
                     placeholder="0.00"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
                   />
-                  {withdrawalAmount && parseFloat(withdrawalAmount) > (financeData?.currentCycle?.withdrawableBalance ?? financeData?.currentCycle?.estimatedPayout ?? 0) && (
+                  {withdrawalAmount && parseFloat(withdrawalAmount) > Number(withdrawableBalance || 0) && (
                     <p className="text-sm text-red-600 mt-1">Amount cannot exceed available balance</p>
                   )}
                 </div>
@@ -1262,7 +1278,7 @@ export default function HubFinance() {
                         alert('Please enter a valid amount')
                         return
                       }
-                      const maxAllowed = financeData?.currentCycle?.withdrawableBalance ?? financeData?.currentCycle?.estimatedPayout ?? 0
+                      const maxAllowed = Number(withdrawableBalance || 0)
                       if (amount > maxAllowed) {
                         alert('Amount cannot exceed available balance')
                         return
@@ -1299,7 +1315,7 @@ export default function HubFinance() {
                         setSubmittingWithdrawal(false)
                       }
                     }}
-                    disabled={submittingWithdrawal || !withdrawalAmount || parseFloat(withdrawalAmount) <= 0 || parseFloat(withdrawalAmount) > (financeData?.currentCycle?.withdrawableBalance ?? financeData?.currentCycle?.estimatedPayout ?? 0)}
+                    disabled={submittingWithdrawal || !withdrawalAmount || parseFloat(withdrawalAmount) <= 0 || parseFloat(withdrawalAmount) > Number(withdrawableBalance || 0)}
                     className="flex-1 px-4 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                   >
                     {submittingWithdrawal ? 'Submitting...' : 'Submit Request'}

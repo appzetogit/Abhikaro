@@ -169,6 +169,7 @@ export async function notifyUserOrderDelivered(order) {
 
 /**
  * Send notification to restaurant when new order arrives
+ * Mobile push copy: \"Order has arrived\"
  */
 export async function notifyRestaurantNewOrder(order) {
   try {
@@ -179,8 +180,8 @@ export async function notifyRestaurantNewOrder(order) {
     }
 
     await sendPushNotification(restaurantId.toString(), 'restaurant', {
-      title: 'New Order Received! 📦',
-      body: `New order #${order.orderId} has been placed. Amount: ₹${order.pricing?.total || 0}`,
+      title: 'Order has arrived',
+      body: `Order #${order.orderId} has arrived. Amount: ₹${order.pricing?.total || 0}`,
       data: {
         type: 'new_order',
         orderId: order.orderId || order._id.toString(),

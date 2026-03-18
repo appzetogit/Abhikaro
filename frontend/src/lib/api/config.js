@@ -419,6 +419,9 @@ export const API_ENDPOINTS = {
     RESTAURANT_COMPLAINT_BY_ID: "/admin/restaurant-complaints/:id",
     RESTAURANT_COMPLAINT_STATUS: "/admin/restaurant-complaints/:id/status",
     RESTAURANT_COMPLAINT_NOTES: "/admin/restaurant-complaints/:id/notes",
+    // Restaurant wallet (admin)
+    RESTAURANT_WALLETS: "/admin/restaurants/wallets",
+    RESTAURANT_WALLET_ADJUSTMENT: "/admin/restaurants/:id/wallet/adjustment",
     // Admin & permissions management
     ADMINS: "/admin/admins",
     ADMIN_BY_ID: "/admin/admins/:id",
