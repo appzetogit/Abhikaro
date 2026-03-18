@@ -13,6 +13,35 @@ export default function OrderTrackingCard() {
   const [apiOrders, setApiOrders] = useState([]);
   const [apiCalled, setApiCalled] = useState(false); // Track if API has been called
 
+  // Safely parse an order timestamp. Returns a Date or null (never falls back to "now").
+  const getOrderTime = (order) => {
+    const raw =
+      order?.createdAt ||
+      order?.orderDate ||
+      order?.created_at ||
+      order?.date ||
+      null;
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const normalizeStatus = (order) => {
+    // If backend set delivered timestamp / tracking, treat as delivered even if status is stale.
+    const hasDeliveredAt = order?.deliveredAt || order?.delivered_on || order?.deliveredOn;
+    const trackingDelivered =
+      order?.tracking?.delivered?.status === true ||
+      order?.tracking?.delivered === true;
+    if (hasDeliveredAt || trackingDelivered) return 'delivered';
+
+    const s1 = String(order?.status || '').trim().toLowerCase();
+    const s2 = String(order?.deliveryState?.status || '').trim().toLowerCase();
+    const terminal = new Set(['delivered', 'cancelled', 'completed', 'restaurant_cancelled']);
+    if (terminal.has(s1)) return s1;
+    if (terminal.has(s2)) return s2;
+    return s1 || s2;
+  };
+
   // Fetch orders from API (optional - only if endpoint exists)
   // For now, we'll rely primarily on localStorage orders from OrdersContext
   useEffect(() => {
@@ -82,9 +111,11 @@ export default function OrderTrackingCard() {
       
       if (!existsInApi) {
         // Check if order is recent (placed within last 5 minutes)
-        const orderTime = new Date(contextOrder.createdAt || contextOrder.orderDate || contextOrder.created_at || Date.now());
+        const orderTime = getOrderTime(contextOrder);
         const now = new Date();
-        const minutesSinceOrder = Math.floor((now - orderTime) / (1000 * 60));
+        const minutesSinceOrder = orderTime
+          ? Math.floor((now - orderTime) / (1000 * 60))
+          : Number.POSITIVE_INFINITY;
         const isRecent = minutesSinceOrder < 5; // Within last 5 minutes
         
         if (!apiCalled || isRecent) {
@@ -103,7 +134,7 @@ export default function OrderTrackingCard() {
 
     // Find active order - any order that is NOT delivered, cancelled, or completed
     const active = uniqueOrders.find(order => {
-      const status = (order.status || order.deliveryState?.status || '').toLowerCase();
+      const status = normalizeStatus(order);
       const isInactive = status === 'delivered' ||
         status === 'cancelled' ||
         status === 'completed' ||
@@ -120,9 +151,16 @@ export default function OrderTrackingCard() {
 
     if (active) {
       // Calculate remaining time based on elapsed time
-      const orderTime = new Date(active.createdAt || active.orderDate || active.created_at || active.date || Date.now());
+      const orderTime = getOrderTime(active);
+      // If we can't compute time and API has already been called, don't keep a stale local order alive.
+      if (!orderTime && apiCalled) {
+        setActiveOrder(null);
+        setTimeRemaining(null);
+        return;
+      }
+
       const now = new Date();
-      const elapsedMinutes = Math.floor((now - orderTime) / (1000 * 60));
+      const elapsedMinutes = orderTime ? Math.floor((now - orderTime) / (1000 * 60)) : 0;
       
       // Get max ETA (use eta.max if available, otherwise estimatedDeliveryTime)
       const maxETA = active.eta?.max || active.estimatedDeliveryTime || active.estimatedTime || active.estimated_delivery_time || 30;
@@ -135,7 +173,7 @@ export default function OrderTrackingCard() {
       // show at least 1 minute or use estimated time as fallback
       if (remainingMinutes <= 0) {
         // If order is still preparing/confirmed/out_for_delivery, show estimated time
-        const orderStatus = (active.status || active.deliveryState?.status || '').toLowerCase();
+        const orderStatus = normalizeStatus(active);
         if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled') {
           // Order is still active but time calculation shows 0 - use estimated time as fallback
           remainingMinutes = estimatedMinutes;
@@ -148,7 +186,7 @@ export default function OrderTrackingCard() {
       }
       
       // Show card if order is active (not delivered/cancelled)
-      const orderStatus = (active.status || active.deliveryState?.status || '').toLowerCase();
+      const orderStatus = normalizeStatus(active);
       if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled' && orderStatus !== 'restaurant_cancelled') {
         setActiveOrder(active);
         setTimeRemaining(remainingMinutes);
@@ -162,6 +200,62 @@ export default function OrderTrackingCard() {
       setTimeRemaining(null);
     }
   }, [contextOrders, apiOrders, apiCalled]);
+
+  // Poll active order status from backend so banner disappears immediately after delivery/cancel.
+  useEffect(() => {
+    const userToken =
+      localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken');
+    const activeId = activeOrder?.id || activeOrder?._id || activeOrder?.orderId;
+
+    if (!userToken || !activeId) return;
+
+    let cancelled = false;
+
+    const fetchActive = async () => {
+      try {
+        const res = await orderAPI.getOrderDetails(activeId);
+        const order =
+          res?.data?.data?.order || res?.data?.order || res?.data?.data || null;
+        if (!order || cancelled) return;
+
+        const normalizedId = order.id || order._id || order.orderId;
+
+        // Upsert into apiOrders so merge logic uses latest DB status
+        setApiOrders((prev) => {
+          const idx = prev.findIndex(
+            (o) => (o.id || o._id || o.orderId) === normalizedId,
+          );
+          if (idx === -1) return [order, ...prev];
+          const copy = [...prev];
+          copy[idx] = { ...copy[idx], ...order };
+          return copy;
+        });
+        setApiCalled(true);
+
+        const status = normalizeStatus(order);
+        if (
+          status === 'delivered' ||
+          status === 'cancelled' ||
+          status === 'completed' ||
+          status === 'restaurant_cancelled'
+        ) {
+          setActiveOrder(null);
+          setTimeRemaining(null);
+        }
+      } catch {
+        // Silent: banner still works off context + last known apiOrders
+      }
+    };
+
+    // Fetch immediately, then poll
+    fetchActive();
+    const interval = setInterval(fetchActive, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeOrder]);
 
   // Countdown timer
   useEffect(() => {
@@ -181,9 +275,11 @@ export default function OrderTrackingCard() {
         
         if (!existsInApi) {
           // Check if order is recent (placed within last 5 minutes)
-          const orderTime = new Date(contextOrder.createdAt || contextOrder.orderDate || contextOrder.created_at || Date.now());
+          const orderTime = getOrderTime(contextOrder);
           const now = new Date();
-          const minutesSinceOrder = Math.floor((now - orderTime) / (1000 * 60));
+          const minutesSinceOrder = orderTime
+            ? Math.floor((now - orderTime) / (1000 * 60))
+            : Number.POSITIVE_INFINITY;
           const isRecent = minutesSinceOrder < 5; // Within last 5 minutes
           
           if (!apiCalled || isRecent) {
@@ -204,7 +300,7 @@ export default function OrderTrackingCard() {
         return;
       }
 
-      const status = (currentActive.status || currentActive.deliveryState?.status || '').toLowerCase();
+      const status = normalizeStatus(currentActive);
       if (status === 'delivered' || status === 'cancelled' || status === 'completed' || status === 'restaurant_cancelled') {
         setActiveOrder(null);
         setTimeRemaining(null);
@@ -212,9 +308,14 @@ export default function OrderTrackingCard() {
       }
 
       // Calculate remaining time based on elapsed time
-      const orderTime = new Date(currentActive.createdAt || currentActive.orderDate || currentActive.created_at || Date.now());
+      const orderTime = getOrderTime(currentActive);
+      if (!orderTime && apiCalled) {
+        setActiveOrder(null);
+        setTimeRemaining(null);
+        return;
+      }
       const now = new Date();
-      const elapsedMinutes = Math.floor((now - orderTime) / (1000 * 60));
+      const elapsedMinutes = orderTime ? Math.floor((now - orderTime) / (1000 * 60)) : 0;
       
       // Get max ETA (use eta.max if available, otherwise estimatedDeliveryTime)
       const maxETA = currentActive.eta?.max || currentActive.estimatedDeliveryTime || currentActive.estimatedTime || currentActive.estimated_delivery_time || 30;
@@ -225,7 +326,7 @@ export default function OrderTrackingCard() {
       
       // If remaining is 0 or negative but order is still active, use estimated time as fallback
       if (remaining <= 0) {
-        const orderStatus = (currentActive.status || currentActive.deliveryState?.status || '').toLowerCase();
+        const orderStatus = normalizeStatus(currentActive);
         if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled') {
           remaining = estimatedMinutes; // Use full estimated time as fallback
         }
@@ -291,7 +392,7 @@ export default function OrderTrackingCard() {
   }
 
   // Check if order is delivered or time remaining is 0 or negative - hide card
-  const orderStatus = (activeOrder.status || activeOrder.deliveryState?.status || 'preparing').toLowerCase();
+  const orderStatus = normalizeStatus(activeOrder) || 'preparing';
   if (orderStatus === 'delivered' || orderStatus === 'completed' || orderStatus === 'cancelled' || orderStatus === 'restaurant_cancelled' || timeRemaining === null || timeRemaining <= 0) {
     return null;
   }

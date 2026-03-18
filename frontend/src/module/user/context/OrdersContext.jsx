@@ -7,7 +7,27 @@ export function OrdersProvider({ children }) {
     if (typeof window === "undefined") return []
     try {
       const saved = localStorage.getItem("userOrders")
-      return saved ? JSON.parse(saved) : []
+      const parsed = saved ? JSON.parse(saved) : []
+      const arr = Array.isArray(parsed) ? parsed : []
+
+      // Normalize legacy orders so missing dates can't resurrect old tracking banners.
+      const normalized = arr.map((o) => {
+        const createdAt =
+          o?.createdAt ||
+          o?.orderDate ||
+          o?.created_at ||
+          o?.date ||
+          "1970-01-01T00:00:00.000Z";
+        return { ...o, createdAt };
+      });
+
+      // Optional cleanup: drop terminal orders from local tracking cache.
+      const terminal = new Set(["delivered", "cancelled", "completed", "restaurant_cancelled"]);
+      return normalized.filter((o) => {
+        const s1 = String(o?.status || "").trim().toLowerCase();
+        const s2 = String(o?.deliveryState?.status || "").trim().toLowerCase();
+        return !(terminal.has(s1) || terminal.has(s2));
+      });
     } catch {
       return []
     }

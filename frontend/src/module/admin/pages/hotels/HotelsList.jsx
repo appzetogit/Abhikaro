@@ -492,6 +492,28 @@ export default function HotelsList() {
       ctx.textBaseline = "middle"
       ctx.fillStyle = "#DC2626"
 
+      // Auto-fit helper: largest font size that fits within maxWidth for all lines
+      const getFittedFontSize = ({
+        lines,
+        maxWidth,
+        fontFamily = "Arial, sans-serif",
+        fontWeight = "bold",
+        maxFontSize,
+        minFontSize,
+      }) => {
+        const safeLines = Array.isArray(lines) ? lines.filter(Boolean) : []
+        const finalLines = safeLines.length ? safeLines : ["Hotel"]
+
+        for (let size = maxFontSize; size >= minFontSize; size -= 1) {
+          ctx.font = `${fontWeight} ${size}px ${fontFamily}`
+          const fits = finalLines.every(
+            (line) => ctx.measureText(String(line)).width <= maxWidth,
+          )
+          if (fits) return size
+        }
+        return minFontSize
+      }
+
       // "Welcome To"
       ctx.font =
         "bold " + Math.round(posterHeight * 0.032) + "px Arial, sans-serif"
@@ -500,7 +522,13 @@ export default function HotelsList() {
 
       // Hotel name - match hotel app formatting (2-line when possible)
       const hotelNameParts = splitHotelName(qrCodeDialog.hotelName)
-      const hotelNameFontSize = Math.round(posterHeight * 0.038)
+      const nameMaxWidth = posterWidth * 0.86 // safe padding inside the top white rounded area
+      const hotelNameFontSize = getFittedFontSize({
+        lines: hotelNameParts,
+        maxWidth: nameMaxWidth,
+        maxFontSize: Math.round(posterHeight * 0.05),
+        minFontSize: Math.round(posterHeight * 0.024),
+      })
       ctx.font = "bold " + hotelNameFontSize + "px Arial, sans-serif"
 
       if (hotelNameParts.length === 2) {

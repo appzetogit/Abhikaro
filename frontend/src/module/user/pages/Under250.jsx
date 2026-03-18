@@ -555,12 +555,13 @@ export default function Under250() {
             </div>
           </div>
         ) : (
-          sortedAndFilteredRestaurants.map((restaurant) => {
+          sortedAndFilteredRestaurants.map((restaurant, restaurantIndex) => {
             // Prefer onboarding.step1.restaurantName if available (more accurate)
             const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
             const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
+            const restaurantKey = restaurant?._id || restaurant?.id || `${restaurantSlug}-${restaurantIndex}`
             return (
-              <section key={restaurant.id} className="pt-4 sm:pt-6 md:pt-8 lg:pt-10">
+              <section key={restaurantKey} className="pt-4 sm:pt-6 md:pt-8 lg:pt-10">
                 {/* Restaurant Header */}
                 <div className="flex items-start justify-between mb-3 md:mb-4 lg:mb-6">
                   <div className="flex-1">
@@ -602,9 +603,10 @@ export default function Under250() {
                         const quantity = hasVariantsCard
                           ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
                           : (quantities[item.id] || 0)
+                        const itemKey = item?._id || item?.id || `${restaurantKey}-item-${itemIndex}`
                         return (
                           <motion.div
-                            key={item.id}
+                            key={itemKey}
                             className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-full bg-white dark:bg-[#1a1a1a] rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden cursor-pointer"
                             onClick={() => handleItemClick(item, restaurant)}
                             initial={{ opacity: 0, y: 20 }}
