@@ -607,36 +607,19 @@ export default function HotelProfile() {
       const welcomeY = posterHeight * 0.09
       ctx.fillText("Welcome To", posterWidth / 2, welcomeY)
       
-      // Split hotel name intelligently
-      const hotelNameParts = splitHotelName(hotel.hotelName)
-      
-      // Hotel name - auto fit: short names become bigger, long names shrink
+      // Hotel name - ALWAYS single line (auto-fit by width)
+      const hotelNameSingleLine = String(hotel?.hotelName || "Hotel").trim()
       const nameMaxWidth = posterWidth * 0.86 // safe padding inside the top white rounded area
       const hotelNameFontSize = getFittedFontSize({
-        lines: hotelNameParts,
+        lines: [hotelNameSingleLine],
         maxWidth: nameMaxWidth,
         maxFontSize: Math.round(posterHeight * 0.05),
-        minFontSize: Math.round(posterHeight * 0.024),
+        minFontSize: Math.round(posterHeight * 0.02),
       })
       ctx.font = "bold " + hotelNameFontSize + "px Arial, sans-serif"
-      
-      if (hotelNameParts.length === 2) {
-        // Two-line display: "Radha Krishna" on first line, "Hotel and Place" on second line
-        // Tighter spacing to keep both lines within white area
-        const lineHeight = hotelNameFontSize * 0.8 // Tighter line spacing
-        const firstLineY = welcomeY + (posterHeight * 0.045) // Reduced gap from Welcome To
-        const secondLineY = firstLineY + lineHeight
-        
-        // Draw first line (e.g., "Radha Krishna")
-        ctx.fillText(hotelNameParts[0], posterWidth / 2, firstLineY)
-        
-        // Draw second line (e.g., "Hotel and Place") - ensure it stays within white area
-        ctx.fillText(hotelNameParts[1], posterWidth / 2, secondLineY)
-      } else {
-        // Single line display (no split needed)
-        const hotelNameY = welcomeY + (posterHeight * 0.048)
-        ctx.fillText(hotelNameParts[0], posterWidth / 2, hotelNameY)
-      }
+
+      const hotelNameY = welcomeY + posterHeight * 0.048
+      ctx.fillText(hotelNameSingleLine, posterWidth / 2, hotelNameY)
 
       // Calculate QR placement inside white box area of template
       // (Approximate based on template layout: left-centre big white area)

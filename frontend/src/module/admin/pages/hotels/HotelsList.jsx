@@ -520,27 +520,19 @@ export default function HotelsList() {
       const welcomeY = posterHeight * 0.09
       ctx.fillText("Welcome To", posterWidth / 2, welcomeY)
 
-      // Hotel name - match hotel app formatting (2-line when possible)
-      const hotelNameParts = splitHotelName(qrCodeDialog.hotelName)
+      // Hotel name - ALWAYS single line (auto-fit by width)
+      const hotelNameSingleLine = String(qrCodeDialog?.hotelName || "Hotel").trim()
       const nameMaxWidth = posterWidth * 0.86 // safe padding inside the top white rounded area
       const hotelNameFontSize = getFittedFontSize({
-        lines: hotelNameParts,
+        lines: [hotelNameSingleLine],
         maxWidth: nameMaxWidth,
         maxFontSize: Math.round(posterHeight * 0.05),
-        minFontSize: Math.round(posterHeight * 0.024),
+        minFontSize: Math.round(posterHeight * 0.02),
       })
       ctx.font = "bold " + hotelNameFontSize + "px Arial, sans-serif"
 
-      if (hotelNameParts.length === 2) {
-        const lineHeight = hotelNameFontSize * 0.8
-        const firstLineY = welcomeY + posterHeight * 0.045
-        const secondLineY = firstLineY + lineHeight
-        ctx.fillText(hotelNameParts[0], posterWidth / 2, firstLineY)
-        ctx.fillText(hotelNameParts[1], posterWidth / 2, secondLineY)
-      } else {
-        const hotelNameY = welcomeY + posterHeight * 0.048
-        ctx.fillText(hotelNameParts[0] || "Hotel", posterWidth / 2, hotelNameY)
-      }
+      const hotelNameY = welcomeY + posterHeight * 0.048
+      ctx.fillText(hotelNameSingleLine, posterWidth / 2, hotelNameY)
 
       // QR placement
       const qrSize = posterWidth * 0.45
