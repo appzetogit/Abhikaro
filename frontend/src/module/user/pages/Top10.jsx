@@ -63,7 +63,7 @@ export default function Top10() {
         {/* Back Button */}
         <button 
           onClick={() => navigate(-1)}
-          className="absolute top-4 left-4 md:top-6 md:left-6 z-20 w-10 h-10 md:w-12 md:h-12 bg-gray-800/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-gray-800/80 transition-colors"
+          className="absolute top-7 left-4 md:top-9 md:left-6 z-20 w-10 h-10 md:w-12 md:h-12 bg-gray-800/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-gray-800/80 transition-colors"
         >
           <ArrowLeft className="h-5 w-5 md:h-6 md:w-6 text-white" />
         </button>

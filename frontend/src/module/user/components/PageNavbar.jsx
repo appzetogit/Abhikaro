@@ -852,7 +852,7 @@ export default function PageNavbar({
       className={`relative ${zIndexClass} w-full px-1 pr-2 sm:px-2 sm:pr-3 md:px-3 lg:px-6 xl:px-8 py-1.5 sm:py-3 lg:py-4`}
       onClick={onNavClick}
     >
-      <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-3 md:gap-4 lg:gap-6 max-w-7xl mx-auto translate-y-[22px] md:translate-y-0">
+      <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-3 md:gap-4 lg:gap-6 max-w-7xl mx-auto translate-y-[7px] md:translate-y-0">
         {/* Left: User name + Location - Hidden on desktop, shown on mobile */}
         <div className="flex md:hidden items-center gap-3 sm:gap-4 min-w-0">
           {/* Location Button */}
