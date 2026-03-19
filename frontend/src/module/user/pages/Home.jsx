@@ -881,6 +881,7 @@ export default function Home() {
     // Return empty array - featured foods will come from API if needed
     return []
   }, [activeFilters, sortBy])
+  const recommendedRestaurants = filteredRestaurants.slice(0, 12)
 
   // Memoize callbacks to prevent unnecessary re-renders
   const handleLocationClick = useCallback(() => {
@@ -1173,6 +1174,87 @@ export default function Home() {
             })}
           </div>
         </motion.section>
+
+        {/* Recommended For You Section */}
+        {recommendedRestaurants.length > 0 && (
+          <motion.section
+            className="pt-2 sm:pt-3"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ duration: 0.5 }}
+          >
+            <motion.h2
+              className="text-xs sm:text-sm lg:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-2 sm:mb-3 px-1"
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+            >
+              RECOMMENDED FOR YOU
+            </motion.h2>
+
+            <div
+              className="grid grid-rows-2 grid-flow-col auto-cols-[32%] sm:auto-cols-[24%] lg:auto-cols-[20%] gap-2 sm:gap-3 lg:gap-4 overflow-x-scroll scrollbar-hide pb-1 pr-2 snap-x snap-mandatory"
+              style={{
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}
+            >
+              {recommendedRestaurants.map((restaurant) => {
+                const restaurantName = restaurant.name || "Restaurant"
+                const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
+                return (
+                  <Link
+                    key={`recommended-${restaurant.id || restaurantSlug}`}
+                    to={`/user/restaurants/${restaurantSlug}`}
+                    className="block snap-start"
+                  >
+                    <div className="group min-w-0">
+                      <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
+                        {restaurant.image ? (
+                          <img
+                            src={restaurant.image}
+                            alt={restaurantName}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            onError={(e) => {
+                              e.target.style.display = "none"
+                              const placeholder = document.createElement("div")
+                              placeholder.className = "w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-4xl"
+                              placeholder.textContent = "🍽️"
+                              e.target.parentElement.appendChild(placeholder)
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-4xl">
+                            🍽️
+                          </div>
+                        )}
+
+                        {restaurant.rating && (
+                          <div className="absolute bottom-1 left-1 bg-green-600 text-white text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 leading-none">
+                            {restaurant.rating}
+                            <Star className="h-2.5 w-2.5 fill-white" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-1">
+                        <h3 className="text-[11px] sm:text-xs font-semibold text-gray-900 dark:text-white line-clamp-1 leading-tight">
+                          {restaurantName}
+                        </h3>
+                        <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-gray-600 dark:text-gray-400 mt-0.5">
+                          <Clock className="h-2.5 w-2.5" />
+                          <span>{restaurant.deliveryTime || "N/A"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </motion.section>
+        )}
 
         {/* Explore More Section */}
         <motion.section

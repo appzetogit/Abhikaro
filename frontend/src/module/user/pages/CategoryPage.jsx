@@ -699,6 +699,11 @@ export default function CategoryPage() {
 
   // Check if should show grayscale (user out of service)
   const shouldShowGrayscale = isOutOfService
+  const recommendedCards =
+    selectedCategory && selectedCategory !== "all"
+      ? filteredRecommended
+      : filteredRecommended.slice(0, 6)
+  const shouldShowRecommended = recommendedCards.length > 0
 
   return (
     <div className={`min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
@@ -878,33 +883,32 @@ export default function CategoryPage() {
       {/* Content */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-6 md:space-y-8 lg:space-y-10">
         <div className="max-w-7xl mx-auto">
-          {/* RECOMMENDED FOR YOU Section - Hide when "All" category is selected */}
-          {filteredRecommended.length > 0 && selectedCategory !== 'all' && (
+          {/* RECOMMENDED FOR YOU Section */}
+          {shouldShowRecommended && (
             <section>
-              <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
+              <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-3 md:mb-4">
                 RECOMMENDED FOR YOU
               </h2>
 
-              {/* Small Restaurant Cards - Grid - Show all dishes when category is selected */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-4">
-                {(selectedCategory && selectedCategory !== 'all' 
-                  ? filteredRecommended 
-                  : filteredRecommended.slice(0, 6)
-                ).map((restaurant) => {
+              {/* Small Restaurant Cards - Compact grid */}
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-3 md:grid-cols-4 lg:grid-cols-5">
+                {recommendedCards.map((restaurant) => {
+                  const restaurantName = restaurant.name || "Restaurant"
+                  const restaurantSlug = restaurantName.toLowerCase().replace(/\s+/g, "-")
                   return (
                   <Link 
                     key={restaurant.id}
-                    to={`/user/restaurants/${restaurant.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    to={`/user/restaurants/${restaurantSlug}`}
                     className="block"
                   >
-                    <div className={`group ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
+                    <div className={`group ${shouldShowGrayscale ? "grayscale opacity-75" : ""}`}>
                       {/* Image Container */}
-                      <div className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2">
+                      <div className="relative aspect-[4/3] rounded-lg md:rounded-xl overflow-hidden mb-1.5 bg-gray-100 dark:bg-gray-800">
                         {/* Use category dish image if available, otherwise restaurant image */}
                         {restaurant.categoryDishImage ? (
                           <img 
                             src={restaurant.categoryDishImage}
-                            alt={restaurant.categoryDishName || restaurant.name}
+                            alt={restaurant.categoryDishName || restaurantName}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             onError={(e) => {
                               // Fallback to restaurant image if dish image fails
@@ -923,7 +927,7 @@ export default function CategoryPage() {
                         ) : restaurant.image ? (
                         <img 
                           src={restaurant.image}
-                          alt={restaurant.name}
+                          alt={restaurantName}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             onError={(e) => {
                               // Show emoji placeholder
@@ -942,31 +946,33 @@ export default function CategoryPage() {
 
                         {/* Offer Badge */}
                         {restaurant.offer && (
-                        <div className="absolute top-1.5 left-1.5 bg-blue-600 text-white text-[10px] md:text-xs font-semibold px-1.5 py-0.5 rounded">
+                        <div className="absolute top-1 left-1 bg-[#1d4ed8] text-white text-[8px] md:text-[9px] font-semibold px-1.5 py-0.5 rounded">
                           {restaurant.offer}
                         </div>
                         )}
 
-                        {/* Rating Badge (NOW ON IMAGE, bottom-left with white border) */}
-                        <div className="absolute bottom-0 left-0 bg-green-600 border-[4px] rounded-md border-white text-white text-[11px] md:text-xs font-bold px-1.5 py-0.5 flex items-center gap-0.5">
-                          {restaurant.rating}
-                          <Star className="h-2.5 w-2.5 md:h-3 md:w-3 fill-white" />
-                        </div>
+                        {/* Rating Badge */}
+                        {restaurant.rating && (
+                          <div className="absolute bottom-1 left-1 bg-green-600/95 rounded text-white text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 flex items-center gap-0.5 leading-none">
+                            {restaurant.rating}
+                            <Star className="h-2.5 w-2.5 fill-white" />
+                          </div>
+                        )}
                       </div>
 
                       {/* Restaurant Info - Show category dish name if available, otherwise restaurant name */}
-                      <h3 className="font-semibold text-gray-900 dark:text-white text-xs md:text-sm line-clamp-1">
-                        {restaurant.categoryDishName || restaurant.name}
+                      <h3 className="font-semibold text-gray-900 dark:text-white text-[11px] sm:text-xs md:text-sm leading-tight line-clamp-1">
+                        {restaurant.categoryDishName || restaurantName}
                       </h3>
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[10px] md:text-xs">
+                      <div className="flex flex-col gap-0.5 mt-0.5">
+                        <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[9px] sm:text-[10px] md:text-xs">
                           <Clock className="h-2.5 w-2.5 md:h-3 md:w-3" />
                           <span>{restaurant.deliveryTime || 'Not available'}</span>
                         </div>
                         {typeof restaurant.categoryOfferPercentage === "number" &&
                           restaurant.categoryOfferPercentage > 0 && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-green-50 text-[9px] md:text-[10px] font-semibold text-green-700">
-                              Offer of {restaurant.categoryOfferPercentage}%
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-green-50 dark:bg-green-900/20 text-[8px] md:text-[9px] font-semibold text-green-700 dark:text-green-400 max-w-max">
+                              {restaurant.categoryOfferPercentage}% OFF
                             </span>
                           )}
                       </div>
