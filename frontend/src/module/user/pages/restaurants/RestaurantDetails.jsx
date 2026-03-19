@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
@@ -75,6 +75,7 @@ export default function RestaurantDetails() {
   const [showLargeOrderMenu, setShowLargeOrderMenu] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
   const [showMenuOptionsSheet, setShowMenuOptionsSheet] = useState(false)
   const [expandedAddButtons, setExpandedAddButtons] = useState(new Set())
   const [expandedSections, setExpandedSections] = useState(new Set([0])) // Default: Recommended section is expanded
@@ -91,6 +92,18 @@ export default function RestaurantDetails() {
   const [loadingRestaurant, setLoadingRestaurant] = useState(true)
   const [restaurantError, setRestaurantError] = useState(null)
   const fetchedRestaurantRef = useRef(false) // Track if restaurant has been fetched for current slug
+
+  const getItemDomId = (item, sectionIndex, subsectionIndex = null) => {
+    const rawId = String(item?.id || item?._id || item?.name || "item")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+    if (subsectionIndex !== null && subsectionIndex !== undefined) {
+      return `menu-item-${sectionIndex}-${subsectionIndex}-${rawId}`
+    }
+    return `menu-item-${sectionIndex}-${rawId}`
+  }
 
   // Fetch category offers (admin-side category offerPercentage) once
   useEffect(() => {
@@ -1166,41 +1179,37 @@ export default function RestaurantDetails() {
     return Math.max(0, item.price || 0);
   };
 
-  // Filter menu items based on active filters
+  const passesBaseFilters = (item) => {
+    if (!item) return false
+
+    // Under 250 filter (when coming from Under 250 page)
+    if (showOnlyUnder250) {
+      const finalPrice = getFinalPrice(item)
+      if (finalPrice > 250) return false
+    }
+
+    // VegMode filter - when vegMode is ON, show only Veg items
+    // When vegMode is false/null/undefined, show all items (Veg and Non-Veg)
+    if (vegMode === true && item.foodType !== "Veg") return false
+
+    // Veg/Non-veg filter (local filter override)
+    if (filters.vegNonVeg === "veg" && item.foodType !== "Veg") return false
+    if (filters.vegNonVeg === "non-veg" && item.foodType !== "Non-Veg") return false
+
+    return true
+  }
+
+  // Filter menu items based on active filters + search query
   const filterMenuItems = (items) => {
     if (!items) return items
+    const query = searchQuery.toLowerCase().trim()
 
     return items.filter((item) => {
-      // Under 250 filter (when coming from Under 250 page)
-      if (showOnlyUnder250) {
-        const finalPrice = getFinalPrice(item);
-        if (finalPrice > 250) return false;
-      }
-
-      // Search filter
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim()
+      if (!passesBaseFilters(item)) return false
+      if (query) {
         const itemName = item.name?.toLowerCase() || ""
         if (!itemName.includes(query)) return false
       }
-
-      // VegMode filter - when vegMode is ON, show only Veg items
-      // When vegMode is false/null/undefined, show all items (Veg and Non-Veg)
-      if (vegMode === true) {
-        if (item.foodType !== "Veg") return false
-      }
-
-      // Veg/Non-veg filter (local filter override)
-      if (filters.vegNonVeg === "veg") {
-        // Show only veg items
-        if (item.foodType !== "Veg") return false
-      }
-      if (filters.vegNonVeg === "non-veg") {
-        // Show only non-veg items
-        if (item.foodType !== "Non-Veg") return false
-      }
-
-
       return true
     })
   }
@@ -1261,6 +1270,93 @@ export default function RestaurantDetails() {
     return restaurant.menuSections
       .map((section, index) => ({ section, originalIndex: index }))
       .filter(({ section }) => sectionHasItemsUnder250(section));
+  }
+
+  const searchSuggestions = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim()
+    if (!query || !restaurant?.menuSections) return []
+
+    const suggestions = []
+    const seenIds = new Set()
+
+    restaurant.menuSections.forEach((section, sectionIndex) => {
+      const directItems = Array.isArray(section?.items) ? section.items : []
+      directItems.forEach((item) => {
+        if (!item || !passesBaseFilters(item)) return
+        const itemName = String(item.name || "").toLowerCase()
+        if (!itemName.includes(query)) return
+
+        const key = String(item.id || item._id || `${sectionIndex}-${itemName}`)
+        if (seenIds.has(key)) return
+        seenIds.add(key)
+
+        suggestions.push({
+          id: key,
+          item,
+          sectionIndex,
+          subsectionIndex: null,
+          sectionName: sectionIndex === 0 ? "Recommended for you" : (section?.name || section?.title || "Menu"),
+        })
+      })
+
+      const subsections = Array.isArray(section?.subsections) ? section.subsections : []
+      subsections.forEach((subsection, subsectionIndex) => {
+        const subItems = Array.isArray(subsection?.items) ? subsection.items : []
+        subItems.forEach((item) => {
+          if (!item || !passesBaseFilters(item)) return
+          const itemName = String(item.name || "").toLowerCase()
+          if (!itemName.includes(query)) return
+
+          const key = String(item.id || item._id || `${sectionIndex}-${subsectionIndex}-${itemName}`)
+          if (seenIds.has(key)) return
+          seenIds.add(key)
+
+          suggestions.push({
+            id: key,
+            item,
+            sectionIndex,
+            subsectionIndex,
+            sectionName: sectionIndex === 0 ? "Recommended for you" : (section?.name || section?.title || "Menu"),
+          })
+        })
+      })
+    })
+
+    const startsWith = suggestions
+      .filter((s) => String(s.item?.name || "").toLowerCase().startsWith(query))
+      .slice(0, 4)
+    const contains = suggestions
+      .filter((s) => !String(s.item?.name || "").toLowerCase().startsWith(query))
+      .slice(0, 4)
+
+    return [...startsWith, ...contains].slice(0, 8)
+  }, [searchQuery, restaurant?.menuSections, showOnlyUnder250, vegMode, filters.vegNonVeg])
+
+  const handleSearchSuggestionSelect = (suggestion) => {
+    if (!suggestion?.item) return
+
+    const sectionIndex = suggestion.sectionIndex
+    const subsectionIndex = suggestion.subsectionIndex
+    const item = suggestion.item
+
+    setSearchQuery(item.name || "")
+    setExpandedSections((prev) => {
+      const next = new Set(prev)
+      next.add(sectionIndex)
+      if (subsectionIndex !== null && subsectionIndex !== undefined) {
+        next.add(`${sectionIndex}-${subsectionIndex}`)
+      }
+      return next
+    })
+    setShowSearchSuggestions(false)
+
+    const targetId = getItemDomId(item, sectionIndex, subsectionIndex)
+    setTimeout(() => {
+      const itemEl = document.getElementById(targetId)
+      if (itemEl) {
+        itemEl.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+    }, 220)
   }
 
   // Highlight offers/texts for the blue offer line
@@ -1396,8 +1492,8 @@ export default function RestaurantDetails() {
         }`}
     >
       {/* Header - Back, Search, Menu (like reference image) */}
-      <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-3 md:pt-4 lg:pt-5 pb-2 md:pb-3 bg-white dark:bg-[#1a1a1a]">
-        <div className="max-w-7xl mx-auto flex items-center justify-between translate-y-[15px]">
+      <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-4 md:pt-5 lg:pt-6 pb-3 md:pb-4 bg-white dark:bg-[#1a1a1a]">
+        <div className="max-w-7xl mx-auto flex items-center justify-between mt-6">
           {/* Back Button */}
           <Button
             variant="outline"
@@ -1427,10 +1523,17 @@ export default function RestaurantDetails() {
                     type="text"
                     placeholder="Search for dishes..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value)
+                      setShowSearchSuggestions(true)
+                    }}
                     className="w-full pl-10 pr-10 py-2 rounded-full border border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-[#1a1a1a] text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                     autoFocus
+                    onFocus={() => {
+                      if (searchQuery.trim()) setShowSearchSuggestions(true)
+                    }}
                     onBlur={() => {
+                      setTimeout(() => setShowSearchSuggestions(false), 120)
                       if (!searchQuery) {
                         setShowSearch(false)
                       }
@@ -1440,12 +1543,42 @@ export default function RestaurantDetails() {
                     <button
                       onClick={() => {
                         setSearchQuery("")
+                        setShowSearchSuggestions(false)
                         setShowSearch(false)
                       }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
                       <X className="h-4 w-4" />
                     </button>
+                  )}
+
+                  {showSearchSuggestions && searchQuery.trim() && (
+                    <div className="absolute left-0 right-0 mt-2 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-xl z-50 overflow-hidden">
+                      {searchSuggestions.length > 0 ? (
+                        <div className="max-h-72 overflow-y-auto">
+                          {searchSuggestions.map((suggestion) => (
+                            <button
+                              key={`${suggestion.id}-${suggestion.sectionIndex}-${suggestion.subsectionIndex ?? "main"}`}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handleSearchSuggestionSelect(suggestion)}
+                              className="w-full text-left px-4 py-3 border-b last:border-b-0 border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900/40 transition-colors"
+                            >
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-1">
+                                {suggestion.item?.name}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
+                                {suggestion.sectionName}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                          No dish found for "{searchQuery.trim()}"
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1464,7 +1597,7 @@ export default function RestaurantDetails() {
 
       {/* Main Content Card */}
       <div className="mt-2 sm:mt-3 bg-white dark:bg-[#1a1a1a] rounded-t-3xl relative z-10 min-h-[40vh] pb-[160px] md:pb-[160px]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-5 md:py-6 lg:py-8 space-y-3 md:space-y-4 lg:space-y-5 pb-0">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-6 sm:pt-7 md:pt-8 lg:pt-10 pb-0 space-y-3 md:space-y-4 lg:space-y-5">
           {/* Restaurant Name and Rating */}
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
@@ -1687,6 +1820,7 @@ export default function RestaurantDetails() {
                         return (
                           <div
                             key={uniqueKey}
+                            id={getItemDomId(item, originalIndex)}
                             className="flex gap-4 p-4 border-b border-gray-100 last:border-none relative cursor-pointer"
                             onClick={() => handleItemClick(item)}
                           >
@@ -1938,6 +2072,7 @@ export default function RestaurantDetails() {
                                   return (
                                     <div
                                       key={uniqueKey}
+                                      id={getItemDomId(item, originalIndex, subIndex)}
                                       className="flex gap-4 p-4 border-b border-gray-100 last:border-none relative cursor-pointer"
                                       onClick={() => handleItemClick(item)}
                                     >
