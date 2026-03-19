@@ -357,6 +357,22 @@ export default function RestaurantDetails() {
             }
           }
 
+          const pickFirstPositiveNumber = (...values) => {
+            for (const value of values) {
+              const num = Number(value)
+              if (Number.isFinite(num) && num > 0) return num
+            }
+            return 0
+          }
+
+          const pickFirstNonNegativeInteger = (...values) => {
+            for (const value of values) {
+              const num = Number(value)
+              if (Number.isFinite(num) && num >= 0) return Math.floor(num)
+            }
+            return 0
+          }
+
           // Transform API data to match expected format with comprehensive fallbacks
           // Handle both dining restaurant and regular restaurant data structures
           const transformedRestaurant = {
@@ -373,8 +389,22 @@ export default function RestaurantDetails() {
               : (apiRestaurant?.cuisines && Array.isArray(apiRestaurant.cuisines) && apiRestaurant.cuisines.length > 0)
                 ? apiRestaurant.cuisines[0]
                 : (actualRestaurant?.cuisine || apiRestaurant?.cuisine || actualRestaurant?.category || apiRestaurant?.category || "Multi-cuisine"),
-            rating: actualRestaurant?.rating ?? apiRestaurant?.rating ?? actualRestaurant?.averageRating ?? apiRestaurant?.averageRating ?? 4.5,
-            reviews: actualRestaurant?.totalRatings ?? apiRestaurant?.totalRatings ?? actualRestaurant?.reviewCount ?? apiRestaurant?.reviewCount ?? actualRestaurant?.reviews?.length ?? apiRestaurant?.reviews?.length ?? 0,
+            rating: pickFirstPositiveNumber(
+              actualRestaurant?.averageRating,
+              apiRestaurant?.averageRating,
+              actualRestaurant?.avgRating,
+              apiRestaurant?.avgRating,
+              actualRestaurant?.rating,
+              apiRestaurant?.rating
+            ),
+            reviews: pickFirstNonNegativeInteger(
+              actualRestaurant?.totalRatings,
+              apiRestaurant?.totalRatings,
+              actualRestaurant?.reviewCount,
+              apiRestaurant?.reviewCount,
+              actualRestaurant?.reviews?.length,
+              apiRestaurant?.reviews?.length
+            ),
             deliveryTime: actualRestaurant?.estimatedDeliveryTime || apiRestaurant?.estimatedDeliveryTime || actualRestaurant?.deliveryTime || apiRestaurant?.deliveryTime || actualRestaurant?.avgDeliveryTime || apiRestaurant?.avgDeliveryTime || "25-30 mins",
             distance: calculatedDistance || actualRestaurant?.distance || apiRestaurant?.distance || actualRestaurant?.distanceFromUser || apiRestaurant?.distanceFromUser || "1.2 km",
             location: formattedAddress,
@@ -1621,9 +1651,9 @@ export default function RestaurantDetails() {
             <div className="flex flex-col items-end">
               <Badge className="bg-green-500 text-white mb-1 flex items-center gap-1 px-2 py-1">
                 <Star className="h-3 w-3 fill-white" />
-                {restaurant?.rating ?? 4.5}
+                {Number(restaurant?.rating || 0) > 0 ? Number(restaurant.rating).toFixed(1) : "—"}
               </Badge>
-              <span className="text-xs text-gray-500">By {(restaurant.reviews || 0).toLocaleString()}+</span>
+              <span className="text-xs text-gray-500">By {Number(restaurant?.reviews || 0).toLocaleString()}+</span>
             </div>
           </div>
 
@@ -2627,7 +2657,7 @@ export default function RestaurantDetails() {
                                 <div className="flex items-center gap-1">
                                   <Star className="h-3.5 w-3.5 text-green-600 dark:text-green-400 fill-green-600 dark:fill-green-400" />
                                   <span className="text-xs font-medium text-gray-900 dark:text-white">
-                                    {outlet?.rating ?? 4.5}
+                                    {Number(outlet?.rating || 0) > 0 ? Number(outlet.rating).toFixed(1) : "—"}
                                   </span>
                                 </div>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">

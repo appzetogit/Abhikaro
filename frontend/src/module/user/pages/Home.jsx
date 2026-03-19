@@ -650,12 +650,25 @@ export default function Home() {
           // Keep single image for backward compatibility
           const image = allImages[0]
 
+          const rating = (() => {
+            const candidates = [
+              restaurant.averageRating,
+              restaurant.avgRating,
+              restaurant.rating,
+            ]
+            for (const value of candidates) {
+              const parsed = Number(value)
+              if (Number.isFinite(parsed) && parsed > 0) return parsed
+            }
+            return 0
+          })()
+
           return {
             id: restaurant.restaurantId || restaurant._id,
             // Prefer onboarding.step1.restaurantName if available (more accurate)
             name: restaurant.onboarding?.step1?.restaurantName || restaurant.name,
             cuisine: cuisine,
-            rating: restaurant.rating || 4.5,
+            rating,
             deliveryTime: deliveryTime,
             distance: distance,
             distanceInKm: distanceInKm, // Store numeric distance for sorting

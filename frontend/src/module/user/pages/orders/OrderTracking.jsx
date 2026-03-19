@@ -1134,7 +1134,7 @@ export default function OrderTracking() {
           animate={{ opacity: 1 }}
         >
            {/* Navigation bar */}
-           <div className="flex items-center px-4 py-3 relative">
+           <div className="flex items-center px-4 pt-7 pb-3 relative">
              <Link to="/user/orders" className="absolute left-4">
                <motion.button
                  className="w-10 h-10 flex items-center justify-center"
@@ -1184,12 +1184,14 @@ export default function OrderTracking() {
         </motion.div>
       )}
 
-      {/* Map Section */}
-      <DeliveryMap
-        orderId={orderId}
-        order={order}
-        isVisible={!showConfirmation && order !== null}
-      />
+      {/* Map Section - hide completely when delivered */}
+      {orderStatus !== 'delivered' && (
+        <DeliveryMap
+          orderId={orderId}
+          order={order}
+          isVisible={!showConfirmation && order !== null}
+        />
+      )}
 
       {/* Scrollable Content */}
       <div className="max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 space-y-4 md:space-y-6 pb-24 md:pb-32">

@@ -494,7 +494,7 @@ Order again from this restaurant in the ${companyName} app.`
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 pb-10">
-        <div className="bg-white p-4 flex items-center shadow-sm sticky top-0 z-10">
+        <div className="bg-white px-4 pb-4 pt-8 flex items-center shadow-sm sticky top-0 z-10">
           <Link to="/user">
             <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
           </Link>
@@ -510,7 +510,7 @@ Order again from this restaurant in the ${companyName} app.`
   if (orders.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 pb-10">
-        <div className="bg-white p-4 flex items-center shadow-sm sticky top-0 z-10">
+        <div className="bg-white px-4 pb-4 pt-8 flex items-center shadow-sm sticky top-0 z-10">
           <Link to="/user">
             <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
           </Link>
@@ -529,7 +529,7 @@ Order again from this restaurant in the ${companyName} app.`
   return (
     <div className="min-h-screen bg-gray-50 pb-10 font-sans">
       {/* Header */}
-      <div className="bg-white p-4 flex items-center shadow-sm sticky top-0 z-10">
+      <div className="bg-white px-4 pb-4 pt-8 flex items-center shadow-sm sticky top-0 z-10">
         <Link to="/user">
           <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
         </Link>

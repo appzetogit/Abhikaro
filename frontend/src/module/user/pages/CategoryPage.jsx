@@ -711,7 +711,7 @@ export default function CategoryPage() {
       <div className="sticky top-0 z-20 bg-white dark:bg-[#1a1a1a] shadow-sm">
         <div className="max-w-7xl mx-auto">
           {/* Search Bar with Back Button */}
-          <div className="flex items-center gap-2 px-3 md:px-6 pt-7 pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-2 px-3 md:px-6 pt-9 pb-3 border-b border-gray-100 dark:border-gray-800">
             <button 
               onClick={() => navigate('/user')}
               className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
@@ -842,40 +842,6 @@ export default function CategoryPage() {
                 )
               })}
             </div>
-            
-            {/* Row 2 */}
-            <div 
-              className="flex items-center gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide pb-1 md:pb-0"
-              style={{
-                scrollbarWidth: "none",
-                msOverflowStyle: "none",
-              }}
-            >
-              {[
-                { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
-                { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
-                { id: 'flat-50-off', label: 'Flat 50% OFF' },
-                { id: 'under-250', label: 'Under ₹250' },
-              ].map((filter) => {
-                const Icon = filter.icon
-                const isActive = activeFilters.has(filter.id)
-                return (
-                  <Button
-                    key={filter.id}
-                    variant="outline"
-                    onClick={() => toggleFilter(filter.id)}
-                    className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${
-                      isActive
-                        ? 'bg-green-600 text-white border border-green-600 hover:bg-green-600/90'
-                        : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    {Icon && <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`} />}
-                    <span className={`text-xs md:text-sm font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
-                  </Button>
-                )
-              })}
-            </div>
           </div>
         </div>
       </div>
@@ -985,7 +951,7 @@ export default function CategoryPage() {
           )}
 
           {/* ALL RESTAURANTS Section */}
-          <section className="relative">
+          <section className={`relative ${shouldShowRecommended ? "" : "-mt-3"}`}>
             <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
               ALL RESTAURANTS
             </h2>

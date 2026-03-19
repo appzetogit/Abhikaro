@@ -1502,7 +1502,7 @@ export default function Cart() {
     return (
       <AnimatedPage className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a]">
         <div className="bg-white dark:bg-[#1a1a1a] border-b dark:border-gray-800 sticky top-0 z-10">
-          <div className="flex items-center gap-3 px-4 pt-5 pb-3">
+          <div className="flex items-center gap-3 px-4 pt-7 pb-3">
             <Link onClick={() => navigate(-1)}>
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <ArrowLeft className="h-4 w-4" />
@@ -1530,7 +1530,7 @@ export default function Cart() {
       {/* Header - Fixed at top */}
       <div className="bg-white dark:bg-[#1a1a1a] border-b dark:border-gray-800 fixed top-0 left-0 right-0 z-20">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between px-3 md:px-6 pt-8 pb-2 md:pt-9 md:pb-3">
+          <div className="flex items-center justify-between px-3 md:px-6 pt-10 pb-2 md:pt-9 md:pb-3">
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <Link onClick={() => navigate(-1)}>
                 <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0">

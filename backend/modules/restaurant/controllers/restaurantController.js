@@ -1,5 +1,6 @@
 import Restaurant from '../models/Restaurant.js';
 import Menu from '../models/Menu.js';
+import Order from '../../order/models/Order.js';
 import Zone from '../../admin/models/Zone.js';
 import DiningCategory from '../../dining/models/DiningCategory.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
@@ -688,6 +689,44 @@ export const getRestaurantById = async (req, res) => {
     if (restaurant.onboarding?.step1?.restaurantName) {
       restaurant.name = restaurant.onboarding.step1.restaurantName;
     }
+
+    // Compute live rating snapshot from user-submitted order reviews.
+    // This keeps details page rating accurate even if stored aggregates are stale.
+    const ratingKeys = [
+      restaurant.restaurantId,
+      restaurant._id?.toString?.(),
+      restaurant.id,
+    ].filter(Boolean);
+
+    const ratingStats = await Order.aggregate([
+      {
+        $match: {
+          restaurantId: { $in: ratingKeys },
+          "review.rating": { $exists: true, $ne: null, $gt: 0 },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          averageRating: { $avg: "$review.rating" },
+          totalRatings: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const liveAverageRating = Number(ratingStats?.[0]?.averageRating || 0);
+    const liveTotalRatings = Number(ratingStats?.[0]?.totalRatings || 0);
+    const storedRating = Number(restaurant.rating || 0);
+    const storedTotalRatings = Number(restaurant.totalRatings || 0);
+
+    const resolvedRating = liveTotalRatings > 0 ? Number(liveAverageRating.toFixed(1)) : storedRating;
+    const resolvedTotalRatings = liveTotalRatings > 0 ? liveTotalRatings : storedTotalRatings;
+
+    restaurant.rating = Number.isFinite(resolvedRating) ? resolvedRating : 0;
+    restaurant.totalRatings = Number.isFinite(resolvedTotalRatings) ? resolvedTotalRatings : 0;
+    // Include compatible aliases used by different frontend screens.
+    restaurant.averageRating = restaurant.rating;
+    restaurant.reviewCount = restaurant.totalRatings;
 
     const responseData = {
       restaurant,

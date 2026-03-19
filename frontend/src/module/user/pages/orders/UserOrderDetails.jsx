@@ -308,7 +308,7 @@ export default function UserOrderDetails() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24 font-sans relative">
       {/* Header */}
-      <div className="bg-white p-4 flex items-center sticky top-0 z-20 shadow-sm">
+      <div className="bg-white px-4 pb-4 pt-8 flex items-center sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
           <button
             type="button"
