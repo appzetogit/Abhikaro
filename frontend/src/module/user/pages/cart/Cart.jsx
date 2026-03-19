@@ -1530,7 +1530,7 @@ export default function Cart() {
       {/* Header - Fixed at top */}
       <div className="bg-white dark:bg-[#1a1a1a] border-b dark:border-gray-800 fixed top-0 left-0 right-0 z-20">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between px-3 md:px-6 py-2 md:py-3">
+          <div className="flex items-center justify-between px-3 md:px-6 pt-8 pb-2 md:pt-9 md:pb-3">
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <Link onClick={() => navigate(-1)}>
                 <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0">
@@ -1545,9 +1545,6 @@ export default function Cart() {
                 </p>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0">
-              <Share2 className="h-4 w-4 md:h-5 md:w-5" />
-            </Button>
           </div>
         </div>
       </div>

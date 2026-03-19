@@ -1602,7 +1602,21 @@ export default function RestaurantDetails() {
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{restaurant?.name || "Unknown Restaurant"}</h1>
-              <Info className="h-5 w-5 text-gray-400" />
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem(`user_restaurant_info_${slug}`, JSON.stringify(restaurant || {}))
+                  } catch {
+                    // ignore storage errors
+                  }
+                  navigate(`/user/restaurants/${slug}/info`, { state: { restaurant } })
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Restaurant info"
+              >
+                <Info className="h-5 w-5" />
+              </button>
             </div>
             <div className="flex flex-col items-end">
               <Badge className="bg-green-500 text-white mb-1 flex items-center gap-1 px-2 py-1">
@@ -1685,24 +1699,6 @@ export default function RestaurantDetails() {
                 <div className="h-3 w-3 rounded-full bg-green-500" />
                 Veg
                 {filters.vegNonVeg === "veg" && (
-                  <X className="h-3 w-3 text-gray-600" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 bg-white rounded-full ${filters.vegNonVeg === "non-veg" ? "border-amber-700 bg-amber-50" : ""
-                  }`}
-                onClick={() =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    vegNonVeg: prev.vegNonVeg === "non-veg" ? null : "non-veg",
-                  }))
-                }
-              >
-                <div className="h-3 w-3 rounded-full bg-amber-700" />
-                Non-veg
-                {filters.vegNonVeg === "non-veg" && (
                   <X className="h-3 w-3 text-gray-600" />
                 )}
               </Button>

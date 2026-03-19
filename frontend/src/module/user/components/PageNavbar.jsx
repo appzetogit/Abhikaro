@@ -852,7 +852,7 @@ export default function PageNavbar({
       className={`relative ${zIndexClass} w-full px-1 pr-2 sm:px-2 sm:pr-3 md:px-3 lg:px-6 xl:px-8 py-1.5 sm:py-3 lg:py-4`}
       onClick={onNavClick}
     >
-      <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-3 md:gap-4 lg:gap-6 max-w-7xl mx-auto">
+      <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-3 md:gap-4 lg:gap-6 max-w-7xl mx-auto translate-y-[22px] md:translate-y-0">
         {/* Left: User name + Location - Hidden on desktop, shown on mobile */}
         <div className="flex md:hidden items-center gap-3 sm:gap-4 min-w-0">
           {/* Location Button */}
@@ -889,7 +889,7 @@ export default function PageNavbar({
         {/* Center: (Logo removed as per requirement) */}
 
         {/* Right: Actions - Hidden on desktop, shown on mobile */}
-        <div className="flex md:hidden items-center gap-2 sm:gap-3 flex-shrink-0 translate-y-[3px]">
+        <div className="flex md:hidden items-center gap-2 sm:gap-3 flex-shrink-0">
           {/* Wallet Icon */}
           <Link to="/user/wallet">
             <Button
@@ -923,23 +923,6 @@ export default function PageNavbar({
             </Button>
           </Link>
 
-          {/* Profile - Only shown if showProfile is true */}
-          {showProfile && (
-            <Link to="/user/profile">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 hover:opacity-80 transition-opacity"
-                title="Profile"
-              >
-                <div className={`h-full w-full rounded-full bg-white flex items-center justify-center shadow-lg ring-2 ${ringColor}`}>
-                  <span className="text-black text-xs sm:text-sm font-extrabold">
-                    A
-                  </span>
-                </div>
-              </Button>
-            </Link>
-          )}
         </div>
       </div>
     </nav>

@@ -378,7 +378,7 @@ export default function MyBookings() {
     return (
         <AnimatedPage className="bg-slate-50 min-h-screen pb-10">
             {/* Header */}
-            <div className="bg-white p-4 flex items-center shadow-sm sticky top-0 z-10">
+            <div className="bg-white px-4 pt-8 pb-4 flex items-center shadow-sm sticky top-0 z-10">
                 <button onClick={() => navigate("/profile")}>
                     <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
                 </button>

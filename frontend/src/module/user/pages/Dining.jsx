@@ -1,12 +1,11 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { MapPin, Search, Mic, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, UtensilsCrossed, BadgePercent, ShieldCheck, Clock, Bookmark, Check } from "lucide-react"
+import { MapPin, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, UtensilsCrossed, BadgePercent, ShieldCheck, Clock, Bookmark, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import AnimatedPage from "../components/AnimatedPage"
-import { useSearchOverlay, useLocationSelector } from "../components/UserLayout"
+import { useLocationSelector } from "../components/UserLayout"
 import { useLocation as useLocationHook } from "../hooks/useLocation"
 import { useProfile } from "../context/ProfileContext"
 import { diningAPI, restaurantAPI } from "@/lib/api"
@@ -54,7 +53,6 @@ const MOCK_RESTAURANTS = popularRestaurants
 
 export default function Dining() {
   const navigate = useNavigate()
-  const [heroSearch, setHeroSearch] = useState("")
   const [currentRestaurantIndex, setCurrentRestaurantIndex] = useState(0)
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -64,7 +62,6 @@ export default function Dining() {
   const [selectedBankOffer, setSelectedBankOffer] = useState(null)
   const filterSectionRefs = useRef({})
   const rightContentRef = useRef(null)
-  const { openSearch, closeSearch, setSearchValue } = useSearchOverlay()
   const { openLocationSelector } = useLocationSelector()
   const { location } = useLocationHook()
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
@@ -218,13 +215,6 @@ export default function Dining() {
   }, [activeFilters, selectedCuisine, sortBy])
 
 
-  const handleSearchFocus = useCallback(() => {
-    if (heroSearch) {
-      setSearchValue(heroSearch)
-    }
-    openSearch()
-  }, [heroSearch, openSearch, setSearchValue])
-
   // Auto-play carousel
   useEffect(() => {
     if (limelightItems.length === 0) return
@@ -267,48 +257,6 @@ export default function Dining() {
           />
         </div>
 
-        {/* Hero Section with Search */}
-        <section
-          className="relative z-20 w-full py-2 sm:py-3 md:py-4"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="relative z-20 w-full px-3 sm:px-6 lg:px-8">
-            {/* Search Bar Container */}
-            <div className="z-20">
-              {/* Enhanced Search Bar */}
-              <div className="w-full relative">
-                <div className="relative bg-white dark:bg-[#1a1a1a] rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 p-1 sm:p-1.5 transition-all duration-300 hover:shadow-xl">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <Search className="h-4 w-4 sm:h-4 sm:w-4 text-[#FD0134] flex-shrink-0 ml-2 sm:ml-3" strokeWidth={2.5} />
-                    <div className="flex-1 relative">
-                      <Input
-                        value={heroSearch}
-                        onChange={(e) => setHeroSearch(e.target.value)}
-                        onFocus={handleSearchFocus}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && heroSearch.trim()) {
-                            navigate(`/user/search?q=${encodeURIComponent(heroSearch.trim())}`)
-                            closeSearch()
-                            setHeroSearch("")
-                          }
-                        }}
-                        className="pl-0 pr-2 h-8 sm:h-9 w-full bg-transparent border-0 text-sm sm:text-base font-semibold text-gray-700 dark:text-white focus-visible:ring-0 focus-visible:ring-offset-0 rounded-full placeholder:font-semibold placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                        placeholder='Search "burger"'
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSearchFocus}
-                      className="flex-shrink-0 mr-2 sm:mr-3 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-                    >
-                      <Mic className="h-4 w-4 sm:h-4 sm:w-4 text-gray-500 dark:text-gray-400" strokeWidth={2.5} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
 
       {/* Content */}

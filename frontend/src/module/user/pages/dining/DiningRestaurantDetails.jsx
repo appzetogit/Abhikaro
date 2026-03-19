@@ -268,6 +268,7 @@ export default function DiningRestaurantDetails() {
     const dc = restaurant.diningConfig
     const coverImage = dc?.coverImage?.url || restaurant.coverImage || restaurant.profileImage?.url || restaurant.logo || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"
     const displayName = (dc?.basicDetails?.name && dc.basicDetails.name.trim()) || restaurant.onboarding?.step1?.restaurantName || restaurant.name || "Restaurant"
+    const bookingRestaurantName = displayName || "this restaurant"
     const displayAddress = buildFullAddress()
     const ownerName = restaurant.ownerName || restaurant.name || ""
     const ownerPhone = restaurant.ownerPhone || restaurant.phone || restaurant.primaryContactNumber || ""
@@ -313,7 +314,7 @@ export default function DiningRestaurantDetails() {
     return (
         <div className="min-h-screen bg-white pb-20 relative">
             {/* Sticky Header / Back Button */}
-            <div className="fixed top-0 left-0 w-full z-50 p-4 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent pointer-events-none">
+            <div className="fixed top-0 left-0 w-full z-50 px-4 pt-8 pb-4 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent pointer-events-none">
                 <button
                     onClick={() => navigate(-1)}
                     className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white pointer-events-auto hover:bg-black/60 transition-colors"
@@ -454,7 +455,7 @@ export default function DiningRestaurantDetails() {
                 <div className="bg-[#FFF8E8] border border-[#F5D8A0] rounded-xl p-4 relative overflow-hidden">
                     <div className="flex flex-col items-center justify-center text-center z-10 relative">
                         <span className="text-2xl font-black text-[#2D2D2D] tracking-tight">Book your table</span>
-                        <span className="text-sm font-medium text-gray-700 mt-1">Reserve through Tastizo for a smooth dining experience</span>
+                        <span className="text-sm font-medium text-gray-700 mt-1">Reserve through {bookingRestaurantName} for a smooth dining experience</span>
                     </div>
 
                     {/* Decorative Elements */}
@@ -507,7 +508,7 @@ export default function DiningRestaurantDetails() {
                             <>
                                 <p className="text-gray-600 text-sm">Pre-book your table to enjoy dining offers and a seamless experience.</p>
                                 <div className="bg-[#F0FDF4] border border-[#2B9C64]/30 rounded-xl p-4 mt-2">
-                                    <p className="text-sm font-medium text-[#2B9C64]">Reserve through Tastizo for a smooth dining experience.</p>
+                                    <p className="text-sm font-medium text-[#2B9C64]">Reserve through {bookingRestaurantName} for a smooth dining experience.</p>
                                 </div>
                             </>
                         )}

@@ -180,7 +180,7 @@ export default function DiningCategory() {
   return (
     <AnimatedPage className="min-h-screen bg-[#2B9C64]">
       {/* Header with Back Button and Location */}
-      <div className="relative w-full z-20 px-3 sm:px-6 lg:px-8 py-3 sm:py-4">
+      <div className="relative w-full z-20 px-3 sm:px-6 lg:px-8 pt-8 pb-3 sm:pt-9 sm:pb-4">
         <div className="flex items-center justify-start gap-3 sm:gap-4">
           {/* Back Button */}
           <Button

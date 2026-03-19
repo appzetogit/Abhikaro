@@ -482,8 +482,9 @@ export default function Under250() {
             {categories.map((category, index) => {
               const isActive = activeCategory === category.id
               const categorySlug = category.slug || category.name.toLowerCase().replace(/\s+/g, '-')
+              const categoryKey = `${category.id || "cat"}-${categorySlug}-${index}`
               return (
-                <div key={category.id} className="flex-shrink-0">
+                <div key={categoryKey} className="flex-shrink-0">
                   <Link to={`/user/category/${categorySlug}`}>
                     <motion.div
                       className="flex flex-col items-center gap-2 w-[62px] sm:w-24 md:w-28"
@@ -559,7 +560,7 @@ export default function Under250() {
             // Prefer onboarding.step1.restaurantName if available (more accurate)
             const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
             const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
-            const restaurantKey = restaurant?._id || restaurant?.id || `${restaurantSlug}-${restaurantIndex}`
+            const restaurantKey = `${restaurant?._id || restaurant?.id || "rest"}-${restaurantSlug}-${restaurantIndex}`
             return (
               <section key={restaurantKey} className="pt-4 sm:pt-6 md:pt-8 lg:pt-10">
                 {/* Restaurant Header */}

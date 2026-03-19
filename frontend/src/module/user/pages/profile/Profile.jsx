@@ -250,7 +250,7 @@ export default function Profile() {
 
   return (
     <AnimatedPage className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a]">
-      <div className="max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10">
+      <div className="max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-8 sm:pt-9 md:pt-10 lg:pt-12 pb-24 sm:pb-28 md:pb-10 lg:pb-12">
         {/* Profile Info Card */}
         <Card className="bg-white dark:bg-[#1a1a1a] rounded-2xl py-0 pt-1 shadow-sm mb-0 border-0 dark:border-gray-800 overflow-hidden">
           <CardContent className="p-4 py-0 pt-2">
@@ -294,7 +294,7 @@ export default function Profile() {
         </Card>
 
         {/* Money and Coupons - Side by Side */}
-        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-5 mt-3 mb-3">
+        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-5 mt-4 mb-4">
           <Link to="/user/wallet" className="h-full">
             <motion.div
               whileHover={{ y: -4, scale: 1.02 }}
@@ -342,7 +342,7 @@ export default function Profile() {
         </div>
 
         {/* Account Options */}
-        <div className="space-y-2 mb-3">
+        <div className="space-y-3 mb-4">
 
           <Link to="/user/cart" className="block">
             <motion.div
