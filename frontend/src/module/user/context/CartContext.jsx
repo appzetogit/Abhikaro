@@ -10,6 +10,7 @@ const defaultCartContext = {
   total: 0,
   lastAddEvent: null,
   lastRemoveEvent: null,
+  pendingCartReplacement: null,
   addToCart: () => {
     console.warn('CartProvider not available - addToCart called');
   },
@@ -29,6 +30,12 @@ const defaultCartContext = {
   },
   cleanCartForRestaurant: () => {
     console.warn('CartProvider not available - cleanCartForRestaurant called');
+  },
+  confirmCartReplacement: () => {
+    console.warn('CartProvider not available - confirmCartReplacement called');
+  },
+  cancelCartReplacement: () => {
+    console.warn('CartProvider not available - cancelCartReplacement called');
   },
 }
 
@@ -50,6 +57,8 @@ export function CartProvider({ children }) {
   const [lastAddEvent, setLastAddEvent] = useState(null)
   // Track last remove event for animation
   const [lastRemoveEvent, setLastRemoveEvent] = useState(null)
+  // Track pending cart replacement when user tries to add from another restaurant
+  const [pendingCartReplacement, setPendingCartReplacement] = useState(null)
 
   // Persist to localStorage whenever cart changes
   useEffect(() => {
@@ -127,13 +136,19 @@ export function CartProvider({ children }) {
 
         if (firstRestaurantNameNormalized && newRestaurantNameNormalized &&
             firstRestaurantNameNormalized !== newRestaurantNameNormalized) {
-          console.error('❌ Cannot add item: Restaurant mismatch!', {
+          setPendingCartReplacement({
+            item,
+            sourcePosition,
+            existingRestaurantName: firstItemRestaurantName || "current restaurant",
+            incomingRestaurantName: newItemRestaurantName || "new restaurant",
+          });
+          console.warn('⚠️ Cart replacement required: Restaurant mismatch', {
             cartRestaurantId: firstItemRestaurantId,
             cartRestaurantName: firstItemRestaurantName,
             newItemRestaurantId,
             newItemRestaurantName
           });
-          throw new Error(`Cart already contains items from "${firstItemRestaurantName}". Please clear cart or complete order first.`);
+          return prev;
         }
       }
 
@@ -192,6 +207,55 @@ export function CartProvider({ children }) {
 
       return [...prev, newItem];
     });
+  };
+
+  const confirmCartReplacement = () => {
+    if (!pendingCartReplacement?.item) return;
+
+    const { item, sourcePosition } = pendingCartReplacement;
+    const productId = item.productId ?? item.id;
+    const selectedVariantId = item.selectedVariantId ?? null;
+    const cartItemId = getCartItemId(productId, selectedVariantId);
+
+    setCart(() => {
+      const variantPrice = item.variantPrice ?? item.price;
+      const quantity = item.quantity ?? 1;
+      const totalPrice = variantPrice * quantity;
+
+      const newItem = {
+        ...item,
+        id: cartItemId,
+        productId,
+        productName: item.productName ?? item.name,
+        name: item.productName ?? item.name,
+        selectedVariantId: selectedVariantId || undefined,
+        selectedVariantName: item.selectedVariantName || undefined,
+        variantPrice,
+        price: variantPrice,
+        quantity,
+        totalPrice,
+      };
+
+      if (sourcePosition) {
+        setLastAddEvent({
+          product: {
+            id: cartItemId,
+            name: newItem.name + (item.selectedVariantName ? ` - ${item.selectedVariantName}` : ''),
+            imageUrl: item.image || item.imageUrl,
+          },
+          sourcePosition,
+        });
+        setTimeout(() => setLastAddEvent(null), 1500);
+      }
+
+      return [newItem];
+    });
+
+    setPendingCartReplacement(null);
+  };
+
+  const cancelCartReplacement = () => {
+    setPendingCartReplacement(null);
   };
 
   const removeFromCart = (itemId, sourcePosition = null, productInfo = null) => {
@@ -404,6 +468,7 @@ export function CartProvider({ children }) {
       total: cartForAnimation.total,
       lastAddEvent,
       lastRemoveEvent,
+      pendingCartReplacement,
       addToCart,
       removeFromCart,
       updateQuantity,
@@ -413,8 +478,10 @@ export function CartProvider({ children }) {
       getCartItemId,
       clearCart,
       cleanCartForRestaurant,
+      confirmCartReplacement,
+      cancelCartReplacement,
     }),
-    [cart, cartForAnimation, lastAddEvent, lastRemoveEvent]
+    [cart, cartForAnimation, lastAddEvent, lastRemoveEvent, pendingCartReplacement]
   )
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>

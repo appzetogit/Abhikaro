@@ -889,7 +889,7 @@ export default function PageNavbar({
         {/* Center: (Logo removed as per requirement) */}
 
         {/* Right: Actions - Hidden on desktop, shown on mobile */}
-        <div className="flex md:hidden items-center gap-2 sm:gap-3 flex-shrink-0">
+        <div className="flex md:hidden items-center gap-2 sm:gap-3 flex-shrink-0 translate-y-[3px]">
           {/* Wallet Icon */}
           <Link to="/user/wallet">
             <Button

@@ -9,6 +9,7 @@ const SearchOverlay = lazy(() => import("./SearchOverlay"))
 const LocationSelectorOverlay = lazy(() => import("./LocationSelectorOverlay"))
 import BottomNavigation from "./BottomNavigation"
 import DesktopNavbar from "./DesktopNavbar"
+import ReplaceCartDialog from "./ReplaceCartDialog"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 
 // Create SearchOverlay context with default value
@@ -194,6 +195,7 @@ export default function UserLayout() {
                 {/* Desktop navbar (hidden on pages where showBottomNav is false) */}
                 {showBottomNav && <DesktopNavbar />}
                 <LocationPrompt />
+                <ReplaceCartDialog />
                 <main>
                   <Outlet />
                 </main>

@@ -209,7 +209,7 @@ export default function DesktopNavbar() {
             </div>
 
             {/* Right: Wallet and Cart Icons */}
-            <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
+            <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0 translate-y-[3px]">
               {/* Wallet Icon */}
               <Link to="/user/wallet">
                 <Button
