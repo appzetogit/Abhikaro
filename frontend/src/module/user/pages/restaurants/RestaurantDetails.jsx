@@ -1596,8 +1596,8 @@ export default function RestaurantDetails() {
       </div>
 
       {/* Main Content Card */}
-      <div className="mt-2 sm:mt-3 bg-white dark:bg-[#1a1a1a] rounded-t-3xl relative z-10 min-h-[40vh] pb-[160px] md:pb-[160px]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-6 sm:pt-7 md:pt-8 lg:pt-10 pb-0 space-y-3 md:space-y-4 lg:space-y-5">
+      <div className="-mt-1 sm:mt-0 bg-white dark:bg-[#1a1a1a] rounded-t-3xl relative z-10 min-h-[40vh] pb-[160px] md:pb-[160px]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-1 sm:pt-2 md:pt-3 lg:pt-5 pb-0 space-y-3 md:space-y-4 lg:space-y-5">
           {/* Restaurant Name and Rating */}
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
