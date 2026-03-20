@@ -65,9 +65,9 @@ export const useLocationSharing = (orderId, enabled = false) => {
       });
     }
 
-    // Throttle location updates to every 3-5 seconds (Zomato-style optimization)
+    // Throttle location updates to reduce bandwidth but keep tracking responsive
     let lastSentTime = 0;
-    const LOCATION_UPDATE_INTERVAL = 3000; // 3 seconds (industry standard: 3-5 sec)
+    const LOCATION_UPDATE_INTERVAL = 2000; // 2 seconds
     const lastLocationRef = { lat: null, lng: null };
 
     // Start watching position
@@ -91,8 +91,8 @@ export const useLocationSharing = (orderId, enabled = false) => {
               longitude
             );
             
-            // Skip if moved less than 5 meters (reduce unnecessary updates)
-            if (distance < 5) {
+            // Skip if moved less than 2 meters (reduce unnecessary updates)
+            if (distance < 2) {
               return;
             }
           }

@@ -81,6 +81,67 @@ export const createFeedbackExperience = asyncHandler(async (req, res) => {
       metadata
     });
 
+    // If this feedback is a user rating for a delivered order,
+    // also persist it into Order.review so restaurant rating becomes consistent.
+    if (
+      finalModule === 'user' &&
+      finalRestaurantId &&
+      (metadata?.orderMongoId || metadata?.orderId)
+    ) {
+      try {
+        const Order = (await import('../../order/models/Order.js')).default;
+
+        const orderMongoId = metadata?.orderMongoId;
+        const orderId = metadata?.orderId;
+        const orderRating = Number(rating);
+
+        // Only accept 1..5 for Order.review (schema min/max).
+        if (Number.isFinite(orderRating) && orderRating >= 1 && orderRating <= 5) {
+          const orderQuery = {
+            userId
+          };
+
+          if (orderMongoId) {
+            orderQuery._id = orderMongoId;
+          } else if (orderId) {
+            orderQuery.orderId = orderId;
+          }
+
+          // Ensure we update the correct restaurant order if possible.
+          if (finalRestaurantId) {
+            orderQuery.restaurantId = finalRestaurantId;
+          }
+
+          const orderDoc = await Order.findOne(orderQuery).lean();
+
+          // Idempotency: if already rated, don't overwrite.
+          if (orderDoc?.review?.rating) {
+            // no-op
+          } else {
+            const trimmedComment =
+              typeof metadata?.comment === 'string' && metadata.comment.trim()
+                ? metadata.comment.trim().slice(0, 1000)
+                : undefined;
+
+            const updateData = {
+              'review.rating': orderRating,
+              'review.submittedAt': new Date(),
+              'review.reviewedBy': userId
+            };
+
+            if (trimmedComment !== undefined) {
+              updateData['review.comment'] = trimmedComment;
+            }
+
+            await Order.updateOne(orderQuery, { $set: updateData });
+          }
+        }
+      } catch (orderUpdateErr) {
+        // Don't fail feedback creation due to order persistence issues.
+        console.error('Error syncing order review from feedback experience:', orderUpdateErr);
+      }
+    }
+
     return successResponse(res, 201, 'Feedback experience created successfully', {
       feedbackExperience
     });

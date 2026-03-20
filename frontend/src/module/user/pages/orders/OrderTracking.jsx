@@ -1,5 +1,5 @@
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import {
@@ -75,6 +75,29 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
 
   // Get coordinates from order or use defaults (Indore)
   const getRestaurantCoords = () => {
+    const isValidLatLng = (lat, lng) => (
+      typeof lat === 'number' &&
+      typeof lng === 'number' &&
+      !Number.isNaN(lat) &&
+      !Number.isNaN(lng) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180
+    );
+
+    const calculateHaversineDistance = (lat1, lng1, lat2, lng2) => {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
     console.log('🔍 Getting restaurant coordinates from order:', {
       hasOrder: !!order,
       restaurantLocation: order?.restaurantLocation,
@@ -108,13 +131,58 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     }
 
     if (coords && coords.length >= 2) {
-      // GeoJSON format is [longitude, latitude]
-      const result = {
-        lat: coords[1], // Latitude is second element
-        lng: coords[0]  // Longitude is first element
-      };
-      console.log('✅ Final restaurant coordinates (lat, lng):', result, 'from GeoJSON:', coords);
-      return result;
+      const a0 = Number(coords[0]);
+      const a1 = Number(coords[1]);
+
+      // Most common cases:
+      // 1) GeoJSON: [lng, lat] => { lat: coords[1], lng: coords[0] }
+      // 2) Some stores: [lat, lng] => { lat: coords[0], lng: coords[1] }
+      const candidateGeoJSON = { lat: a1, lng: a0 };
+      const candidateAlt = { lat: a0, lng: a1 };
+
+      const customerCoordsArray = order?.address?.coordinates;
+      const hasRealCustomerCoords =
+        Array.isArray(customerCoordsArray) &&
+        customerCoordsArray.length >= 2 &&
+        typeof customerCoordsArray[0] !== 'undefined' &&
+        typeof customerCoordsArray[1] !== 'undefined';
+
+      const customerCandidate = hasRealCustomerCoords
+        ? { lat: Number(customerCoordsArray[1]), lng: Number(customerCoordsArray[0]) } // GeoJSON [lng,lat]
+        : null;
+
+      if (isValidLatLng(candidateGeoJSON.lat, candidateGeoJSON.lng) && customerCandidate && isValidLatLng(customerCandidate.lat, customerCandidate.lng)) {
+        // Pick the interpretation that is closer to the customer's address.
+        if (isValidLatLng(candidateAlt.lat, candidateAlt.lng)) {
+          const dGeo = calculateHaversineDistance(
+            customerCandidate.lat,
+            customerCandidate.lng,
+            candidateGeoJSON.lat,
+            candidateGeoJSON.lng
+          );
+          const dAlt = calculateHaversineDistance(
+            customerCandidate.lat,
+            customerCandidate.lng,
+            candidateAlt.lat,
+            candidateAlt.lng
+          );
+
+          const result = dAlt < dGeo ? candidateAlt : candidateGeoJSON;
+          console.log('✅ Final restaurant coordinates picked by proximity:', result, { dGeo, dAlt, raw: coords });
+          return result;
+        }
+
+        console.log('✅ Final restaurant coordinates (GeoJSON, only candidate valid):', candidateGeoJSON, { raw: coords });
+        return candidateGeoJSON;
+      }
+
+      if (isValidLatLng(candidateAlt.lat, candidateAlt.lng)) {
+        console.log('✅ Final restaurant coordinates (alt interpretation valid):', candidateAlt, { raw: coords });
+        return candidateAlt;
+      }
+
+      console.warn('⚠️ Restaurant coordinates invalid; falling back to default Indore:', { raw: coords });
+      return { lat: 22.7196, lng: 75.8577 };
     }
 
     console.warn('⚠️ Restaurant coordinates not found, using default Indore coordinates');
@@ -222,6 +290,7 @@ export default function OrderTracking() {
 
   const [showConfirmation, setShowConfirmation] = useState(confirmed)
   const [orderStatus, setOrderStatus] = useState('placed')
+  const orderStatusRef = useRef(orderStatus)
   const [estimatedTime, setEstimatedTime] = useState(null) // Will be calculated from order data
   const [orderCreatedAt, setOrderCreatedAt] = useState(null) // Store order creation time
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -234,6 +303,62 @@ export default function OrderTracking() {
   const [isSavingInstructions, setIsSavingInstructions] = useState(false)
 
   const defaultAddress = getDefaultAddress()
+
+  useEffect(() => {
+    orderStatusRef.current = orderStatus
+  }, [orderStatus])
+
+  // Derive the UI status from the latest `order` object.
+  // This prevents stale localStorage state from showing wrong banners after refresh.
+  const mapOrderToUIStatus = useCallback((o) => {
+    const rawStatus = String(o?.status || "").toLowerCase()
+
+    const trackingDelivered =
+      o?.tracking?.delivered?.status === true || o?.tracking?.delivered === true
+
+    const stateDelivered =
+      String(o?.deliveryState?.status || "").toLowerCase() === "delivered"
+
+    const phaseCompleted =
+      String(o?.deliveryState?.currentPhase || "").toLowerCase() === "completed"
+
+    const isDelivered =
+      rawStatus === "delivered" ||
+      rawStatus === "completed" ||
+      trackingDelivered ||
+      stateDelivered ||
+      phaseCompleted ||
+      o?.deliveryState?.currentPhase === "completed"
+
+    if (rawStatus === "cancelled") {
+      return { uiStatus: "cancelled", estimatedTimeOverride: 0 }
+    }
+
+    if (isDelivered) {
+      return { uiStatus: "delivered", estimatedTimeOverride: 0 }
+    }
+
+    if (rawStatus === "preparing") {
+      return { uiStatus: "preparing", estimatedTimeOverride: null }
+    }
+
+    if (rawStatus === "ready" || rawStatus === "out_for_delivery") {
+      return { uiStatus: "pickup", estimatedTimeOverride: null }
+    }
+
+    return { uiStatus: "placed", estimatedTimeOverride: null }
+  }, [])
+
+  useEffect(() => {
+    if (!order) return
+
+    const mapped = mapOrderToUIStatus(order)
+    setOrderStatus(mapped.uiStatus)
+
+    if (mapped.estimatedTimeOverride !== null) {
+      setEstimatedTime(mapped.estimatedTimeOverride)
+    }
+  }, [order, mapOrderToUIStatus])
 
   // Detect hotel order context
   useEffect(() => {
@@ -385,14 +510,17 @@ export default function OrderTracking() {
           // Try to preserve restaurantId if it exists
           console.log('⚠️ Context order missing restaurantId, will fetch from API');
         }
+        // Set immediately for fast UI, but do NOT return.
+        // We still fetch from backend because localStorage can be stale.
         setOrder(contextOrder)
         setLoading(false)
-        return
       }
 
       // If not in context, fetch from API
       try {
-        setLoading(true)
+        // Only show loader if we didn't already set from context.
+        // Otherwise, keep current UI while we refresh from backend.
+        if (!contextOrder) setLoading(true)
         setError(null)
 
         const response = await orderAPI.getOrderDetails(orderId)
@@ -616,15 +744,23 @@ export default function OrderTracking() {
           }
 
           // Update orderStatus based on API order status
-          if (apiOrder.status === 'cancelled') {
+          const apiStatus = String(apiOrder.status || "").toLowerCase()
+
+          if (apiStatus === "cancelled") {
             setOrderStatus('cancelled');
-          } else if (apiOrder.status === 'preparing') {
+          } else if (apiStatus === "preparing") {
             setOrderStatus('preparing');
-          } else if (apiOrder.status === 'ready') {
+          } else if (apiStatus === "ready") {
             setOrderStatus('pickup');
-          } else if (apiOrder.status === 'out_for_delivery') {
+          } else if (apiStatus === "out_for_delivery") {
             setOrderStatus('pickup');
-          } else if (apiOrder.status === 'delivered') {
+          } else if (
+            apiStatus === "delivered" ||
+            apiStatus === "completed" ||
+            String(apiOrder.deliveryState?.status || "").toLowerCase() === "delivered" ||
+            String(apiOrder.deliveryState?.currentPhase || "").toLowerCase() === "completed" ||
+            apiOrder.tracking?.delivered === true
+          ) {
             setOrderStatus('delivered');
             setEstimatedTime(0); // Set to 0 when delivered
           }
@@ -633,7 +769,12 @@ export default function OrderTracking() {
         }
       } catch (err) {
         console.error('Error fetching order:', err)
-        setError(err.response?.data?.message || err.message || 'Failed to fetch order')
+        // If we already had an order from context/localStorage, don't override the UI with an error.
+        if (!contextOrder) {
+          setError(
+            err.response?.data?.message || err.message || 'Failed to fetch order'
+          )
+        }
       } finally {
         setLoading(false)
       }
@@ -649,7 +790,13 @@ export default function OrderTracking() {
     if (confirmed) {
       const timer1 = setTimeout(() => {
         setShowConfirmation(false)
-        setOrderStatus('preparing')
+        // Prevent confirmation simulation from overriding already-delivered orders
+        if (
+          orderStatusRef.current !== 'delivered' &&
+          orderStatusRef.current !== 'cancelled'
+        ) {
+          setOrderStatus('preparing')
+        }
       }, 3000)
       return () => clearTimeout(timer1)
     }
@@ -1000,16 +1147,24 @@ export default function OrderTracking() {
         }
 
         // Update order status for UI
-        if (apiOrder.status === 'cancelled') {
+        const apiStatus = String(apiOrder.status || "").toLowerCase()
+
+        if (apiStatus === "cancelled") {
           setOrderStatus('cancelled');
           setEstimatedTime(0);
-        } else if (apiOrder.status === 'preparing') {
+        } else if (apiStatus === "preparing") {
           setOrderStatus('preparing')
-        } else if (apiOrder.status === 'ready') {
+        } else if (apiStatus === "ready") {
           setOrderStatus('pickup')
-        } else if (apiOrder.status === 'out_for_delivery') {
+        } else if (apiStatus === "out_for_delivery") {
           setOrderStatus('pickup')
-        } else if (apiOrder.status === 'delivered') {
+        } else if (
+          apiStatus === "delivered" ||
+          apiStatus === "completed" ||
+          String(apiOrder.deliveryState?.status || "").toLowerCase() === "delivered" ||
+          String(apiOrder.deliveryState?.currentPhase || "").toLowerCase() === "completed" ||
+          apiOrder.tracking?.delivered === true
+        ) {
           setOrderStatus('delivered')
           setEstimatedTime(0); // Set to 0 when delivered
         }
@@ -1197,6 +1352,20 @@ export default function OrderTracking() {
       <div className="max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 space-y-4 md:space-y-6 pb-24 md:pb-32">
         {/* Food Cooking Status - Show until delivery partner accepts pickup */}
         {(() => {
+          const isDelivered =
+            orderStatus === 'delivered' ||
+            order?.status === 'delivered' ||
+            order?.status === 'completed' ||
+            order?.deliveryState?.status === 'delivered' ||
+            order?.deliveryState?.currentPhase === 'completed' ||
+            order?.tracking?.delivered?.status === true ||
+            order?.tracking?.delivered === true
+
+          // If order is already delivered/completed, hide cooking banner.
+          if (isDelivered) {
+            return null
+          }
+
           // Check if delivery partner has accepted pickup
           // Delivery partner accepts when status is 'ready' or 'out_for_delivery' or tracking shows outForDelivery
           const hasAcceptedPickup = order?.tracking?.outForDelivery?.status === true ||

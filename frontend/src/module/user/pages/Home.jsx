@@ -4,6 +4,7 @@ import { createPortal } from "react-dom"
 import Lenis from "lenis"
 import { Star, Clock, MapPin, Heart, Search, Tag, Flame, ShoppingBag, ShoppingCart, SlidersHorizontal, CheckCircle2, Bookmark, BadgePercent, X, ArrowDownUp, Timer, CalendarClock, ShieldCheck, IndianRupee, UtensilsCrossed, Leaf, AlertCircle, Loader2, Plus, Check, Share2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
+import { toast } from "sonner"
 import Footer from "../components/Footer"
 import AddToCartButton from "../components/AddToCartButton"
 import StickyCartCard from "../components/StickyCartCard"
@@ -34,8 +35,8 @@ import {
 import { useLocation } from "../hooks/useLocation"
 import { useZone } from "../hooks/useZone"
 import offerImage from "@/assets/offerimage.png"
-import api, { restaurantAPI } from "@/lib/api"
-import { API_BASE_URL } from "@/lib/api/config"
+import api, { restaurantAPI, orderAPI } from "@/lib/api"
+import { API_BASE_URL, API_ENDPOINTS } from "@/lib/api/config"
 import OptimizedImage from "@/components/OptimizedImage"
 // Explore More Icons
 import exploreOffers from "@/assets/explore more icons/offers.png"
@@ -83,6 +84,28 @@ export default function Home() {
   const [showAllCategoriesModal, setShowAllCategoriesModal] = useState(false)
   const isHandlingSwitchOff = useRef(false)
 
+  // Rating & feedback popup (after order delivered)
+  const [ratingModal, setRatingModal] = useState({ open: false, order: null })
+  const ratingModalOpenRef = useRef(ratingModal.open)
+  const [selectedRating, setSelectedRating] = useState(null)
+  const [feedbackText, setFeedbackText] = useState("")
+  const [submittingRating, setSubmittingRating] = useState(false)
+
+  // Track orders that have shown rating popup - persist in localStorage
+  const [shownRatingForOrders, setShownRatingForOrders] = useState(() => {
+    try {
+      const stored = localStorage.getItem("shownRatingForOrders")
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
+  const shownRatingForOrdersRef = useRef(shownRatingForOrders)
+  const ratingPopupTimeoutRef = useRef(null)
+  const scheduledRatingOrderIdRef = useRef(null)
+  const latestOrdersRef = useRef([])
+
   // Swipe functionality for hero banner carousel
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
@@ -97,6 +120,23 @@ export default function Home() {
       setPrevVegMode(vegMode)
     }
   }, [vegMode])
+
+  // Persist shown orders so the popup is only shown once per order.
+  useEffect(() => {
+    shownRatingForOrdersRef.current = shownRatingForOrders
+    try {
+      localStorage.setItem(
+        "shownRatingForOrders",
+        JSON.stringify(Array.from(shownRatingForOrders))
+      )
+    } catch (error) {
+      // Ignore localStorage errors (private mode, disabled storage, etc.)
+    }
+  }, [shownRatingForOrders])
+
+  useEffect(() => {
+    ratingModalOpenRef.current = ratingModal.open
+  }, [ratingModal.open])
 
   // Handle vegMode toggle - show popup when turned ON or OFF
   const handleVegModeChange = (newValue) => {
@@ -151,6 +191,276 @@ export default function Home() {
       window.removeEventListener('resize', updatePosition)
     }
   }, [showVegModePopup])
+
+  // -----------------------------
+  // Delivered-order rating popup
+  // -----------------------------
+  const normalizeOrderForRating = useCallback((order) => {
+    const id =
+      order?.orderId ||
+      order?._id?.toString?.() ||
+      order?.id ||
+      order?.mongoId ||
+      null
+
+    return {
+      id,
+      mongoId: order?._id || order?.mongoId || null,
+      restaurantId: order?.restaurantId?._id || order?.restaurantId || null,
+      restaurant:
+        order?.restaurantId?.name ||
+        order?.restaurantName ||
+        "Restaurant",
+      total: order?.pricing?.total || order?.total || 0,
+    }
+  }, [])
+
+  const handleOpenRatingModal = useCallback(
+    (order) => {
+      if (!order) return
+
+      const normalized = normalizeOrderForRating(order)
+      if (!normalized.id) return
+
+      // Reserve this order id immediately to prevent double popups
+      setShownRatingForOrders((prev) => new Set([...prev, normalized.id]))
+      scheduledRatingOrderIdRef.current = null
+      if (ratingPopupTimeoutRef.current) {
+        clearTimeout(ratingPopupTimeoutRef.current)
+        ratingPopupTimeoutRef.current = null
+      }
+
+      setRatingModal({ open: true, order: normalized })
+      setSelectedRating(null)
+      setFeedbackText("")
+    },
+    [normalizeOrderForRating]
+  )
+
+  const handleCloseRatingModal = useCallback(() => {
+    scheduledRatingOrderIdRef.current = null
+    if (ratingPopupTimeoutRef.current) {
+      clearTimeout(ratingPopupTimeoutRef.current)
+      ratingPopupTimeoutRef.current = null
+    }
+
+    setRatingModal({ open: false, order: null })
+    setSelectedRating(null)
+    setFeedbackText("")
+  }, [])
+
+  const handleSubmitRating = useCallback(async () => {
+    if (!ratingModal.order || selectedRating === null) {
+      toast.error("Please select a rating first")
+      return
+    }
+
+    const order = ratingModal.order
+
+    try {
+      setSubmittingRating(true)
+
+      await api.post(API_ENDPOINTS.ADMIN.FEEDBACK_EXPERIENCE_CREATE, {
+        rating: selectedRating,
+        module: "user",
+        restaurantId: order.restaurantId || null,
+        metadata: {
+          orderId: order.id,
+          orderMongoId: order.mongoId,
+          orderTotal: order.total,
+          restaurantName: order.restaurant,
+          comment: feedbackText || undefined,
+        },
+      })
+
+      // Close modal & allow next order popup in future (for other orders)
+      toast.success("Thanks for rating your order! 🎉")
+      handleCloseRatingModal()
+    } catch (error) {
+      console.error("Error submitting rating:", error)
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to submit rating. Please try again."
+      )
+    } finally {
+      setSubmittingRating(false)
+    }
+  }, [
+    ratingModal.order,
+    selectedRating,
+    feedbackText,
+    handleCloseRatingModal
+  ])
+
+  // Poll user orders and show rating modal for delivered orders after 1 minute.
+  useEffect(() => {
+    if (ratingModal.open) return
+
+    const getDeliveredAtValue = (order) => {
+      // Support multiple backend field names (some UI components use these fallbacks)
+      return (
+        order?.deliveredAt ||
+        order?.delivered_on ||
+        order?.deliveredOn ||
+        order?.delivered_on_at ||
+        null
+      )
+    }
+
+    const isDelivered = (order) => {
+      const status = order?.status
+      const deliveredAt = getDeliveredAtValue(order)
+      const deliveryDelivered =
+        order?.tracking?.delivered === true ||
+        order?.deliveryState?.status === "delivered" ||
+        order?.deliveryState?.currentPhase === "completed"
+
+      return (
+        status === "delivered" ||
+        status === "completed" ||
+        deliveryDelivered ||
+        (deliveredAt !== null &&
+          deliveredAt !== undefined &&
+          deliveredAt !== "")
+      )
+    }
+
+    const hasRated = (order) => {
+      const rating =
+        order?.review?.rating ?? order?.rating ?? order?.review?.review?.rating
+      return rating !== null && rating !== undefined && Number(rating) > 0
+    }
+
+    const getOrderId = (order) => {
+      return order?.orderId || order?._id?.toString?.() || order?.id
+    }
+
+    const computeEarliestCandidate = (orders) => {
+      const candidates = (orders || [])
+        .filter((order) => {
+          const orderId = getOrderId(order)
+          if (!orderId) return false
+
+          if (shownRatingForOrdersRef.current.has(orderId)) return false
+          if (!isDelivered(order)) return false
+          if (hasRated(order)) return false
+
+          return true
+        })
+        .map((order) => {
+          const orderId = getOrderId(order)
+          const deliveredAt = getDeliveredAtValue(order)
+          const deliveredTs = deliveredAt ? new Date(deliveredAt).getTime() : null
+          const showAt = deliveredTs ? deliveredTs + 60_000 : Date.now()
+          return { order, orderId, showAt }
+        })
+
+      candidates.sort((a, b) => a.showAt - b.showAt)
+      return candidates[0] || null
+    }
+
+    let cancelled = false
+
+    const pollAndMaybeSchedule = async () => {
+      try {
+        const response = await orderAPI.getOrders({ limit: 100, page: 1 })
+        if (cancelled) return
+
+        let ordersData = []
+        if (response?.data?.success && response?.data?.data?.orders) {
+          ordersData = response.data.data.orders || []
+        } else if (response?.data?.orders) {
+          ordersData = response.data.orders || []
+        } else if (response?.data?.data && Array.isArray(response.data.data)) {
+          ordersData = response.data.data || []
+        }
+
+        latestOrdersRef.current = ordersData
+
+        const candidate = computeEarliestCandidate(ordersData)
+        if (!candidate) return
+
+        if (import.meta.env.DEV) {
+          const deliveredAt = getDeliveredAtValue(candidate.order)
+          const deliveredTs = deliveredAt ? new Date(deliveredAt).getTime() : null
+          console.log("🟧 [RatingPopup] candidate found:", {
+            orderId: candidate.orderId,
+            status: candidate.order?.status,
+            deliveredAt,
+            deliveredTs,
+            showAt: candidate.showAt,
+            delayMs: candidate.showAt - Date.now(),
+          })
+        }
+
+        // Avoid re-scheduling if we already have the same order scheduled.
+        if (
+          scheduledRatingOrderIdRef.current === candidate.orderId &&
+          ratingPopupTimeoutRef.current
+        ) {
+          return
+        }
+
+        // Clear previous timer before scheduling new one.
+        if (ratingPopupTimeoutRef.current) {
+          clearTimeout(ratingPopupTimeoutRef.current)
+          ratingPopupTimeoutRef.current = null
+        }
+
+        const delayMs = candidate.showAt - Date.now()
+        scheduledRatingOrderIdRef.current = candidate.orderId
+
+        if (delayMs <= 0) {
+          // Delivered + 1 minute already passed -> open immediately.
+          handleOpenRatingModal(candidate.order)
+          return
+        }
+
+        ratingPopupTimeoutRef.current = setTimeout(() => {
+          // At timer fire time, re-check candidate eligibility using latest orders.
+          if (cancelled) return
+
+          const freshCandidate = computeEarliestCandidate(
+            latestOrdersRef.current
+          )
+
+          if (import.meta.env.DEV) {
+            console.log("⏱️ [RatingPopup] timer fired:", {
+              scheduledOrderId: candidate.orderId,
+              freshCandidateOrderId: freshCandidate?.orderId || null,
+              ratingModalOpen: ratingModalOpenRef.current,
+            })
+          }
+
+          if (
+            freshCandidate &&
+            freshCandidate.orderId === candidate.orderId &&
+            !ratingModalOpenRef.current
+          ) {
+            handleOpenRatingModal(freshCandidate.order)
+          }
+        }, delayMs)
+      } catch (error) {
+        // Silently ignore polling errors; home page should still work.
+        if (import.meta.env.DEV) {
+          console.error("Order rating popup polling failed:", error)
+        }
+      }
+    }
+
+    pollAndMaybeSchedule()
+    const intervalId = setInterval(pollAndMaybeSchedule, 30_000)
+
+    return () => {
+      cancelled = true
+      if (intervalId) clearInterval(intervalId)
+      if (ratingPopupTimeoutRef.current) {
+        clearTimeout(ratingPopupTimeoutRef.current)
+        ratingPopupTimeoutRef.current = null
+      }
+      scheduledRatingOrderIdRef.current = null
+    }
+  }, [ratingModal.open, shownRatingForOrders, handleOpenRatingModal, normalizeOrderForRating])
 
   // Fetch hero banners from API
   useEffect(() => {
@@ -2581,6 +2891,119 @@ export default function Home() {
           </AnimatePresence>,
           document.body
         )}
+
+      {/* Rating & Feedback Modal (delivered orders) */}
+      {ratingModal.open && ratingModal.order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="bg-gradient-to-r from-[#E23744] to-red-600 px-6 py-5">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Star className="w-5 h-5 fill-white" />
+                  Rate Your Order
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleCloseRatingModal}
+                  className="text-white/80 hover:text-white transition-colors p-1 rounded-full hover:bg-white/20"
+                >
+                  <span className="text-xl">✕</span>
+                </button>
+              </div>
+              <p className="text-sm text-white/90">
+                {ratingModal.order.restaurant} • Order #{ratingModal.order.id}
+              </p>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="mb-6">
+                <p className="text-sm font-semibold text-gray-900 mb-4 text-center">
+                  How was your overall experience?
+                </p>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  {Array.from({ length: 5 }, (_, i) => i + 1).map((num) => {
+                    const isActive = (selectedRating || 0) >= num
+                    return (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setSelectedRating(num)}
+                        className="p-2 transition-transform hover:scale-125 active:scale-95"
+                      >
+                        <Star
+                          className={`w-10 h-10 transition-all ${
+                            isActive
+                              ? "text-yellow-400 fill-yellow-400 drop-shadow-lg"
+                              : "text-gray-300 hover:text-yellow-200"
+                          }`}
+                        />
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex items-center justify-between mt-2 px-2">
+                  <span className="text-xs text-red-500 font-medium">Poor</span>
+                  <span className="text-xs text-gray-400">Average</span>
+                  <span className="text-xs text-green-600 font-medium">
+                    Excellent
+                  </span>
+                </div>
+                {selectedRating && (
+                  <p className="text-center mt-3 text-sm font-medium text-gray-700">
+                    {selectedRating === 5 && "⭐⭐⭐⭐⭐ Excellent!"}
+                    {selectedRating === 4 && "⭐⭐⭐⭐ Great!"}
+                    {selectedRating === 3 && "⭐⭐⭐ Good"}
+                    {selectedRating === 2 && "⭐⭐ Fair"}
+                    {selectedRating === 1 && "⭐ Poor"}
+                  </p>
+                )}
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-gray-900 mb-2">
+                  Share your feedback{" "}
+                  <span className="text-gray-400 font-normal">(Optional)</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E23744] focus:border-[#E23744] resize-none transition-all"
+                  placeholder="What did you like or dislike about this order? Share your experience..."
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Your feedback helps us improve our service
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={submittingRating || selectedRating === null}
+                onClick={handleSubmitRating}
+                className="w-full rounded-xl bg-gradient-to-r from-[#E23744] to-red-600 text-white text-base font-bold py-3.5 hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-red-500/30 flex items-center justify-center gap-2"
+              >
+                {submittingRating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Star className="w-5 h-5 fill-white" />
+                    Submit Rating
+                  </>
+                )}
+              </button>
+
+              {selectedRating === null && (
+                <p className="text-xs text-center text-red-500 mt-2">
+                  Please select a rating to continue
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <StickyCartCard />
       <OrderTrackingCard />
