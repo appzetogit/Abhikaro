@@ -221,7 +221,33 @@ export default function RestaurantDetails() {
 
         if (apiRestaurant) {
           // Check if this is a dining restaurant with nested restaurant data
-          const actualRestaurant = apiRestaurant?.restaurant || apiRestaurant
+          let actualRestaurant = apiRestaurant?.restaurant || apiRestaurant
+
+          // Dining slug response can miss live rating aggregates.
+          // Enrich with restaurant endpoint snapshot when possible.
+          try {
+            const ratingSnapshotResp = await restaurantAPI.getRestaurantById(slug)
+            const snapshotData = ratingSnapshotResp?.data?.data
+            const snapshotRestaurant = snapshotData?.restaurant || snapshotData
+            if (snapshotRestaurant && typeof snapshotRestaurant === "object") {
+              actualRestaurant = {
+                ...actualRestaurant,
+                averageRating:
+                  snapshotRestaurant.averageRating ?? actualRestaurant.averageRating,
+                rating: snapshotRestaurant.rating ?? actualRestaurant.rating,
+                totalRatings:
+                  snapshotRestaurant.totalRatings ?? actualRestaurant.totalRatings,
+                reviewCount:
+                  snapshotRestaurant.reviewCount ?? actualRestaurant.reviewCount,
+                totalReviews:
+                  snapshotRestaurant.totalReviews ?? actualRestaurant.totalReviews,
+                ratingsCount:
+                  snapshotRestaurant.ratingsCount ?? actualRestaurant.ratingsCount,
+              }
+            }
+          } catch {
+            // Keep original dining payload if snapshot call fails.
+          }
 
           // Helper function to format address with zone and pin code
           const formatRestaurantAddress = (locationObj) => {
@@ -400,6 +426,10 @@ export default function RestaurantDetails() {
             reviews: pickFirstNonNegativeInteger(
               actualRestaurant?.totalRatings,
               apiRestaurant?.totalRatings,
+              actualRestaurant?.totalReviews,
+              apiRestaurant?.totalReviews,
+              actualRestaurant?.ratingsCount,
+              apiRestaurant?.ratingsCount,
               actualRestaurant?.reviewCount,
               apiRestaurant?.reviewCount,
               actualRestaurant?.reviews?.length,
@@ -469,6 +499,15 @@ export default function RestaurantDetails() {
             // Availability fields for grayscale styling
             isActive: actualRestaurant?.isActive !== false, // Default to true if not specified
             isAcceptingOrders: actualRestaurant?.isAcceptingOrders !== false, // Default to true if not specified
+          }
+
+          // Some APIs return average rating but omit rating-count fields.
+          // In that case, avoid showing "No user ratings yet" when rating is available.
+          if (
+            Number(transformedRestaurant.reviews || 0) === 0 &&
+            Number(transformedRestaurant.rating || 0) > 0
+          ) {
+            transformedRestaurant.reviews = 1
           }
 
           if (!transformedRestaurant.id) {
@@ -1653,7 +1692,11 @@ export default function RestaurantDetails() {
                 <Star className="h-3 w-3 fill-white" />
                 {Number(restaurant?.rating || 0) > 0 ? Number(restaurant.rating).toFixed(1) : "—"}
               </Badge>
-              <span className="text-xs text-gray-500">By {Number(restaurant?.reviews || 0).toLocaleString()}+</span>
+              <span className="text-xs text-gray-500">
+                {Number(restaurant?.reviews || 0) > 0
+                  ? `${Number(restaurant?.reviews || 0).toLocaleString()} user ratings`
+                  : "No user ratings yet"}
+              </span>
             </div>
           </div>
 
@@ -2661,7 +2704,9 @@ export default function RestaurantDetails() {
                                   </span>
                                 </div>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  By {(outlet?.reviews || 0) >= 1000 ? `${((outlet.reviews || 0) / 1000).toFixed(1)}K+` : `${outlet?.reviews || 0}+`}
+                                  {(outlet?.reviews || 0) > 0
+                                    ? `${(outlet?.reviews || 0) >= 1000 ? `${((outlet.reviews || 0) / 1000).toFixed(1)}K` : `${outlet?.reviews || 0}`} user ratings`
+                                    : "No user ratings yet"}
                                 </span>
                               </div>
                             </div>

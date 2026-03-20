@@ -15,6 +15,10 @@ export const getRestaurantReviews = asyncHandler(async (req, res) => {
     }
     
     const restaurantId = restaurant._id.toString();
+    const restaurantIdentityValues = [
+      restaurantId,
+      restaurant.restaurantId,
+    ].filter(Boolean);
     const { page = 1, limit = 20, rating, sortBy = 'submittedAt', sortOrder = 'desc' } = req.query;
     
     const pageNum = parseInt(page);
@@ -22,7 +26,7 @@ export const getRestaurantReviews = asyncHandler(async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
     
     const query = {
-      restaurantId: restaurantId,
+      restaurantId: { $in: restaurantIdentityValues },
       status: 'delivered',
       'review.rating': { $exists: true, $ne: null }
     };
@@ -50,6 +54,14 @@ export const getRestaurantReviews = asyncHandler(async (req, res) => {
       .lean();
     
     const totalReviews = await Order.countDocuments(query);
+    console.log('📊 [RestaurantReviews] Query result:', {
+      restaurantMongoId: restaurantId,
+      restaurantPublicId: restaurant.restaurantId || null,
+      matchedRestaurantIds: restaurantIdentityValues,
+      totalReviews,
+      page: pageNum,
+      limit: limitNum
+    });
     
     // Calculate average rating and distribution
     const avgRatingResult = await Order.aggregate([
@@ -126,13 +138,17 @@ export const getReviewByOrderId = asyncHandler(async (req, res) => {
     
     const { orderId } = req.params;
     const restaurantId = restaurant._id.toString();
+    const restaurantIdentityValues = [
+      restaurantId,
+      restaurant.restaurantId,
+    ].filter(Boolean);
     
     const order = await Order.findOne({
       $or: [
         { orderId: orderId },
         { _id: orderId }
       ],
-      restaurantId: restaurantId,
+      restaurantId: { $in: restaurantIdentityValues },
       status: 'delivered',
       'review.rating': { $exists: true, $ne: null }
     })
@@ -141,6 +157,12 @@ export const getReviewByOrderId = asyncHandler(async (req, res) => {
       .lean();
     
     if (!order) {
+      console.warn('⚠️ [RestaurantReviews] Review not found for order lookup:', {
+        orderId,
+        restaurantMongoId: restaurantId,
+        restaurantPublicId: restaurant.restaurantId || null,
+        matchedRestaurantIds: restaurantIdentityValues
+      });
       return errorResponse(res, 404, 'Review not found for this order');
     }
     

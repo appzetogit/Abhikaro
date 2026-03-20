@@ -159,6 +159,12 @@ export async function notifyUserOrderDelivered(order) {
       data: {
         type: 'order_delivered',
         orderId: order.orderId || order._id.toString(),
+        orderMongoId: order._id?.toString?.() || order._id || null,
+        status: 'delivered',
+        deliveredAt: order.deliveredAt
+          ? new Date(order.deliveredAt).toISOString()
+          : new Date().toISOString(),
+        reviewSubmitted: Boolean(order.review?.rating),
         tag: `order_delivered_${order.orderId || order._id}`
       }
     });

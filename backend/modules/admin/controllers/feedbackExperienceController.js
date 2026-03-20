@@ -1,4 +1,5 @@
 import FeedbackExperience from '../models/FeedbackExperience.js';
+import mongoose from 'mongoose';
 import User from '../../auth/models/User.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
@@ -91,15 +92,19 @@ export const createFeedbackExperience = asyncHandler(async (req, res) => {
       try {
         const Order = (await import('../../order/models/Order.js')).default;
 
-        const orderMongoId = metadata?.orderMongoId;
-        const orderId = metadata?.orderId;
+        const orderMongoId =
+          typeof metadata?.orderMongoId === 'string'
+            ? metadata.orderMongoId.trim()
+            : metadata?.orderMongoId;
+        const orderId =
+          typeof metadata?.orderId === 'string'
+            ? metadata.orderId.trim()
+            : metadata?.orderId;
         const orderRating = Number(rating);
 
         // Only accept 1..5 for Order.review (schema min/max).
         if (Number.isFinite(orderRating) && orderRating >= 1 && orderRating <= 5) {
-          const orderQuery = {
-            userId
-          };
+          const orderQuery = { userId };
 
           if (orderMongoId) {
             orderQuery._id = orderMongoId;
@@ -107,9 +112,29 @@ export const createFeedbackExperience = asyncHandler(async (req, res) => {
             orderQuery.orderId = orderId;
           }
 
-          // Ensure we update the correct restaurant order if possible.
+          // Ensure we update the correct restaurant order when we can resolve
+          // either Mongo _id or custom restaurantId identity.
           if (finalRestaurantId) {
-            orderQuery.restaurantId = finalRestaurantId;
+            const restaurantLookupOr = [{ restaurantId: finalRestaurantId }];
+            if (mongoose.Types.ObjectId.isValid(finalRestaurantId)) {
+              restaurantLookupOr.push({ _id: finalRestaurantId });
+            }
+
+            const restaurantDoc = await Restaurant.findOne({
+              $or: restaurantLookupOr
+            })
+              .select('_id restaurantId')
+              .lean();
+
+            if (restaurantDoc) {
+              const restaurantIdentityValues = [
+                restaurantDoc._id?.toString?.() || restaurantDoc._id,
+                restaurantDoc.restaurantId
+              ].filter(Boolean);
+              orderQuery.restaurantId = { $in: restaurantIdentityValues };
+            } else {
+              orderQuery.restaurantId = finalRestaurantId;
+            }
           }
 
           const orderDoc = await Order.findOne(orderQuery).lean();
@@ -133,7 +158,16 @@ export const createFeedbackExperience = asyncHandler(async (req, res) => {
               updateData['review.comment'] = trimmedComment;
             }
 
-            await Order.updateOne(orderQuery, { $set: updateData });
+            const updateResult = await Order.updateOne(orderQuery, { $set: updateData });
+            console.log('✅ [FeedbackSync] Order review synced from feedback:', {
+              feedbackId: feedbackExperience._id,
+              userId,
+              orderId: orderId || null,
+              orderMongoId: orderMongoId || null,
+              restaurantId: finalRestaurantId || null,
+              matchedCount: updateResult?.matchedCount || 0,
+              modifiedCount: updateResult?.modifiedCount || 0
+            });
           }
         }
       } catch (orderUpdateErr) {

@@ -5,6 +5,8 @@ import { orderAPI, api, API_ENDPOINTS } from "@/lib/api"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
 
+const RATING_POPUP_STORAGE_KEY = "ratedOrdersForFeedback"
+
 export default function Orders() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
@@ -19,7 +21,7 @@ export default function Orders() {
   // Track orders that have shown rating popup - persist in localStorage
   const [shownRatingForOrders, setShownRatingForOrders] = useState(() => {
     try {
-      const stored = localStorage.getItem('shownRatingForOrders')
+      const stored = localStorage.getItem(RATING_POPUP_STORAGE_KEY)
       return stored ? new Set(JSON.parse(stored)) : new Set()
     } catch {
       return new Set()
@@ -29,7 +31,10 @@ export default function Orders() {
   // Save to localStorage whenever shownRatingForOrders changes
   useEffect(() => {
     try {
-      localStorage.setItem('shownRatingForOrders', JSON.stringify(Array.from(shownRatingForOrders)))
+      localStorage.setItem(
+        RATING_POPUP_STORAGE_KEY,
+        JSON.stringify(Array.from(shownRatingForOrders))
+      )
     } catch (error) {
       console.error('Error saving shownRatingForOrders to localStorage:', error)
     }
@@ -111,10 +116,8 @@ export default function Orders() {
         transformedStatus.toLowerCase() === 'completed'
       
       // Check if order has rating - check multiple places where rating might be stored
-      const hasRating = 
-        (order.rating !== null && order.rating !== undefined && order.rating !== '') ||
-        (order.review?.rating !== null && order.review?.rating !== undefined) ||
-        (order.review !== null && order.review !== undefined)
+      const normalizedRating = Number(order.review?.rating ?? order.rating ?? 0)
+      const hasRating = Number.isFinite(normalizedRating) && normalizedRating > 0
       
       const orderId = order.id || order._id || order.mongoId
       const hasShownPopup = shownRatingForOrders.has(orderId)
@@ -151,9 +154,6 @@ export default function Orders() {
         restaurant: orderToRate.restaurant,
         status: orderToRate.status
       })
-      
-      // Mark as shown to prevent multiple popups (before showing to prevent race conditions)
-      setShownRatingForOrders(prev => new Set([...prev, orderId]))
       
       // Small delay to ensure smooth UX
       setTimeout(() => {
@@ -475,7 +475,7 @@ Order again from this restaurant in the ${companyName} app.`
 
       toast.success("Thanks for rating your order! 🎉")
       
-      // Mark this order as rated so popup doesn't show again (before closing modal)
+      // Mark this order as rated so popup doesn't show again
       const orderId = order.id || order._id || order.mongoId
       setShownRatingForOrders(prev => new Set([...prev, orderId]))
       

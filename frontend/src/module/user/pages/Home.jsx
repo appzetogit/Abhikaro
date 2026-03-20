@@ -53,6 +53,8 @@ import SwitchOffVegModePopup from "../components/SwitchOffVegModePopup"
 import CategoryCarousel from "../components/CategoryCarousel"
 import { RestaurantImageCarousel } from "../components/RestaurantImageCarousel"
 
+const RATING_POPUP_STORAGE_KEY = "ratedOrdersForFeedback"
+
 export default function Home() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -94,7 +96,7 @@ export default function Home() {
   // Track orders that have shown rating popup - persist in localStorage
   const [shownRatingForOrders, setShownRatingForOrders] = useState(() => {
     try {
-      const stored = localStorage.getItem("shownRatingForOrders")
+      const stored = localStorage.getItem(RATING_POPUP_STORAGE_KEY)
       return stored ? new Set(JSON.parse(stored)) : new Set()
     } catch {
       return new Set()
@@ -126,7 +128,7 @@ export default function Home() {
     shownRatingForOrdersRef.current = shownRatingForOrders
     try {
       localStorage.setItem(
-        "shownRatingForOrders",
+        RATING_POPUP_STORAGE_KEY,
         JSON.stringify(Array.from(shownRatingForOrders))
       )
     } catch (error) {
@@ -222,8 +224,6 @@ export default function Home() {
       const normalized = normalizeOrderForRating(order)
       if (!normalized.id) return
 
-      // Reserve this order id immediately to prevent double popups
-      setShownRatingForOrders((prev) => new Set([...prev, normalized.id]))
       scheduledRatingOrderIdRef.current = null
       if (ratingPopupTimeoutRef.current) {
         clearTimeout(ratingPopupTimeoutRef.current)
@@ -265,13 +265,18 @@ export default function Home() {
         module: "user",
         restaurantId: order.restaurantId || null,
         metadata: {
-          orderId: order.id,
-          orderMongoId: order.mongoId,
+          orderId: order.id?.toString?.() || order.id || undefined,
+          orderMongoId:
+            order.mongoId?.toString?.() || order.mongoId || undefined,
           orderTotal: order.total,
           restaurantName: order.restaurant,
           comment: feedbackText || undefined,
         },
       })
+
+      // Persist only rated orders (not merely shown), so unrated delivered
+      // orders are never permanently suppressed due to stale local storage.
+      setShownRatingForOrders((prev) => new Set([...prev, order.id]))
 
       // Close modal & allow next order popup in future (for other orders)
       toast.success("Thanks for rating your order! 🎉")
@@ -292,7 +297,7 @@ export default function Home() {
     handleCloseRatingModal
   ])
 
-  // Poll user orders and show rating modal for delivered orders after 1 minute.
+  // Poll user orders and show rating modal as soon as an unrated delivered order is detected.
   useEffect(() => {
     if (ratingModal.open) return
 
@@ -312,6 +317,7 @@ export default function Home() {
       const deliveredAt = getDeliveredAtValue(order)
       const deliveryDelivered =
         order?.tracking?.delivered === true ||
+        order?.tracking?.delivered?.status === true ||
         order?.deliveryState?.status === "delivered" ||
         order?.deliveryState?.currentPhase === "completed"
 
@@ -347,15 +353,16 @@ export default function Home() {
 
           return true
         })
-        .map((order) => {
-          const orderId = getOrderId(order)
-          const deliveredAt = getDeliveredAtValue(order)
-          const deliveredTs = deliveredAt ? new Date(deliveredAt).getTime() : null
-          const showAt = deliveredTs ? deliveredTs + 60_000 : Date.now()
-          return { order, orderId, showAt }
-        })
+        .map((order) => ({
+          order,
+          orderId: getOrderId(order),
+          deliveredTs: getDeliveredAtValue(order)
+            ? new Date(getDeliveredAtValue(order)).getTime()
+            : 0,
+        }))
 
-      candidates.sort((a, b) => a.showAt - b.showAt)
+      // Prefer earliest delivered order first to preserve expected ordering.
+      candidates.sort((a, b) => (a.deliveredTs || 0) - (b.deliveredTs || 0))
       return candidates[0] || null
     }
 
@@ -381,15 +388,11 @@ export default function Home() {
         if (!candidate) return
 
         if (import.meta.env.DEV) {
-          const deliveredAt = getDeliveredAtValue(candidate.order)
-          const deliveredTs = deliveredAt ? new Date(deliveredAt).getTime() : null
           console.log("🟧 [RatingPopup] candidate found:", {
             orderId: candidate.orderId,
             status: candidate.order?.status,
-            deliveredAt,
-            deliveredTs,
-            showAt: candidate.showAt,
-            delayMs: candidate.showAt - Date.now(),
+            deliveredAt: getDeliveredAtValue(candidate.order),
+            deliveredTs: candidate.deliveredTs || null,
           })
         }
 
@@ -407,39 +410,12 @@ export default function Home() {
           ratingPopupTimeoutRef.current = null
         }
 
-        const delayMs = candidate.showAt - Date.now()
         scheduledRatingOrderIdRef.current = candidate.orderId
 
-        if (delayMs <= 0) {
-          // Delivered + 1 minute already passed -> open immediately.
+        // Open immediately when eligible order appears.
+        if (!ratingModalOpenRef.current) {
           handleOpenRatingModal(candidate.order)
-          return
         }
-
-        ratingPopupTimeoutRef.current = setTimeout(() => {
-          // At timer fire time, re-check candidate eligibility using latest orders.
-          if (cancelled) return
-
-          const freshCandidate = computeEarliestCandidate(
-            latestOrdersRef.current
-          )
-
-          if (import.meta.env.DEV) {
-            console.log("⏱️ [RatingPopup] timer fired:", {
-              scheduledOrderId: candidate.orderId,
-              freshCandidateOrderId: freshCandidate?.orderId || null,
-              ratingModalOpen: ratingModalOpenRef.current,
-            })
-          }
-
-          if (
-            freshCandidate &&
-            freshCandidate.orderId === candidate.orderId &&
-            !ratingModalOpenRef.current
-          ) {
-            handleOpenRatingModal(freshCandidate.order)
-          }
-        }, delayMs)
       } catch (error) {
         // Silently ignore polling errors; home page should still work.
         if (import.meta.env.DEV) {
@@ -449,7 +425,7 @@ export default function Home() {
     }
 
     pollAndMaybeSchedule()
-    const intervalId = setInterval(pollAndMaybeSchedule, 30_000)
+    const intervalId = setInterval(pollAndMaybeSchedule, 10_000)
 
     return () => {
       cancelled = true
@@ -1554,12 +1530,14 @@ export default function Home() {
                           </div>
                         )}
 
-                        {restaurant.rating && (
-                          <div className="absolute bottom-1 left-1 bg-green-600 text-white text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 leading-none">
-                            {restaurant.rating}
-                            <Star className="h-2.5 w-2.5 fill-white" />
-                          </div>
-                        )}
+                        <div className="absolute bottom-1 left-1 bg-green-600 text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 leading-none">
+                          <Star className="h-2.5 w-2.5 fill-white text-white" />
+                          <span>
+                            {Number(restaurant.rating || 0) > 0
+                              ? Number(restaurant.rating).toFixed(1)
+                              : "0"}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="mt-1">

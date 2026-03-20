@@ -543,6 +543,73 @@ export const getRestaurants = async (req, res) => {
         })
       );
     }
+
+    // Sync live rating snapshot for listing cards as well, so list and details stay consistent.
+    if (restaurants.length > 0) {
+      const restaurantKeyMap = new Map(); // key -> restaurant indexes[]
+      const allRatingKeys = new Set();
+
+      restaurants.forEach((restaurant, index) => {
+        const keys = [
+          restaurant.restaurantId,
+          restaurant._id?.toString?.(),
+          restaurant.id,
+        ].filter(Boolean);
+
+        keys.forEach((key) => {
+          const normalized = String(key);
+          allRatingKeys.add(normalized);
+          if (!restaurantKeyMap.has(normalized)) {
+            restaurantKeyMap.set(normalized, []);
+          }
+          restaurantKeyMap.get(normalized).push(index);
+        });
+      });
+
+      if (allRatingKeys.size > 0) {
+        const ratingRows = await Order.aggregate([
+          {
+            $match: {
+              restaurantId: { $in: Array.from(allRatingKeys) },
+              "review.rating": { $exists: true, $ne: null, $gt: 0 },
+            },
+          },
+          {
+            $group: {
+              _id: "$restaurantId",
+              totalRatings: { $sum: 1 },
+              ratingSum: { $sum: "$review.rating" },
+            },
+          },
+        ]);
+
+        const mergedStatsByRestaurantIndex = new Map(); // idx -> {sum,count}
+        for (const row of ratingRows) {
+          const key = String(row?._id || "");
+          const indexes = restaurantKeyMap.get(key) || [];
+          indexes.forEach((idx) => {
+            const prev = mergedStatsByRestaurantIndex.get(idx) || {
+              totalRatings: 0,
+              ratingSum: 0,
+            };
+            mergedStatsByRestaurantIndex.set(idx, {
+              totalRatings: prev.totalRatings + Number(row.totalRatings || 0),
+              ratingSum: prev.ratingSum + Number(row.ratingSum || 0),
+            });
+          });
+        }
+
+        mergedStatsByRestaurantIndex.forEach((stats, idx) => {
+          if (!restaurants[idx]) return;
+          if (stats.totalRatings <= 0) return;
+          const avg = stats.ratingSum / stats.totalRatings;
+          restaurants[idx].rating = Number(avg.toFixed(1));
+          restaurants[idx].averageRating = restaurants[idx].rating;
+          restaurants[idx].totalRatings = stats.totalRatings;
+          restaurants[idx].reviewCount = stats.totalRatings;
+        });
+      }
+    }
     
     // Calculate and add distance to each restaurant if user coordinates provided
     if (useGeospatialQuery && userLat && userLng) {

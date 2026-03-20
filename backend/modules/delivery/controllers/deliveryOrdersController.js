@@ -1868,7 +1868,7 @@ export const completeDelivery = asyncHandler(async (req, res) => {
   try {
     const delivery = req.delivery;
     const { orderId } = req.params;
-    const { rating, review } = req.body; // Optional rating and review from delivery boy
+    const { rating, review } = req.body;
 
     if (!delivery || !delivery._id) {
       return errorResponse(
@@ -2011,6 +2011,13 @@ export const completeDelivery = asyncHandler(async (req, res) => {
 
       return successResponse(res, 200, "Order already delivered", {
         order: order,
+        orderStatus: {
+          status: "delivered",
+          deliveredAt: order.deliveredAt || null,
+          orderId: order.orderId || null,
+          orderMongoId: order._id || null,
+          review: order.review || null,
+        },
         earnings: earnings,
         message: "Order was already marked as delivered",
       });
@@ -2049,23 +2056,12 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       "deliveryState.currentPhase": "completed",
     };
 
-    // Add review and rating if provided
-    if (rating && rating >= 1 && rating <= 5) {
-      updateData["review.rating"] = rating;
-      updateData["review.submittedAt"] = new Date();
-      if (order.userId) {
-        updateData["review.reviewedBy"] = order.userId;
-      }
-    }
-
-    if (review && review.trim()) {
-      updateData["review.comment"] = review.trim();
-      if (!updateData["review.submittedAt"]) {
-        updateData["review.submittedAt"] = new Date();
-      }
-      if (order.userId && !updateData["review.reviewedBy"]) {
-        updateData["review.reviewedBy"] = order.userId;
-      }
+    // Customer rating/review must only come from user app feedback flow.
+    // Ignore any delivery completion payload fields to avoid suppressing popup.
+    if (rating !== undefined || review !== undefined) {
+      console.warn(
+        `⚠️ Ignoring rating/review fields from delivery completion for order ${order.orderId || order._id}`,
+      );
     }
 
     // Update order to delivered
@@ -2527,6 +2523,13 @@ export const completeDelivery = asyncHandler(async (req, res) => {
     // This prevents timeouts if notifications take too long
     const responseData = {
       order: updatedOrder,
+      orderStatus: {
+        status: "delivered",
+        deliveredAt: updatedOrder.deliveredAt || new Date(),
+        orderId: updatedOrder.orderId || orderIdForLog || null,
+        orderMongoId: updatedOrder._id || orderMongoId || null,
+        review: updatedOrder.review || null,
+      },
       earnings: {
         amount: totalEarning,
         currency: "INR",

@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "serve": "vite preview --host 0.0.0.0"
+    "serve": "vite preview --host 0.0.0.0",
+    "test:rating-popup": "node src/utils/ratingPopupEligibilityTest.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

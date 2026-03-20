@@ -9,7 +9,8 @@
     "dev": "nodemon server.js",
     "test": "node scripts/smoke-test.js",
     "test:fcm": "node scripts/test-fcm.js",
-    "test:delivery": "node scripts/test-delivery-order-flow.js"
+    "test:delivery": "node scripts/test-delivery-order-flow.js",
+    "fix:order-review-popup": "node scripts/fixOrderReviewPopup.js"
   },
   "keywords": [
     "food-delivery",
