@@ -168,7 +168,6 @@ const OptimizedImage = React.memo(({
       link.as = 'image'
       link.href = src
       link.fetchPriority = 'high'
-      link.crossOrigin = 'anonymous'
       document.head.appendChild(link)
       preloadedImages.add(src)
 
@@ -258,7 +257,6 @@ const OptimizedImage = React.memo(({
             loading={priority ? 'eager' : 'lazy'}
             decoding="async"
             fetchPriority={priority ? 'high' : 'auto'}
-            crossOrigin="anonymous"
             onLoad={handleLoad}
             onError={handleError}
             {...props}

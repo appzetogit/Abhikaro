@@ -760,11 +760,30 @@ export default function Home() {
   const fetchRestaurants = useCallback(async (filters = {}) => {
     try {
       setLoadingRestaurants(true)
+      const backendUrl = API_BASE_URL.replace('/api', '')
+
+      const normalizeImageUrl = (rawUrl) => {
+        if (!rawUrl || typeof rawUrl !== 'string') return null
+        const url = rawUrl.trim()
+        if (!url) return null
+        if (url.startsWith('data:')) return url
+        if (url.startsWith('//')) {
+          return `${window.location.protocol}${url}`
+        }
+        if (url.startsWith('http://') && window.location.protocol === 'https:') {
+          return `https://${url.slice('http://'.length)}`
+        }
+        if (url.startsWith('/')) {
+          return `${backendUrl}${url}`
+        }
+        if (!/^https?:\/\//i.test(url)) {
+          return `${backendUrl}/${url.replace(/^\/+/, '')}`
+        }
+        return url
+      }
 
       // First, test backend connection
       try {
-        // Use API_BASE_URL from config (supports both dev and production)
-        const backendUrl = API_BASE_URL.replace('/api', '')
         const healthCheck = await fetch(`${backendUrl}/health`)
         if (!healthCheck.ok) {
           throw new Error(`Backend health check failed: ${healthCheck.status}`)
@@ -910,19 +929,25 @@ export default function Home() {
 
           // Get cover images (separate from menu images) for carousel
           const coverImages = restaurant.coverImages && restaurant.coverImages.length > 0
-            ? restaurant.coverImages.map(img => img.url || img)
+            ? restaurant.coverImages
+              .map((img) => normalizeImageUrl(img?.url || img))
+              .filter(Boolean)
             : []
 
           // Fallback to menuImages only if coverImages don't exist (for backward compatibility)
           // Backend already normalizes menuImages to simple URL strings
           const fallbackImages = Array.isArray(restaurant.menuImages) && restaurant.menuImages.length > 0
             ? restaurant.menuImages
+              .map((img) => normalizeImageUrl(img?.url || img))
+              .filter(Boolean)
             : []
 
           // Prefer onboarding.step2.profileImageUrl if available (more accurate)
-          const profileImageUrl = restaurant.onboarding?.step2?.profileImageUrl?.url
+          const profileImageUrl = normalizeImageUrl(
+            restaurant.onboarding?.step2?.profileImageUrl?.url
             || restaurant.profileImage?.url
             || (typeof restaurant.profileImage === 'string' ? restaurant.profileImage : null)
+          )
 
           // Use cover images first, then fallback to menu images, then profile image
           const allImages = coverImages.length > 0
