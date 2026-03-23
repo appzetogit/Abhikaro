@@ -154,13 +154,13 @@ export default function TransactionReport() {
 
   const formatCurrency = (amount) => {
     if (amount >= 1000) {
-      return `$ ${(amount / 1000).toFixed(2)}K`
+      return `₹ ${(amount / 1000).toFixed(2)}K`
     }
-    return `$ ${amount.toFixed(2)}`
+    return `₹ ${amount.toFixed(2)}`
   }
 
   const formatFullCurrency = (amount) => {
-    return `$ ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return `₹ ${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
   if (loading) {
@@ -259,36 +259,36 @@ export default function TransactionReport() {
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
           {/* Left Column - Large Cards */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             {/* Completed Transaction - Green */}
-            <div className="rounded-lg shadow-sm border border-slate-200 p-4" style={{ backgroundColor: '#f1f5f9' }}>
-              <div className="relative mb-3 flex justify-center">
-                <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-                  <img src={completedIcon} alt="Completed" className="w-12 h-12" />
+            <div className="rounded-lg shadow-sm border border-slate-200 p-2.5" style={{ backgroundColor: '#f1f5f9' }}>
+              <div className="relative mb-1.5 flex justify-center">
+                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                  <img src={completedIcon} alt="Completed" className="w-8 h-8" />
                 </div>
-                <div className="absolute top-0 right-0 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-                  <Info className="w-3 h-3 text-white" />
+                <div className="absolute top-0 right-0 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                  <Info className="w-2.5 h-2.5 text-white" />
                 </div>
               </div>
               <div className="text-center">
-                <p className="text-xl font-bold text-green-600 mb-1">{formatCurrency(summary.completedTransaction)}</p>
-                <p className="text-sm text-slate-600 leading-tight">Completed Transaction</p>
+                <p className="text-lg font-bold text-green-600 mb-0.5">{formatCurrency(summary.completedTransaction)}</p>
+                <p className="text-xs text-slate-600 leading-tight">Completed Transaction</p>
               </div>
             </div>
 
             {/* Refunded Transaction - Red */}
-            <div className="rounded-lg shadow-sm border border-slate-200 p-4" style={{ backgroundColor: '#f1f5f9' }}>
-              <div className="relative mb-3 flex justify-center">
-                <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-                  <img src={refundedIcon} alt="Refunded" className="w-12 h-12" />
+            <div className="rounded-lg shadow-sm border border-slate-200 p-2.5" style={{ backgroundColor: '#f1f5f9' }}>
+              <div className="relative mb-1.5 flex justify-center">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                  <img src={refundedIcon} alt="Refunded" className="w-8 h-8" />
                 </div>
-                <div className="absolute top-0 right-0 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
-                  <Info className="w-3 h-3 text-white" />
+                <div className="absolute top-0 right-0 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
+                  <Info className="w-2.5 h-2.5 text-white" />
                 </div>
               </div>
               <div className="text-center">
-                <p className="text-xl font-bold text-red-600 mb-1">{formatFullCurrency(summary.refundedTransaction)}</p>
-                <p className="text-sm text-slate-600 leading-tight">Refunded Transaction</p>
+                <p className="text-lg font-bold text-red-600 mb-0.5">{formatFullCurrency(summary.refundedTransaction)}</p>
+                <p className="text-xs text-slate-600 leading-tight">Refunded Transaction</p>
               </div>
             </div>
           </div>

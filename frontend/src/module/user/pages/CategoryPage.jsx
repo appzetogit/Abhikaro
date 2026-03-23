@@ -157,9 +157,9 @@ export default function CategoryPage() {
     
     const matchingDishes = []
     
-    for (const section of menu.sections) {
+    for (const [sectionIndex, section] of menu.sections.entries()) {
       if (section.items && Array.isArray(section.items)) {
-        for (const item of section.items) {
+        for (const [itemIndex, item] of section.items.entries()) {
           const itemNameLower = (item.name || '').toLowerCase()
           const itemCategoryLower = (item.category || '').toLowerCase()
           
@@ -187,6 +187,8 @@ export default function CategoryPage() {
               image: dishImage,
               originalPrice: originalPrice,
               itemId: item._id || item.id || `${item.name}-${finalPrice}`,
+              sourceSectionIndex: sectionIndex,
+              sourceItemIndex: itemIndex,
               foodType: item.foodType, // Include foodType for vegMode filtering
               itemDiscountPercent,
               categoryOfferPercentage: categoryDiscountPercent,
@@ -204,6 +206,16 @@ export default function CategoryPage() {
   const getCategoryDishFromMenu = (menu, categoryId) => {
     const allDishes = getAllCategoryDishesFromMenu(menu, categoryId, 0)
     return allDishes.length > 0 ? allDishes[0] : null
+  }
+
+  // Build a deterministic, collision-safe key for category dish cards.
+  const createDishCardId = (restaurantId, dish, fallbackIndex) => {
+    const baseDishId = String(dish?.itemId || dish?.name || "dish")
+      .trim()
+      .replace(/\s+/g, "-")
+    const sectionIndex = dish?.sourceSectionIndex ?? "s"
+    const itemIndex = dish?.sourceItemIndex ?? fallbackIndex
+    return `${restaurantId}-dish-${baseDishId}-${sectionIndex}-${itemIndex}`
   }
 
   // Fetch restaurants from API
@@ -498,11 +510,12 @@ export default function CategoryPage() {
             if (categoryDishes.length > 0) {
               // Create one card per dish
               categoryDishes.forEach((dish, index) => {
+                const dishCardId = createDishCardId(r.id, dish, index)
                 expandedDishes.push({
                   ...r,
                   // Unique ID for each dish card
-                  id: `${r.id}-dish-${dish.itemId || index}`,
-                  dishId: dish.itemId || `${r.id}-dish-${index}`,
+                  id: dishCardId,
+                  dishId: dish.itemId || dishCardId,
                   // Category dish info for this specific dish
                   categoryDish: dish,
                   categoryDishName: dish.name,
@@ -611,12 +624,13 @@ export default function CategoryPage() {
                 if (vegMode && dish.foodType !== "Veg") {
                   return // Skip non-veg dishes when vegMode is ON
                 }
-                
+
+                const dishCardId = createDishCardId(r.id, dish, index)
                 expandedDishes.push({
                   ...r,
                   // Unique ID for each dish card
-                  id: `${r.id}-dish-${dish.itemId || index}`,
-                  dishId: dish.itemId || `${r.id}-dish-${index}`,
+                  id: dishCardId,
+                  dishId: dish.itemId || dishCardId,
                   // Category dish info for this specific dish
                   categoryDish: dish,
                   categoryDishName: dish.name,

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react"
 import {
-  Search, Edit, Loader2, Building2, Percent, Wallet, TrendingUp, IndianRupee
+  Search, Edit, Loader2, Building2, Percent, Wallet, TrendingUp, IndianRupee, ChevronLeft, ChevronRight
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -10,9 +10,11 @@ import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 
 export default function HotelCommission() {
+  const ITEMS_PER_PAGE = 15
   const [searchQuery, setSearchQuery] = useState("")
   const [hotels, setHotels] = useState([])
   const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
   const [updating, setUpdating] = useState(false)
   const [editDialog, setEditDialog] = useState(null)
   const [stats, setStats] = useState({
@@ -75,6 +77,20 @@ export default function HotelCommission() {
       hotel.phone?.includes(query)
     )
   }, [hotels, searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
+
+  const totalPages = Math.max(1, Math.ceil(filteredHotels.length / ITEMS_PER_PAGE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE
+  const paginatedHotels = filteredHotels.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages) return
+    setCurrentPage(nextPage)
+  }
 
   const handleEdit = (hotel) => {
     setEditDialog({
@@ -260,7 +276,7 @@ export default function HotelCommission() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredHotels.map((hotel) => (
+                  {paginatedHotels.map((hotel) => (
                     <tr key={hotel._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -337,6 +353,55 @@ export default function HotelCommission() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {filteredHotels.length > 0 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+              <p className="text-sm text-gray-600">
+                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, filteredHotels.length)} of {filteredHotels.length} hotels
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePageChange(safeCurrentPage - 1)}
+                  disabled={safeCurrentPage === 1}
+                  className="px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 inline-flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }).map((_, idx) => {
+                  const pageNum = safeCurrentPage <= 3
+                    ? idx + 1
+                    : safeCurrentPage >= totalPages - 2
+                      ? totalPages - 4 + idx
+                      : safeCurrentPage - 2 + idx
+
+                  if (pageNum < 1 || pageNum > totalPages) return null
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`px-3 py-1.5 text-sm rounded border ${
+                        safeCurrentPage === pageNum
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => handlePageChange(safeCurrentPage + 1)}
+                  disabled={safeCurrentPage === totalPages}
+                  className="px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 inline-flex items-center gap-1"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>

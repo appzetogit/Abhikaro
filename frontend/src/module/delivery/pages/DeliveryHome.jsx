@@ -439,6 +439,7 @@ export default function DeliveryHome() {
   const markerAnimationCancelRef = useRef(null) // Cancel function for marker animation
   const directionsResponseRef = useRef(null) // Store directions response for use in callbacks
   const fetchedOrderDetailsForDropRef = useRef(null) // Prevent re-fetching order details for Reached Drop customer coords
+  const shouldAutoFitRouteBoundsRef = useRef(true) // Fit route bounds only once per active order to keep bike focus stable
   const [zones, setZones] = useState([]) // Store nearby zones
   const [mapLoading, setMapLoading] = useState(false)
   const [directionsMapLoading, setDirectionsMapLoading] = useState(false)
@@ -447,6 +448,32 @@ export default function DeliveryHome() {
   const isInitializingMapRef = useRef(false)
   const mapPanTimeoutRef = useRef(null) // For cleanup of pan re-enable timeout
   const mapRetryTimeoutRef = useRef(null) // For cleanup of dimension-retry timeout
+
+  const fitRouteBoundsOnce = (bounds) => {
+    if (!window.deliveryMapInstance || !bounds || !shouldAutoFitRouteBoundsRef.current) return
+
+    const currentZoomBeforeFit = window.deliveryMapInstance.getZoom()
+    window.deliveryMapInstance.fitBounds(bounds, { padding: 100 })
+    shouldAutoFitRouteBoundsRef.current = false
+
+    // Keep user's zoom preference if they had zoomed in before.
+    setTimeout(() => {
+      const newZoom = window.deliveryMapInstance.getZoom()
+      if (currentZoomBeforeFit > newZoom && currentZoomBeforeFit >= 18) {
+        window.deliveryMapInstance.setZoom(currentZoomBeforeFit)
+      }
+    }, 100)
+
+    // After initial fit, snap back to rider once so tracking stays bike-focused.
+    if (riderLocation && riderLocation.length === 2 && !isUserPanningRef.current) {
+      setTimeout(() => {
+        if (window.deliveryMapInstance) {
+          window.deliveryMapInstance.panTo({ lat: riderLocation[0], lng: riderLocation[1] })
+        }
+      }, 220)
+    }
+  }
+
   const mapResizeObserverRef = useRef(null) // For ResizeObserver cleanup
 
   // Safety timeout: hide "Loading map..." overlay after max 2 seconds
@@ -590,6 +617,10 @@ export default function DeliveryHome() {
     return hotspots
   })
   const [selectedRestaurant, setSelectedRestaurant] = useState(null)
+  useEffect(() => {
+    // For each new/active order, allow one initial fit; subsequent updates should follow bike.
+    shouldAutoFitRouteBoundsRef.current = true
+  }, [selectedRestaurant?.orderId, selectedRestaurant?.id, selectedRestaurant?._id])
   const [bottomSheetExpanded, setBottomSheetExpanded] = useState(false)
   const [acceptButtonProgress, setAcceptButtonProgress] = useState(0)
   const [isAnimatingToComplete, setIsAnimatingToComplete] = useState(false)
@@ -2749,18 +2780,7 @@ export default function DeliveryHome() {
 
                     // Fit bounds to show entire route - but preserve zoom if user has zoomed in
                     const bounds = directionsResult.routes[0].bounds;
-                    if (bounds) {
-                      const currentZoom = window.deliveryMapInstance.getZoom();
-                      window.deliveryMapInstance.fitBounds(bounds, { padding: 100 });
-                      // Restore zoom if user had zoomed in more than fitBounds would set
-                      setTimeout(() => {
-                        const newZoom = window.deliveryMapInstance.getZoom();
-                        if (currentZoom > newZoom && currentZoom >= 18) {
-                          window.deliveryMapInstance.setZoom(currentZoom);
-                        }
-                      }, 100);
-
-                    }
+                    fitRouteBoundsOnce(bounds);
 
                   } catch (error) {
 
@@ -6734,18 +6754,7 @@ export default function DeliveryHome() {
 
       // Fit bounds to show entire route - but preserve zoom if user has zoomed in
       const bounds = directionsResponse.routes[0].bounds;
-      if (bounds) {
-        const currentZoomBeforeFit = window.deliveryMapInstance.getZoom();
-        window.deliveryMapInstance.fitBounds(bounds, { padding: 100 });
-        // Preserve zoom if user had zoomed in more than fitBounds would set
-        setTimeout(() => {
-          const newZoom = window.deliveryMapInstance.getZoom();
-          if (currentZoomBeforeFit > newZoom && currentZoomBeforeFit >= 18) {
-            window.deliveryMapInstance.setZoom(currentZoomBeforeFit);
-          }
-        }, 100);
-
-      }
+      fitRouteBoundsOnce(bounds);
 
       // Ensure DirectionsRenderer is removed from map (we use custom polyline instead)
       if (directionsRendererRef.current) {
@@ -7932,17 +7941,7 @@ export default function DeliveryHome() {
 
               // Fit map bounds to show entire route
               const bounds = directionsResult.routes[0].bounds;
-              if (bounds) {
-                const currentZoomBeforeFit = window.deliveryMapInstance.getZoom();
-                window.deliveryMapInstance.fitBounds(bounds, { padding: 100 });
-                // Preserve zoom if user had zoomed in
-                setTimeout(() => {
-                  const newZoom = window.deliveryMapInstance.getZoom();
-                  if (currentZoomBeforeFit > newZoom && currentZoomBeforeFit >= 18) {
-                    window.deliveryMapInstance.setZoom(currentZoomBeforeFit);
-                  }
-                }, 100);
-              }
+              fitRouteBoundsOnce(bounds);
             }
           }
         }).catch(error => {

@@ -1010,7 +1010,7 @@ export default function PocketPage() {
           </div>
 
      
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 mt-3">
             {/* Payout Card */}
             <Card
               className=" py-0  bg-white border-0 shadow-none cursor-pointer hover:bg-gray-200 transition-colors"

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { adminAPI } from "@/lib/api"
-import { Search, Wallet, Loader2, IndianRupee, Building2, Eye } from "lucide-react"
+import { Search, Wallet, Loader2, IndianRupee, Building2, Eye, ChevronLeft, ChevronRight } from "lucide-react"
 
 const formatCurrency = (amount) => {
   if (amount == null) return "₹0"
@@ -10,9 +10,11 @@ const formatCurrency = (amount) => {
 }
 
 export default function HotelWalletAdmin() {
+  const ITEMS_PER_PAGE = 15
   const [hotels, setHotels] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
   const [editingHotel, setEditingHotel] = useState(null)
   const [editCashValue, setEditCashValue] = useState("")
   const [editError, setEditError] = useState("")
@@ -58,6 +60,20 @@ export default function HotelWalletAdmin() {
         h.phone?.toLowerCase().includes(q),
     )
   }, [hotels, search])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE
+  const paginatedHotels = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages) return
+    setCurrentPage(nextPage)
+  }
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -223,7 +239,7 @@ export default function HotelWalletAdmin() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((hotel) => (
+                    paginatedHotels.map((hotel) => (
                       <tr key={hotel.hotelId} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
@@ -283,6 +299,55 @@ export default function HotelWalletAdmin() {
                   )}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200">
+              <p className="text-sm text-slate-600">
+                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, filtered.length)} of {filtered.length} hotels
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePageChange(safeCurrentPage - 1)}
+                  disabled={safeCurrentPage === 1}
+                  className="px-3 py-1.5 text-sm rounded border border-slate-300 text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 inline-flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }).map((_, idx) => {
+                  const pageNum = safeCurrentPage <= 3
+                    ? idx + 1
+                    : safeCurrentPage >= totalPages - 2
+                      ? totalPages - 4 + idx
+                      : safeCurrentPage - 2 + idx
+
+                  if (pageNum < 1 || pageNum > totalPages) return null
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`px-3 py-1.5 text-sm rounded border ${
+                        safeCurrentPage === pageNum
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => handlePageChange(safeCurrentPage + 1)}
+                  disabled={safeCurrentPage === totalPages}
+                  className="px-3 py-1.5 text-sm rounded border border-slate-300 text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 inline-flex items-center gap-1"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>

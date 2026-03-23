@@ -1,14 +1,16 @@
 import { useState, useMemo, useEffect } from "react"
-import { Search, Trash2, Loader2 } from "lucide-react"
+import { Search, Trash2, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
 import { adminAPI, restaurantAPI } from "@/lib/api"
 import apiClient from "@/lib/api"
 import { toast } from "sonner"
 
 export default function FoodsList() {
+  const ITEMS_PER_PAGE = 50
   const [searchQuery, setSearchQuery] = useState("")
   const [foods, setFoods] = useState([])
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Fetch all foods from all restaurants
   useEffect(() => {
@@ -140,6 +142,12 @@ export default function FoodsList() {
     return `FOOD${lastDigits}`
   }
 
+  const formatPrice = (price) => {
+    const numericPrice = Number(price)
+    if (!Number.isFinite(numericPrice)) return "₹0.00"
+    return `₹${numericPrice.toFixed(2)}`
+  }
+
   const filteredFoods = useMemo(() => {
     let result = [...foods]
     
@@ -154,6 +162,20 @@ export default function FoodsList() {
 
     return result
   }, [foods, searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
+
+  const totalPages = Math.max(1, Math.ceil(filteredFoods.length / ITEMS_PER_PAGE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE
+  const paginatedFoods = filteredFoods.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages) return
+    setCurrentPage(nextPage)
+  }
 
   const handleDelete = async (id) => {
     const food = foods.find(f => f.id === id)
@@ -303,6 +325,9 @@ export default function FoodsList() {
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Title
                 </th>
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  Price
+                </th>
                 <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Action
                 </th>
@@ -311,7 +336,7 @@ export default function FoodsList() {
             <tbody className="bg-white divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-20 text-center">
+                  <td colSpan={5} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
                       <p className="text-sm text-slate-500">Loading foods from restaurants...</p>
@@ -320,7 +345,7 @@ export default function FoodsList() {
                 </tr>
               ) : filteredFoods.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-20 text-center">
+                  <td colSpan={5} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                       <p className="text-sm text-slate-500">No food items match your search</p>
@@ -328,13 +353,13 @@ export default function FoodsList() {
                   </td>
                 </tr>
               ) : (
-                filteredFoods.map((food, index) => (
+                paginatedFoods.map((food, index) => (
                   <tr
                     key={food.id}
                     className="hover:bg-slate-50 transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                      <span className="text-sm font-medium text-slate-700">{startIndex + index + 1}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center">
@@ -359,6 +384,11 @@ export default function FoodsList() {
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-semibold text-slate-800">
+                        {formatPrice(food.price)}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <button
                         onClick={() => handleDelete(food.id)}
@@ -379,6 +409,56 @@ export default function FoodsList() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {filteredFoods.length > 0 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200">
+            <p className="text-sm text-slate-600">
+              Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, filteredFoods.length)} of {filteredFoods.length} foods
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(safeCurrentPage - 1)}
+                disabled={safeCurrentPage === 1}
+                className="px-3 py-1.5 text-sm rounded border border-slate-300 text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 inline-flex items-center gap-1"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }).map((_, idx) => {
+                const pageNum = safeCurrentPage <= 3
+                  ? idx + 1
+                  : safeCurrentPage >= totalPages - 2
+                    ? totalPages - 4 + idx
+                    : safeCurrentPage - 2 + idx
+
+                if (pageNum < 1 || pageNum > totalPages) return null
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`px-3 py-1.5 text-sm rounded border ${
+                      safeCurrentPage === pageNum
+                        ? "bg-blue-600 border-blue-600 text-white"
+                        : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => handlePageChange(safeCurrentPage + 1)}
+                disabled={safeCurrentPage === totalPages}
+                className="px-3 py-1.5 text-sm rounded border border-slate-300 text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 inline-flex items-center gap-1"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

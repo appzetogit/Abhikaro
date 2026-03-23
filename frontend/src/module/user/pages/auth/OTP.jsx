@@ -64,7 +64,7 @@ export default function OTP() {
   }, [navigate])
 
   const startResendTimer = () => {
-    setResendTimer(60)
+    setResendTimer(120)
     const timer = setInterval(() => {
       setResendTimer((prev) => {
         if (prev <= 1) {
@@ -269,7 +269,7 @@ export default function OTP() {
   return (
     <AnimatedPage className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col">
       {/* Header */}
-      <div className="relative flex items-center justify-center py-4 px-4 md:py-6 md:px-6 lg:px-8 border-b border-gray-200 dark:border-gray-800">
+      <div className="relative flex items-center justify-center pt-8 pb-4 px-4 md:pt-10 md:pb-6 md:px-6 lg:px-8 border-b border-gray-200 dark:border-gray-800">
         <button
           onClick={() => navigate("/user/auth/sign-in")}
           className="absolute left-4 md:left-6 lg:left-8 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity"

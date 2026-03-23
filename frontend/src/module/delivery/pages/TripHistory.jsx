@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
-import { ArrowLeft, ChevronDown, Loader2, Gift, X } from "lucide-react"
+import { ChevronDown, Loader2, Gift, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useProgressStore } from "../store/progressStore"
 import FeedNavbar from "../components/FeedNavbar"
@@ -8,7 +7,6 @@ import { deliveryAPI } from "@/lib/api"
 import { fetchWalletTransactions } from "../utils/deliveryWalletState"
 
 export default function TripHistory() {
-  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState("daily")
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [rangeStartDate, setRangeStartDate] = useState(null)
@@ -200,12 +198,6 @@ export default function TripHistory() {
     <div className="h-screen bg-white flex flex-col overflow-hidden">
       {/* Sticky Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center flex-shrink-0 sticky top-0 z-40">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 hover:bg-gray-100 rounded-full transition-colors mr-2"
-        >
-          <ArrowLeft className="w-5 h-5 text-black" />
-        </button>
         <h1 className="text-lg font-bold text-black flex-1 text-center">Trip History</h1>
         <button
           onClick={() => {

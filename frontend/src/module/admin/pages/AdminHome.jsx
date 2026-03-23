@@ -40,6 +40,8 @@ export default function AdminHome() {
     totalCommission: 0,
     restaurantEarnings: 0
   })
+  const [deliveryLeaderboard, setDeliveryLeaderboard] = useState([])
+  const [deliveryLeaderboardLoading, setDeliveryLeaderboardLoading] = useState(false)
   const filtersRequestRef = useRef({ zone: "all", timeFilter: "overall", startDate: "", endDate: "" })
   const debounceRef = useRef(null)
 
@@ -160,6 +162,42 @@ export default function AdminHome() {
       }
     }
   }, [selectedZone, selectedPeriod, customRange.start, customRange.end])
+
+  // Fetch top delivery partners by deliveries
+  useEffect(() => {
+    const fetchDeliveryLeaderboard = async () => {
+      try {
+        setDeliveryLeaderboardLoading(true)
+        const response = await adminAPI.getDeliveryPartners({ page: 1, limit: 1000 })
+        if (response?.data?.success) {
+          let partners = response.data.data?.deliveryPartners || []
+
+          // Apply zone filter client-side to keep dashboard and list aligned.
+          if (selectedZone !== "all") {
+            const zoneQuery = selectedZone.toLowerCase()
+            partners = partners.filter((p) =>
+              String(p.zone || "").toLowerCase().includes(zoneQuery),
+            )
+          }
+
+          const rankedPartners = [...partners]
+            .sort((a, b) => (Number(b.totalOrders) || 0) - (Number(a.totalOrders) || 0))
+            .slice(0, 8)
+
+          setDeliveryLeaderboard(rankedPartners)
+        } else {
+          setDeliveryLeaderboard([])
+        }
+      } catch (error) {
+        console.error("❌ Error fetching delivery leaderboard:", error)
+        setDeliveryLeaderboard([])
+      } finally {
+        setDeliveryLeaderboardLoading(false)
+      }
+    }
+
+    fetchDeliveryLeaderboard()
+  }, [selectedZone])
 
   // Get order stats from real data
   const getOrderStats = () => {
@@ -633,6 +671,44 @@ export default function AdminHome() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+              </CardContent>
+            </Card>
+            <Card className="border-neutral-200 bg-white">
+              <CardHeader className="border-b border-neutral-200 pb-4">
+                <CardTitle className="text-lg text-neutral-900">Live signals</CardTitle>
+                <p className="text-sm text-neutral-500">Top delivery boys by deliveries</p>
+              </CardHeader>
+              <CardContent className="pt-4">
+                {deliveryLeaderboardLoading ? (
+                  <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
+                    Loading delivery data...
+                  </div>
+                ) : deliveryLeaderboard.length === 0 ? (
+                  <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
+                    No delivery data available
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {deliveryLeaderboard.map((partner) => (
+                      <div
+                        key={partner._id}
+                        className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-base font-semibold text-neutral-900">
+                            {partner.name || "Unknown"}
+                          </p>
+                          <p className="text-sm text-neutral-600">
+                            {Number(partner.totalOrders) || 0} deliveries
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600">
+                          {partner.deliveryId || "N/A"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -30,7 +30,7 @@ export default function RestaurantFinance() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(1)
-  const limit = 50
+  const limit = 10
 
   const [adjustOpen, setAdjustOpen] = useState(false)
   const [selectedRestaurant, setSelectedRestaurant] = useState(null)
@@ -268,7 +268,7 @@ export default function RestaurantFinance() {
           {pages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
               <p className="text-sm text-slate-600">
-                Page {page} of {pages} · {total} total
+                Showing {(page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total}
               </p>
               <div className="flex gap-2">
                 <button
