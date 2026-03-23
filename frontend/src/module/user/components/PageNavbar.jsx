@@ -892,6 +892,10 @@ export default function PageNavbar({
         const lower = part.toLowerCase()
         return lower !== "indore city" && lower !== "indore"
       })
+      // If only a plus-code/locality fragment remains before city, append city for clarity.
+      if (deepParts.length === 1 && cityIndex > 0 && withoutAdmin[cityIndex]) {
+        return `${deepParts[0]}, ${withoutAdmin[cityIndex]}`.trim()
+      }
 
       return deepParts.slice(0, 3).join(", ").trim()
     }

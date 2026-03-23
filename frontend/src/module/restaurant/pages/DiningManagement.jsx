@@ -334,9 +334,6 @@ export default function DiningManagement() {
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Request dining enable"}
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={() => navigate("/restaurant/reservations")} className="shrink-0 border-[#FD0134]/40 text-[#FD0134] hover:bg-[#FD0134]/10">
-                Reservations
-              </Button>
             </div>
             <Button onClick={saveDiningConfig} disabled={saving} className="bg-[#FD0134] hover:bg-[#FD0134]/90">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
