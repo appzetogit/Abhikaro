@@ -84,12 +84,12 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      <div className="absolute inset-0 transition-transform duration-500 ease-out group-hover:scale-110">
+      <div className="absolute inset-0 transition-transform duration-300 ease-out md:group-hover:scale-105 will-change-transform">
         <OptimizedImage
           src={images[currentIndex]}
           alt={`${restaurant.name} - Image ${currentIndex + 1}`}
           className="w-full h-full rounded-t-2xl sm:rounded-t-3xl object-cover"
-          // Only first image of first few cards should be eager; rest lazy for faster initial render
+          // Only strict above-the-fold cards should be eager; rest remain lazy.
           priority={priority && currentIndex === 0}
           loading={priority && currentIndex === 0 ? "eager" : "lazy"}
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
@@ -123,11 +123,11 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
         </div>
       )}
 
-      {/* Gradient Overlay on Hover */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      {/* Keep overlays desktop-only to reduce mobile paint cost while scrolling */}
+      <div className="hidden md:block absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       {/* Shine Effect */}
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full transition-transform duration-1000 group-hover:animate-shine" />
+      <div className="hidden md:block absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full transition-transform duration-1000 group-hover:animate-shine" />
     </div>
   )
 })

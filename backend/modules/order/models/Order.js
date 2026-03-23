@@ -393,8 +393,10 @@ const orderSchema = new mongoose.Schema(
         type: String,
         enum: [
           "zone_match",
+          "zone_based",
           "nearest_distance",
           "manual",
+          "manual_resend",
           "nearest_available",
           "delivery_accept",
         ],

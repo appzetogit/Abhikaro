@@ -1798,9 +1798,17 @@ export const updateOrderNote = async (req, res) => {
  */
 export const cancelOrder = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id || req.user?._id?.toString();
     const { id } = req.params;
-    const { reason } = req.body;
+    const reason =
+      typeof req.body?.reason === "string" ? req.body.reason : "";
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
 
     if (!reason || reason.trim().length === 0) {
       return res.status(400).json({
@@ -1849,8 +1857,15 @@ export const cancelOrder = async (req, res) => {
 
     // Get payment method from order or payment record
     const paymentMethod = order.payment?.method;
-    const payment = await Payment.findOne({ orderId: order._id });
-    const paymentMethodFromPayment = payment?.method || payment?.paymentMethod;
+    let paymentMethodFromPayment = null;
+    try {
+      const payment = await Payment.findOne({ orderId: order._id });
+      paymentMethodFromPayment = payment?.method || payment?.paymentMethod;
+    } catch (paymentLookupError) {
+      logger.warn(
+        `Payment lookup failed during cancellation for order ${order.orderId}: ${paymentLookupError.message}`,
+      );
+    }
 
     // Determine the actual payment method
     const actualPaymentMethod = paymentMethod || paymentMethodFromPayment;

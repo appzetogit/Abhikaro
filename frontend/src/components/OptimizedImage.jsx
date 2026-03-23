@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { motion } from 'framer-motion'
 
 /**
  * OptimizedImage Component
@@ -29,15 +28,54 @@ const OptimizedImage = React.memo(({
   const [isLoaded, setIsLoaded] = useState(false)
   const [hasError, setHasError] = useState(false)
   const [isInView, setIsInView] = useState(priority) // Start visible if priority
+  const [forceVisible, setForceVisible] = useState(false)
   const imgRef = useRef(null)
   const observerRef = useRef(null)
 
-  // Check if image URL supports optimization (external URLs)
-  const supportsOptimization = (imageSrc) => {
+  // Check if image URL supports optimization (external URLs from known providers)
+  const getOptimizationProvider = (imageSrc) => {
     if (!imageSrc || typeof imageSrc !== 'string' || imageSrc === '') return false
     if (imageSrc.startsWith('data:') || imageSrc.startsWith('/')) return false
-    // Check if it's an external URL (http/https)
-    return /^https?:\/\//.test(imageSrc)
+    if (!/^https?:\/\//.test(imageSrc)) return false
+
+    try {
+      const host = new URL(imageSrc).hostname.toLowerCase()
+      if (host.includes('cloudinary.com')) return 'cloudinary'
+      if (host.includes('imagekit.io')) return 'imagekit'
+    } catch (error) {
+      return false
+    }
+
+    return false
+  }
+
+  const supportsOptimization = (imageSrc) => !!getOptimizationProvider(imageSrc)
+
+  const getOptimizedImageUrl = (imageSrc, { width, quality = 80, format } = {}) => {
+    const provider = getOptimizationProvider(imageSrc)
+    if (!provider) return imageSrc
+
+    if (provider === 'cloudinary') {
+      const transformParts = []
+      if (format) transformParts.push(`f_${format}`)
+      transformParts.push(`q_${quality}`)
+      if (width) transformParts.push(`w_${width}`)
+
+      if (!transformParts.length || !imageSrc.includes('/upload/')) return imageSrc
+      return imageSrc.replace('/upload/', `/upload/${transformParts.join(',')}/`)
+    }
+
+    if (provider === 'imagekit') {
+      const params = []
+      if (width) params.push(`w-${width}`)
+      if (quality) params.push(`q-${quality}`)
+      if (format) params.push(`f-${format}`)
+      if (!params.length) return imageSrc
+      const separator = imageSrc.includes('?') ? '&' : '?'
+      return `${imageSrc}${separator}tr=${params.join(',')}`
+    }
+
+    return imageSrc
   }
 
   // Generate responsive srcset
@@ -45,7 +83,7 @@ const OptimizedImage = React.memo(({
     if (!supportsOptimization(src)) return undefined
     const sizesArr = [400, 600, 800, 1200, 1600]
     return sizesArr
-      .map(size => `${src}?w=${size}&q=80 ${size}w`)
+      .map(size => `${getOptimizedImageUrl(src, { width: size, quality: 80 })} ${size}w`)
       .join(', ')
   }, [src])
 
@@ -54,7 +92,7 @@ const OptimizedImage = React.memo(({
     if (!supportsOptimization(src)) return undefined
     const sizesArr = [400, 600, 800, 1200, 1600]
     return sizesArr
-      .map(size => `${src}?w=${size}&q=80&format=webp ${size}w`)
+      .map(size => `${getOptimizedImageUrl(src, { width: size, quality: 80, format: 'webp' })} ${size}w`)
       .join(', ')
   }, [src])
 
@@ -90,9 +128,15 @@ const OptimizedImage = React.memo(({
     }
   }, [priority, isInView])
 
-  // Preload critical images
+  // Preload critical images once per URL to avoid many duplicate <link> tags.
   useEffect(() => {
+    if (typeof window === 'undefined') return
     if (priority && src && !src.startsWith('data:')) {
+      const preloadKey = '__abhi_preloaded_images__'
+      const preloadedImages = window[preloadKey] || new Set()
+      window[preloadKey] = preloadedImages
+      if (preloadedImages.has(src)) return
+
       const link = document.createElement('link')
       link.rel = 'preload'
       link.as = 'image'
@@ -100,12 +144,22 @@ const OptimizedImage = React.memo(({
       link.fetchPriority = 'high'
       link.crossOrigin = 'anonymous'
       document.head.appendChild(link)
+      preloadedImages.add(src)
 
       return () => {
-        document.head.removeChild(link)
+        if (document.head.contains(link)) {
+          document.head.removeChild(link)
+        }
       }
     }
   }, [priority, src])
+
+  // Ensure placeholder never blocks final image indefinitely if onLoad is delayed.
+  useEffect(() => {
+    if (!isInView || isLoaded || hasError) return
+    const timer = setTimeout(() => setForceVisible(true), 1800)
+    return () => clearTimeout(timer)
+  }, [isInView, isLoaded, hasError])
 
   const handleLoad = (e) => {
     setIsLoaded(true)
@@ -137,17 +191,16 @@ const OptimizedImage = React.memo(({
     <div className={`relative overflow-hidden ${className}`} ref={imgRef}>
       {/* Blur Placeholder */}
       {placeholder === 'blur' && !isLoaded && (
-        <motion.div
+        <div
           className="absolute inset-0"
-          initial={{ opacity: 1 }}
-          animate={{ opacity: isLoaded ? 0 : 1 }}
-          transition={{ duration: 0.3 }}
           style={{
             backgroundImage: `url(${defaultBlurDataURL})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             filter: 'blur(20px)',
             transform: 'scale(1.1)',
+            opacity: isLoaded ? 0 : 1,
+            transition: 'opacity 0.3s ease',
           }}
         />
       )}
@@ -170,12 +223,12 @@ const OptimizedImage = React.memo(({
           )}
 
           {/* Fallback to original format */}
-          <motion.img
+          <img
             src={imageSrc}
             srcSet={srcSet}
             sizes={supportsOptimization(imageSrc) ? sizes : undefined}
             alt={alt}
-            className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : objectFit === 'contain' ? 'object-contain' : ''} ${priority || isLoaded ? 'opacity-100' : 'opacity-0'} ${!priority && 'transition-opacity duration-300'}`}
+            className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : objectFit === 'contain' ? 'object-contain' : ''} ${priority || isLoaded || forceVisible ? 'opacity-100' : 'opacity-0'} ${!priority && 'transition-opacity duration-300'}`}
             loading={priority ? 'eager' : 'lazy'}
             decoding="async"
             fetchPriority={priority ? 'high' : 'auto'}
