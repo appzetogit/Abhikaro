@@ -851,6 +851,15 @@ export default function PageNavbar({
       "west bengal",
     ]
 
+    const getStoredUserLocation = () => {
+      try {
+        const raw = localStorage.getItem("userLocation")
+        return raw ? JSON.parse(raw) : null
+      } catch {
+        return null
+      }
+    }
+
     const stripStateAndPincode = (value) => {
       const parts = String(value || "")
         .replace(/,\s*India\s*$/i, "")
@@ -863,8 +872,8 @@ export default function PageNavbar({
           return !stateKeywords.some((keyword) => lower.includes(keyword))
         })
 
-      // Remove high-level admin hierarchy for concise sublocality detail.
-      const adminKeywords = ["tahsil", "tehsil", "district", "division", "mandal"]
+      // Remove high-level admin hierarchy and keep deep locality parts.
+      const adminKeywords = ["tahsil", "tehsil", "district", "division", "mandal", "nagar nigam", "municipal"]
       const withoutAdmin = parts.filter((part) => {
         const lower = part.toLowerCase()
         return !adminKeywords.some((keyword) => lower.includes(keyword))
@@ -878,13 +887,31 @@ export default function PageNavbar({
           })
         : -1
 
-      const uptoSubLocality =
-        cityIndex > 0 ? withoutAdmin.slice(0, cityIndex) : withoutAdmin
+      const uptoSubLocality = cityIndex > 0 ? withoutAdmin.slice(0, cityIndex) : withoutAdmin
+      const deepParts = uptoSubLocality.filter((part) => {
+        const lower = part.toLowerCase()
+        return lower !== "indore city" && lower !== "indore"
+      })
 
-      return uptoSubLocality.slice(0, 3).join(", ").trim()
+      return deepParts.slice(0, 3).join(", ").trim()
     }
 
+    const isGenericCityLine = (value) => {
+      const lower = String(value || "").toLowerCase().trim()
+      return (
+        !lower ||
+        lower === "select location" ||
+        lower === "indore" ||
+        lower === "indore, indore" ||
+        lower.includes("indore city")
+      )
+    }
+
+    const stored = getStoredUserLocation()
     const candidates = [
+      stored?.formattedAddress,
+      stored?.address,
+      stored?.area,
       location?.formattedAddress,
       location?.address,
       location?.mainTitle,
@@ -892,9 +919,11 @@ export default function PageNavbar({
       subLocationName,
     ]
 
-    const best = candidates.find(
-      (value) => value && value !== "Select location" && !isCoordinates(value),
-    )
+    const best = candidates.find((value) => {
+      if (!value || value === "Select location" || isCoordinates(value)) return false
+      const cleaned = stripStateAndPincode(value)
+      return cleaned && !isGenericCityLine(cleaned)
+    })
 
     if (!best) return "Select location"
     const cleaned = stripStateAndPincode(best)

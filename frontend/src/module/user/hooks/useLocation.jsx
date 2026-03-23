@@ -1149,12 +1149,39 @@ export function useLocation() {
           }
         }
 
+        const isCoordinatesPattern = (value) =>
+          /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test((value || "").trim())
+        const hasUsableAddress =
+          (loc?.address && loc.address !== "Select location" && !isCoordinatesPattern(loc.address)) ||
+          (loc?.formattedAddress &&
+            loc.formattedAddress !== "Select location" &&
+            !isCoordinatesPattern(loc.formattedAddress))
+
+        // IMPORTANT: Preserve exact location already saved in DB (house no/road/colony).
+        // Do not re-geocode if DB already has a usable detailed address.
+        if (hasUsableAddress) {
+          return {
+            ...loc,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            address: loc.address || loc.formattedAddress || "",
+            formattedAddress: loc.formattedAddress || loc.address || "",
+          }
+        }
+
         try {
-          const addr = await reverseGeocodeDirect(
+          const addr = await reverseGeocodeWithGoogleMaps(
             loc.latitude,
             loc.longitude
           )
-          return { ...addr, latitude: loc.latitude, longitude: loc.longitude }
+          return {
+            ...addr,
+            ...loc,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            address: loc.address || addr.address || "",
+            formattedAddress: loc.formattedAddress || addr.formattedAddress || addr.address || "",
+          }
         } catch (geocodeErr) {
           // If reverse geocoding fails, return location without coordinates in address
           return {
@@ -1200,6 +1227,7 @@ export function useLocation() {
       // If not forcing fresh, try DB first (faster)
       let dbLocation = !forceFresh ? await fetchLocationFromDB() : null
       if (dbLocation && !forceFresh) {
+        localStorage.setItem("userLocation", JSON.stringify(dbLocation))
         setLocation(dbLocation)
         // Initialize last saved location from DB
         if (dbLocation.latitude && dbLocation.longitude) {
@@ -1258,7 +1286,7 @@ export function useLocation() {
                 }
               } else {
                 try {
-                  addr = await reverseGeocodeDirect(latitude, longitude)
+                  addr = await reverseGeocodeWithGoogleMaps(latitude, longitude)
 
                   // Validate result - if it still has placeholder values, don't save
                   if (addr.city === "Current Location" || addr.address.includes(latitude.toFixed(4))) {
@@ -1347,7 +1375,7 @@ export function useLocation() {
               const { latitude, longitude } = pos.coords
 
               try {
-                const lastResortAddr = await reverseGeocodeDirect(latitude, longitude)
+                const lastResortAddr = await reverseGeocodeWithGoogleMaps(latitude, longitude)
 
                 // Check if we got valid data (not just coordinates)
                 if (lastResortAddr &&
