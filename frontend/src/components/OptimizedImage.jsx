@@ -277,7 +277,7 @@ const OptimizedImage = React.memo(({
             alt={alt}
             className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : objectFit === 'contain' ? 'object-contain' : ''} ${priority || isLoaded || forceVisible ? 'opacity-100' : 'opacity-0'} ${!priority && 'transition-opacity duration-300'}`}
             loading={priority ? 'eager' : 'lazy'}
-            decoding="async"
+            decoding={priority ? 'sync' : 'async'}
             fetchPriority={priority ? 'high' : 'auto'}
             onLoad={handleLoad}
             onError={handleError}

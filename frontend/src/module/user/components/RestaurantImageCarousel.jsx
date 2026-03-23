@@ -120,7 +120,8 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
           loading={priority && currentIndex === 0 ? "eager" : "lazy"}
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           objectFit="cover"
-          placeholder="blur"
+          // Skip blur on priority cards so image appears immediately without extra paint layers.
+          placeholder={priority && currentIndex === 0 ? "none" : "blur"}
           onError={moveToNextWorkingImage}
         />
       </div>

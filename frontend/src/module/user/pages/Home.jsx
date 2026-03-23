@@ -1808,7 +1808,7 @@ export default function Home() {
                           <div className="relative">
                             <RestaurantImageCarousel
                               restaurant={restaurant}
-                              priority={index < 2}
+                              priority={index < 4}
                             />
 
                             {/* CURRENTLY CLOSED Banner - Center Overlay (when restaurant is offline) */}
@@ -1903,7 +1903,7 @@ export default function Home() {
                             <div className="relative">
                               <RestaurantImageCarousel
                                 restaurant={restaurant}
-                                priority={index < 2}
+                                priority={index < 4}
                               />
 
                               {/* Featured Dish Badge - Top Left */}
