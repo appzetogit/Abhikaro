@@ -56,9 +56,31 @@ const OptimizedImage = React.memo(({
     if (!provider) return imageSrc
 
     if (provider === 'cloudinary') {
+      // If URL already has transformations after /upload/, do not modify
+      try {
+        const url = new URL(imageSrc)
+        const afterUpload = url.pathname.split('/upload/')[1]
+        if (afterUpload && afterUpload.length > 0) {
+          const firstSegment = afterUpload.split('/')[0]
+          // Heuristic: if there is a comma or contains known flags, it's already transformed
+          if (firstSegment.includes(',') || /(^|,)q_|(^|,)f_|(^|,)w_/.test(firstSegment)) {
+            return imageSrc
+          }
+        }
+      } catch (_) { /* ignore and continue */ }
+
       const transformParts = []
-      if (format) transformParts.push(`f_${format}`)
-      transformParts.push(`q_${quality}`)
+      if (format) {
+        transformParts.push(`f_${format}`)
+      } else {
+        // Prefer auto format when not explicitly requested
+        transformParts.push('f_auto')
+      }
+      if (quality) {
+        transformParts.push(`q_${quality}`)
+      } else {
+        transformParts.push('q_auto')
+      }
       if (width) transformParts.push(`w_${width}`)
 
       if (!transformParts.length || !imageSrc.includes('/upload/')) return imageSrc
@@ -66,10 +88,14 @@ const OptimizedImage = React.memo(({
     }
 
     if (provider === 'imagekit') {
+      // If URL already has tr= params, skip
+      if (imageSrc.includes('tr=')) return imageSrc
       const params = []
       if (width) params.push(`w-${width}`)
       if (quality) params.push(`q-${quality}`)
-      if (format) params.push(`f-${format}`)
+      if (format) {
+        params.push(`f-${format}`)
+      }
       if (!params.length) return imageSrc
       const separator = imageSrc.includes('?') ? '&' : '?'
       return `${imageSrc}${separator}tr=${params.join(',')}`
