@@ -743,12 +743,6 @@ export default function Feedback() {
                 <Calendar className="w-4 h-4 text-gray-800" />
               </div>
             </button>
-            <button 
-              className="w-14 self-stretch rounded-md bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
-              onClick={() => setIsComplaintsFilterOpen(true)}
-            >
-              <SlidersHorizontal className="w-4 h-4 text-gray-800" />
-            </button>
           </div>
         )}
       </div>

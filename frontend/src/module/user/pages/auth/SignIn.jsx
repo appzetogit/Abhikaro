@@ -543,11 +543,11 @@ export default function SignIn() {
   }
 
   return (
-    <AnimatedPage className="max-h-screen flex flex-col bg-white dark:bg-[#0a0a0a] overflow-hidden !pb-0 md:flex-row md:overflow-hidden">
+    <AnimatedPage className="h-[100dvh] flex flex-col bg-white dark:bg-[#0a0a0a] overflow-hidden !pb-0 md:flex-row md:overflow-hidden">
 
       {/* Mobile: Top Section - Banner Image */}
       {/* Desktop: Left Section - Banner Image */}
-      <div className="relative md:hidden w-full shrink-0" style={{ height: "45vh", minHeight: "300px" }}>
+      <div className="relative md:hidden w-full shrink-0" style={{ height: "40vh", minHeight: "240px" }}>
         <img
           src={loginBanner}
           alt="Food Banner"
@@ -567,8 +567,8 @@ export default function SignIn() {
 
       {/* Mobile: Bottom Section - White Login Form */}
       {/* Desktop: Right Section - Login Form */}
-      <div className="bg-white dark:bg-[#1a1a1a] p-3 sm:p-4 md:p-6 lg:p-8 xl:p-10 overflow-y-auto md:w-1/2 md:flex md:items-center md:justify-center md:h-screen">
-        <div className="max-w-md lg:max-w-lg xl:max-w-xl mx-auto space-y-6 md:space-y-8 lg:space-y-10 w-full">
+      <div className="bg-white dark:bg-[#1a1a1a] p-3 sm:p-4 md:p-6 lg:p-8 xl:p-10 overflow-hidden md:overflow-y-auto md:w-1/2 md:flex md:items-center md:justify-center md:h-screen">
+        <div className="max-w-md lg:max-w-lg xl:max-w-xl mx-auto space-y-4 md:space-y-8 lg:space-y-10 w-full">
           {/* Heading */}
           <div className="text-center space-y-2 md:space-y-3">
             <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-black dark:text-white leading-tight">
@@ -789,7 +789,7 @@ export default function SignIn() {
           </div>
 
           {/* Legal Disclaimer */}
-          <div className="text-center text-xs md:text-sm text-gray-500 dark:text-gray-400 pt-4 md:pt-6">
+          <div className="text-center text-xs md:text-sm text-gray-500 dark:text-gray-400 pt-12 md:pt-13">
             <p className="mb-1 md:mb-2">
               By continuing, you agree to our
             </p>
