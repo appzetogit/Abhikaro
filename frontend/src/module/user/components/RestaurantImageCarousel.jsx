@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from "react"
+import React, { useState, useRef, useMemo, useEffect } from "react"
 import OptimizedImage from "@/components/OptimizedImage"
 
 export const RestaurantImageCarousel = React.memo(({ restaurant, priority = false }) => {
@@ -25,9 +25,15 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
     return unique.length > 0 ? unique : null
   }, [restaurant.menuImages, restaurant.images])
   const [currentIndex, setCurrentIndex] = useState(0)
+  const failedIndexesRef = useRef(new Set())
   const touchStartX = useRef(0)
   const touchEndX = useRef(0)
   const isSwiping = useRef(false)
+
+  useEffect(() => {
+    failedIndexesRef.current.clear()
+    setCurrentIndex(0)
+  }, [images])
 
   if (!images || images.length === 0) {
     // No menu images available – show neutral placeholder (no stock photo)
@@ -77,6 +83,26 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
     touchEndX.current = 0
   }
 
+  const moveToNextWorkingImage = () => {
+    if (!images || images.length <= 1) return
+
+    failedIndexesRef.current.add(currentIndex)
+    if (failedIndexesRef.current.size >= images.length) return
+
+    let nextIndex = currentIndex
+    for (let step = 1; step <= images.length; step += 1) {
+      const candidate = (currentIndex + step) % images.length
+      if (!failedIndexesRef.current.has(candidate)) {
+        nextIndex = candidate
+        break
+      }
+    }
+
+    if (nextIndex !== currentIndex) {
+      setCurrentIndex(nextIndex)
+    }
+  }
+
   return (
     <div
       className="relative h-48 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-2xl sm:rounded-t-3xl flex-shrink-0 group bg-gray-100"
@@ -95,6 +121,7 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           objectFit="cover"
           placeholder="blur"
+          onError={moveToNextWorkingImage}
         />
       </div>
 

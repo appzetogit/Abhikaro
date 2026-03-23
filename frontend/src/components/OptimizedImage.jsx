@@ -32,6 +32,16 @@ const OptimizedImage = React.memo(({
   const imgRef = useRef(null)
   const observerRef = useRef(null)
 
+  // When image source changes (carousel slide / fallback), clear previous load-error state.
+  useEffect(() => {
+    setIsLoaded(false)
+    setHasError(false)
+    setForceVisible(false)
+    if (priority) {
+      setIsInView(true)
+    }
+  }, [src, priority])
+
   // Check if image URL supports optimization (external URLs from known providers)
   const getOptimizationProvider = (imageSrc) => {
     if (!imageSrc || typeof imageSrc !== 'string' || imageSrc === '') return false
