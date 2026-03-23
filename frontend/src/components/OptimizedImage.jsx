@@ -126,6 +126,11 @@ const OptimizedImage = React.memo(({
   useEffect(() => {
     if (priority || isInView) return
 
+    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) {
+      setIsInView(true)
+      return
+    }
+
     if (!imgRef.current) return
 
     observerRef.current = new IntersectionObserver(
@@ -140,7 +145,7 @@ const OptimizedImage = React.memo(({
         })
       },
       {
-        rootMargin: '50px', // Start loading 50px before entering viewport
+        rootMargin: '250px', // Start loading early for smoother mobile rendering
         threshold: 0.01
       }
     )
@@ -153,6 +158,13 @@ const OptimizedImage = React.memo(({
       }
     }
   }, [priority, isInView])
+
+  // Fallback: if observer callback doesn't fire on some webviews, force image load.
+  useEffect(() => {
+    if (priority || isInView) return
+    const timer = setTimeout(() => setIsInView(true), 1200)
+    return () => clearTimeout(timer)
+  }, [priority, isInView, src])
 
   // Preload critical images once per URL to avoid many duplicate <link> tags.
   useEffect(() => {
@@ -215,7 +227,7 @@ const OptimizedImage = React.memo(({
   return (
     <div className={`relative overflow-hidden ${className}`} ref={imgRef}>
       {/* Blur Placeholder */}
-      {placeholder === 'blur' && !isLoaded && (
+      {isInView && placeholder === 'blur' && !isLoaded && (
         <div
           className="absolute inset-0"
           style={{
@@ -231,7 +243,7 @@ const OptimizedImage = React.memo(({
       )}
 
       {/* Loading Skeleton */}
-      {!isLoaded && !hasError && (
+      {isInView && !isLoaded && !hasError && (
         <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
       )}
 
