@@ -1988,7 +1988,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     return (
       <div className="fixed inset-0 z-[10000] bg-white dark:bg-[#0a0a0a] flex flex-col h-screen max-h-screen overflow-hidden">
         {/* Header */}
-        <div className="flex-shrink-0 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+        <div className="flex-shrink-0 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800 px-4 pt-5 pb-3 sm:pt-4">
           <div className="flex items-center gap-4">
             <Button
               type="button"
@@ -2197,7 +2197,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     >
       {/* Header */}
       <div className="flex-shrink-0 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-4 sm:pt-5">
           <div className="flex items-center gap-4">
             <Button
               type="button"
