@@ -51,6 +51,7 @@ import shippingPublicRoutes from './modules/admin/routes/shippingPublicRoutes.js
 import cancellationPublicRoutes from './modules/admin/routes/cancellationPublicRoutes.js';
 import feedbackPublicRoutes from './modules/admin/routes/feedbackPublicRoutes.js';
 import feedbackExperiencePublicRoutes from './modules/admin/routes/feedbackExperiencePublicRoutes.js';
+import customerContactPublicRoutes from './modules/admin/routes/customerContactPublicRoutes.js';
 import safetyEmergencyPublicRoutes from './modules/admin/routes/safetyEmergencyPublicRoutes.js';
 import zonePublicRoutes from './modules/admin/routes/zonePublicRoutes.js';
 import subscriptionRoutes from './modules/subscription/index.js';
@@ -377,6 +378,8 @@ app.use(helmet({
         "https://www.google.com", // Google services
         "https://apis.google.com", // Google API for sign-in
         "https://maps.googleapis.com", // Google Maps
+        "https://checkout.razorpay.com", // Razorpay checkout
+        "https://cdn.razorpay.com", // Razorpay risk detection bundle
       ],
       styleSrc: [
         "'self'",
@@ -622,6 +625,7 @@ app.use('/api', shippingPublicRoutes);
 app.use('/api', cancellationPublicRoutes);
 app.use('/api', feedbackPublicRoutes);
 app.use('/api', feedbackExperiencePublicRoutes);
+app.use('/api', customerContactPublicRoutes);
 app.use('/api', safetyEmergencyPublicRoutes);
 app.use('/api', zonePublicRoutes);
 app.use('/api/subscription', subscriptionRoutes);

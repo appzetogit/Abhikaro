@@ -1,6 +1,7 @@
 import Order from "../../order/models/Order.js";
 import Payment from "../../payment/models/Payment.js";
 import Restaurant from "../models/Restaurant.js";
+import Delivery from "../../delivery/models/Delivery.js";
 import {
   successResponse,
   errorResponse,
@@ -119,6 +120,58 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
 
     const total = await Order.countDocuments(query);
 
+    const normalizeDeliveryId = (value) => {
+      if (!value) return null;
+      const candidate =
+        value?._id?.toString?.() ||
+        value?.$oid ||
+        value?.toString?.() ||
+        null;
+      if (!candidate) return null;
+      return mongoose.Types.ObjectId.isValid(candidate) ? candidate : null;
+    };
+
+    // Resolve delivery partner details for cases where populate may return only ObjectId
+    const unresolvedDeliveryIds = [
+      ...new Set(
+        orders
+          .flatMap((o) => {
+            const ids = [];
+            const dp = o.deliveryPartnerId;
+            const assignmentDp = o.assignmentInfo?.deliveryPartnerId;
+
+            if (dp) {
+              if (!(typeof dp === "object" && (dp.name || dp.phone))) {
+                ids.push(normalizeDeliveryId(dp));
+              }
+            }
+
+            if (assignmentDp) {
+              ids.push(normalizeDeliveryId(assignmentDp));
+            }
+
+            return ids;
+          })
+          .filter(Boolean),
+      ),
+    ];
+
+    let deliveryByIdMap = new Map();
+    if (unresolvedDeliveryIds.length > 0) {
+      try {
+        const deliveryPartners = await Delivery.find({
+          _id: { $in: unresolvedDeliveryIds },
+        })
+          .select("_id name phone")
+          .lean();
+        deliveryByIdMap = new Map(
+          deliveryPartners.map((d) => [d._id.toString(), d]),
+        );
+      } catch (e) {
+        console.warn("⚠️ Failed to resolve delivery partner details:", e.message);
+      }
+    }
+
     // Resolve paymentMethod: order.payment.method or Payment collection (COD fallback)
     const orderIds = orders.map((o) => o._id);
     const codOrderIds = new Set();
@@ -137,7 +190,32 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
       let paymentMethod = o.payment?.method ?? "razorpay";
       if (paymentMethod !== "cash" && codOrderIds.has(o._id?.toString()))
         paymentMethod = "cash";
-      return { ...o, paymentMethod };
+
+      const rawDeliveryPartner = o.deliveryPartnerId;
+      const deliveryPartnerId = normalizeDeliveryId(rawDeliveryPartner)
+        || normalizeDeliveryId(o.assignmentInfo?.deliveryPartnerId);
+      const resolvedDelivery =
+        (rawDeliveryPartner &&
+          typeof rawDeliveryPartner === "object" &&
+          (rawDeliveryPartner.name || rawDeliveryPartner.phone)
+          ? rawDeliveryPartner
+          : null) ||
+        (deliveryPartnerId ? deliveryByIdMap.get(deliveryPartnerId) : null) ||
+        null;
+
+      return {
+        ...o,
+        paymentMethod,
+        deliveryPartnerName: resolvedDelivery?.name || null,
+        deliveryPartnerPhone: resolvedDelivery?.phone || null,
+        deliveryPartnerId: resolvedDelivery
+          ? {
+              _id: resolvedDelivery._id || deliveryPartnerId,
+              name: resolvedDelivery.name || null,
+              phone: resolvedDelivery.phone || null,
+            }
+          : rawDeliveryPartner,
+      };
     });
 
     // Log detailed order info for debugging

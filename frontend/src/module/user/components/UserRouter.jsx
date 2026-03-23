@@ -69,6 +69,7 @@ const Refund = lazy(() => import("../pages/profile/Refund"))
 const Shipping = lazy(() => import("../pages/profile/Shipping"))
 const Cancellation = lazy(() => import("../pages/profile/Cancellation"))
 const SendFeedback = lazy(() => import("../pages/profile/SendFeedback"))
+const ContactUs = lazy(() => import("../pages/profile/ContactUs"))
 const ReportSafetyEmergency = lazy(() => import("../pages/profile/ReportSafetyEmergency"))
 const Logout = lazy(() => import("../pages/profile/Logout"))
 
@@ -364,6 +365,14 @@ export default function UserRouter() {
             element={
               <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
                 <SendFeedback />
+              </ProtectedRoute>
+            }
+          />
+            <Route
+            path="/profile/contact-us"
+            element={
+              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
+                <ContactUs />
               </ProtectedRoute>
             }
           />

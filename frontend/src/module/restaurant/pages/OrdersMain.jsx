@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import Lenis from "lenis"
-import { Printer, Volume2, VolumeX, ChevronDown, ChevronUp, Minus, Plus, X, AlertCircle, Loader2, Calendar, Clock, Users, MessageSquare } from "lucide-react"
+import { Printer, Volume2, VolumeX, ChevronDown, ChevronUp, Minus, Plus, X, AlertCircle, Loader2, Calendar, Clock, Users, MessageSquare, PhoneCall } from "lucide-react"
 import { toast } from "sonner"
 import BottomNavOrders from "../components/BottomNavOrders"
 import RestaurantNavbar from "../components/RestaurantNavbar"
@@ -2466,6 +2466,8 @@ function OrderCard({
   photoUrl,
   photoAlt,
   deliveryPartnerId,
+  deliveryPartnerName,
+  deliveryPartnerPhone,
   paymentMethod,
   paymentStatus,
   onSelect,
@@ -2537,7 +2539,7 @@ function OrderCard({
               </p>
             </div>
 
-            <div className="flex flex-col items-end gap-1">
+            <div className={`flex flex-col items-end gap-1 ${status === 'preparing' ? 'mr-7' : ''}`}>
               <span
                 className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium border ${isReady
                   ? "border-green-500 text-green-600"
@@ -2595,6 +2597,32 @@ function OrderCard({
                     >
                       Mark as Ready
                     </button>
+                  )}
+                </div>
+              )}
+              {deliveryPartnerId && (
+                <div className="mt-1 flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-gray-600">
+                    Rider: {deliveryPartnerName || "Delivery Partner"}
+                  </span>
+                  {deliveryPartnerPhone ? (
+                    <>
+                      <span className="text-[10px] text-gray-500">{deliveryPartnerPhone}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          window.location.href = `tel:${deliveryPartnerPhone}`
+                        }}
+                        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                        title={`Call ${deliveryPartnerName || "delivery partner"}`}
+                        aria-label={`Call ${deliveryPartnerName || "delivery partner"}`}
+                      >
+                        <PhoneCall className="w-3 h-3" />
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[10px] text-gray-400">Phone not available</span>
                   )}
                 </div>
               )}
@@ -2685,6 +2713,8 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
               photoUrl: order.items?.[0]?.image || null,
               photoAlt: order.items?.[0]?.name || 'Order',
               deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null, // Handle both populated object and ObjectId
+              deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
+              deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
               paymentMethod: order.paymentMethod ?? order.payment?.method,
               paymentStatus: order.payment?.status
             }
@@ -2897,6 +2927,8 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
                 photoUrl={order.photoUrl}
                 photoAlt={order.photoAlt}
                 deliveryPartnerId={order.deliveryPartnerId}
+                deliveryPartnerName={order.deliveryPartnerName}
+                deliveryPartnerPhone={order.deliveryPartnerPhone}
                 paymentMethod={order.paymentMethod}
                 paymentStatus={order.paymentStatus}
                 onSelect={onSelectOrder}
@@ -2954,6 +2986,8 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || 'Order',
             deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null, // Handle both populated object and ObjectId
+            deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
+            deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
             paymentMethod: order.paymentMethod ?? order.payment?.method,
             paymentStatus: order.payment?.status
           }))
@@ -3088,6 +3122,9 @@ const OutForDeliveryOrders = ({ onSelectOrder, fetchAllOrders }) => {
             itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || 'Order',
+            deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null, // Handle both populated object and ObjectId
+            deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
+            deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
             paymentMethod: order.paymentMethod ?? order.payment?.method,
             paymentStatus: order.payment?.status
           }))

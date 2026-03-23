@@ -9933,9 +9933,26 @@ export default function DeliveryHome() {
                       </span>
                     </div>
 
-                    <h3 className="text-lg font-bold text-gray-900 mb-1">
-                      {newOrder?.restaurantName || selectedRestaurant?.name || 'Restaurant'}
-                    </h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-lg font-bold text-gray-900">
+                        {newOrder?.restaurantName || selectedRestaurant?.name || 'Restaurant'}
+                      </h3>
+                      {(() => {
+                        const rawStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || newOrder?.status
+                        const normalized = String(rawStatus || '').toLowerCase()
+                        const foodStatus = normalized === 'preparing'
+                          ? 'Preparing'
+                          : normalized === 'ready'
+                            ? 'Ready'
+                            : null
+                        if (!foodStatus) return null
+                        return (
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+                            {foodStatus}
+                          </span>
+                        )
+                      })()}
+                    </div>
                     <p className="text-sm text-gray-600 mb-3 leading-relaxed">
                       {newOrder?.restaurantLocation?.address || selectedRestaurant?.address || 'Address'}
                     </p>
@@ -10179,9 +10196,26 @@ export default function DeliveryHome() {
 
           {/* Restaurant Info */}
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {selectedRestaurant?.name || 'Restaurant Name'}
-            </h2>
+            <div className="flex items-center gap-2 mb-2">
+              <h2 className="text-2xl font-bold text-gray-900">
+                {selectedRestaurant?.name || 'Restaurant Name'}
+              </h2>
+              {(() => {
+                const rawStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status
+                const normalized = String(rawStatus || '').toLowerCase()
+                const foodStatus = normalized === 'preparing'
+                  ? 'Preparing'
+                  : normalized === 'ready'
+                    ? 'Ready'
+                    : null
+                if (!foodStatus) return null
+                return (
+                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+                    {foodStatus}
+                  </span>
+                )
+              })()}
+            </div>
             <p className="text-gray-600 mb-2 leading-relaxed">
               {(() => {
                 const address = selectedRestaurant?.address;

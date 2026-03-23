@@ -45,6 +45,7 @@ const Coupons = lazy(() => import("../pages/Coupons"));
 const NewAdvertisement = lazy(() => import("../pages/advertisement/NewAdvertisement"));
 const PushNotification = lazy(() => import("../pages/PushNotification"));
 // Help & Support
+const CustomerContactUs = lazy(() => import("../pages/CustomerContactUs"));
 const ContactMessages = lazy(() => import("../pages/ContactMessages"));
 const SafetyEmergencyReports = lazy(() => import("../pages/SafetyEmergencyReports"));
 // Customer Management
@@ -216,6 +217,7 @@ export default function AdminRouter() {
           <Route path="push-notification" element={<PushNotification />} />
 
           {/* HELP & SUPPORT */}
+          <Route path="customer-contact-us" element={<CustomerContactUs />} />
           <Route path="contact-messages" element={<ContactMessages />} />
           <Route path="safety-emergency-reports" element={<SafetyEmergencyReports />} />
 

@@ -237,6 +237,11 @@ import {
   deleteSafetyEmergency,
 } from "../controllers/safetyEmergencyController.js";
 import {
+  getCustomerContactMessages,
+  getCustomerContactMessageById,
+  updateCustomerContactMessageStatus,
+} from "../controllers/customerContactMessageController.js";
+import {
   getOrders,
   getOrderById,
   getSearchingDeliverymanOrders,
@@ -697,6 +702,11 @@ router.put("/safety-emergency/:id/status", updateSafetyEmergencyStatus);
 router.put("/safety-emergency/:id/priority", updateSafetyEmergencyPriority);
 router.put("/safety-emergency/:id/respond", respondToSafetyEmergency);
 router.delete("/safety-emergency/:id", deleteSafetyEmergency);
+
+// Customer Contact Us Management
+router.get("/customer-contact-us", getCustomerContactMessages);
+router.get("/customer-contact-us/:id", getCustomerContactMessageById);
+router.put("/customer-contact-us/:id/status", updateCustomerContactMessageStatus);
 
 // Order Management
 router.get("/orders", requirePermissions("orders.view"), getOrders);

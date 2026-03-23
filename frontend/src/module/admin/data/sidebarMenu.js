@@ -346,6 +346,13 @@ export const sidebarMenuData = [
     items: [
       {
         type: "link",
+        label: "Customer Contact Us",
+        path: "/admin/customer-contact-us",
+        icon: "Mail",
+        permissionId: "menu.customers",
+      },
+      {
+        type: "link",
         label: "User Feedback",
         path: "/admin/contact-messages",
         icon: "Mail",

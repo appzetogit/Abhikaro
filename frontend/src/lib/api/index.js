@@ -255,6 +255,11 @@ export const userAPI = {
     return apiClient.get(API_ENDPOINTS.USER.ORDERS, { params });
   },
 
+  // Submit customer contact-us message
+  createContactUsMessage: (data) => {
+    return apiClient.post(API_ENDPOINTS.USER.CONTACT_US, data);
+  },
+
   // Get user location
   getLocation: () => {
     return apiClient.get(API_ENDPOINTS.USER.LOCATION);
@@ -2303,6 +2308,24 @@ export const adminAPI = {
   deleteFeedbackExperience: (id) => {
     return apiClient.delete(
       API_ENDPOINTS.ADMIN.FEEDBACK_EXPERIENCE_BY_ID.replace(":id", id),
+    );
+  },
+
+  // Customer Contact Us Management
+  getCustomerContactUsMessages: (params = {}) => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.CUSTOMER_CONTACT_US, { params });
+  },
+
+  getCustomerContactUsMessageById: (id) => {
+    return apiClient.get(
+      API_ENDPOINTS.ADMIN.CUSTOMER_CONTACT_US_BY_ID.replace(":id", id),
+    );
+  },
+
+  updateCustomerContactUsMessageStatus: (id, status) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.CUSTOMER_CONTACT_US_STATUS.replace(":id", id),
+      { status },
     );
   },
 };

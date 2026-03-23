@@ -2059,9 +2059,6 @@ export default function Cart() {
                 <div className="flex items-center gap-2">
                   <CreditCard className="h-4 w-4 text-gray-600 dark:text-gray-300" />
                   <div className="leading-tight">
-                    <p className="text-[11px] md:text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      PAY USING
-                    </p>
                     <p className="text-sm md:text-base font-medium text-gray-800 dark:text-gray-200">
                       {selectedPaymentMethod === "razorpay"
                         ? "Online"
@@ -2076,9 +2073,6 @@ export default function Cart() {
 
                 <div className="relative">
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Payment Method <span className="text-red-500">*</span>
-                    </label>
                     <select
                       value={selectedPaymentMethod}
                       onChange={(e) => setSelectedPaymentMethod(e.target.value)}
@@ -2143,7 +2137,7 @@ export default function Cart() {
                   {isPlacingOrder
                     ? "Processing..."
                     : selectedPaymentMethod === "razorpay"
-                      ? "Select Payment"
+                      ? "Place Order"
                       : selectedPaymentMethod === "wallet"
                         ? walletBalance >= total
                           ? "Place Order"
