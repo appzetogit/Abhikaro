@@ -835,6 +835,71 @@ export default function PageNavbar({
 
   const mainLocationName = locationDisplay.main
   const subLocationName = locationDisplay.sub
+  const exactLocationLine = useMemo(() => {
+    const isCoordinates = (value) =>
+      /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test((value || "").trim())
+    const stateKeywords = [
+      "madhya pradesh",
+      "maharashtra",
+      "gujarat",
+      "rajasthan",
+      "uttar pradesh",
+      "delhi",
+      "karnataka",
+      "tamil nadu",
+      "telangana",
+      "west bengal",
+    ]
+
+    const stripStateAndPincode = (value) => {
+      const parts = String(value || "")
+        .replace(/,\s*India\s*$/i, "")
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .filter((part) => !/\b\d{6}\b/.test(part))
+        .filter((part) => {
+          const lower = part.toLowerCase()
+          return !stateKeywords.some((keyword) => lower.includes(keyword))
+        })
+
+      // Remove high-level admin hierarchy for concise sublocality detail.
+      const adminKeywords = ["tahsil", "tehsil", "district", "division", "mandal"]
+      const withoutAdmin = parts.filter((part) => {
+        const lower = part.toLowerCase()
+        return !adminKeywords.some((keyword) => lower.includes(keyword))
+      })
+
+      const cityLower = (location?.city || "").trim().toLowerCase()
+      const cityIndex = cityLower
+        ? withoutAdmin.findIndex((part) => {
+            const lower = part.toLowerCase()
+            return lower === cityLower || lower.includes(cityLower)
+          })
+        : -1
+
+      const uptoSubLocality =
+        cityIndex > 0 ? withoutAdmin.slice(0, cityIndex) : withoutAdmin
+
+      return uptoSubLocality.slice(0, 3).join(", ").trim()
+    }
+
+    const candidates = [
+      location?.formattedAddress,
+      location?.address,
+      location?.mainTitle,
+      mainLocationName,
+      subLocationName,
+    ]
+
+    const best = candidates.find(
+      (value) => value && value !== "Select location" && !isCoordinates(value),
+    )
+
+    if (!best) return "Select location"
+    const cleaned = stripStateAndPincode(best)
+    return cleaned || "Select location"
+  }, [location, mainLocationName, subLocationName])
 
   const handleLocationClick = () => {
     // Open location selector overlay
@@ -877,9 +942,9 @@ export default function PageNavbar({
                   </span>
                   <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 ${textColorClass} flex-shrink-0 ${textColor === "white" ? "drop-shadow-lg" : ""}`} strokeWidth={2.5} />
                 </div>
-                {/* Second line: cleaned address (mainLocationName) or subLocationName fallback */}
-                <span className={`text-xs font-bold ${textColorClass}${textColor === "white" ? "/90" : ""} max-w-[220px] truncate mt-0.5 ${textColor === "white" ? "drop-shadow-md" : ""}`}>
-                  {mainLocationName || subLocationName || "Select location"}
+                {/* Second line: show precise address if available */}
+                <span className={`text-xs font-bold ${textColorClass}${textColor === "white" ? "/90" : ""} max-w-[220px] mt-0.5 leading-4 ${textColor === "white" ? "drop-shadow-md" : ""}`}>
+                  {exactLocationLine}
                 </span>
               </div>
             )}

@@ -70,6 +70,11 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   const locationUpdateTimeoutRef = useRef(null) // Timeout for location updates
   const [currentAddress, setCurrentAddress] = useState("")
   const [GOOGLE_MAPS_API_KEY, setGOOGLE_MAPS_API_KEY] = useState(null)
+  const [searchResults, setSearchResults] = useState([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState("")
+  const [showSearchResults, setShowSearchResults] = useState(false)
+  const searchRequestIdRef = useRef(0)
 
   // Load Google Maps API key from backend
   useEffect(() => {
@@ -196,6 +201,49 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     // Final fallback
     return location?.city || location?.area || "Detecting location..."
   })()
+
+  useEffect(() => {
+    const query = searchValue.trim()
+
+    if (query.length < 3) {
+      setSearchResults([])
+      setSearchError("")
+      setSearchLoading(false)
+      return
+    }
+
+    const baseLat = location?.latitude || mapPosition?.[0]
+    const baseLng = location?.longitude || mapPosition?.[1]
+    if (!baseLat || !baseLng) {
+      setSearchResults([])
+      setSearchError("Current location unavailable")
+      return
+    }
+
+    const requestId = ++searchRequestIdRef.current
+    setSearchLoading(true)
+    setSearchError("")
+
+    const timer = setTimeout(async () => {
+      try {
+        const response = await locationAPI.getNearbyLocations(baseLat, baseLng, 3000, query)
+        if (requestId !== searchRequestIdRef.current) return
+
+        const locations = response?.data?.data?.locations || []
+        setSearchResults(Array.isArray(locations) ? locations : [])
+      } catch (error) {
+        if (requestId !== searchRequestIdRef.current) return
+        setSearchResults([])
+        setSearchError("Address search failed. Please try again.")
+      } finally {
+        if (requestId === searchRequestIdRef.current) {
+          setSearchLoading(false)
+        }
+      }
+    }, 350)
+
+    return () => clearTimeout(timer)
+  }, [searchValue, location?.latitude, location?.longitude, mapPosition])
 
   // Global error suppression for legacy map SDK errors (runs on component mount)
   useEffect(() => {
@@ -886,6 +934,45 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         phone: userProfile?.phone || "",
       }))
     }
+  }
+
+  const handleSearchResultSelect = async (result) => {
+    const lat = parseFloat(result?.latitude)
+    const lng = parseFloat(result?.longitude)
+
+    if (Number.isNaN(lat) || Number.isNaN(lng)) {
+      toast.error("Invalid location selected")
+      return
+    }
+
+    setMapPosition([lat, lng])
+    setCurrentAddress(result?.address || result?.name || "")
+    setSearchValue(result?.address || result?.name || "")
+    setShowSearchResults(false)
+
+    setAddressFormData(prev => ({
+      ...prev,
+      street: result?.name || prev.street,
+      additionalDetails: result?.address || prev.additionalDetails,
+    }))
+
+    const locationData = {
+      latitude: lat,
+      longitude: lng,
+      address: result?.name || "",
+      area: result?.address || "",
+      formattedAddress: result?.address || "",
+    }
+    localStorage.setItem("userLocation", JSON.stringify(locationData))
+
+    try {
+      await userAPI.updateLocation(locationData)
+    } catch (error) {
+      // Keep UX smooth: local update should still work even if API write fails.
+    }
+
+    await handleMapMoveEnd(lat, lng)
+    toast.success("Location selected")
   }
 
   const handleAddressFormChange = (e) => {
@@ -2137,11 +2224,51 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             ref={inputRef}
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
+            onFocus={() => setShowSearchResults(true)}
             placeholder="Search for area, street name..."
             className="pl-12 pr-4 h-12 w-full bg-gray-50 dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-700 focus:border-primary-orange dark:focus:border-primary-orange rounded-xl text-base dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400"
           />
         </div>
       </div>
+
+      {/* Search Results */}
+      {showSearchResults && searchValue.trim().length >= 3 && (
+        <div className="flex-shrink-0 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800 max-h-64 overflow-y-auto">
+          {searchLoading ? (
+            <div className="px-4 sm:px-6 lg:px-8 py-3 text-sm text-gray-500 dark:text-gray-400">
+              Searching addresses...
+            </div>
+          ) : searchError ? (
+            <div className="px-4 sm:px-6 lg:px-8 py-3 text-sm text-red-500">
+              {searchError}
+            </div>
+          ) : searchResults.length === 0 ? (
+            <div className="px-4 sm:px-6 lg:px-8 py-3 text-sm text-gray-500 dark:text-gray-400">
+              No addresses found
+            </div>
+          ) : (
+            searchResults.map((result) => (
+              <button
+                key={result.id}
+                onClick={() => handleSearchResultSelect(result)}
+                className="w-full text-left px-4 sm:px-6 lg:px-8 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 border-t border-gray-100 dark:border-gray-800 first:border-t-0"
+              >
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                  {result.name || "Selected location"}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {result.address}
+                </p>
+                {result.distance && (
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                    {result.distance}
+                  </p>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto scrollbar-hide min-h-0">

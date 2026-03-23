@@ -372,16 +372,35 @@ export const getNearbyLocations = async (req, res) => {
       latNum + degreeOffset,
     ].join(",");
 
-    let results = [];
-    try {
+    const normalizedQuery = String(query || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const relaxedQuery = normalizedQuery
+      .replace(/^\d+[A-Za-z\-\/]*\s*,\s*/i, "")
+      .trim();
+
+    const queryCandidates = Array.from(
+      new Set(
+        [normalizedQuery, relaxedQuery].filter(
+          (value) => value && value.length >= 2,
+        ),
+      ),
+    );
+
+    const nominatimSearch = async ({
+      q,
+      bounded = true,
+      includeIndiaSuffix = false,
+    }) => {
+      const searchQuery = includeIndiaSuffix ? `${q}, India` : q;
       const response = await axios.get(
         "https://nominatim.openstreetmap.org/search",
         {
           params: {
             format: "json",
-            q: query || "*",
+            q: searchQuery,
             viewbox: viewbox,
-            bounded: 1,
+            bounded: bounded ? 1 : 0,
             addressdetails: 1,
             limit: 10,
             "accept-language": "en",
@@ -392,7 +411,35 @@ export const getNearbyLocations = async (req, res) => {
           timeout: 8000,
         },
       );
-      results = response.data || [];
+
+      return response.data || [];
+    };
+
+    let results = [];
+    try {
+      // Pass 1: bounded nearby lookup (fast + locality-biased)
+      for (const candidate of queryCandidates) {
+        const boundedResults = await nominatimSearch({ q: candidate, bounded: true });
+        if (Array.isArray(boundedResults) && boundedResults.length > 0) {
+          results = boundedResults;
+          break;
+        }
+      }
+
+      // Pass 2: unbounded fallback with India context (helps when query has house numbers)
+      if (results.length === 0) {
+        for (const candidate of queryCandidates) {
+          const relaxedResults = await nominatimSearch({
+            q: candidate,
+            bounded: false,
+            includeIndiaSuffix: true,
+          });
+          if (Array.isArray(relaxedResults) && relaxedResults.length > 0) {
+            results = relaxedResults;
+            break;
+          }
+        }
+      }
     } catch (apiError) {
       logger.error("Nominatim nearby search failed", {
         error: apiError.message,
