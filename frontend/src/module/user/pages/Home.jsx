@@ -1045,6 +1045,38 @@ export default function Home() {
     fetchRestaurants(appliedFilters)
   }, [appliedFilters, fetchRestaurants])
 
+  // Warm image cache for first visible cards so menu images appear instantly on app open.
+  useEffect(() => {
+    if (!Array.isArray(restaurantsData) || restaurantsData.length === 0) return
+
+    const connection = navigator?.connection
+    const isSaveData = Boolean(connection?.saveData)
+    const isSlowNetwork = typeof connection?.effectiveType === 'string' && /2g/.test(connection.effectiveType)
+    if (isSaveData || isSlowNetwork) return
+
+    const preloadCandidates = restaurantsData
+      .slice(0, 6)
+      .map((r) => (Array.isArray(r.menuImages) && r.menuImages.length > 0 ? r.menuImages[0] : r.image))
+      .filter((src) => typeof src === 'string' && src.trim() !== '')
+
+    if (preloadCandidates.length === 0) return
+
+    const warmed = []
+    preloadCandidates.forEach((src) => {
+      const img = new Image()
+      img.decoding = 'async'
+      img.fetchPriority = 'high'
+      img.src = src
+      warmed.push(img)
+    })
+
+    return () => {
+      warmed.forEach((img) => {
+        img.src = ''
+      })
+    }
+  }, [restaurantsData])
+
   // Recalculate distances when user location updates
   useEffect(() => {
     if (!restaurantsData || restaurantsData.length === 0 || !location?.latitude || !location?.longitude) return

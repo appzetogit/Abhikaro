@@ -174,17 +174,17 @@ export default function AddMoneyModal({ open, onOpenChange, onSuccess }) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[92vw] max-w-sm p-4 sm:p-5">
         <DialogHeader>
-          <DialogTitle className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">
+          <DialogTitle className="text-lg md:text-xl font-bold text-gray-900 dark:text-white">
             Add Money to Wallet
           </DialogTitle>
-          <DialogDescription className="text-sm md:text-base text-gray-600 dark:text-gray-400">
+          <DialogDescription className="text-xs md:text-sm text-gray-600 dark:text-gray-400">
             Enter the amount you want to add to your wallet
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-4 py-2">
           {/* Amount Input */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -199,7 +199,7 @@ export default function AddMoneyModal({ open, onOpenChange, onSuccess }) {
                 value={amount}
                 onChange={handleAmountChange}
                 placeholder="Enter amount"
-                className="pl-10 h-12 text-lg"
+                className="pl-10 h-10 text-base"
                 disabled={loading || processing}
               />
             </div>
@@ -213,13 +213,13 @@ export default function AddMoneyModal({ open, onOpenChange, onSuccess }) {
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Quick Select
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               {quickAmounts.map((quickAmount) => (
                 <Button
                   key={quickAmount}
                   type="button"
                   variant={amount === quickAmount.toString() ? "default" : "outline"}
-                  className="h-10"
+                  className="h-9 text-sm"
                   onClick={() => handleAmountSelect(quickAmount)}
                   disabled={loading || processing}
                 >
@@ -233,7 +233,7 @@ export default function AddMoneyModal({ open, onOpenChange, onSuccess }) {
           <Button
             onClick={handleAddMoney}
             disabled={!amount || loading || processing || parseFloat(amount) < 1}
-            className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold text-base"
+            className="w-full h-10 bg-green-600 hover:bg-green-700 text-white font-semibold text-sm"
           >
             {loading || processing ? (
               <>

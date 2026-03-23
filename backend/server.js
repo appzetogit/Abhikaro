@@ -396,6 +396,8 @@ app.use(helmet({
       ],
       connectSrc: [
         "'self'",
+        "https://api.razorpay.com",
+        "https://lumberjack.razorpay.com",
         "https://www.googleapis.com",
         "https://identitytoolkit.googleapis.com",
         "https://securetoken.googleapis.com",
