@@ -561,6 +561,9 @@ export default function Under250() {
             const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
             const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
             const restaurantKey = `${restaurant?._id || restaurant?.id || "rest"}-${restaurantSlug}-${restaurantIndex}`
+            const ratingValue = Number(restaurant.rating ?? restaurant.averageRating ?? restaurant.avgRating ?? 0)
+            const displayRating = Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue.toFixed(1) : "0.0"
+            const totalRatings = Number(restaurant.totalRatings ?? restaurant.reviewCount ?? 0)
             return (
               <section key={restaurantKey} className="pt-4 sm:pt-6 md:pt-8 lg:pt-10">
                 {/* Restaurant Header */}
@@ -579,10 +582,10 @@ export default function Under250() {
                       <div className="bg-white text-green-700 px-1 py-1 md:px-1.5 md:py-1.5 lg:px-2 lg:py-2 rounded-full">
                         <Star className="h-3.5 w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 fill-green-800 text-green-800" />
                       </div>
-                      <span className="text-xs md:text-sm lg:text-base font-bold">{restaurant.rating}</span>
+                      <span className="text-xs md:text-sm lg:text-base font-bold">{displayRating}</span>
                     </div>
                     <span className="text-xs md:text-sm lg:text-base text-gray-400 dark:text-gray-500 mt-0.5">
-                      {restaurant.totalRatings > 0 ? `By ${restaurant.totalRatings >= 1000 ? `${(restaurant.totalRatings / 1000).toFixed(1)}K+` : `${restaurant.totalRatings}+`}` : ''}
+                      {totalRatings > 0 ? `By ${totalRatings >= 1000 ? `${(totalRatings / 1000).toFixed(1)}K+` : `${totalRatings}+`}` : ''}
                     </span>
                   </div>
                 </div>
@@ -604,7 +607,8 @@ export default function Under250() {
                         const quantity = hasVariantsCard
                           ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
                           : (quantities[item.id] || 0)
-                        const itemKey = item?._id || item?.id || `${restaurantKey}-item-${itemIndex}`
+                        const itemIdentity = item?._id || item?.id || 'item'
+                        const itemKey = `${restaurantKey}-${itemIdentity}-${itemIndex}`
                         return (
                           <motion.div
                             key={itemKey}

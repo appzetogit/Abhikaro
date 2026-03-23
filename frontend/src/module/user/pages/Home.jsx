@@ -1406,7 +1406,7 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <PageNavbar textColor="black" zIndex={20} />
+          <PageNavbar textColor="black" zIndex={20} mobileTranslateYClass="translate-y-[24px]" />
         </motion.div>
 
         {/* Hero Section */}
