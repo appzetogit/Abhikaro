@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from "react"
 import { locationAPI, userAPI } from "@/lib/api"
 
 export function useLocation() {
+  const MOVEMENT_UPDATE_THRESHOLD_METERS = 200
+  const UI_COORD_CHANGE_THRESHOLD_METERS = 10
+  const SAME_POINT_DEDUPE_MIN_METERS = 20
+
   const [location, setLocation] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -15,6 +19,7 @@ export function useLocation() {
   const isFetchingLocationRef = useRef(false) // Prevent multiple simultaneous location fetches
   const hasInitializedRef = useRef(false) // Prevent multiple initializations
   const lastSavedLocationRef = useRef({ latitude: null, longitude: null }) // Store last saved location for distance check
+  const lastProcessedCoordsRef = useRef({ latitude: null, longitude: null })
 
   // Helper to check if user is authenticated (used to decide live watch / DB updates)
   const isUserAuthenticated = () => {
@@ -36,6 +41,19 @@ export function useLocation() {
     return R * c; // Distance in meters
   }
 
+  const hasMovedBeyondThreshold = (fromLat, fromLng, toLat, toLng, thresholdMeters) => {
+    if (
+      fromLat === null ||
+      fromLng === null ||
+      toLat === null ||
+      toLng === null
+    ) {
+      return true
+    }
+    const movedDistance = calculateDistance(fromLat, fromLng, toLat, toLng)
+    return movedDistance >= thresholdMeters
+  }
+
   /* ===================== DB UPDATE (LIVE LOCATION TRACKING) ===================== */
   const updateLocationInDB = async (locationData) => {
     try {
@@ -46,21 +64,20 @@ export function useLocation() {
         return;
       }
 
-      // Check distance from last saved location (200 meters range)
-      const lastSaved = lastSavedLocationRef.current;
-      if (lastSaved.latitude !== null && lastSaved.longitude !== null) {
-        const distance = calculateDistance(
-          lastSaved.latitude,
-          lastSaved.longitude,
+      // Only persist if user has moved meaningfully from the last saved anchor.
+      const anchor = anchorLocationRef.current
+      if (
+        anchor.latitude !== null &&
+        anchor.longitude !== null &&
+        !hasMovedBeyondThreshold(
+          anchor.latitude,
+          anchor.longitude,
           locationData.latitude,
-          locationData.longitude
-        );
-        
-        // Only save if location is within 200 meters of last saved location
-        if (distance > 200) {
-          console.log(`⚠️ Location update skipped: ${distance.toFixed(2)}m away from last saved location (max 200m)`);
-          return;
-        }
+          locationData.longitude,
+          MOVEMENT_UPDATE_THRESHOLD_METERS
+        )
+      ) {
+        return false
       }
 
       // Check if address has placeholder values (for logging only)
@@ -144,7 +161,12 @@ export function useLocation() {
       lastSavedLocationRef.current = {
         latitude: locationPayload.latitude,
         longitude: locationPayload.longitude
-      };
+      }
+      anchorLocationRef.current = {
+        latitude: locationPayload.latitude,
+        longitude: locationPayload.longitude,
+      }
+      return true
     } catch (err) {
       // Only log non-network and non-auth errors
       if (err.code !== "ERR_NETWORK" && err.response?.status !== 404 && err.response?.status !== 401) {
@@ -153,6 +175,7 @@ export function useLocation() {
         // Silently skip - this is expected for non-authenticated users
       }
     }
+    return false
   }
 
   // Google Places API removed - using OLA Maps only
@@ -1234,7 +1257,15 @@ export function useLocation() {
           lastSavedLocationRef.current = {
             latitude: dbLocation.latitude,
             longitude: dbLocation.longitude
-          };
+          }
+          anchorLocationRef.current = {
+            latitude: dbLocation.latitude,
+            longitude: dbLocation.longitude
+          }
+          lastProcessedCoordsRef.current = {
+            latitude: dbLocation.latitude,
+            longitude: dbLocation.longitude
+          }
         }
         if (showLoading) setLoading(false)
         isFetchingLocationRef.current = false
@@ -1266,6 +1297,38 @@ export function useLocation() {
             try {
               const { latitude, longitude, accuracy } = pos.coords
               const timestamp = pos.timestamp || Date.now()
+              const processedCoords = lastProcessedCoordsRef.current
+              const dedupeThreshold = Math.max(SAME_POINT_DEDUPE_MIN_METERS, Math.min(accuracy || 0, 50))
+              const movedSinceLastProcessed = hasMovedBeyondThreshold(
+                processedCoords.latitude,
+                processedCoords.longitude,
+                latitude,
+                longitude,
+                dedupeThreshold
+              )
+
+              // Skip reverse-geocoding churn for same point / GPS jitter.
+              if (!forceFresh && !movedSinceLastProcessed) {
+                const currentLoc = location || (() => {
+                  try {
+                    const stored = localStorage.getItem("userLocation")
+                    return stored ? JSON.parse(stored) : null
+                  } catch {
+                    return null
+                  }
+                })()
+                const jitterSafeLoc = currentLoc
+                  ? { ...currentLoc, latitude, longitude, accuracy: accuracy || null, timestamp }
+                  : null
+                if (jitterSafeLoc) {
+                  localStorage.setItem("userLocation", JSON.stringify(jitterSafeLoc))
+                  setLocation(jitterSafeLoc)
+                  if (updateDB) await updateLocationInDB(jitterSafeLoc).catch(() => {})
+                  isFetchingLocationRef.current = false
+                  resolve(jitterSafeLoc)
+                  return
+                }
+              }
 
 
               // Validate coordinates are in India range BEFORE attempting geocoding
@@ -1332,6 +1395,7 @@ export function useLocation() {
                 latitude,
                 longitude,
                 accuracy: accuracy || null,
+                timestamp,
                 address: displayAddress, // Locality parts for navbar display
                 formattedAddress: completeFormattedAddress || addr.formattedAddress || displayAddress // Complete detailed address
               }
@@ -1353,11 +1417,7 @@ export function useLocation() {
               }
 
               localStorage.setItem("userLocation", JSON.stringify(finalLoc))
-              // Initialize / refresh anchor location for 200m rule
-              anchorLocationRef.current = {
-                latitude,
-                longitude
-              }
+              lastProcessedCoordsRef.current = { latitude, longitude }
               setLocation(finalLoc)
               setPermissionGranted(true)
               if (showLoading) setLoading(false)
@@ -1387,9 +1447,11 @@ export function useLocation() {
                     ...lastResortAddr,
                     latitude,
                     longitude,
-                    accuracy: pos.coords.accuracy || null
+                    accuracy: pos.coords.accuracy || null,
+                    timestamp: pos.timestamp || Date.now(),
                   }
                   localStorage.setItem("userLocation", JSON.stringify(lastResortLoc))
+                  lastProcessedCoordsRef.current = { latitude, longitude }
                   setLocation(lastResortLoc)
                   setPermissionGranted(true)
                   if (showLoading) setLoading(false)
@@ -1412,9 +1474,11 @@ export function useLocation() {
                 state: "",
                 address: "Select location", // Don't show coordinates
                 formattedAddress: "Select location", // Don't show coordinates
+                timestamp: pos.timestamp || Date.now(),
               }
               // CRITICAL: Save coordinates even if address is placeholder - coordinates are still useful
               localStorage.setItem("userLocation", JSON.stringify(fallbackLoc))
+              lastProcessedCoordsRef.current = { latitude, longitude }
               setLocation(fallbackLoc)
               setPermissionGranted(true)
               if (showLoading) setLoading(false)
@@ -1606,7 +1670,7 @@ export function useLocation() {
               const distanceMeters = calculateDistance(latitude, longitude, prevLoc.latitude, prevLoc.longitude)
 
               // Only update if moved >10 meters
-              if (distanceMeters <= 10) {
+              if (distanceMeters <= UI_COORD_CHANGE_THRESHOLD_METERS) {
                 return // Don't update - coordinates haven't changed significantly
               }
             }
@@ -1632,10 +1696,9 @@ export function useLocation() {
               localStorage.setItem("userLocation", JSON.stringify(loc))
             }
 
-            // Debounce DB updates - only update every 5 seconds to avoid too many API calls
-            // Only schedule debounced updates if user is authenticated AND movement from anchor > 200m
+            // Debounce DB updates - only update every 5 seconds when movement from anchor is >= 200m
             if (isUserAuthenticated()) {
-              let shouldUpdateDB = true
+              let shouldUpdateDB = false
 
               if (anchorLocationRef.current.latitude && anchorLocationRef.current.longitude) {
                 const distanceFromAnchor = calculateDistance(
@@ -1645,12 +1708,8 @@ export function useLocation() {
                   anchorLocationRef.current.longitude
                 )
 
-                // If movement is within 200m of anchor, skip DB update to avoid noise
-                if (distanceFromAnchor <= 200) {
-                  shouldUpdateDB = false
-                } else {
-                  // Significant move: shift anchor to new position
-                  anchorLocationRef.current = { latitude, longitude }
+                if (distanceFromAnchor >= MOVEMENT_UPDATE_THRESHOLD_METERS) {
+                  shouldUpdateDB = true
                 }
               } else {
                 // Initialize anchor if not set
@@ -2015,14 +2074,8 @@ export function useLocation() {
     };
 
     // Only check permissions/start watching if we already have a saved location
-    // This avoids "Requests geolocation permission on page load" warnings on fresh visits
-    // New users must explicitly click "Use Current Location" first
-    const hasStoredLocation = localStorage.getItem("userLocation");
-    if (hasStoredLocation) {
-      checkPermissionAndStart();
-    } else {
-      setLoading(false);
-    }
+    // Auto-fetch on app open is safe here because we first query Permissions API.
+    checkPermissionAndStart();
 
     // Cleanup timeout and watcher
     return () => {

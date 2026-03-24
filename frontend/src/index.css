@@ -217,6 +217,46 @@
   animation: fade-down 0.5s ease-out;
 }
 
+/* Recommendation badge flip animation */
+@keyframes recommendation-flip {
+  0%,
+  42% {
+    transform: rotateX(0deg);
+  }
+  50%,
+  92% {
+    transform: rotateX(-180deg);
+  }
+  100% {
+    transform: rotateX(-180deg);
+  }
+}
+
+.recommendation-flip-badge {
+  perspective: 900px;
+}
+
+.recommendation-flip-inner {
+  position: relative;
+  transform-style: preserve-3d;
+  animation: recommendation-flip 5s ease-in-out infinite;
+  will-change: transform;
+}
+
+.recommendation-flip-face {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.recommendation-flip-back {
+  transform: rotateX(180deg);
+}
+
 /* Leaflet map fixes */
 .leaflet-container {
   height: 100%;

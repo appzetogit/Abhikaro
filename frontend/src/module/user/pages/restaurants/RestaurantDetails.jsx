@@ -597,8 +597,10 @@ export default function RestaurantDetails() {
                   menuSections: finalMenuSections,
                 }))
 
-                // Set first 3 sections (Recommended, Starters, Main Course) as expanded by default
-                const defaultExpandedSections = new Set([0, 1, 2]) // Index 0, 1, 2
+                // Expand all sections by default so category panels (e.g., Burger/Starter) stay open initially.
+                const defaultExpandedSections = new Set(
+                  finalMenuSections.map((_, index) => index)
+                )
                 setExpandedSections(defaultExpandedSections)
               }
             } catch (menuError) {

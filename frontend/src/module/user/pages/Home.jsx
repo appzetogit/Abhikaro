@@ -39,6 +39,7 @@ import offerImage from "@/assets/offerimage.png"
 import api, { restaurantAPI, orderAPI } from "@/lib/api"
 import { API_BASE_URL, API_ENDPOINTS } from "@/lib/api/config"
 import OptimizedImage from "@/components/OptimizedImage"
+import FlipBadge from "@/components/FlipBadge"
 // Explore More Icons
 import exploreOffers from "@/assets/explore more icons/offers.png"
 import exploreGourmet from "@/assets/explore more icons/gourmet.png"
@@ -1558,9 +1559,13 @@ export default function Home() {
                 msOverflowStyle: "none",
               }}
             >
-              {recommendedRestaurants.map((restaurant) => {
+              {recommendedRestaurants.map((restaurant, index) => {
                 const restaurantName = restaurant.name || "Restaurant"
                 const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
+                const restaurantEta =
+                  restaurant.deliveryTime ||
+                  restaurant.estimatedDeliveryTime ||
+                  "25-30 mins"
                 return (
                   <Link
                     key={`recommended-${restaurant.id || restaurantSlug}`}
@@ -1602,9 +1607,8 @@ export default function Home() {
                         <h3 className="text-[11px] sm:text-xs font-semibold text-gray-900 dark:text-white line-clamp-1 leading-tight">
                           {restaurantName}
                         </h3>
-                        <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-gray-600 dark:text-gray-400 mt-0.5">
-                          <Clock className="h-2.5 w-2.5" />
-                          <span>{restaurant.deliveryTime || "N/A"}</span>
+                        <div className="mt-0.5">
+                          <FlipBadge etaText={restaurantEta} staggerMs={index * 250} />
                         </div>
                       </div>
                     </div>

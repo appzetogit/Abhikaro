@@ -6,12 +6,25 @@ import { zoneAPI } from '@/lib/api'
  * Automatically detects zone when location is available
  */
 export function useZone(location) {
+  const ZONE_REFRESH_DISTANCE_METERS = 200
   const [zoneId, setZoneId] = useState(null)
   const [zoneStatus, setZoneStatus] = useState('loading') // 'loading' | 'IN_SERVICE' | 'OUT_OF_SERVICE'
   const [zone, setZone] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const prevCoordsRef = useRef({ latitude: null, longitude: null })
+
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371000
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
 
   const isAbortLikeError = (err) => {
     if (!err) return false
@@ -90,13 +103,15 @@ export function useZone(location) {
     const lat = location?.latitude
     const lng = location?.longitude
 
-    // Check if coordinates have changed significantly (threshold: ~10 meters)
-    const coordThreshold = 0.0001 // approximately 10 meters
-    const coordsChanged =
-      !prevCoordsRef.current.latitude ||
-      !prevCoordsRef.current.longitude ||
-      Math.abs(prevCoordsRef.current.latitude - (lat || 0)) > coordThreshold ||
-      Math.abs(prevCoordsRef.current.longitude - (lng || 0)) > coordThreshold
+    const hasPrevCoords =
+      prevCoordsRef.current.latitude !== null &&
+      prevCoordsRef.current.longitude !== null
+    const coordsChanged = !hasPrevCoords || calculateDistance(
+      prevCoordsRef.current.latitude,
+      prevCoordsRef.current.longitude,
+      lat || 0,
+      lng || 0
+    ) >= ZONE_REFRESH_DISTANCE_METERS
 
     if (lat && lng) {
       // Only detect zone if coordinates changed significantly
