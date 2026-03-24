@@ -279,8 +279,10 @@ export default function Under250() {
   // Helper: update item quantity. variantOverride = { id, name, price } when item has variations
   const updateItemQuantity = (item, newQuantity, event = null, restaurantName = null, variantOverride = null) => {
     if (!isModuleAuthenticated('user')) {
+      const currentPath = `${location.pathname}${location.search || ""}`
+      sessionStorage.setItem("user_redirectPath", currentPath)
       toast.error("Please login to add items to cart")
-      navigate('/user/auth/sign-in', { state: { from: location.pathname } })
+      navigate('/user/auth/sign-in')
       return
     }
 

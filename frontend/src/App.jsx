@@ -6,7 +6,7 @@ import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
 
 import { Suspense, lazy, useEffect, useState } from "react"
 import Loader from "@/components/Loader"
-import { restoreUserSession } from "@/lib/utils/auth.js"
+import { restoreUserSession, isModuleAuthenticated } from "@/lib/utils/auth.js"
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@/module/user/components/UserRouter"))
@@ -184,6 +184,24 @@ export default function App() {
         const storedScroll = sessionStorage.getItem("user_lastScrollY");
         const fullCurrent =
           window.location.pathname + window.location.search + window.location.hash;
+
+        const routeWithoutQuery = (storedRoute || "").split("?")[0];
+        const isProtectedUserRoute =
+          routeWithoutQuery.startsWith("/cart") ||
+          routeWithoutQuery.startsWith("/orders") ||
+          routeWithoutQuery.startsWith("/profile") ||
+          routeWithoutQuery.startsWith("/wallet") ||
+          routeWithoutQuery.startsWith("/notifications") ||
+          routeWithoutQuery.startsWith("/bookings") ||
+          routeWithoutQuery.startsWith("/complaints");
+        const isAuthenticatedUser = isModuleAuthenticated("user");
+
+        // Do not restore protected routes for logged-out users on app open/reload.
+        if (!isAuthenticatedUser && isProtectedUserRoute) {
+          sessionStorage.removeItem("user_lastRoute");
+          if (storedScroll) sessionStorage.removeItem("user_lastScrollY");
+          return;
+        }
 
         if (storedRoute && storedRoute !== fullCurrent) {
           navigate(storedRoute, { replace: true });

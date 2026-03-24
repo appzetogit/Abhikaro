@@ -80,6 +80,21 @@ console.error = (...args) => {
     // The axios interceptor already handles throttling and shows toast notifications
     return
   }
+
+  // Suppress benign abort/cancel request errors (route change, timeout race, polling refresh)
+  const hasAbortLikeError = args.some(arg => {
+    if (!arg || typeof arg !== 'object') return false
+    return (
+      arg.name === 'AbortError' ||
+      arg.name === 'CanceledError' ||
+      arg.code === 'ERR_CANCELED' ||
+      arg.code === 'ECONNABORTED' ||
+      arg.message === 'Request aborted'
+    )
+  })
+  if (hasAbortLikeError || errorStr.includes('Request aborted')) {
+    return
+  }
   
   // Check error string for network error patterns (for string-based error messages)
   if (

@@ -4,6 +4,7 @@ import { UtensilsCrossed, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOrders } from '../context/OrdersContext';
 import { orderAPI } from '@/lib/api';
+import { getModuleToken } from '@/lib/utils/auth';
 
 export default function OrderTrackingCard() {
   const navigate = useNavigate();
@@ -46,7 +47,7 @@ export default function OrderTrackingCard() {
   // For now, we'll rely primarily on localStorage orders from OrdersContext
   useEffect(() => {
     // Only try API if user is authenticated
-    const userToken = localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken');
+    const userToken = getModuleToken('user') || localStorage.getItem('accessToken');
     if (!userToken) {
       // No token, skip API call - use context orders
       setApiCalled(true); // Mark as called so we know to use context orders
@@ -218,8 +219,7 @@ export default function OrderTrackingCard() {
 
   // Poll active order status from backend so banner disappears immediately after delivery/cancel.
   useEffect(() => {
-    const userToken =
-      localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken');
+    const userToken = getModuleToken('user') || localStorage.getItem('accessToken');
     const activeId = activeOrder?.id || activeOrder?._id || activeOrder?.orderId;
 
     if (!userToken || !activeId) return;
@@ -378,7 +378,7 @@ export default function OrderTrackingCard() {
   useEffect(() => {
     const handleStorageChange = async () => {
       try {
-        const userToken = localStorage.getItem('user_accessToken') || localStorage.getItem('accessToken')
+        const userToken = getModuleToken('user') || localStorage.getItem('accessToken')
         if (!userToken) {
           // Even without token, context orders should be checked
           return

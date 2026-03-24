@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useLocation } from "../hooks/useLocation"
 import { useZone } from "../hooks/useZone"
+import { isModuleAuthenticated } from "@/lib/utils/auth"
 import offerImage from "@/assets/offerimage.png"
 import api, { restaurantAPI, orderAPI } from "@/lib/api"
 import { API_BASE_URL, API_ENDPOINTS } from "@/lib/api/config"
@@ -118,6 +119,8 @@ export default function Home() {
 
   // Sync prevVegMode when vegMode changes from context
   useEffect(() => {
+    if (!isModuleAuthenticated("user")) return
+
     if (vegMode !== prevVegMode && !isHandlingSwitchOff.current) {
       setPrevVegMode(vegMode)
     }
@@ -367,8 +370,19 @@ export default function Home() {
     }
 
     let cancelled = false
+    const isAbortLikeError = (error) => {
+      if (!error) return false
+      return (
+        error.name === "AbortError" ||
+        error.name === "CanceledError" ||
+        error.code === "ERR_CANCELED" ||
+        error.code === "ECONNABORTED" ||
+        error.message === "Request aborted"
+      )
+    }
 
     const pollAndMaybeSchedule = async () => {
+      if (!isModuleAuthenticated("user")) return
       try {
         const response = await orderAPI.getOrders({ limit: 100, page: 1 })
         if (cancelled) return
@@ -418,6 +432,8 @@ export default function Home() {
         }
       } catch (error) {
         // Silently ignore polling errors; home page should still work.
+        if (error?.response?.status === 401) return
+        if (isAbortLikeError(error)) return
         if (import.meta.env.DEV) {
           console.error("Order rating popup polling failed:", error)
         }

@@ -361,14 +361,47 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config || {};
+    const requestUrl = String(originalRequest.url || "");
+    const currentPath = window.location.pathname;
+    const authHeader =
+      originalRequest.headers?.Authorization ||
+      originalRequest.headers?.authorization ||
+      "";
+    const hasAuthHeader =
+      typeof authHeader === "string" && authHeader.startsWith("Bearer ");
+    const hasModuleToken = !!getTokenForCurrentRoute();
+    const isRefreshRequest = requestUrl.includes("/auth/refresh-token");
+    const isProtectedPath =
+      currentPath.startsWith("/admin") ||
+      (currentPath.startsWith("/restaurant") &&
+        !currentPath.startsWith("/restaurants")) ||
+      currentPath.startsWith("/delivery") ||
+      currentPath.startsWith("/hotel") ||
+      currentPath.startsWith("/cart") ||
+      currentPath.startsWith("/orders") ||
+      currentPath.startsWith("/profile") ||
+      currentPath.startsWith("/wallet") ||
+      currentPath.startsWith("/notifications") ||
+      currentPath.startsWith("/bookings") ||
+      currentPath.startsWith("/complaints") ||
+      currentPath.startsWith("/user/cart") ||
+      currentPath.startsWith("/user/orders") ||
+      currentPath.startsWith("/user/profile") ||
+      currentPath.startsWith("/user/wallet") ||
+      currentPath.startsWith("/user/notifications") ||
+      currentPath.startsWith("/user/bookings") ||
+      currentPath.startsWith("/user/complaints");
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't attempt refresh for refresh endpoint itself, or for public unauthenticated requests.
+      if (isRefreshRequest || (!hasAuthHeader && !hasModuleToken && !isProtectedPath)) {
+        return Promise.reject(error);
+      }
       originalRequest._retry = true;
 
       try {
         // Determine which module's refresh endpoint to use based on current route
-        const currentPath = window.location.pathname;
         let refreshEndpoint = "/auth/refresh-token"; // default to user auth
 
         if (currentPath.startsWith("/admin")) {
@@ -471,46 +504,54 @@ apiClient.interceptors.response.use(
         }
 
         // Refresh failed, clear module-specific token and redirect to login
-        // BUT: Don't auto-redirect on certain pages - let them handle errors gracefully
+        // only when user is currently on a protected route.
+        // Public pages (/, /restaurants/*, etc.) should not force-login.
         const currentPath = window.location.pathname;
         const isOnboardingPage = currentPath.includes("/onboarding");
         const isLandingPageManagement =
           currentPath.includes("/hero-banner-management") ||
           currentPath.includes("/landing-page");
+        const isProtectedUserPath =
+          currentPath.startsWith("/cart") ||
+          currentPath.startsWith("/orders") ||
+          currentPath.startsWith("/profile") ||
+          currentPath.startsWith("/wallet") ||
+          currentPath.startsWith("/notifications") ||
+          currentPath.startsWith("/bookings") ||
+          currentPath.startsWith("/complaints") ||
+          currentPath.startsWith("/user/cart") ||
+          currentPath.startsWith("/user/orders") ||
+          currentPath.startsWith("/user/profile") ||
+          currentPath.startsWith("/user/wallet") ||
+          currentPath.startsWith("/user/notifications") ||
+          currentPath.startsWith("/user/bookings") ||
+          currentPath.startsWith("/user/complaints");
 
         // For landing page management, don't auto-logout on 401 - let component handle it
         // Only auto-logout for other pages after token refresh fails
         if (!isOnboardingPage && !isLandingPageManagement) {
           if (currentPath.startsWith("/admin")) {
-            localStorage.removeItem("admin_accessToken");
-            localStorage.removeItem("admin_authenticated");
-            localStorage.removeItem("admin_user");
+            clearModuleAuth("admin");
             window.location.href = "/admin/login";
           } else if (
             currentPath.startsWith("/restaurant") &&
             !currentPath.startsWith("/restaurants")
           ) {
             // /restaurant/* is for restaurant module, /restaurants/* is for user module viewing restaurants
-            localStorage.removeItem("restaurant_accessToken");
-            localStorage.removeItem("restaurant_authenticated");
-            localStorage.removeItem("restaurant_user");
+            clearModuleAuth("restaurant");
             window.location.href = "/restaurant/login";
           } else if (currentPath.startsWith("/delivery")) {
-            localStorage.removeItem("delivery_accessToken");
-            localStorage.removeItem("delivery_authenticated");
-            localStorage.removeItem("delivery_user");
+            clearModuleAuth("delivery");
             window.location.href = "/delivery/sign-in";
           } else if (currentPath.startsWith("/hotel")) {
-            localStorage.removeItem("hotel_accessToken");
-            localStorage.removeItem("hotel_authenticated");
-            localStorage.removeItem("hotel_user");
+            clearModuleAuth("hotel");
             window.location.href = "/hotel";
           } else {
             // User module includes /restaurants/* paths
-            localStorage.removeItem("user_accessToken");
-            localStorage.removeItem("user_authenticated");
-            localStorage.removeItem("user");
-            window.location.href = "/user/auth/sign-in";
+            clearModuleAuth("user");
+            if (isProtectedUserPath) {
+              window.location.href = "/user/auth/sign-in";
+            }
           }
         }
 

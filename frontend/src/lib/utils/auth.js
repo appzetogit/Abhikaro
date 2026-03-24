@@ -159,6 +159,11 @@ export function clearAuthData() {
   localStorage.removeItem('user');
 }
 
+// Dedupe and throttle refresh attempts to avoid duplicate 401 spam
+let restoreUserSessionInFlight = null;
+let restoreUserSessionLastFailedAt = 0;
+const RESTORE_SESSION_FAILURE_COOLDOWN_MS = 60 * 1000;
+
 /**
  * Try to restore user session using refresh token cookie.
  * - If access token already exists for user module, does nothing.
@@ -171,6 +176,21 @@ export function clearAuthData() {
  * @returns {Promise<boolean>} true if session was restored, false otherwise
  */
 export async function restoreUserSession() {
+  // If a refresh attempt is already running (e.g. React StrictMode double-effect), reuse it.
+  if (restoreUserSessionInFlight) {
+    return restoreUserSessionInFlight;
+  }
+
+  // If refresh just failed recently, skip repeated attempts for a short cooldown.
+  const now = Date.now();
+  if (
+    restoreUserSessionLastFailedAt &&
+    now - restoreUserSessionLastFailedAt < RESTORE_SESSION_FAILURE_COOLDOWN_MS
+  ) {
+    return false;
+  }
+
+  restoreUserSessionInFlight = (async () => {
   try {
     // If user already has an access token, don't do anything.
     const existingToken = getModuleToken('user');
@@ -213,9 +233,15 @@ export async function restoreUserSession() {
   } catch (error) {
     // If refresh fails (e.g. no cookie, expired token), just treat as logged out.
     // Do not throw; app will naturally show login screen where required.
+    restoreUserSessionLastFailedAt = Date.now();
     console.warn('restoreUserSession failed:', error?.message || error);
     return false;
+  } finally {
+    restoreUserSessionInFlight = null;
   }
+  })();
+
+  return restoreUserSessionInFlight;
 }
 
 /**

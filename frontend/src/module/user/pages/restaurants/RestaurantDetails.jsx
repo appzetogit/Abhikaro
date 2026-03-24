@@ -827,8 +827,10 @@ export default function RestaurantDetails() {
   const updateItemQuantity = (item, newQuantity, event = null, variantOverride = null) => {
     // Check authentication
     if (!isModuleAuthenticated('user')) {
+      const currentPath = `${location.pathname}${location.search || ""}`
+      sessionStorage.setItem("user_redirectPath", currentPath)
       toast.error("Please login to add items to cart")
-      navigate('/user/auth/sign-in', { state: { from: location.pathname } })
+      navigate('/user/auth/sign-in')
       return
     }
 

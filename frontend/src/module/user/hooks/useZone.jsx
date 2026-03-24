@@ -13,6 +13,17 @@ export function useZone(location) {
   const [error, setError] = useState(null)
   const prevCoordsRef = useRef({ latitude: null, longitude: null })
 
+  const isAbortLikeError = (err) => {
+    if (!err) return false
+    return (
+      err.name === 'AbortError' ||
+      err.name === 'CanceledError' ||
+      err.code === 'ERR_CANCELED' ||
+      err.code === 'ECONNABORTED' ||
+      err.message === 'Request aborted'
+    )
+  }
+
   // Detect zone when location is available
   const detectZone = useCallback(async (lat, lng) => {
     if (!lat || !lng) {
@@ -51,6 +62,10 @@ export function useZone(location) {
         throw new Error(response.data?.message || 'Failed to detect zone')
       }
     } catch (err) {
+      if (isAbortLikeError(err)) {
+        // Ignore abort/cancel noise from transient polling/navigation races.
+        return
+      }
       console.error('Error detecting zone:', err)
       setError(err.response?.data?.message || err.message || 'Failed to detect zone')
       setZoneStatus('OUT_OF_SERVICE')
