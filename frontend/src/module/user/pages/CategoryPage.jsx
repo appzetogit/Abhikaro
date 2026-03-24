@@ -2,10 +2,11 @@ import { useState, useMemo, useRef, useEffect } from "react"
 import { useParams, Link, useNavigate } from "react-router-dom"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { ArrowLeft, Star, Clock, Search, SlidersHorizontal, ChevronDown, Bookmark, BadgePercent, MapPin, ArrowDownUp, Timer, IndianRupee, UtensilsCrossed, ShieldCheck, X, Loader2 } from "lucide-react"
+import { ArrowLeft, Star, Clock, Search, SlidersHorizontal, ChevronDown, Bookmark, BadgePercent, MapPin, ArrowDownUp, Timer, IndianRupee, UtensilsCrossed, ShieldCheck, X, Loader2, Plus, Minus, Share2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import AddToCartAnimation from "../components/AddToCartAnimation"
 
 // Import shared food images - prevents duplication
 import { foodImages } from "@/constants/images"
@@ -13,6 +14,7 @@ import offerImage from "@/assets/offerimage.png"
 import api from "@/lib/api"
 import { restaurantAPI, adminAPI } from "@/lib/api"
 import { useProfile } from "../context/ProfileContext"
+import { useCart } from "../context/CartContext"
 import { useLocation } from "../hooks/useLocation"
 import { useZone } from "../hooks/useZone"
 
@@ -31,12 +33,14 @@ export default function CategoryPage() {
   const { category } = useParams()
   const navigate = useNavigate()
   const { vegMode } = useProfile()
+  const { addToCart, getCartItem, updateQuantity, getCartItemId } = useCart()
   const { location } = useLocation()
   const { zoneId, isOutOfService } = useZone(location)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || 'all')
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [favorites, setFavorites] = useState(new Set())
+  const [bookmarkedDishes, setBookmarkedDishes] = useState(new Set())
   const [sortBy, setSortBy] = useState(null)
   const [selectedCuisine, setSelectedCuisine] = useState(null)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -55,6 +59,15 @@ export default function CategoryPage() {
   const [restaurantsData, setRestaurantsData] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [categoryKeywords, setCategoryKeywords] = useState({})
+
+  const getCategoryNameFromSlug = (slugValue) => {
+    if (!slugValue || typeof slugValue !== "string") return ""
+    return slugValue
+      .split("-")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  }
 
   // Fetch categories from admin API
   useEffect(() => {
@@ -125,12 +138,20 @@ export default function CategoryPage() {
       if (keywords.some(keyword => sectionNameLower.includes(keyword))) {
         return true
       }
-      
-      if (section.items && Array.isArray(section.items)) {
-        for (const item of section.items) {
+
+      const sectionItems = Array.isArray(section.items) ? section.items : []
+      const subsectionItems = Array.isArray(section.subsections)
+        ? section.subsections.flatMap((subsection) =>
+            Array.isArray(subsection?.items) ? subsection.items : []
+          )
+        : []
+      const allItems = [...sectionItems, ...subsectionItems]
+
+      if (allItems.length > 0) {
+        for (const item of allItems) {
           const itemNameLower = (item.name || '').toLowerCase()
           const itemCategoryLower = (item.category || '').toLowerCase()
-          
+
           if (keywords.some(keyword => 
             itemNameLower.includes(keyword) || itemCategoryLower.includes(keyword)
           )) {
@@ -158,11 +179,30 @@ export default function CategoryPage() {
     const matchingDishes = []
     
     for (const [sectionIndex, section] of menu.sections.entries()) {
-      if (section.items && Array.isArray(section.items)) {
-        for (const [itemIndex, item] of section.items.entries()) {
+      const sectionItems = Array.isArray(section.items)
+        ? section.items.map((item, itemIndex) => ({
+            item,
+            itemIndex,
+            subsectionIndex: null,
+          }))
+        : []
+      const subsectionItems = Array.isArray(section.subsections)
+        ? section.subsections.flatMap((subsection, subsectionIndex) => {
+            if (!Array.isArray(subsection?.items)) return []
+            return subsection.items.map((item, itemIndex) => ({
+              item,
+              itemIndex,
+              subsectionIndex,
+            }))
+          })
+        : []
+      const allItems = [...sectionItems, ...subsectionItems]
+
+      if (allItems.length > 0) {
+        for (const { item, itemIndex, subsectionIndex } of allItems) {
           const itemNameLower = (item.name || '').toLowerCase()
           const itemCategoryLower = (item.category || '').toLowerCase()
-          
+
           if (keywords.some(keyword =>
             itemNameLower.includes(keyword) || itemCategoryLower.includes(keyword)
           )) {
@@ -189,6 +229,7 @@ export default function CategoryPage() {
               itemId: item._id || item.id || `${item.name}-${finalPrice}`,
               sourceSectionIndex: sectionIndex,
               sourceItemIndex: itemIndex,
+              sourceSubsectionIndex: subsectionIndex,
               foodType: item.foodType, // Include foodType for vegMode filtering
               itemDiscountPercent,
               categoryOfferPercentage: categoryDiscountPercent,
@@ -208,6 +249,62 @@ export default function CategoryPage() {
     return allDishes.length > 0 ? allDishes[0] : null
   }
 
+  // Helper function to get ALL dishes from menu (used by "All" category)
+  const getAllDishesFromMenu = (menu) => {
+    if (!menu || !Array.isArray(menu.sections)) {
+      return []
+    }
+
+    const dishes = []
+
+    for (const [sectionIndex, section] of menu.sections.entries()) {
+      const sectionItems = Array.isArray(section.items)
+        ? section.items.map((item, itemIndex) => ({
+            item,
+            itemIndex,
+            subsectionIndex: null,
+          }))
+        : []
+      const subsectionItems = Array.isArray(section.subsections)
+        ? section.subsections.flatMap((subsection, subsectionIndex) => {
+            if (!Array.isArray(subsection?.items)) return []
+            return subsection.items.map((item, itemIndex) => ({
+              item,
+              itemIndex,
+              subsectionIndex,
+            }))
+          })
+        : []
+      const allItems = [...sectionItems, ...subsectionItems]
+
+      for (const { item, itemIndex, subsectionIndex } of allItems) {
+        const originalPrice = item.originalPrice || item.price || 0
+        const itemDiscountPercent = item.discountPercent || 0
+        const finalPrice = itemDiscountPercent > 0
+          ? Math.round(originalPrice * (1 - itemDiscountPercent / 100))
+          : originalPrice
+        const dishImage = item.image?.url || item.image || section.image?.url || section.image || null
+
+        dishes.push({
+          name: item.name,
+          price: finalPrice,
+          image: dishImage,
+          originalPrice,
+          itemId: item._id || item.id || `${item.name}-${finalPrice}`,
+          sourceSectionIndex: sectionIndex,
+          sourceItemIndex: itemIndex,
+          sourceSubsectionIndex: subsectionIndex,
+          foodType: item.foodType,
+          itemDiscountPercent,
+          categoryOfferPercentage: 0,
+          totalDiscountPercent: itemDiscountPercent,
+        })
+      }
+    }
+
+    return dishes
+  }
+
   // Build a deterministic, collision-safe key for category dish cards.
   const createDishCardId = (restaurantId, dish, fallbackIndex) => {
     const baseDishId = String(dish?.itemId || dish?.name || "dish")
@@ -223,11 +320,11 @@ export default function CategoryPage() {
     const fetchRestaurants = async () => {
       try {
         setLoadingRestaurants(true)
-        // Optional: Add zoneId if available (for sorting/filtering, but show all restaurants)
-        const params = {}
-        if (zoneId) {
-          params.zoneId = zoneId
+        if (!zoneId) {
+          setRestaurantsData([])
+          return
         }
+        const params = { zoneId }
         const response = await restaurantAPI.getRestaurants(params)
         
         if (response.data && response.data.success && response.data.data && response.data.data.restaurants) {
@@ -408,6 +505,32 @@ export default function CategoryPage() {
       if (matchedCategory) {
         setSelectedCategory(matchedCategory.slug || matchedCategory.id)
       } else {
+        // Keep URL-driven category visible/selectable even if backend category list is stale.
+        setCategories((prev) => {
+          const exists = prev.some((cat) => {
+            const slug = cat.slug || cat.id
+            return slug === categorySlug
+          })
+          if (exists) return prev
+          return [
+            ...prev,
+            {
+              id: categorySlug,
+              slug: categorySlug,
+              name: getCategoryNameFromSlug(categorySlug) || categorySlug,
+              image: foodImages[0],
+              offerPercentage: 0,
+            },
+          ]
+        })
+        setCategoryKeywords((prev) => {
+          if (prev[categorySlug]) return prev
+          const words = categorySlug.split(/[\s-]+/).filter(Boolean)
+          return {
+            ...prev,
+            [categorySlug]: [categorySlug.replace(/-/g, " "), ...words],
+          }
+        })
         setSelectedCategory(categorySlug)
       }
     } else if (category) {
@@ -473,6 +596,15 @@ export default function CategoryPage() {
     })
   }
 
+  const toggleDishBookmark = (id) => {
+    setBookmarkedDishes((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   // Filter restaurants based on active filters and selected category
   // If category is selected, expand restaurants into dish cards (one card per matching dish)
   const filteredRecommended = useMemo(() => {
@@ -493,62 +625,39 @@ export default function CategoryPage() {
         : 0
 
     // Filter by category - Dynamic filtering based on menu items
-    if (selectedCategory && selectedCategory !== 'all') {
+    if (selectedCategory) {
       const expandedDishes = []
       
       filtered.forEach(r => {
         if (r.menu) {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            // Get ALL matching dishes for this category (apply category offer)
-            const categoryDishes = getAllCategoryDishesFromMenu(
-              r.menu,
-              selectedCategory,
-              currentCategoryOffer
-            )
-            
-            if (categoryDishes.length > 0) {
-              // Create one card per dish
-              categoryDishes.forEach((dish, index) => {
-                const dishCardId = createDishCardId(r.id, dish, index)
-                expandedDishes.push({
-                  ...r,
-                  // Unique ID for each dish card
-                  id: dishCardId,
-                  dishId: dish.itemId || dishCardId,
-                  // Category dish info for this specific dish
-                  categoryDish: dish,
-                  categoryDishName: dish.name,
-                  categoryDishPrice: dish.price,
-                  categoryDishImage: dish.image,
-                  categoryOfferPercentage: dish.categoryOfferPercentage,
-                })
+          const categoryDishes = selectedCategory === "all"
+            ? getAllDishesFromMenu(r.menu)
+            : (checkCategoryInMenu(r.menu, selectedCategory)
+              ? getAllCategoryDishesFromMenu(
+                  r.menu,
+                  selectedCategory,
+                  currentCategoryOffer
+                )
+              : [])
+
+          if (categoryDishes.length > 0) {
+            // Create one card per dish
+            categoryDishes.forEach((dish, index) => {
+              const dishCardId = createDishCardId(r.id, dish, index)
+              expandedDishes.push({
+                ...r,
+                // Unique ID for each dish card
+                id: dishCardId,
+                dishId: dish.itemId || dishCardId,
+                isCategoryDishRow: true,
+                // Category dish info for this specific dish
+                categoryDish: dish,
+                categoryDishName: dish.name,
+                categoryDishPrice: dish.price,
+                categoryDishImage: dish.image,
+                categoryOfferPercentage: dish.categoryOfferPercentage,
               })
-            } else {
-              // If no dishes found but menu exists, skip this restaurant
-            }
-          }
-        } else {
-          // No menu - check other criteria
-          if (r.category === selectedCategory) {
-            expandedDishes.push(r)
-          } else if (selectedCategory === 'paneer-tikka' && r.hasPaneer) {
-            expandedDishes.push(r)
-          } else {
-            const keywords = categoryKeywords[selectedCategory] || []
-            if (keywords.length > 0) {
-              const featuredDishLower = (r.featuredDish || '').toLowerCase()
-              const cuisineLower = (r.cuisine || '').toLowerCase()
-              const nameLower = (r.name || '').toLowerCase()
-              
-              if (keywords.some(keyword => 
-                featuredDishLower.includes(keyword) || 
-                cuisineLower.includes(keyword) ||
-                nameLower.includes(keyword)
-              )) {
-                expandedDishes.push(r)
-              }
-            }
+            })
           }
         }
       })
@@ -577,7 +686,8 @@ export default function CategoryPage() {
       filtered = filtered.filter(r => 
         r.name?.toLowerCase().includes(query) ||
         r.cuisine?.toLowerCase().includes(query) ||
-        r.featuredDish?.toLowerCase().includes(query)
+        r.featuredDish?.toLowerCase().includes(query) ||
+        r.categoryDishName?.toLowerCase().includes(query)
       )
     }
 
@@ -603,65 +713,44 @@ export default function CategoryPage() {
 
     // Filter by category - Dynamic filtering based on menu items
     // If category is selected, expand restaurants into dish cards (one card per matching dish)
-    if (selectedCategory && selectedCategory !== 'all') {
+    if (selectedCategory) {
       const expandedDishes = []
       
       filtered.forEach(r => {
         if (r.menu) {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            // Get ALL matching dishes for this category (apply category offer)
-            const categoryDishes = getAllCategoryDishesFromMenu(
-              r.menu,
-              selectedCategory,
-              currentCategoryOffer
-            )
-            
-            if (categoryDishes.length > 0) {
-              // Create one card per dish
-              categoryDishes.forEach((dish, index) => {
-                // Filter by vegMode if enabled
-                if (vegMode && dish.foodType !== "Veg") {
-                  return // Skip non-veg dishes when vegMode is ON
-                }
+          const categoryDishes = selectedCategory === "all"
+            ? getAllDishesFromMenu(r.menu)
+            : (checkCategoryInMenu(r.menu, selectedCategory)
+              ? getAllCategoryDishesFromMenu(
+                  r.menu,
+                  selectedCategory,
+                  currentCategoryOffer
+                )
+              : [])
 
-                const dishCardId = createDishCardId(r.id, dish, index)
-                expandedDishes.push({
-                  ...r,
-                  // Unique ID for each dish card
-                  id: dishCardId,
-                  dishId: dish.itemId || dishCardId,
-                  // Category dish info for this specific dish
-                  categoryDish: dish,
-                  categoryDishName: dish.name,
-                  categoryDishPrice: dish.price,
-                  categoryDishImage: dish.image,
-                  categoryOfferPercentage: dish.categoryOfferPercentage,
-                })
-              })
-            }
-          }
-        } else {
-          // No menu - check other criteria
-          if (r.category === selectedCategory) {
-            expandedDishes.push(r)
-          } else if (selectedCategory === 'paneer-tikka' && r.hasPaneer) {
-            expandedDishes.push(r)
-          } else {
-            const keywords = categoryKeywords[selectedCategory] || []
-            if (keywords.length > 0) {
-              const featuredDishLower = (r.featuredDish || '').toLowerCase()
-              const cuisineLower = (r.cuisine || '').toLowerCase()
-              const nameLower = (r.name || '').toLowerCase()
-              
-              if (keywords.some(keyword => 
-                featuredDishLower.includes(keyword) || 
-                cuisineLower.includes(keyword) ||
-                nameLower.includes(keyword)
-              )) {
-                expandedDishes.push(r)
+          if (categoryDishes.length > 0) {
+            // Create one card per dish
+            categoryDishes.forEach((dish, index) => {
+              // Filter by vegMode if enabled
+              if (vegMode && dish.foodType !== "Veg") {
+                return // Skip non-veg dishes when vegMode is ON
               }
-            }
+
+              const dishCardId = createDishCardId(r.id, dish, index)
+              expandedDishes.push({
+                ...r,
+                // Unique ID for each dish card
+                id: dishCardId,
+                dishId: dish.itemId || dishCardId,
+                isCategoryDishRow: true,
+                // Category dish info for this specific dish
+                categoryDish: dish,
+                categoryDishName: dish.name,
+                categoryDishPrice: dish.price,
+                categoryDishImage: dish.image,
+                categoryOfferPercentage: dish.categoryOfferPercentage,
+              })
+            })
           }
         }
       })
@@ -681,7 +770,10 @@ export default function CategoryPage() {
       filtered = filtered.filter(r => r.rating && r.rating >= 4.0)
     }
     if (activeFilters.has('under-250')) {
-      filtered = filtered.filter(r => r.featuredPrice && r.featuredPrice <= 250)
+      filtered = filtered.filter((r) => {
+        const effectivePrice = r.categoryDishPrice ?? r.featuredPrice
+        return typeof effectivePrice === "number" && effectivePrice <= 250
+      })
     }
     if (activeFilters.has('flat-50-off')) {
       filtered = filtered.filter(r => r.offer && r.offer.includes('50%'))
@@ -693,7 +785,8 @@ export default function CategoryPage() {
       filtered = filtered.filter(r => 
         r.name?.toLowerCase().includes(query) ||
         r.cuisine?.toLowerCase().includes(query) ||
-        r.featuredDish?.toLowerCase().includes(query)
+        r.featuredDish?.toLowerCase().includes(query) ||
+        r.categoryDishName?.toLowerCase().includes(query)
       )
     }
 
@@ -713,11 +806,7 @@ export default function CategoryPage() {
 
   // Check if should show grayscale (user out of service)
   const shouldShowGrayscale = isOutOfService
-  const recommendedCards =
-    selectedCategory && selectedCategory !== "all"
-      ? filteredRecommended
-      : filteredRecommended.slice(0, 6)
-  const shouldShowRecommended = recommendedCards.length > 0
+  const shouldShowOnlyCategoryDishes = Boolean(selectedCategory)
 
   return (
     <div className={`min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
@@ -863,131 +952,203 @@ export default function CategoryPage() {
       {/* Content */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-6 md:space-y-8 lg:space-y-10">
         <div className="max-w-7xl mx-auto">
-          {/* RECOMMENDED FOR YOU Section */}
-          {shouldShowRecommended && (
-            <section>
-              <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-3 md:mb-4">
-                RECOMMENDED FOR YOU
-              </h2>
-
-              {/* Small Restaurant Cards - Compact grid */}
-              <div className="grid grid-cols-3 gap-2.5 sm:gap-3 md:grid-cols-4 lg:grid-cols-5">
-                {recommendedCards.map((restaurant) => {
-                  const restaurantName = restaurant.name || "Restaurant"
-                  const restaurantSlug = restaurantName.toLowerCase().replace(/\s+/g, "-")
-                  return (
-                  <Link 
-                    key={restaurant.id}
-                    to={`/user/restaurants/${restaurantSlug}`}
-                    className="block"
-                  >
-                    <div className={`group ${shouldShowGrayscale ? "grayscale opacity-75" : ""}`}>
-                      {/* Image Container */}
-                      <div className="relative aspect-[4/3] rounded-lg md:rounded-xl overflow-hidden mb-1.5 bg-gray-100 dark:bg-gray-800">
-                        {/* Use category dish image if available, otherwise restaurant image */}
-                        {restaurant.categoryDishImage ? (
-                          <img 
-                            src={restaurant.categoryDishImage}
-                            alt={restaurant.categoryDishName || restaurantName}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            onError={(e) => {
-                              // Fallback to restaurant image if dish image fails
-                              if (restaurant.image) {
-                                e.target.src = restaurant.image
-                              } else {
-                                // Show emoji placeholder
-                                e.target.style.display = 'none'
-                                const placeholder = document.createElement('div')
-                                placeholder.className = 'w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl'
-                                placeholder.textContent = '🍽️'
-                                e.target.parentElement.appendChild(placeholder)
-                              }
-                            }}
-                          />
-                        ) : restaurant.image ? (
-                        <img 
-                          src={restaurant.image}
-                          alt={restaurantName}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            onError={(e) => {
-                              // Show emoji placeholder
-                              e.target.style.display = 'none'
-                              const placeholder = document.createElement('div')
-                              placeholder.className = 'w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl'
-                              placeholder.textContent = '🍽️'
-                              e.target.parentElement.appendChild(placeholder)
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-6xl">
-                            🍽️
-                          </div>
-                        )}
-
-                        {/* Offer Badge */}
-                        {restaurant.offer && (
-                        <div className="absolute top-1 left-1 bg-[#1d4ed8] text-white text-[8px] md:text-[9px] font-semibold px-1.5 py-0.5 rounded">
-                          {restaurant.offer}
-                        </div>
-                        )}
-
-                        {/* Rating Badge */}
-                        {restaurant.rating && (
-                          <div className="absolute bottom-1 left-1 bg-green-600/95 rounded text-white text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 flex items-center gap-0.5 leading-none">
-                            {restaurant.rating}
-                            <Star className="h-2.5 w-2.5 fill-white" />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Restaurant Info - Show category dish name if available, otherwise restaurant name */}
-                      <h3 className="font-semibold text-gray-900 dark:text-white text-[11px] sm:text-xs md:text-sm leading-tight line-clamp-1">
-                        {restaurant.categoryDishName || restaurantName}
-                      </h3>
-                      <div className="flex flex-col gap-0.5 mt-0.5">
-                        <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[9px] sm:text-[10px] md:text-xs">
-                          <Clock className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                          <span>{restaurant.deliveryTime || 'Not available'}</span>
-                        </div>
-                        {typeof restaurant.categoryOfferPercentage === "number" &&
-                          restaurant.categoryOfferPercentage > 0 && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-green-50 dark:bg-green-900/20 text-[8px] md:text-[9px] font-semibold text-green-700 dark:text-green-400 max-w-max">
-                              {restaurant.categoryOfferPercentage}% OFF
-                            </span>
-                          )}
-                      </div>
-                    </div>
-                  </Link>
-                  )
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* ALL RESTAURANTS Section */}
-          <section className={`relative ${shouldShowRecommended ? "" : "-mt-3"}`}>
-            <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
-              ALL RESTAURANTS
-            </h2>
+          <section className="relative">
             
             {/* Loading Overlay */}
             {isLoadingFilterResults && (
               <div className="absolute inset-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg min-h-[400px]">
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 className="h-8 w-8 text-green-600 animate-spin" strokeWidth={2.5} />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Loading restaurants...</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {shouldShowOnlyCategoryDishes ? "Loading dishes..." : "Loading restaurants..."}
+                  </span>
                 </div>
               </div>
             )}
             
-            {/* Large Restaurant Cards */}
-            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5 lg:gap-6 xl:gap-7 items-stretch ${isLoadingFilterResults ? 'opacity-50' : 'opacity-100'} transition-opacity duration-300`}>
-              {filteredAllRestaurants.map((restaurant) => {
-                const restaurantSlug = restaurant.name.toLowerCase().replace(/\s+/g, "-")
-                const isFavorite = favorites.has(restaurant.id)
+            {shouldShowOnlyCategoryDishes ? (
+              <div className={`divide-y divide-gray-200 dark:divide-gray-800 ${isLoadingFilterResults ? 'opacity-50' : 'opacity-100'} transition-opacity duration-300`}>
+                {filteredAllRestaurants.map((restaurant) => {
+                  const dishKey = `${restaurant.id}-row`
+                  const dishName = restaurant.categoryDishName || restaurant.featuredDish || "Dish"
+                  const dishPrice = restaurant.categoryDishPrice ?? restaurant.featuredPrice
+                  const dishDescription = restaurant.categoryDish?.description || ""
+                  const dishProductId = restaurant.dishId || restaurant.id
+                  const cartItemId = getCartItemId(dishProductId)
+                  const cartItem = getCartItem(cartItemId)
+                  const quantity = cartItem?.quantity || 0
+                  const hasValidPrice = typeof dishPrice === "number" && dishPrice > 0
+                  const isVegDish = restaurant.categoryDish?.foodType
+                    ? restaurant.categoryDish.foodType === "Veg"
+                    : true
 
-                return (
-                  <Link key={restaurant.id} to={`/user/restaurants/${restaurantSlug}`} className="h-full flex">
+                  return (
+                    <div
+                      key={dishKey}
+                      className="flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          {isVegDish ? (
+                            <div className="w-4 h-4 border-2 border-green-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                              <div className="w-2 h-2 bg-green-600 rounded-full" />
+                            </div>
+                          ) : (
+                            <div className="w-4 h-4 border-2 border-orange-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                              <div className="w-2 h-2 bg-orange-600 rounded-full" />
+                            </div>
+                          )}
+                        </div>
+                        <h3 className="font-bold text-gray-800 dark:text-white text-lg leading-tight">
+                          {dishName}
+                        </h3>
+                        <div className="flex items-center gap-3 mt-1">
+                          <p className="font-semibold text-gray-900 dark:text-white">
+                            {typeof dishPrice === "number" ? `₹${dishPrice}` : "Price not available"}
+                          </p>
+                          {restaurant.deliveryTime && (
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                              <Clock size={12} className="text-gray-500" />
+                              <span>{restaurant.deliveryTime}</span>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 truncate">
+                          {restaurant.name}
+                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                          {dishDescription}
+                        </p>
+                        <div className="flex gap-4 mt-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleDishBookmark(dishKey)}
+                            className={`p-1.5 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+                              bookmarkedDishes.has(dishKey)
+                                ? "border-red-500 text-red-500 bg-red-50 dark:bg-red-900/20"
+                                : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+                            }`}
+                          >
+                            <Bookmark size={18} className={bookmarkedDishes.has(dishKey) ? "fill-red-500" : ""} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const shareText = `${dishName} - ${restaurant.name}`
+                              try {
+                                if (navigator.share) {
+                                  await navigator.share({
+                                    title: dishName,
+                                    text: shareText,
+                                    url: window.location.href,
+                                  })
+                                } else if (navigator.clipboard?.writeText) {
+                                  await navigator.clipboard.writeText(`${shareText}\n${window.location.href}`)
+                                }
+                              } catch {
+                                // Ignore share cancellation errors
+                              }
+                            }}
+                            className="p-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                            title="Share dish"
+                          >
+                            <Share2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex-shrink-0">
+                        <div className="w-full h-full rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+                          {(restaurant.categoryDishImage || restaurant.image) ? (
+                            <img
+                              src={restaurant.categoryDishImage || restaurant.image}
+                              alt={dishName}
+                              className="w-full h-full object-cover rounded-2xl"
+                              onError={(e) => {
+                                e.target.style.display = 'none'
+                                const placeholder = document.createElement('div')
+                                placeholder.className = 'w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-4xl'
+                                placeholder.textContent = '🍽️'
+                                e.target.parentElement.appendChild(placeholder)
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-4xl">
+                              🍽️
+                            </div>
+                          )}
+                        </div>
+                        {quantity > 0 ? (
+                          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-green-600 text-green-600 font-bold px-3 py-1.5 rounded-lg shadow-md flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(cartItemId, Math.max(0, quantity - 1))}
+                              className="text-green-600 hover:text-green-700"
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="mx-1 text-sm">{quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!hasValidPrice) return
+                                addToCart({
+                                  productId: dishProductId,
+                                  productName: dishName,
+                                  name: dishName,
+                                  price: dishPrice,
+                                  image: restaurant.categoryDishImage || restaurant.image || null,
+                                  restaurant: restaurant.name,
+                                  restaurantId: restaurant.restaurantId || restaurant.id,
+                                  description: dishDescription,
+                                  originalPrice: restaurant.categoryDish?.originalPrice || dishPrice,
+                                })
+                              }}
+                              className="text-green-600 hover:text-green-700"
+                            >
+                              <Plus size={14} className="stroke-[3px]" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!hasValidPrice) return
+                              addToCart({
+                                productId: dishProductId,
+                                productName: dishName,
+                                name: dishName,
+                                price: dishPrice,
+                                image: restaurant.categoryDishImage || restaurant.image || null,
+                                restaurant: restaurant.name,
+                                restaurantId: restaurant.restaurantId || restaurant.id,
+                                description: dishDescription,
+                                originalPrice: restaurant.categoryDish?.originalPrice || dishPrice,
+                              })
+                            }}
+                            disabled={!hasValidPrice}
+                            className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-5 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${
+                              hasValidPrice
+                                ? 'border-green-600 text-green-600 hover:bg-green-50'
+                                : 'border-gray-300 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            ADD <Plus size={14} className="stroke-[3px]" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5 lg:gap-6 xl:gap-7 items-stretch ${isLoadingFilterResults ? 'opacity-50' : 'opacity-100'} transition-opacity duration-300`}>
+                {filteredAllRestaurants.map((restaurant) => {
+                  const restaurantSlug = restaurant.name.toLowerCase().replace(/\s+/g, "-")
+                  const isFavorite = favorites.has(restaurant.id)
+
+                  return (
+                    <Link key={restaurant.id} to={`/user/restaurants/${restaurantSlug}`} className="h-full flex">
                     <Card className={`overflow-hidden cursor-pointer gap-0 border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-md h-full flex flex-col w-full ${
                       shouldShowGrayscale ? 'grayscale opacity-75' : ''
                     }`}>
@@ -1107,17 +1268,18 @@ export default function CategoryPage() {
                         </CardContent>
                       </Card>
                     </Link>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Empty State */}
             {filteredAllRestaurants.length === 0 && (
               <div className="text-center py-12 md:py-16">
                 <p className="text-gray-500 dark:text-gray-400 text-sm md:text-base">
                   {searchQuery
-                    ? `No restaurants found for "${searchQuery}"`
-                    : "No restaurants found with selected filters"}
+                    ? `No ${shouldShowOnlyCategoryDishes ? "dishes" : "restaurants"} found for "${searchQuery}"`
+                    : `No ${shouldShowOnlyCategoryDishes ? "dishes" : "restaurants"} found with selected filters`}
                 </p>
                 <Button
                   variant="outline"
@@ -1511,6 +1673,7 @@ export default function CategoryPage() {
           }
         }
       `}</style>
+      <AddToCartAnimation linkTo="/user/cart" bottomOffset={140} />
     </div>
   )
 }

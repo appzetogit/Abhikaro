@@ -3,10 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { X, Search, Clock, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { adminAPI } from "@/lib/api"
-
-// Import shared food images - prevents duplication
-import { foodImages } from "@/constants/images"
+import { adminAPI, api, API_ENDPOINTS, restaurantAPI } from "@/lib/api"
 
 // LocalStorage key for recent searches
 const RECENT_SEARCHES_KEY = 'userRecentSearches'
@@ -19,7 +16,148 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [recentSearches, setRecentSearches] = useState([])
   const [filteredFoods, setFilteredFoods] = useState([])
+  const [liveFoodSuggestions, setLiveFoodSuggestions] = useState([])
+  const [loadingLiveSuggestions, setLoadingLiveSuggestions] = useState(false)
+  const [cachedMenuFoods, setCachedMenuFoods] = useState([])
+  const [menuFoodsLoaded, setMenuFoodsLoaded] = useState(false)
   const [imageErrors, setImageErrors] = useState(new Set())
+  const zoneId = localStorage.getItem("userZoneId")
+
+  const getFoodImage = (item) => {
+    if (!item || typeof item !== "object") return null
+
+    if (typeof item.image === "string" && item.image.trim()) return item.image
+    if (typeof item.imageUrl === "string" && item.imageUrl.trim()) return item.imageUrl
+    if (typeof item.thumbnail === "string" && item.thumbnail.trim()) return item.thumbnail
+
+    if (Array.isArray(item.images) && item.images.length > 0) {
+      const firstImage = item.images[0]
+      if (typeof firstImage === "string" && firstImage.trim()) return firstImage
+      if (firstImage && typeof firstImage.url === "string" && firstImage.url.trim()) {
+        return firstImage.url
+      }
+    }
+
+    return null
+  }
+
+  const normalizeFoodSuggestions = (responseData) => {
+    const candidates = [
+      ...(Array.isArray(responseData?.data?.items) ? responseData.data.items : []),
+      ...(Array.isArray(responseData?.data?.foods) ? responseData.data.foods : []),
+      ...(Array.isArray(responseData?.data?.results) ? responseData.data.results : []),
+      ...(Array.isArray(responseData?.items) ? responseData.items : []),
+      ...(Array.isArray(responseData?.foods) ? responseData.foods : []),
+      ...(Array.isArray(responseData?.results) ? responseData.results : []),
+    ]
+
+    const normalized = candidates
+      .map((item, index) => {
+        const name = item?.name || item?.dishName || item?.itemName || item?.title
+        if (!name || typeof name !== "string") return null
+
+        const id = item?.id || item?._id || item?.menuItemId || `${name}-${index}`
+        return {
+          id,
+          name: name.trim(),
+          image: getFoodImage(item),
+          slug: item?.slug || null,
+        }
+      })
+      .filter(Boolean)
+
+    const uniqueByName = new Map()
+    normalized.forEach((food) => {
+      const key = food.name.toLowerCase()
+      if (!uniqueByName.has(key)) uniqueByName.set(key, food)
+    })
+
+    return Array.from(uniqueByName.values()).slice(0, 24)
+  }
+
+  const extractFoodsFromMenu = (menu) => {
+    if (!menu || !Array.isArray(menu.sections)) return []
+
+    const foods = []
+    menu.sections.forEach((section) => {
+      const sectionItems = Array.isArray(section?.items) ? section.items : []
+      sectionItems.forEach((item) => {
+        const name = item?.name || item?.dishName || item?.itemName
+        if (!name || typeof name !== "string") return
+
+        foods.push({
+          id: item?.id || item?._id || item?.menuItemId || `${name}-${foods.length}`,
+          name: name.trim(),
+          image: getFoodImage(item),
+          slug: item?.slug || null,
+        })
+      })
+
+      const subsections = Array.isArray(section?.subsections) ? section.subsections : []
+      subsections.forEach((subsection) => {
+        const subsectionItems = Array.isArray(subsection?.items) ? subsection.items : []
+        subsectionItems.forEach((item) => {
+          const name = item?.name || item?.dishName || item?.itemName
+          if (!name || typeof name !== "string") return
+
+          foods.push({
+            id: item?.id || item?._id || item?.menuItemId || `${name}-${foods.length}`,
+            name: name.trim(),
+            image: getFoodImage(item),
+            slug: item?.slug || null,
+          })
+        })
+      })
+    })
+
+    const uniqueByName = new Map()
+    foods.forEach((food) => {
+      const key = food.name.toLowerCase()
+      const existing = uniqueByName.get(key)
+      if (!existing || (!existing.image && food.image)) {
+        uniqueByName.set(key, food)
+      }
+    })
+
+    return Array.from(uniqueByName.values())
+  }
+
+  const loadFoodsFromRestaurantMenus = async () => {
+    if (!zoneId) return []
+    const restaurantsResponse = await restaurantAPI.getRestaurants({ zoneId, limit: 100 })
+    const restaurants = Array.isArray(restaurantsResponse?.data?.data?.restaurants)
+      ? restaurantsResponse.data.data.restaurants
+      : []
+
+    const restaurantIds = restaurants
+      .map((restaurant) => restaurant?.restaurantId || restaurant?._id || restaurant?.id)
+      .filter(Boolean)
+
+    if (restaurantIds.length === 0) return []
+
+    const menuResults = await Promise.allSettled(
+      restaurantIds.map((restaurantId) => restaurantAPI.getMenuByRestaurantId(restaurantId))
+    )
+
+    const allFoods = []
+    menuResults.forEach((result) => {
+      if (result.status !== "fulfilled") return
+      const menu = result?.value?.data?.data?.menu
+      const foods = extractFoodsFromMenu(menu)
+      allFoods.push(...foods)
+    })
+
+    const uniqueByName = new Map()
+    allFoods.forEach((food) => {
+      const key = food.name.toLowerCase()
+      const existing = uniqueByName.get(key)
+      if (!existing || (!existing.image && food.image)) {
+        uniqueByName.set(key, food)
+      }
+    })
+
+    return Array.from(uniqueByName.values())
+  }
 
   // Fetch categories from API
   useEffect(() => {
@@ -109,6 +247,76 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     }
   }, [searchValue, categories])
 
+  useEffect(() => {
+    if (!isOpen) return
+
+    const trimmedQuery = searchValue.trim()
+    if (!zoneId) {
+      setLiveFoodSuggestions([])
+      setLoadingLiveSuggestions(false)
+      return
+    }
+    if (!trimmedQuery) {
+      setLiveFoodSuggestions([])
+      setLoadingLiveSuggestions(false)
+      return
+    }
+
+    let isCancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        setLoadingLiveSuggestions(true)
+        let normalized = []
+
+        try {
+          const response = await api.get(API_ENDPOINTS.MENU.SEARCH, {
+            params: {
+              q: trimmedQuery,
+              query: trimmedQuery,
+              limit: 24,
+              zoneId,
+            },
+          })
+          normalized = normalizeFoodSuggestions(response?.data || {})
+        } catch (searchError) {
+          const loadedFoods = menuFoodsLoaded
+            ? cachedMenuFoods
+            : await loadFoodsFromRestaurantMenus()
+
+          if (!menuFoodsLoaded) {
+            setCachedMenuFoods(loadedFoods)
+            setMenuFoodsLoaded(true)
+          }
+
+          normalized = loadedFoods
+            .filter((food) => food.name.toLowerCase().includes(trimmedQuery.toLowerCase()))
+            .slice(0, 24)
+
+          if (searchError?.response?.status !== 404) {
+            console.error("Primary search endpoint failed, used menu fallback:", searchError)
+          }
+        }
+
+        if (isCancelled) return
+        setLiveFoodSuggestions(normalized)
+      } catch (error) {
+        if (!isCancelled) {
+          console.error("Error fetching live food suggestions:", error)
+          setLiveFoodSuggestions([])
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoadingLiveSuggestions(false)
+        }
+      }
+    }, 250)
+
+    return () => {
+      isCancelled = true
+      clearTimeout(timer)
+    }
+  }, [isOpen, searchValue, menuFoodsLoaded, cachedMenuFoods, zoneId])
+
   // Save search to recent searches
   const saveRecentSearch = (searchTerm) => {
     try {
@@ -159,6 +367,11 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
 
   if (!isOpen) return null
 
+  const shouldShowLiveSuggestions = searchValue.trim() !== ""
+  const displayFoods = shouldShowLiveSuggestions && liveFoodSuggestions.length > 0
+    ? liveFoodSuggestions
+    : filteredFoods
+
   return (
     <div
       className="fixed inset-0 z-[9999] flex flex-col bg-white dark:bg-[#0a0a0a]"
@@ -168,16 +381,16 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     >
       {/* Header with Search Bar */}
       <div className="flex-shrink-0 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-7 pb-1">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground dark:text-gray-400 z-10" />
+              <Search className="absolute left-4 top-[58%] transform -translate-y-1/2 h-5 w-5 text-muted-foreground dark:text-gray-400 z-10" />
               <Input
                 ref={inputRef}
                 value={searchValue}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search for food, restaurants..."
-                className="pl-12 pr-4 h-12 w-full bg-white dark:bg-[#1a1a1a] border-gray-100 dark:border-gray-800 focus:border-primary-orange dark:focus:border-primary-orange rounded-full text-lg dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                placeholder="Search for foods...."
+                className="pl-12 pr-4 pt-2 h-12 w-full bg-white dark:bg-[#1a1a1a] border-gray-100 dark:border-gray-800 focus:border-primary-orange dark:focus:border-primary-orange rounded-full text-lg dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400"
               />
             </div>
             <Button
@@ -185,7 +398,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 translate-y-2"
             >
               <X className="h-5 w-5 text-gray-700 dark:text-gray-300" />
             </Button>
@@ -233,15 +446,15 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           }}
         >
           <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6">
-            {searchValue.trim() === "" ? "All Dishes" : `Search Results (${filteredFoods.length})`}
+            {searchValue.trim() === "" ? "All Dishes" : `Food Suggestions (${displayFoods.length})`}
           </h3>
-          {loadingCategories ? (
+          {loadingCategories || loadingLiveSuggestions ? (
             <div className="flex items-center justify-center py-12 sm:py-16">
               <Loader2 className="h-8 w-8 animate-spin text-primary-orange" />
             </div>
-          ) : filteredFoods.length > 0 ? (
+          ) : displayFoods.length > 0 ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
-              {filteredFoods.map((food, index) => (
+              {displayFoods.map((food, index) => (
                 <div
                   key={food.id || food.slug || index}
                   className="flex flex-col items-center gap-2 sm:gap-3 cursor-pointer group"

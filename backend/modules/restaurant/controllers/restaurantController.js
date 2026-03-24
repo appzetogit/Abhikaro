@@ -135,6 +135,26 @@ export const getRestaurants = async (req, res) => {
       diningCategory // Dining category name/slug to filter restaurants
     } = req.query;
 
+    // Strict zone mode: user discovery endpoints must be scoped to a valid zone.
+    if (!zoneId) {
+      return successResponse(res, 200, 'Zone required for restaurant discovery', {
+        restaurants: [],
+        total: 0,
+        filters: {
+          sortBy,
+          cuisine,
+          minRating,
+          maxDeliveryTime,
+          maxDistance,
+          maxPrice,
+          hasOffers,
+          diningCategory
+        },
+        queryType: 'regular',
+        userCoordinates: null
+      });
+    }
+
     // Generate cache key based on query parameters
     const cacheKey = generateCacheKey(
       'restaurants',
@@ -165,7 +185,22 @@ export const getRestaurants = async (req, res) => {
       // Validate zone exists and is active
       userZone = await Zone.findById(zoneId).lean();
       if (!userZone || !userZone.isActive) {
-        return errorResponse(res, 400, 'Invalid or inactive zone. Please detect your zone again.');
+        return successResponse(res, 200, 'Invalid or inactive zone for restaurant discovery', {
+          restaurants: [],
+          total: 0,
+          filters: {
+            sortBy,
+            cuisine,
+            minRating,
+            maxDeliveryTime,
+            maxDistance,
+            maxPrice,
+            hasOffers,
+            diningCategory
+          },
+          queryType: 'regular',
+          userCoordinates: null
+        });
       }
     }
     
@@ -1334,6 +1369,14 @@ export const deleteRestaurantAccount = asyncHandler(async (req, res) => {
 export const getRestaurantsWithDishesUnder250 = async (req, res) => {
   try {
     const { zoneId } = req.query; // User's zone ID (optional - if provided, filters by zone)
+
+    // Strict zone mode: under-250 list also requires valid zone.
+    if (!zoneId) {
+      return successResponse(res, 200, 'Zone required for under-250 discovery', {
+        restaurants: [],
+        total: 0,
+      });
+    }
     
     // Optional: Zone-based filtering - if zoneId is provided, validate and filter by zone
     let userZone = null;
@@ -1341,7 +1384,10 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
       // Validate zone exists and is active
       userZone = await Zone.findById(zoneId).lean();
       if (!userZone || !userZone.isActive) {
-        return errorResponse(res, 400, 'Invalid or inactive zone. Please detect your zone again.');
+        return successResponse(res, 200, 'Invalid or inactive zone for under-250 discovery', {
+          restaurants: [],
+          total: 0,
+        });
       }
     }
 

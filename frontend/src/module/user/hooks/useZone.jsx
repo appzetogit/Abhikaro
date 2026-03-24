@@ -135,8 +135,8 @@ export function useZone(location) {
     zoneStatus,
     loading,
     error,
-    isInService: true, // zoneStatus === 'IN_SERVICE', // FORCED FOR TESTING
-    isOutOfService: false, // zoneStatus === 'OUT_OF_SERVICE', // FORCED FOR TESTING
+    isInService: zoneStatus === 'IN_SERVICE',
+    isOutOfService: zoneStatus === 'OUT_OF_SERVICE',
     refreshZone
   }
 }

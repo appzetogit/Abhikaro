@@ -1,10 +1,9 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
-import { Star, Clock, MapPin, ArrowDownUp, Timer, ArrowRight, ChevronDown, Bookmark, Share2, Plus, Minus, X } from "lucide-react"
+import { Star, Clock, ArrowDownUp, Timer, ChevronDown, Bookmark, Share2, Plus, Minus, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import AnimatedPage from "../components/AnimatedPage"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useLocationSelector } from "../components/UserLayout"
 import { useLocation } from "../hooks/useLocation"
@@ -36,7 +35,7 @@ export default function Under250() {
   const [variantError, setVariantError] = useState(false)
   const [quantities, setQuantities] = useState({})
   const [bookmarkedItems, setBookmarkedItems] = useState(new Set())
-  const [viewCartButtonBottom, setViewCartButtonBottom] = useState("bottom-20")
+  const [viewCartButtonBottom, setViewCartButtonBottom] = useState("bottom-[52px]")
   const lastScrollY = useRef(0)
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
@@ -136,6 +135,42 @@ export default function Under250() {
     return filtered
   }, [under250Restaurants, selectedSort, under30MinsFilter])
 
+  // Flatten restaurant-wise menu data into a single continuous dish list.
+  const flattenedMenuItems = useMemo(() => {
+    return sortedAndFilteredRestaurants.flatMap((restaurant) => {
+      const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || "Restaurant"
+      const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
+      const restaurantId = restaurant._id || restaurant.restaurantId || restaurant.id
+      const menuItems = restaurant.menuItems || []
+
+      return menuItems.map((item, itemIndex) => {
+        const normalizedId = item.id || item._id || `${restaurantId || "rest"}-${itemIndex}`
+        return {
+          ...item,
+          id: normalizedId,
+          restaurantContext: {
+            ...restaurant,
+            _id: restaurantId,
+            id: restaurantId,
+            slug: restaurantSlug,
+            name: restaurantName,
+            onboarding: {
+              ...restaurant.onboarding,
+              step1: {
+                ...(restaurant.onboarding?.step1 || {}),
+                restaurantName,
+              },
+            },
+          },
+          restaurantName,
+          restaurantSlug,
+          restaurantId,
+          deliveryTime: restaurant.deliveryTime || "",
+        }
+      })
+    })
+  }, [sortedAndFilteredRestaurants])
+
   // Fetch under 250 banners from API
   useEffect(() => {
     const fetchBanners = async () => {
@@ -164,7 +199,10 @@ export default function Under250() {
     const fetchRestaurantsUnder250 = async () => {
       try {
         setLoadingRestaurants(true)
-        // Optional: Add zoneId if available (for sorting/filtering, but show all restaurants)
+        if (!zoneId) {
+          setUnder250Restaurants([])
+          return
+        }
         const response = await restaurantAPI.getRestaurantsUnder250(zoneId)
         if (response.data.success && response.data.data.restaurants) {
           setUnder250Restaurants(response.data.data.restaurants)
@@ -260,13 +298,13 @@ export default function Under250() {
         return
       }
 
-      // Scroll down -> bottom-0, Scroll up -> bottom-20
+      // Keep same fixed position as restaurant details page
       if (currentScrollY > lastScrollY.current) {
         // Scrolling down
-        setViewCartButtonBottom("bottom-0")
+        setViewCartButtonBottom("bottom-[52px]")
       } else if (currentScrollY < lastScrollY.current) {
         // Scrolling up
-        setViewCartButtonBottom("bottom-20")
+        setViewCartButtonBottom("bottom-[52px]")
       }
 
       lastScrollY.current = currentScrollY
@@ -414,6 +452,26 @@ export default function Under250() {
     })
   }
 
+  const handleShareDish = async (item) => {
+    const shareText = `${item.name} - ${item.restaurantName || "Under 250"}`
+    const shareData = {
+      title: item.name,
+      text: shareText,
+      url: window.location.href,
+    }
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData)
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(`${shareText}\n${window.location.href}`)
+        toast.success("Link copied")
+      }
+    } catch {
+      // Ignore native share cancellation errors
+    }
+  }
+
   // Check if should show grayscale (only when user is out of service)
   const shouldShowGrayscale = isOutOfService
 
@@ -446,7 +504,7 @@ export default function Under250() {
       </div>
 
       {/* Content Section */}
-      <div className="relative max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 space-y-0 pt-2 sm:pt-3 md:pt-4 lg:pt-6 pb-6 md:pb-8 lg:pb-10">
+      <div className="relative max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 space-y-0 pt-2 sm:pt-3 md:pt-4 lg:pt-6 pb-24 sm:pb-28 md:pb-12 lg:pb-14">
 
         <section className="space-y-1 sm:space-y-1.5">
           <div
@@ -461,12 +519,12 @@ export default function Under250() {
             {/* All Button */}
             <div className="flex-shrink-0">
               <motion.div
-                className="flex flex-col items-center gap-2 w-[62px] sm:w-24 md:w-28"
+                className="flex flex-col items-center gap-1.5 sm:gap-2 w-[56px] sm:w-20 md:w-24"
                 whileHover={{ scale: 1.1, y: -4 }}
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
               >
-                <div className="w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full overflow-hidden shadow-md transition-all">
                   <OptimizedImage
                     src={offerImage}
                     alt="All"
@@ -476,7 +534,7 @@ export default function Under250() {
                     placeholder="blur"
                   />
                 </div>
-                <span className="text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1">
+                <span className="text-[11px] sm:text-xs md:text-sm font-semibold text-gray-800 dark:text-gray-200 text-center pb-1">
                   All
                 </span>
               </motion.div>
@@ -489,13 +547,13 @@ export default function Under250() {
                 <div key={categoryKey} className="flex-shrink-0">
                   <Link to={`/user/category/${categorySlug}`}>
                     <motion.div
-                      className="flex flex-col items-center gap-2 w-[62px] sm:w-24 md:w-28"
+                      className="flex flex-col items-center gap-1.5 sm:gap-2 w-[56px] sm:w-20 md:w-24"
                       onClick={() => setActiveCategory(category.id)}
                       whileHover={{ scale: 1.1, y: -4 }}
                       whileTap={{ scale: 0.95 }}
                       transition={{ type: "spring", stiffness: 300, damping: 20 }}
                     >
-                      <div className="w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden shadow-md transition-all">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full overflow-hidden shadow-md transition-all">
                         <OptimizedImage
                           src={category.image}
                           alt={category.name}
@@ -505,7 +563,7 @@ export default function Under250() {
                           placeholder="blur"
                         />
                       </div>
-                      <span className={`text-xs sm:text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${isActive ? 'border-b-2 border-green-600' : ''}`}>
+                      <span className={`text-[11px] sm:text-xs md:text-sm font-semibold text-gray-800 dark:text-gray-200 text-center pb-1 ${isActive ? 'border-b-2 border-green-600' : ''}`}>
                         {category.name.length > 7 ? `${category.name.slice(0, 7)}...` : category.name}
                       </span>
                     </motion.div>
@@ -521,7 +579,7 @@ export default function Under250() {
             <Button
               variant="outline"
               onClick={() => setShowSortPopup(true)}
-              className="h-8 sm:h-9 md:h-10 px-3 sm:px-4 md:px-5 rounded-md flex items-center gap-2 whitespace-nowrap flex-shrink-0 font-medium transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm md:text-base"
+              className="h-8 sm:h-9 md:h-10 px-2.5 sm:px-3.5 md:px-4.5 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs sm:text-sm md:text-base"
             >
               <ArrowDownUp className="h-4 w-4 md:h-5 md:w-5 rotate-90" />
               <span className="text-sm md:text-base font-medium">
@@ -532,7 +590,7 @@ export default function Under250() {
             <Button
               variant="outline"
               onClick={() => setUnder30MinsFilter(!under30MinsFilter)}
-              className={`h-8 sm:h-9 md:h-10 px-3 sm:px-4 md:px-5 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all text-sm md:text-base ${under30MinsFilter
+              className={`h-8 sm:h-9 md:h-10 px-2.5 sm:px-3.5 md:px-4.5 rounded-md flex items-center gap-1 whitespace-nowrap flex-shrink-0 font-medium transition-all text-xs sm:text-sm md:text-base ${under30MinsFilter
                 ? 'bg-green-600 text-white border border-green-600 hover:bg-green-600/90'
                 : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300'
                 }`}
@@ -549,187 +607,199 @@ export default function Under250() {
           <div className="flex justify-center items-center py-12">
             <div className="text-gray-500 dark:text-gray-400">Loading restaurants...</div>
           </div>
-        ) : sortedAndFilteredRestaurants.length === 0 ? (
+        ) : flattenedMenuItems.length === 0 ? (
           <div className="flex justify-center items-center py-12">
             <div className="text-gray-500 dark:text-gray-400">
               {under250Restaurants.length === 0
-                ? "No restaurants with dishes under ₹250 found."
-                : "No restaurants match the selected filters."}
+                ? "No dishes under ₹250 found."
+                : "No dishes match the selected filters."}
             </div>
           </div>
         ) : (
-          sortedAndFilteredRestaurants.map((restaurant, restaurantIndex) => {
-            // Prefer onboarding.step1.restaurantName if available (more accurate)
-            const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
-            const restaurantSlug = restaurant.slug || restaurantName.toLowerCase().replace(/\s+/g, "-")
-            const restaurantKey = `${restaurant?._id || restaurant?.id || "rest"}-${restaurantSlug}-${restaurantIndex}`
-            const ratingValue = Number(restaurant.rating ?? restaurant.averageRating ?? restaurant.avgRating ?? 0)
-            const displayRating = Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue.toFixed(1) : "0.0"
-            const totalRatings = Number(restaurant.totalRatings ?? restaurant.reviewCount ?? 0)
-            return (
-              <section key={restaurantKey} className="pt-4 sm:pt-6 md:pt-8 lg:pt-10">
-                {/* Restaurant Header */}
-                <div className="flex items-start justify-between mb-3 md:mb-4 lg:mb-6">
-                  <div className="flex-1">
-                    <h3 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-900 dark:text-white mb-1 md:mb-2">
-                      {restaurantName}
-                    </h3>
-                    <div className="flex items-center gap-2 text-sm md:text-base lg:text-lg text-gray-500 dark:text-gray-400">
-                      <Clock className="h-4 w-4 md:h-5 md:w-5 lg:h-6 lg:w-6" strokeWidth={1.5} />
-                      <span className="font-medium">{restaurant.deliveryTime}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <div className="flex items-center gap-1 bg-green-800 text-white px-1 py-1 md:px-2 md:py-1.5 lg:px-3 lg:py-2 rounded-full">
-                      <div className="bg-white text-green-700 px-1 py-1 md:px-1.5 md:py-1.5 lg:px-2 lg:py-2 rounded-full">
-                        <Star className="h-3.5 w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 fill-green-800 text-green-800" />
+          <section className="pt-3 sm:pt-4 md:pt-6 lg:pt-8">
+            <div className="divide-y divide-gray-200 dark:divide-gray-800">
+              {flattenedMenuItems.map((item, itemIndex) => {
+                const hasVariantsCard = (item?.variations || []).length > 0
+                const quantity = hasVariantsCard
+                  ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
+                  : (quantities[item.id] || 0)
+                const itemKey = `${item.restaurantId || "rest"}-${item.id}-${itemIndex}`
+
+                return (
+                  <motion.div
+                    key={itemKey}
+                    className="flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer"
+                    onClick={() => handleItemClick(item, item.restaurantContext)}
+                    initial={{ opacity: 0, y: 16 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: "-40px" }}
+                    transition={{ duration: 0.28, delay: Math.min(itemIndex * 0.02, 0.18) }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        {item.isVeg !== false ? (
+                          <div className="w-4 h-4 border-2 border-green-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                            <div className="w-2 h-2 bg-green-600 rounded-full" />
+                          </div>
+                        ) : (
+                          <div className="w-4 h-4 border-2 border-orange-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                            <div className="w-2 h-2 bg-orange-600 rounded-full" />
+                          </div>
+                        )}
                       </div>
-                      <span className="text-xs md:text-sm lg:text-base font-bold">{displayRating}</span>
-                    </div>
-                    <span className="text-xs md:text-sm lg:text-base text-gray-400 dark:text-gray-500 mt-0.5">
-                      {totalRatings > 0 ? `By ${totalRatings >= 1000 ? `${(totalRatings / 1000).toFixed(1)}K+` : `${totalRatings}+`}` : ''}
-                    </span>
-                  </div>
-                </div>
 
-                {/* Menu Items Horizontal Scroll */}
-                {restaurant.menuItems && restaurant.menuItems.length > 0 && (
-                  <div className="space-y-2 md:space-y-3 lg:space-y-4">
-                    <div
-                      className="flex md:grid gap-3 sm:gap-4 md:gap-5 lg:gap-6 overflow-x-auto md:overflow-x-visible overflow-y-visible scrollbar-hide scroll-smooth pb-2 md:pb-0 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                      style={{
-                        scrollbarWidth: "none",
-                        msOverflowStyle: "none",
-                        touchAction: "pan-x pan-y pinch-zoom",
-                        overflowY: "hidden",
-                      }}
-                    >
-                      {restaurant.menuItems.map((item, itemIndex) => {
-                        const hasVariantsCard = (item?.variations || []).length > 0
-                        const quantity = hasVariantsCard
-                          ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
-                          : (quantities[item.id] || 0)
-                        const itemIdentity = item?._id || item?.id || 'item'
-                        const itemKey = `${restaurantKey}-${itemIdentity}-${itemIndex}`
-                        return (
-                          <motion.div
-                            key={itemKey}
-                            className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-full bg-white dark:bg-[#1a1a1a] rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden cursor-pointer"
-                            onClick={() => handleItemClick(item, restaurant)}
-                            initial={{ opacity: 0, y: 20 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true, margin: "-50px" }}
-                            transition={{ duration: 0.4, delay: itemIndex * 0.05 }}
-                            whileHover={{ y: -8, scale: 1.02 }}
-                            style={{ boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)" }}
+                      <h3 className="font-bold text-gray-800 dark:text-white text-lg leading-tight">
+                        {item.name}
+                      </h3>
+
+                      <div className="flex items-center gap-3 mt-1">
+                        <p className="font-semibold text-gray-900 dark:text-white">
+                          ₹{Math.round(item.price)}
+                        </p>
+                        {item.deliveryTime && (
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                            <Clock size={12} className="text-gray-500" />
+                            <span>{item.deliveryTime}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                        {item.description || `${item.name} from ${item.restaurantName}`}
+                      </p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 truncate">
+                        {item.restaurantName}
+                      </p>
+
+                      <div className="flex gap-4 mt-3">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleBookmarkClick(item.id)
+                          }}
+                          className={`p-1.5 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${bookmarkedItems.has(item.id)
+                            ? "border-red-500 text-red-500 bg-red-50 dark:bg-red-900/20"
+                            : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+                            }`}
+                        >
+                          <Bookmark
+                            size={18}
+                            className={bookmarkedItems.has(item.id) ? "fill-red-500" : ""}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleShareDish(item)
+                          }}
+                          className="p-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                          title="Share dish"
+                        >
+                          <Share2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative w-32 h-32 flex-shrink-0">
+                      <div className="w-full h-full rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+                        <OptimizedImage
+                          src={item.image}
+                          alt={item.name}
+                          className="w-full h-full object-cover rounded-2xl shadow-sm"
+                          objectFit="cover"
+                          sizes="(max-width: 640px) 128px, 128px"
+                          placeholder="blur"
+                          priority={itemIndex < 6}
+                        />
+                      </div>
+                      {quantity > 0 && !hasVariantsCard ? (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${shouldShowGrayscale
+                            ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                            : 'border-green-600 text-green-600 hover:bg-green-50'
+                            }`}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!shouldShowGrayscale) {
+                                updateItemQuantity(item, Math.max(0, quantity - 1), e, item.restaurantName)
+                              }
+                            }}
+                            disabled={shouldShowGrayscale}
+                            className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:text-green-700'}
                           >
-                            {/* Item Image */}
-                            <div className="relative w-full h-32 sm:h-36 md:h-40 lg:h-48 xl:h-52 overflow-hidden">
-                              <motion.div
-                                className="absolute inset-0"
-                                whileHover={{ scale: 1.1 }}
-                                transition={{ duration: 0.5, ease: "easeOut" }}
-                              >
-                                <OptimizedImage
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="w-full h-full"
-                                  objectFit="cover"
-                                  sizes="(max-width: 640px) 200px, (max-width: 768px) 220px, 100vw"
-                                  placeholder="blur"
-                                  priority={itemIndex < 4}
-                                />
-                              </motion.div>
-                              {/* Gradient Overlay on Hover */}
-                              <motion.div
-                                className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent"
-                                initial={{ opacity: 0 }}
-                                whileHover={{ opacity: 1 }}
-                                transition={{ duration: 0.3 }}
-                              />
-                              {/* Veg Indicator */}
-                              {item.isVeg && (
-                                <motion.div
-                                  className="absolute top-2 left-2 md:top-3 md:left-3 h-4 w-4 md:h-5 md:w-5 lg:h-6 lg:w-6 rounded border-2 border-green-600 bg-white flex items-center justify-center z-10"
-                                  whileHover={{ scale: 1.2, rotate: 5 }}
-                                  transition={{ duration: 0.2 }}
-                                >
-                                  <div className="h-2 w-2 md:h-2.5 md:w-2.5 lg:h-3 lg:w-3 rounded-full bg-green-600" />
-                                </motion.div>
-                              )}
-                            </div>
-
-                            {/* Item Details */}
-                            <div className="p-3 md:p-4 lg:p-5">
-                              <div className="flex items-center gap-1 md:gap-2 mb-1 md:mb-2 lg:mb-3">
-                                {item.isVeg && (
-                                  <div className="h-3 w-3 md:h-4 md:w-4 lg:h-5 lg:w-5 rounded border border-green-600 bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
-                                    <div className="h-1.5 w-1.5 md:h-2 md:w-2 lg:h-2.5 lg:w-2.5 rounded-full bg-green-600" />
-                                  </div>
-                                )}
-                                <span className="text-sm md:text-base lg:text-lg font-semibold text-gray-900 dark:text-white">
-                                  1 x {item.name}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="text-base md:text-lg lg:text-xl xl:text-2xl font-bold text-gray-900 dark:text-white">
-                                    ₹{Math.round(item.price)}
-                                  </p>
-                                  {item.bestPrice && (
-                                    <p className="text-xs md:text-sm lg:text-base text-gray-500 dark:text-gray-400">Best price</p>
-                                  )}
-                                </div>
-                                {quantity > 0 ? (
-                                  <Link to="/user/cart" onClick={(e) => e.stopPropagation()}>
-                                    <Button
-                                      variant={"outline"}
-                                      size="sm"
-                                      className="bg-green-600/10 text-green-500 border-green-500 hover:bg-green-700 hover:text-white h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base"
-                                    >
-                                      View cart
-                                    </Button>
-                                  </Link>
-                                ) : (
-                                  <Button
-                                    variant={"outline"}
-                                    size="sm"
-                                    disabled={shouldShowGrayscale}
-                                    className={`h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base ${shouldShowGrayscale
-                                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-300 dark:border-gray-700 cursor-not-allowed opacity-50'
-                                      : 'bg-green-600/10 text-green-500 border-green-500 hover:bg-green-700 hover:text-white'
-                                      }`}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      if (!shouldShowGrayscale) {
-                                        handleItemClick(item, restaurant)
-                                      }
-                                    }}
-                                  >
-                                    Add
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </motion.div>
-                        )
-                      })}
+                            <Minus size={14} />
+                          </button>
+                          <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : ''}`}>{quantity}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!shouldShowGrayscale) {
+                                updateItemQuantity(item, quantity + 1, e, item.restaurantName)
+                              }
+                            }}
+                            disabled={shouldShowGrayscale}
+                            className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:text-green-700'}
+                          >
+                            <Plus size={14} className="stroke-[3px]" />
+                          </button>
+                        </motion.div>
+                      ) : quantity > 0 && hasVariantsCard ? (
+                        <motion.button
+                          layoutId={`add-variant-under250-${item.id}`}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!shouldShowGrayscale) handleItemClick(item, item.restaurantContext)
+                          }}
+                          disabled={shouldShowGrayscale}
+                          className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${shouldShowGrayscale
+                            ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                            : 'border-green-600 text-green-600 hover:bg-green-50'
+                            }`}
+                        >
+                          <span className="text-sm">{quantity}</span> ADD
+                        </motion.button>
+                      ) : (
+                        <motion.button
+                          layoutId={`add-button-under250-${item.id}`}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.3, type: "spring", damping: 20, stiffness: 300 }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!shouldShowGrayscale) {
+                              if (hasVariantsCard) {
+                                handleItemClick(item, item.restaurantContext)
+                              } else {
+                                updateItemQuantity(item, 1, e, item.restaurantName)
+                              }
+                            }
+                          }}
+                          disabled={shouldShowGrayscale}
+                          className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${shouldShowGrayscale
+                            ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
+                            : 'border-green-600 text-green-600 hover:bg-green-50'
+                            }`}
+                        >
+                          ADD <Plus size={14} className="stroke-[3px]" />
+                        </motion.button>
+                      )}
                     </div>
-
-                    {/* View Full Menu Button */}
-                    <Link className="flex justify-center mt-2 md:mt-3 lg:mt-4" to={`/user/restaurants/${restaurantSlug}?under250=true`}>
-                      <Button
-                        variant="outline"
-                        className="w-min align-center text-center rounded-lg md:rounded-xl mx-auto bg-gray-50 dark:bg-[#1a1a1a] hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-white text-gray-700 border-gray-200 dark:border-gray-800 h-9 md:h-10 lg:h-11 px-4 md:px-6 lg:px-8 text-sm md:text-base lg:text-lg"
-                      >
-                        View full menu <ArrowRight className="h-4 w-4 md:h-5 md:w-5 lg:h-6 lg:w-6 ml-2 text-gray-700 dark:text-gray-300" />
-                      </Button>
-                    </Link>
-                  </div>
-                )}
-              </section>
-            )
-          }))}
+                  </motion.div>
+                )
+              })}
+            </div>
+          </section>
+        )}
       </div>
 
       {/* Sort Popup - Bottom Sheet */}

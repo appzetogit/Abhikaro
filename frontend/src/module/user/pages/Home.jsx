@@ -776,6 +776,11 @@ export default function Home() {
   const fetchRestaurants = useCallback(async (filters = {}) => {
     try {
       setLoadingRestaurants(true)
+      if (!zoneId) {
+        setRestaurantsData([])
+        setLoadingRestaurants(false)
+        return
+      }
       const backendUrl = API_BASE_URL.replace('/api', '')
 
       const normalizeImageUrl = (rawUrl) => {
@@ -866,10 +871,8 @@ export default function Home() {
         params.trusted = 'true'
       }
 
-      // Optional: Add zoneId if available (for sorting/filtering, but show all restaurants)
-      if (zoneId) {
-        params.zoneId = zoneId
-      }
+      // Strict zone mode: user discovery always scoped to detected zone.
+      params.zoneId = zoneId
       
       // CRITICAL: Add user coordinates for MongoDB geospatial queries (replaces Google Places API)
       // This enables $near queries to find nearby restaurants without calling Google Places API

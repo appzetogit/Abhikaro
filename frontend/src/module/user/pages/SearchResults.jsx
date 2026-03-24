@@ -111,10 +111,17 @@ export default function SearchResults() {
       if (keywords.some(keyword => sectionNameLower.includes(keyword))) {
         return true
       }
-      
-      // Check items in section
-      if (section.items && Array.isArray(section.items)) {
-        for (const item of section.items) {
+
+      const sectionItems = Array.isArray(section.items) ? section.items : []
+      const subsectionItems = Array.isArray(section.subsections)
+        ? section.subsections.flatMap((subsection) =>
+            Array.isArray(subsection?.items) ? subsection.items : []
+          )
+        : []
+      const allItems = [...sectionItems, ...subsectionItems]
+
+      if (allItems.length > 0) {
+        for (const item of allItems) {
           // Check item name
           const itemNameLower = (item.name || '').toLowerCase()
           if (keywords.some(keyword => itemNameLower.includes(keyword))) {
@@ -145,11 +152,19 @@ export default function SearchResults() {
     
     // Find first matching item
     for (const section of menu.sections) {
-      if (section.items && Array.isArray(section.items)) {
-        for (const item of section.items) {
+      const sectionItems = Array.isArray(section.items) ? section.items : []
+      const subsectionItems = Array.isArray(section.subsections)
+        ? section.subsections.flatMap((subsection) =>
+            Array.isArray(subsection?.items) ? subsection.items : []
+          )
+        : []
+      const allItems = [...sectionItems, ...subsectionItems]
+
+      if (allItems.length > 0) {
+        for (const item of allItems) {
           const itemNameLower = (item.name || '').toLowerCase()
           const itemCategoryLower = (item.category || '').toLowerCase()
-          
+
           if (keywords.some(keyword => 
             itemNameLower.includes(keyword) || itemCategoryLower.includes(keyword)
           )) {
@@ -168,11 +183,11 @@ export default function SearchResults() {
       try {
         setLoadingRestaurants(true)
         console.log('🔄 Fetching restaurants from API...')
-        // Optional: Add zoneId if available (for sorting/filtering, but show all restaurants)
-        const params = {}
-        if (zoneId) {
-          params.zoneId = zoneId
+        if (!zoneId) {
+          setRestaurantsData([])
+          return
         }
+        const params = { zoneId }
         const response = await restaurantAPI.getRestaurants(params)
         
         console.log('📦 Full API Response:', response)
