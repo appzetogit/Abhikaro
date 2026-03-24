@@ -8,7 +8,7 @@ import AnimatedPage from "../components/AnimatedPage"
 import { useLocationSelector } from "../components/UserLayout"
 import { useLocation as useLocationHook } from "../hooks/useLocation"
 import { useProfile } from "../context/ProfileContext"
-import { diningAPI, restaurantAPI } from "@/lib/api"
+import { diningAPI } from "@/lib/api"
 import api from "@/lib/api"
 import PageNavbar from "../components/PageNavbar"
 import OptimizedImage from "@/components/OptimizedImage"
@@ -94,9 +94,9 @@ export default function Dining() {
   useEffect(() => {
     const fetchDiningData = async () => {
       try {
-        // Prepare params for restaurantAPI.getRestaurants()
+        // Fetch from dining endpoint so enabled dining restaurants are returned
         const restaurantParams = {
-          limit: 100, // Get more restaurants to filter
+          limit: 100,
         }
         
         // Add location coordinates if available for geospatial queries
@@ -114,7 +114,7 @@ export default function Dining() {
           diningAPI.getCategories(),
           diningAPI.getOfferBanners(),
           diningAPI.getStories(),
-          restaurantAPI.getRestaurants(restaurantParams),
+          diningAPI.getRestaurants(restaurantParams),
           diningAPI.getBankOffers()
         ])
 
@@ -124,7 +124,7 @@ export default function Dining() {
         }
         if (tries.data.success && tries.data.data.length > 0) setMustTryItems(tries.data.data)
         if (rests.data.success) {
-          // restaurantAPI returns { restaurants: [], total: 0 } structure
+          // Support both dining and legacy response shapes
           const restaurants = rests.data.data?.restaurants || rests.data.data || []
           const restaurantsArray = Array.isArray(restaurants) ? restaurants : []
           

@@ -335,12 +335,68 @@ function ReviewModal({ booking, onClose, onSubmit }) {
     )
 }
 
+function CancelBookingConfirmModal({ booking, onClose, onConfirm, loading }) {
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={onClose}
+        >
+            <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <h3 className="text-lg font-bold text-slate-900">Cancel booking?</h3>
+                <p className="mt-2 text-sm text-slate-600">
+                    {booking?.restaurant?.name ? `You are cancelling booking at ${booking.restaurant.name}.` : "This action will cancel your booking."}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">This action cannot be undone.</p>
+
+                <div className="mt-5 flex gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1 rounded-xl"
+                        onClick={onClose}
+                        disabled={loading}
+                    >
+                        Keep booking
+                    </Button>
+                    <Button
+                        type="button"
+                        className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 text-white"
+                        onClick={onConfirm}
+                        disabled={loading}
+                    >
+                        {loading ? (
+                            <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Cancelling...
+                            </>
+                        ) : (
+                            "Yes, cancel"
+                        )}
+                    </Button>
+                </div>
+            </motion.div>
+        </motion.div>
+    )
+}
+
 export default function MyBookings() {
     const navigate = useNavigate()
     const [bookings, setBookings] = useState([])
     const [loading, setLoading] = useState(true)
     const [selectedBooking, setSelectedBooking] = useState(null)
     const [detailsBooking, setDetailsBooking] = useState(null)
+    const [cancellingBookingId, setCancellingBookingId] = useState(null)
+    const [cancelConfirmBooking, setCancelConfirmBooking] = useState(null)
 
     useEffect(() => {
         const fetchBookings = async () => {
@@ -373,6 +429,22 @@ export default function MyBookings() {
         }
     }
 
+    const handleCancelBooking = async (booking) => {
+        setCancellingBookingId(booking._id)
+        try {
+            const response = await diningAPI.updateBookingStatus(booking._id, "cancelled")
+            const updatedBooking = response.data?.data || { ...booking, status: "cancelled" }
+            setBookings((prev) => prev.map((b) => (b._id === booking._id ? { ...b, ...updatedBooking } : b)))
+            setDetailsBooking((current) => (current?._id === booking._id ? { ...current, ...updatedBooking } : current))
+            setCancelConfirmBooking(null)
+            toast.success("Booking cancelled successfully")
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to cancel booking")
+        } finally {
+            setCancellingBookingId(null)
+        }
+    }
+
     if (loading) return <Loader />
 
     return (
@@ -392,6 +464,9 @@ export default function MyBookings() {
                             ? booking.restaurant.location
                             : (booking.restaurant?.location?.formattedAddress || booking.restaurant?.location?.address || `${booking.restaurant?.location?.city || ''}${booking.restaurant?.location?.area ? ', ' + booking.restaurant.location.area : ''}`) || ''
                         const showPayBill = booking.billStatus === "pending" && booking.paymentStatus !== "paid"
+                        const canCancelBooking = ["pending", "confirmed"].includes(booking.status) &&
+                            booking.paymentStatus !== "paid" &&
+                            booking.billStatus !== "completed"
                         return (
                             <div
                                 key={booking._id}
@@ -473,18 +548,42 @@ export default function MyBookings() {
                                     </div>
                                 </div>
 
-                                {showPayBill && (
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            setDetailsBooking(booking)
-                                        }}
-                                        className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-4 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-xl shadow-sm shrink-0"
-                                    >
-                                        <Receipt className="w-4 h-4" />
-                                        Pay Bill {booking.finalAmount != null ? `₹${Number(booking.finalAmount).toFixed(0)}` : ''}
-                                    </button>
+                                {(showPayBill || canCancelBooking) && (
+                                    <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2 shrink-0">
+                                        {showPayBill && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setDetailsBooking(booking)
+                                                }}
+                                                className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-4 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-xl shadow-sm"
+                                            >
+                                                <Receipt className="w-4 h-4" />
+                                                Pay Bill {booking.finalAmount != null ? `₹${Number(booking.finalAmount).toFixed(0)}` : ''}
+                                            </button>
+                                        )}
+                                        {canCancelBooking && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setCancelConfirmBooking(booking)
+                                                }}
+                                                disabled={cancellingBookingId === booking._id}
+                                                className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-red-200 text-red-600 hover:bg-red-50 text-sm font-bold rounded-xl shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                            >
+                                                {cancellingBookingId === booking._id ? (
+                                                    <>
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                        Cancelling...
+                                                    </>
+                                                ) : (
+                                                    "Cancel Booking"
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
 
                                 <div className="sm:hidden flex justify-end">
@@ -519,6 +618,16 @@ export default function MyBookings() {
                             setBookings((prev) => prev.map((b) => (b._id === updated._id ? { ...b, ...updated } : b)))
                             setDetailsBooking((current) => (current?._id === updated._id ? { ...current, ...updated } : current))
                         }}
+                    />
+                )}
+            </AnimatePresence>
+            <AnimatePresence>
+                {cancelConfirmBooking && (
+                    <CancelBookingConfirmModal
+                        booking={cancelConfirmBooking}
+                        onClose={() => setCancelConfirmBooking(null)}
+                        onConfirm={() => handleCancelBooking(cancelConfirmBooking)}
+                        loading={cancellingBookingId === cancelConfirmBooking._id}
                     />
                 )}
             </AnimatePresence>

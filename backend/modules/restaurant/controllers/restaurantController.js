@@ -136,7 +136,7 @@ export const getRestaurants = async (req, res) => {
     } = req.query;
 
     // Strict zone mode: user discovery endpoints must be scoped to a valid zone.
-    if (!zoneId) {
+    if (!zoneId && !diningCategory) {
       return successResponse(res, 200, 'Zone required for restaurant discovery', {
         restaurants: [],
         total: 0,
@@ -283,9 +283,34 @@ export const getRestaurants = async (req, res) => {
         
         const restaurantIdsFromConfig = restaurantsWithCategory.map(r => r._id.toString());
         console.log(`📋 Restaurant IDs from diningConfig.categories (${restaurantIdsFromConfig.length}): ${restaurantIdsFromConfig.join(', ')}`);
+
+        // Method 3: Get restaurants assigned via admin diningSettings.diningType
+        // (DiningList category assignment updates this field)
+        const restaurantsWithDiningType = await Restaurant.find({
+          isActive: true,
+          'diningSettings.diningType': { $exists: true, $ne: null }
+        }).select('_id diningSettings.diningType').lean();
+
+        const normalizeSlug = (value) =>
+          String(value || '')
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, '-');
+
+        const restaurantIdsFromDiningType = restaurantsWithDiningType
+          .filter(r => normalizeSlug(r?.diningSettings?.diningType) === categorySlug)
+          .map(r => r._id.toString());
+
+        console.log(`📋 Restaurant IDs from diningSettings.diningType (${restaurantIdsFromDiningType.length}): ${restaurantIdsFromDiningType.join(', ')}`);
         
-        // Combine both methods and remove duplicates
-        const allRestaurantIds = [...new Set([...restaurantIdsFromLinked, ...restaurantIdsFromConfig])];
+        // Combine all methods and remove duplicates
+        const allRestaurantIds = [
+          ...new Set([
+            ...restaurantIdsFromLinked,
+            ...restaurantIdsFromConfig,
+            ...restaurantIdsFromDiningType,
+          ])
+        ];
         
         if (allRestaurantIds.length > 0) {
           categoryLinkedRestaurantIds = allRestaurantIds
@@ -294,7 +319,7 @@ export const getRestaurants = async (req, res) => {
           
           console.log(`📋 Total unique restaurant IDs (${categoryLinkedRestaurantIds.length}): ${categoryLinkedRestaurantIds.map(id => id.toString()).join(', ')}`);
         } else {
-          console.log(`⚠️ Category "${category.name}" has no linked restaurants (checked both linkedRestaurants and diningConfig.categories)`);
+          console.log(`⚠️ Category "${category.name}" has no linked restaurants (checked linkedRestaurants, diningConfig.categories, and diningSettings.diningType)`);
           return successResponse(res, 200, 'No restaurants linked to this category', {
             restaurants: [],
             total: 0,
@@ -449,23 +474,18 @@ export const getRestaurants = async (req, res) => {
       .skip(offsetNum)
       .lean();
     
-    // Filter restaurants for dining category - ensure they have dining enabled
-    // Note: We allow restaurants even if diningConfig is not set, as long as they're linked to category
+    // Filter restaurants for dining category - ensure dining is enabled either by
+    // admin setting or restaurant-side dining config.
     if (diningCategory && restaurants.length > 0) {
       const beforeCount = restaurants.length;
       restaurants = restaurants.filter(r => {
-        // If diningConfig exists, it should be enabled
-        // If diningConfig doesn't exist, we still show it (might be a new restaurant)
-        if (r.diningConfig !== undefined && r.diningConfig !== null) {
-          const hasDiningEnabled = r.diningConfig?.enabled === true;
-          if (!hasDiningEnabled) {
-            console.log(`⚠️ Restaurant ${r.name || r._id} excluded: diningConfig.enabled is false`);
-          }
-          return hasDiningEnabled;
+        const adminEnabled = r?.diningSettings?.isEnabled === true;
+        const configEnabled = r?.diningConfig?.enabled === true;
+        const hasDiningEnabled = adminEnabled || configEnabled;
+        if (!hasDiningEnabled) {
+          console.log(`⚠️ Restaurant ${r.name || r._id} excluded: dining is not enabled`);
         }
-        // If diningConfig doesn't exist, include it anyway
-        console.log(`ℹ️ Restaurant ${r.name || r._id} has no diningConfig, including anyway`);
-        return true;
+        return hasDiningEnabled;
       });
       console.log(`✅ After dining filter: ${restaurants.length} restaurants remaining (from ${beforeCount})`);
     }
@@ -1371,7 +1391,7 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
     const { zoneId } = req.query; // User's zone ID (optional - if provided, filters by zone)
 
     // Strict zone mode: under-250 list also requires valid zone.
-    if (!zoneId) {
+    if (!zoneId && !diningCategory) {
       return successResponse(res, 200, 'Zone required for under-250 discovery', {
         restaurants: [],
         total: 0,
@@ -1615,4 +1635,6 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
     return errorResponse(res, 500, 'Failed to fetch restaurants with dishes under ₹250');
   }
 };
+
+
 

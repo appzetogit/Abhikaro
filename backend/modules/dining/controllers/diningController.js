@@ -22,17 +22,38 @@ import { getRazorpayCredentials } from "../../../shared/utils/envService.js";
 export const getRestaurants = async (req, res) => {
   try {
     const { city } = req.query;
-    let query = {};
+    const query = {
+      isActive: true,
+      "diningSettings.isEnabled": true,
+    };
 
     if (city) {
-      query.location = { $regex: city, $options: "i" };
+      const cityRegex = new RegExp(city, "i");
+      query.$or = [
+        { "location.city": cityRegex },
+        { "location.address": cityRegex },
+        { "location.formattedAddress": cityRegex },
+        { "onboarding.step1.city": cityRegex },
+      ];
     }
 
-    const restaurants = await DiningRestaurant.find(query);
+    const restaurants = await Restaurant.find(query)
+      .select("-password -refreshToken")
+      .lean();
+
+    const fallbackQuery = city
+      ? { location: { $regex: city, $options: "i" } }
+      : {};
+    const fallbackRestaurants =
+      restaurants.length === 0
+        ? await DiningRestaurant.find(fallbackQuery).lean()
+        : [];
+    const dataToSend = restaurants.length > 0 ? restaurants : fallbackRestaurants;
+
     res.status(200).json({
       success: true,
-      count: restaurants.length,
-      data: restaurants,
+      count: dataToSend.length,
+      data: dataToSend,
     });
   } catch (error) {
     res.status(500).json({
@@ -347,20 +368,8 @@ export const getRestaurantBookings = async (req, res) => {
 export const updateBookingStatus = async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const { status } = req.body;
-
-    const updateData = { status };
-    if (status === "checked-in") {
-      updateData.checkInTime = new Date();
-    } else if (status === "completed" || status === "dining_completed") {
-      updateData.checkOutTime = new Date();
-    }
-
-    const booking = await TableBooking.findByIdAndUpdate(
-      bookingId,
-      updateData,
-      { new: true },
-    );
+    const { status, cancellationReason } = req.body;
+    const booking = await TableBooking.findById(bookingId);
 
     if (!booking) {
       return res.status(404).json({
@@ -368,6 +377,61 @@ export const updateBookingStatus = async (req, res) => {
         message: "Booking not found",
       });
     }
+
+    // User route: only booking owner can cancel a booking
+    if (req.user) {
+      if (booking.user.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Not authorized for this booking",
+        });
+      }
+
+      if (status !== "cancelled") {
+        return res.status(400).json({
+          success: false,
+          message: "Users can only cancel bookings",
+        });
+      }
+
+      if (!["pending", "confirmed"].includes(booking.status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Only pending or confirmed bookings can be cancelled",
+        });
+      }
+
+      if (booking.paymentStatus === "paid" || booking.billStatus === "completed") {
+        return res.status(400).json({
+          success: false,
+          message: "Paid bookings cannot be cancelled",
+        });
+      }
+    }
+
+    // Restaurant route: only owning restaurant can update booking
+    if (req.restaurant) {
+      if (booking.restaurant.toString() !== req.restaurant._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Not authorized to update this booking",
+        });
+      }
+    }
+
+    booking.status = status;
+    if (status === "checked-in") {
+      booking.checkInTime = new Date();
+    } else if (status === "completed" || status === "dining_completed") {
+      booking.checkOutTime = new Date();
+    } else if (status === "cancelled") {
+      booking.cancelledAt = new Date();
+      booking.cancelledBy = req.user ? "user" : req.restaurant ? "restaurant" : "admin";
+      if (cancellationReason != null) {
+        booking.cancellationReason = String(cancellationReason).trim();
+      }
+    }
+    await booking.save();
 
     res.status(200).json({
       success: true,
@@ -742,3 +806,4 @@ export const getDiningOffersBySlug = async (req, res) => {
       .json({ success: false, message: "Server Error", error: error.message });
   }
 };
+

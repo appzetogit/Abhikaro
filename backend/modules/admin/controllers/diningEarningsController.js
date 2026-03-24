@@ -15,23 +15,24 @@ export const getDiningEarnings = asyncHandler(async (req, res) => {
   const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, Math.min(100, parseInt(limit, 10)));
   const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10)));
 
-  const match = { paymentStatus: "paid", billStatus: "completed" };
+  const match = {};
   if (restaurantId) {
     match.restaurant = restaurantId;
   }
   if (startDate || endDate) {
-    match.paidAt = {};
-    if (startDate) match.paidAt.$gte = new Date(startDate);
+    match.date = {};
+    if (startDate) match.date.$gte = new Date(startDate);
     if (endDate) {
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
-      match.paidAt.$lte = end;
+      match.date.$lte = end;
     }
   }
+  const summaryMatch = { ...match, paymentStatus: "paid", billStatus: "completed" };
 
   const [summary, list, total] = await Promise.all([
     TableBooking.aggregate([
-      { $match: match },
+      { $match: summaryMatch },
       {
         $group: {
           _id: null,
@@ -46,7 +47,7 @@ export const getDiningEarnings = asyncHandler(async (req, res) => {
     TableBooking.find(match)
       .populate("restaurant", "name slug")
       .populate("user", "name phone email")
-      .sort({ paidAt: -1 })
+      .sort({ updatedAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
       .lean(),
@@ -61,7 +62,7 @@ export const getDiningEarnings = asyncHandler(async (req, res) => {
     count: 0,
   };
 
-  return successResponse(res, 200, "Dining earnings fetched", {
+  return successResponse(res, 200, "Dining bookings fetched", {
     summary: {
       totalDiningRevenue: stats.totalDiningRevenue,
       totalDiscountGiven: stats.totalDiscountGiven,

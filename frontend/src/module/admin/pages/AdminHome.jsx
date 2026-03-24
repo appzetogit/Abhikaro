@@ -260,6 +260,12 @@ export default function AdminHome() {
   const totalHotels = hotelCountOverride ?? (dashboardData?.hotels?.total || 0)
   const pendingOrders = dashboardData?.orderStats?.pending || 0
   const completedOrders = dashboardData?.orderStats?.completed || 0
+  const diningStats = {
+    pending: dashboardData?.diningStats?.pending || 0,
+    booked: dashboardData?.diningStats?.booked || 0,
+    cancelled: dashboardData?.diningStats?.cancelled || 0,
+    billDone: dashboardData?.diningStats?.billDone || 0,
+  }
 
   const pieData = orderStats.map((item) => ({
     name: item.label,
@@ -709,6 +715,32 @@ export default function AdminHome() {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+            <Card className="border-neutral-200 bg-white">
+              <CardHeader className="border-b border-neutral-200 pb-4">
+                <CardTitle className="text-lg text-neutral-900">Dining stats</CardTitle>
+                <p className="text-sm text-neutral-500">Pending, booked, cancelled, bill done</p>
+              </CardHeader>
+              <CardContent className="pt-4 h-64">
+                <div className="grid h-full grid-cols-2 gap-3">
+                  <div className="flex flex-col justify-between rounded-xl border border-neutral-200 bg-white px-3 py-3">
+                    <p className="text-xs text-neutral-600">Pending</p>
+                    <p className="text-xl font-semibold text-neutral-900">{diningStats.pending}</p>
+                  </div>
+                  <div className="flex flex-col justify-between rounded-xl border border-neutral-200 bg-white px-3 py-3">
+                    <p className="text-xs text-neutral-600">Booked</p>
+                    <p className="text-xl font-semibold text-neutral-900">{diningStats.booked}</p>
+                  </div>
+                  <div className="flex flex-col justify-between rounded-xl border border-neutral-200 bg-white px-3 py-3">
+                    <p className="text-xs text-neutral-600">Cancelled</p>
+                    <p className="text-xl font-semibold text-neutral-900">{diningStats.cancelled}</p>
+                  </div>
+                  <div className="flex flex-col justify-between rounded-xl border border-neutral-200 bg-white px-3 py-3">
+                    <p className="text-xs text-neutral-600">Bill done</p>
+                    <p className="text-xl font-semibold text-neutral-900">{diningStats.billDone}</p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>

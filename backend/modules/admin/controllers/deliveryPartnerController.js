@@ -420,10 +420,28 @@ export const getDeliveryPartners = asyncHandler(async (req, res) => {
         $group: {
           _id: '$deliveryPartnerId',
           totalOrders: { $sum: 1 },
-          assignedOrders: {
+          ongoingOrders: {
             $sum: {
               $cond: [
-                { $in: ['$status', ['out_for_delivery', 'ready', 'preparing']] },
+                { $in: ['$status', ['pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery']] },
+                1,
+                0
+              ]
+            }
+          },
+          completedOrders: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'delivered'] },
+                1,
+                0
+              ]
+            }
+          },
+          cancelledOrders: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'cancelled'] },
                 1,
                 0
               ]
@@ -438,13 +456,20 @@ export const getDeliveryPartners = asyncHandler(async (req, res) => {
     orderStats.forEach(stat => {
       statsMap[stat._id.toString()] = {
         totalOrders: stat.totalOrders || 0,
-        assignedOrders: stat.assignedOrders || 0
+        ongoingOrders: stat.ongoingOrders || 0,
+        completedOrders: stat.completedOrders || 0,
+        cancelledOrders: stat.cancelledOrders || 0
       };
     });
 
     // Format response with order stats and zone info
     const formattedPartners = deliveries.map((delivery, index) => {
-      const stats = statsMap[delivery._id.toString()] || { totalOrders: 0, assignedOrders: 0 };
+      const stats = statsMap[delivery._id.toString()] || {
+        totalOrders: 0,
+        ongoingOrders: 0,
+        completedOrders: 0,
+        cancelledOrders: 0
+      };
       
       // Get zone from location
       let zone = 'All over the World';
@@ -471,7 +496,9 @@ export const getDeliveryPartners = asyncHandler(async (req, res) => {
         phone: delivery.phone || 'N/A',
         zone: zone,
         totalOrders: stats.totalOrders,
-        assignedOrders: stats.assignedOrders,
+        ongoingOrders: stats.ongoingOrders,
+        completedOrders: stats.completedOrders,
+        cancelledOrders: stats.cancelledOrders,
         status: availabilityStatus,
         rating: delivery.metrics?.rating || 0,
         deliveryId: delivery.deliveryId || 'N/A',

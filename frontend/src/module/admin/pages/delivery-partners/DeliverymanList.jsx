@@ -23,6 +23,9 @@ export default function DeliverymanList() {
     contact: true,
     zone: true,
     totalOrders: true,
+    ongoingOrders: true,
+    completedOrders: true,
+    cancelledOrders: true,
     availabilityStatus: true,
     actions: true,
   })
@@ -236,6 +239,9 @@ export default function DeliverymanList() {
       contact: true,
       zone: true,
       totalOrders: true,
+      ongoingOrders: true,
+      completedOrders: true,
+      cancelledOrders: true,
       availabilityStatus: true,
       actions: true,
     })
@@ -247,6 +253,9 @@ export default function DeliverymanList() {
     contact: "Contact",
     zone: "Zone",
     totalOrders: "Total Orders",
+    ongoingOrders: "Ongoing Orders",
+    completedOrders: "Completed Orders",
+    cancelledOrders: "Cancelled Orders",
     availabilityStatus: "Availability Status",
     actions: "Actions",
   }
@@ -371,6 +380,30 @@ export default function DeliverymanList() {
                         </div>
                       </th>
                     )}
+                    {visibleColumns.ongoingOrders && (
+                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                        <div className="flex items-center gap-2">
+                          <span>Ongoing Orders</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.completedOrders && (
+                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                        <div className="flex items-center gap-2">
+                          <span>Completed Orders</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.cancelledOrders && (
+                      <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                        <div className="flex items-center gap-2">
+                          <span>Cancelled Orders</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                        </div>
+                      </th>
+                    )}
                     {visibleColumns.availabilityStatus && (
                       <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                         <div className="flex items-center gap-2">
@@ -441,6 +474,21 @@ export default function DeliverymanList() {
                         {visibleColumns.totalOrders && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="text-sm text-slate-700">{dm.totalOrders || 0}</span>
+                          </td>
+                        )}
+                        {visibleColumns.ongoingOrders && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="text-sm text-slate-700">{dm.ongoingOrders || 0}</span>
+                          </td>
+                        )}
+                        {visibleColumns.completedOrders && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="text-sm text-slate-700">{dm.completedOrders || 0}</span>
+                          </td>
+                        )}
+                        {visibleColumns.cancelledOrders && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="text-sm text-slate-700">{dm.cancelledOrders || 0}</span>
                           </td>
                         )}
                         {visibleColumns.availabilityStatus && (

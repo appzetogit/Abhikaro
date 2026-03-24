@@ -4,6 +4,7 @@ import Restaurant from "../../restaurant/models/Restaurant.js";
 import Offer from "../../restaurant/models/Offer.js";
 import AdminCommission from "../models/AdminCommission.js";
 import OrderSettlement from "../../order/models/OrderSettlement.js";
+import TableBooking from "../../dining/models/TableBooking.js";
 import AdminWallet from "../models/AdminWallet.js";
 import {
   successResponse,
@@ -174,6 +175,61 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
           orders: b.orders,
         };
       });
+    }
+
+    async function getDiningStats({ fromDate = null, toDate = null, zoneId = null }) {
+      const bookingMatch = {};
+
+      if (fromDate || toDate) {
+        bookingMatch.createdAt = {};
+        if (fromDate) bookingMatch.createdAt.$gte = fromDate;
+        if (toDate) bookingMatch.createdAt.$lte = toDate;
+      }
+
+      if (zoneId) {
+        const restaurantsInZone = await Restaurant.find({ zoneId })
+          .select("_id")
+          .lean();
+        const restaurantIds = restaurantsInZone.map((r) => r._id);
+        bookingMatch.restaurant = { $in: restaurantIds };
+      }
+
+      const bookingStats = await TableBooking.aggregate([
+        { $match: bookingMatch },
+        {
+          $group: {
+            _id: null,
+            pending: {
+              $sum: {
+                $cond: [{ $eq: ["$status", "pending"] }, 1, 0],
+              },
+            },
+            booked: {
+              $sum: {
+                $cond: [{ $eq: ["$status", "confirmed"] }, 1, 0],
+              },
+            },
+            cancelled: {
+              $sum: {
+                $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0],
+              },
+            },
+            billDone: {
+              $sum: {
+                $cond: [{ $eq: ["$billStatus", "completed"] }, 1, 0],
+              },
+            },
+          },
+        },
+      ]);
+
+      const stats = bookingStats[0] || {};
+      return {
+        pending: stats.pending || 0,
+        booked: stats.booked || 0,
+        cancelled: stats.cancelled || 0,
+        billDone: stats.billDone || 0,
+      };
     }
 
     // Resolve zone filter (if any)
@@ -538,6 +594,8 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         });
       }
 
+      const diningStats = await getDiningStats({});
+
       return successResponse(
         res,
         200,
@@ -635,6 +693,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
             pending: pendingOrders,
             completed: completedOrders,
           },
+          diningStats,
         },
       );
     }
@@ -817,6 +876,11 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       to,
       granularity,
     );
+    const diningStats = await getDiningStats({
+      fromDate: from,
+      toDate: to,
+      zoneId: zoneIdFilter,
+    });
 
     return successResponse(res, 200, "Dashboard stats retrieved successfully", {
       revenue: {
@@ -912,6 +976,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         pending: pendingOrders,
         completed: completedOrders,
       },
+      diningStats,
     });
   } catch (error) {
     logger.error(`Error fetching dashboard stats: ${error.message}`);

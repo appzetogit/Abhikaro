@@ -39,6 +39,16 @@ export default function DiningEarnings() {
     fetchEarnings()
   }
 
+  const getStatusMeta = (status) => {
+    if (status === "cancelled") {
+      return { label: "cancelled", className: "bg-red-100 text-red-700" }
+    }
+    if (status === "completed" || status === "dining_completed") {
+      return { label: "completed", className: "bg-blue-100 text-blue-700" }
+    }
+    return { label: "booked", className: "bg-emerald-100 text-emerald-700" }
+  }
+
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -138,17 +148,20 @@ export default function DiningEarnings() {
             )}
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-              <h2 className="text-lg font-bold text-slate-900 p-4 border-b border-slate-100">Transactions</h2>
+              <h2 className="text-lg font-bold text-slate-900 p-4 border-b border-slate-100">All Dining Bookings</h2>
               {data.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">No paid dining transactions in this period.</div>
+                <div className="text-center py-12 text-slate-500">No dining bookings found in this period.</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
                         <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Booking ID</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Status</th>
                         <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Restaurant</th>
                         <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">User</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Guests</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Booking date</th>
                         <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Paid at</th>
                         <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Final amount</th>
                         <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Commission</th>
@@ -156,17 +169,26 @@ export default function DiningEarnings() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {data.map((row) => (
+                      {data.map((row) => {
+                        const statusMeta = getStatusMeta(row.status)
+                        return (
                         <tr key={row._id} className="hover:bg-slate-50">
                           <td className="px-4 py-3 font-mono text-sm">#{row.bookingId ?? row._id?.slice(-8)}</td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${statusMeta.className}`}>
+                              {statusMeta.label}
+                            </span>
+                          </td>
                           <td className="px-4 py-3 text-sm">{row.restaurant?.name ?? "—"}</td>
                           <td className="px-4 py-3 text-sm">{row.user?.name ?? "—"}</td>
+                          <td className="px-4 py-3 text-sm">{row.guests ?? "—"}</td>
+                          <td className="px-4 py-3 text-sm">{row.date ? new Date(row.date).toLocaleString() : "—"}</td>
                           <td className="px-4 py-3 text-sm">{row.paidAt ? new Date(row.paidAt).toLocaleString() : "—"}</td>
                           <td className="px-4 py-3 text-sm font-medium">₹{(row.finalAmount ?? 0).toFixed(2)}</td>
                           <td className="px-4 py-3 text-sm text-blue-600">₹{(row.commissionAmount ?? 0).toFixed(2)}</td>
                           <td className="px-4 py-3 text-sm">₹{(row.restaurantEarning ?? 0).toFixed(2)}</td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>

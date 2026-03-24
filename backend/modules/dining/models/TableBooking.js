@@ -40,6 +40,17 @@ const tableBookingSchema = new mongoose.Schema(
     checkOutTime: {
       type: Date,
     },
+    cancelledAt: {
+      type: Date,
+    },
+    cancelledBy: {
+      type: String,
+      enum: ["user", "restaurant", "admin"],
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+    },
     bookingId: {
       type: String,
       unique: true,

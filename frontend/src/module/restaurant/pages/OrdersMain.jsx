@@ -530,11 +530,18 @@ function TableBookings({ fetchRestaurantData }) {
                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${booking.status === 'confirmed' ? 'bg-green-100 text-green-700' :
                   booking.status === 'checked-in' ? 'bg-orange-100 text-orange-700' :
                     booking.status === 'completed' ? 'bg-blue-100 text-blue-700' :
-                      'bg-gray-100 text-gray-600'
+                      booking.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-600'
                   }`}>
                   {booking.status}
                 </span>
               </div>
+              {booking.status === 'cancelled' && (
+                <div className="mb-3 text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+                  Cancelled by {booking.cancelledBy || "user"}
+                  {booking.cancelledAt ? ` on ${new Date(booking.cancelledAt).toLocaleString()}` : ""}
+                </div>
+              )}
 
               <div className="flex items-center gap-4 text-[11px] text-gray-600 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
                 <div className="flex items-center gap-1">
