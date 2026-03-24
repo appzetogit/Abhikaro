@@ -55,7 +55,10 @@ export default function LandingPageManagement() {
   const diningBannersFileInputRef = useRef(null)
 
   // Settings
-  const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More" })
+  const [settings, setSettings] = useState({
+    exploreMoreHeading: "Explore More",
+    showRecommendedSection: false
+  })
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
 
@@ -140,6 +143,7 @@ export default function LandingPageManagement() {
     fetchBanners()
     fetchUnder250Banners()
     fetchDiningBanners()
+    fetchSettings()
     fetchAllRestaurants()
   }, [])
 
@@ -953,12 +957,16 @@ export default function LandingPageManagement() {
       setError(null)
       const response = await api.get('/hero-banners/landing/settings', getAuthConfig())
       if (response.data.success) {
-        setSettings(response.data.data.settings || { exploreMoreHeading: "Explore More" })
+        const apiSettings = response.data.data.settings || {}
+        setSettings({
+          exploreMoreHeading: apiSettings.exploreMoreHeading || "Explore More",
+          showRecommendedSection: apiSettings.showRecommendedSection === true
+        })
       }
     } catch (err) {
       // Silently handle 401/404 errors - endpoints may not exist yet, use default settings
       if (err.response?.status === 401 || err.response?.status === 404) {
-        setSettings({ exploreMoreHeading: "Explore More" }) // Use default settings
+        setSettings({ exploreMoreHeading: "Explore More", showRecommendedSection: false }) // Use default settings
         setError(null) // Clear any previous error
       } else {
         // Filter out token-related errors
@@ -976,7 +984,8 @@ export default function LandingPageManagement() {
       setError(null)
       setSuccess(null)
       const response = await api.patch('/hero-banners/landing/settings', {
-        exploreMoreHeading: settings.exploreMoreHeading
+        exploreMoreHeading: settings.exploreMoreHeading,
+        showRecommendedSection: settings.showRecommendedSection
       }, getAuthConfig())
       if (response.data.success) {
         setSuccess('Settings saved successfully!')
@@ -1244,6 +1253,51 @@ export default function LandingPageManagement() {
               <h1 className="text-2xl font-bold text-slate-900">Landing Page Management</h1>
               <p className="text-sm text-slate-600 mt-1">Manage hero banners</p>
             </div>
+          </div>
+        </div>
+
+        {/* Landing section visibility controls */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Home section visibility</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Control whether users can see the Recommended For You section on Home.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setSettings((prev) => ({
+                  ...prev,
+                  showRecommendedSection: !prev.showRecommendedSection
+                }))
+              }
+              disabled={settingsLoading || settingsSaving}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                settings.showRecommendedSection ? 'bg-blue-600' : 'bg-slate-300'
+              } ${(settingsLoading || settingsSaving) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              aria-label="Toggle recommended section visibility"
+              aria-pressed={settings.showRecommendedSection}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                  settings.showRecommendedSection ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <span className="text-sm text-slate-700">
+              Status: {settings.showRecommendedSection ? 'Enabled' : 'Disabled'}
+            </span>
+            <Button
+              onClick={handleSaveSettings}
+              disabled={settingsLoading || settingsSaving}
+              className="bg-blue-500 hover:bg-blue-600 text-white"
+            >
+              {settingsSaving ? 'Saving...' : 'Save Settings'}
+            </Button>
           </div>
         </div>
 

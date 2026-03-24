@@ -338,6 +338,7 @@ export const getLandingConfig = async (req, res) => {
       exploreMore,
       settings: {
         exploreMoreHeading: settings.exploreMoreHeading,
+        showRecommendedSection: settings.showRecommendedSection === true,
       },
     });
   } catch (error) {
@@ -683,7 +684,8 @@ export const getLandingSettings = async (req, res) => {
 
     return successResponse(res, 200, 'Landing settings retrieved successfully', {
       settings: {
-        exploreMoreHeading: settings.exploreMoreHeading
+        exploreMoreHeading: settings.exploreMoreHeading,
+        showRecommendedSection: settings.showRecommendedSection === true
       }
     });
   } catch (error) {
@@ -697,19 +699,23 @@ export const getLandingSettings = async (req, res) => {
  */
 export const updateLandingSettings = async (req, res) => {
   try {
-    const { exploreMoreHeading } = req.body;
+    const { exploreMoreHeading, showRecommendedSection } = req.body;
 
     const settings = await LandingPageSettings.getSettings();
 
     if (typeof exploreMoreHeading === 'string') {
       settings.exploreMoreHeading = exploreMoreHeading;
     }
+    if (typeof showRecommendedSection === 'boolean') {
+      settings.showRecommendedSection = showRecommendedSection;
+    }
 
     await settings.save();
 
     return successResponse(res, 200, 'Landing settings updated successfully', {
       settings: {
-        exploreMoreHeading: settings.exploreMoreHeading
+        exploreMoreHeading: settings.exploreMoreHeading,
+        showRecommendedSection: settings.showRecommendedSection === true
       }
     });
   } catch (error) {

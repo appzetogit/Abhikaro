@@ -80,6 +80,7 @@ export default function Home() {
   const [landingCategories, setLandingCategories] = useState([])
   const [landingExploreMore, setLandingExploreMore] = useState([])
   const [exploreMoreHeading, setExploreMoreHeading] = useState("Explore More")
+  const [showRecommendedSection, setShowRecommendedSection] = useState(false)
   const [loadingLandingConfig, setLoadingLandingConfig] = useState(true)
   const [restaurantsData, setRestaurantsData] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
@@ -529,12 +530,14 @@ export default function Home() {
               .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
           )
           setExploreMoreHeading(response.data.data.settings?.exploreMoreHeading || "Explore More")
+          setShowRecommendedSection(response.data.data.settings?.showRecommendedSection === true)
         }
       } catch (error) {
         // Fallback to empty arrays and default heading
         setLandingCategories([])
         setLandingExploreMore([])
         setExploreMoreHeading("Explore More")
+        setShowRecommendedSection(false)
       } finally {
         setLoadingLandingConfig(false)
       }
@@ -1534,7 +1537,7 @@ export default function Home() {
         </motion.section>
 
         {/* Recommended For You Section */}
-        {recommendedRestaurants.length > 0 && (
+        {showRecommendedSection && recommendedRestaurants.length > 0 && (
           <motion.section
             className="pt-2 sm:pt-3"
             initial={{ opacity: 0, y: 20 }}

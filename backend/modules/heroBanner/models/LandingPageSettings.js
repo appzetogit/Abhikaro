@@ -6,6 +6,10 @@ const landingPageSettingsSchema = new mongoose.Schema({
     default: 'Explore More',
     trim: true
   },
+  showRecommendedSection: {
+    type: Boolean,
+    default: false
+  },
   updatedAt: {
     type: Date,
     default: Date.now
@@ -18,7 +22,10 @@ const landingPageSettingsSchema = new mongoose.Schema({
 landingPageSettingsSchema.statics.getSettings = async function() {
   let settings = await this.findOne();
   if (!settings) {
-    settings = new this({ exploreMoreHeading: 'Explore More' });
+    settings = new this({
+      exploreMoreHeading: 'Explore More',
+      showRecommendedSection: false
+    });
     await settings.save();
   }
   return settings;
