@@ -57,11 +57,32 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
         if (!name || typeof name !== "string") return null
 
         const id = item?.id || item?._id || item?.menuItemId || `${name}-${index}`
+        const restaurantName =
+          item?.restaurantName ||
+          item?.restaurant?.name ||
+          item?.restaurant?.restaurantName ||
+          item?.outletName ||
+          item?.vendorName ||
+          null
+        const restaurantId =
+          item?.restaurantId ||
+          item?.restaurant?._id ||
+          item?.restaurant?.id ||
+          null
+        const restaurantSlug =
+          item?.restaurantSlug ||
+          item?.restaurant?.slug ||
+          (typeof restaurantName === "string" && restaurantName.trim()
+            ? restaurantName.trim().toLowerCase().replace(/\s+/g, "-")
+            : null)
         return {
           id,
           name: name.trim(),
           image: getFoodImage(item),
           slug: item?.slug || null,
+          restaurantName: typeof restaurantName === "string" ? restaurantName.trim() : null,
+          restaurantId,
+          restaurantSlug,
         }
       })
       .filter(Boolean)
@@ -75,8 +96,9 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     return Array.from(uniqueByName.values()).slice(0, 24)
   }
 
-  const extractFoodsFromMenu = (menu) => {
+  const extractFoodsFromMenu = (menu, restaurantMeta = {}) => {
     if (!menu || !Array.isArray(menu.sections)) return []
+    const { restaurantName = null, restaurantId = null, restaurantSlug = null } = restaurantMeta
 
     const foods = []
     menu.sections.forEach((section) => {
@@ -90,6 +112,9 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           name: name.trim(),
           image: getFoodImage(item),
           slug: item?.slug || null,
+          restaurantName,
+          restaurantId,
+          restaurantSlug,
         })
       })
 
@@ -105,6 +130,9 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
             name: name.trim(),
             image: getFoodImage(item),
             slug: item?.slug || null,
+            restaurantName,
+            restaurantId,
+            restaurantSlug,
           })
         })
       })
@@ -132,6 +160,22 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     const restaurantIds = restaurants
       .map((restaurant) => restaurant?.restaurantId || restaurant?._id || restaurant?.id)
       .filter(Boolean)
+    const restaurantNamesById = new Map(
+      restaurants.map((restaurant) => [
+        restaurant?.restaurantId || restaurant?._id || restaurant?.id,
+        restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || null,
+      ])
+    )
+    const restaurantSlugsById = new Map(
+      restaurants.map((restaurant) => [
+        restaurant?.restaurantId || restaurant?._id || restaurant?.id,
+        restaurant?.slug ||
+          (restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || "")
+            .toLowerCase()
+            .replace(/\s+/g, "-") ||
+          null,
+      ])
+    )
 
     if (restaurantIds.length === 0) return []
 
@@ -140,10 +184,17 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     )
 
     const allFoods = []
-    menuResults.forEach((result) => {
+    menuResults.forEach((result, index) => {
       if (result.status !== "fulfilled") return
       const menu = result?.value?.data?.data?.menu
-      const foods = extractFoodsFromMenu(menu)
+      const restaurantId = restaurantIds[index]
+      const restaurantName = restaurantNamesById.get(restaurantId) || null
+      const restaurantSlug = restaurantSlugsById.get(restaurantId) || null
+      const foods = extractFoodsFromMenu(menu, {
+        restaurantName,
+        restaurantId,
+        restaurantSlug,
+      })
       allFoods.push(...foods)
     })
 
@@ -360,7 +411,16 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
 
   const handleFoodClick = (food) => {
     saveRecentSearch(food.name)
-    navigate(`/user/search?q=${encodeURIComponent(food.name)}`)
+    const restaurantSlug = food?.restaurantSlug
+      || (typeof food?.restaurantName === "string" && food.restaurantName.trim()
+        ? food.restaurantName.trim().toLowerCase().replace(/\s+/g, "-")
+        : null)
+
+    if (restaurantSlug) {
+      navigate(`/user/restaurants/${restaurantSlug}`)
+    } else {
+      navigate(`/user/search?q=${encodeURIComponent(food.name)}`)
+    }
     onClose()
     onSearchChange("")
   }
@@ -381,7 +441,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     >
       {/* Header with Search Bar */}
       <div className="flex-shrink-0 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-7 pb-1">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-1">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-[58%] transform -translate-y-1/2 h-5 w-5 text-muted-foreground dark:text-gray-400 z-10" />
@@ -484,6 +544,11 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
                     <span className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200 group-hover:text-primary-orange dark:group-hover:text-orange-400 transition-colors line-clamp-2">
                       {food.name}
                     </span>
+                    {food.restaurantName && (
+                      <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
+                        ({food.restaurantName})
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
