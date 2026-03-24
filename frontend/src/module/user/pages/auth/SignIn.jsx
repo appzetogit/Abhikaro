@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { Mail, Phone, AlertCircle, Loader2 } from "lucide-react"
+import { AlertCircle, Loader2 } from "lucide-react"
 import AnimatedPage from "../../components/AnimatedPage"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -538,10 +538,6 @@ export default function SignIn() {
     setErrors({ phone: "", email: "", name: "" })
   }
 
-  const handleLoginMethodChange = () => {
-    setAuthMethod(authMethod === "email" ? "phone" : "email")
-  }
-
   return (
     <AnimatedPage className="h-[100dvh] flex flex-col bg-white dark:bg-[#0a0a0a] overflow-hidden !pb-0 md:flex-row md:overflow-hidden">
 
@@ -777,15 +773,6 @@ export default function SignIn() {
               </svg>
             </button>
 
-            {/* Email Login */}
-            <button
-              type="button"
-              onClick={handleLoginMethodChange}
-              className="w-12 h-12 md:w-14 md:h-14 rounded-full border border-[#E23744] flex items-center justify-center hover:bg-[#d32f3d] transition-all hover:shadow-md active:scale-95 bg-[#E23744]"
-              aria-label="Sign in with Email"
-            >
-              {authMethod == "phone" ? <Mail className="h-5 w-5 md:h-6 md:w-6 text-white" /> : <Phone className="h-5 w-5 md:h-6 md:w-6 text-white" />}
-            </button>
           </div>
 
           {/* Legal Disclaimer */}

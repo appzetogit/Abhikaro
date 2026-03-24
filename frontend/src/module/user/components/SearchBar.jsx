@@ -53,7 +53,7 @@ export default function SearchBar({
                 onFocus={onFocus}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && value.trim()) {
-                    navigate(`/user/search?q=${encodeURIComponent(value.trim())}`)
+                    navigate(`/search?q=${encodeURIComponent(value.trim())}`)
                     onClose()
                     onChange("")
                   }

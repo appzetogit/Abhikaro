@@ -10,15 +10,11 @@ import { useLocation as useLocationHook } from "../hooks/useLocation"
 import { useProfile } from "../context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
 import { diningAPI } from "@/lib/api"
-// Using placeholder for upto 50 off banner
-const upto50off = "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=200&fit=crop"
-
-const FALLBACK_RESTAURANT_IMAGE =
-  "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"
+const upto50off = ""
 
 function getDiningRestaurantDisplayFields(restaurant) {
   const restaurantName =
-    restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || "Restaurant"
+    restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || ""
 
   const restaurantSlug =
     restaurant?.slug || restaurant?._id || restaurantName.toLowerCase().replace(/\s+/g, "-")
@@ -27,7 +23,7 @@ function getDiningRestaurantDisplayFields(restaurant) {
     restaurant?.profileImage?.url ||
     restaurant?.menuImages?.[0]?.url ||
     restaurant?.onboarding?.step2?.menuImageUrls?.[0]?.url ||
-    FALLBACK_RESTAURANT_IMAGE
+    ""
 
   const cuisineStr = Array.isArray(restaurant?.cuisines) && restaurant.cuisines.length > 0
     ? restaurant.cuisines.join(", ")
@@ -36,12 +32,12 @@ function getDiningRestaurantDisplayFields(restaurant) {
   const deliveryTime =
     restaurant?.estimatedDeliveryTime ||
     restaurant?.onboarding?.step4?.estimatedDeliveryTime ||
-    "25-30 mins"
+    ""
 
   const distance = restaurant?.distance || restaurant?.onboarding?.step4?.distance || ""
 
   const rating =
-    typeof restaurant?.rating === "number" ? restaurant.rating : 0
+    typeof restaurant?.rating === "number" ? restaurant.rating : null
 
   const offer =
     restaurant?.offer ||
@@ -86,8 +82,7 @@ export default function DiningExplore50() {
   const { openLocationSelector } = useLocationSelector()
   const { location, loading } = useLocationHook()
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
-  const cityName = location?.city || "Select"
-  const stateName = location?.state || "Location"
+  const cityName = location?.city || ""
 
   useEffect(() => {
     let isMounted = true
@@ -209,11 +204,15 @@ export default function DiningExplore50() {
       <div className="relative w-full overflow-hidden min-h-[39vh] lg:min-h-[50vh] md:pt-16">
         {/* Background with upto50off banner */}
         <div className="absolute inset-0 z-0">
-          <img
-            src={upto50off}
-            alt="Up to 50% Off"
-            className="w-full h-full object-cover"
-          />
+          {upto50off ? (
+            <img
+              src={upto50off}
+              alt="Up to 50% Off"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-gray-100" />
+          )}
         </div>
 
         {/* Navbar with Back Button - Overlay on top of image */}
@@ -258,7 +257,7 @@ export default function DiningExplore50() {
                 onFocus={handleSearchFocus}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && heroSearch.trim()) {
-                    navigate(`/user/search?q=${encodeURIComponent(heroSearch.trim())}`)
+                    navigate(`/search?q=${encodeURIComponent(heroSearch.trim())}`)
                     closeSearch()
                     setHeroSearch("")
                   }
@@ -397,7 +396,7 @@ export default function DiningExplore50() {
                         alt={restaurantName}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         onError={(e) => {
-                          e.target.src = FALLBACK_RESTAURANT_IMAGE
+                          e.currentTarget.style.display = "none"
                         }}
                       />
                       
@@ -442,11 +441,11 @@ export default function DiningExplore50() {
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="flex-1 min-w-0">
                           <h3 className="text-lg sm:text-xl font-bold text-gray-900 line-clamp-1">
-                            {restaurant.name}
+                            {restaurantName}
                           </h3>
                         </div>
                         <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 rounded-lg flex items-center gap-1">
-                          <span className="text-sm font-bold">{rating}</span>
+                          <span className="text-sm font-bold">{rating ?? "-"}</span>
                           <Star className="h-3 w-3 fill-white text-white" />
                         </div>
                       </div>

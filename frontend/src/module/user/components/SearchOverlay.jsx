@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { X, Search, Clock, Loader2 } from "lucide-react"
+import { X, Search, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { adminAPI, api, API_ENDPOINTS, restaurantAPI } from "@/lib/api"
@@ -80,6 +80,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           name: name.trim(),
           image: getFoodImage(item),
           slug: item?.slug || null,
+          itemType: "food",
           restaurantName: typeof restaurantName === "string" ? restaurantName.trim() : null,
           restaurantId,
           restaurantSlug,
@@ -112,6 +113,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           name: name.trim(),
           image: getFoodImage(item),
           slug: item?.slug || null,
+          itemType: "food",
           restaurantName,
           restaurantId,
           restaurantSlug,
@@ -130,6 +132,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
             name: name.trim(),
             image: getFoodImage(item),
             slug: item?.slug || null,
+            itemType: "food",
             restaurantName,
             restaurantId,
             restaurantSlug,
@@ -223,6 +226,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
             name: cat.name,
             image: cat.image || null,
             slug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'),
+            itemType: "category",
             offerPercentage: typeof cat.offerPercentage === "number" ? cat.offerPercentage : 0,
           }))
           setCategories(categoriesArray)
@@ -394,7 +398,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     onSearchChange(suggestion)
     inputRef.current?.focus()
     saveRecentSearch(suggestion)
-    navigate(`/user/search?q=${encodeURIComponent(suggestion)}`)
+    navigate(`/search?q=${encodeURIComponent(suggestion)}`)
     onClose()
     onSearchChange("")
   }
@@ -403,7 +407,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     e.preventDefault()
     if (searchValue.trim()) {
       saveRecentSearch(searchValue.trim())
-      navigate(`/user/search?q=${encodeURIComponent(searchValue.trim())}`)
+      navigate(`/search?q=${encodeURIComponent(searchValue.trim())}`)
       onClose()
       onSearchChange("")
     }
@@ -419,8 +423,17 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     if (restaurantSlug) {
       navigate(`/user/restaurants/${restaurantSlug}`)
     } else {
-      navigate(`/user/search?q=${encodeURIComponent(food.name)}`)
+      navigate(`/search?q=${encodeURIComponent(food.name)}`)
     }
+    onClose()
+    onSearchChange("")
+  }
+
+  const handleCategoryClick = (category) => {
+    const categoryId = category?.slug || category?.id
+    if (!categoryId) return
+
+    navigate(`/search?cat=${encodeURIComponent(categoryId)}`)
     onClose()
     onSearchChange("")
   }
@@ -467,38 +480,6 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
       </div>
 
       <div className="flex-1 overflow-y-auto max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 scrollbar-hide bg-white dark:bg-[#0a0a0a]">
-        {/* Suggestions Row */}
-        <div
-          className="mb-6"
-          style={{
-            animation: 'slideDown 0.3s ease-out 0.1s both'
-          }}
-        >
-          <h3 className="text-sm sm:text-base font-semibold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-primary-orange" />
-            Recent Searches
-          </h3>
-          <div className="flex gap-2 sm:gap-3 flex-wrap">
-            {recentSearches.length > 0 ? (
-              recentSearches.map((suggestion, index) => (
-                <button
-                  key={`${suggestion}-${index}`}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 border border-orange-200 dark:border-orange-800 hover:border-orange-300 dark:hover:border-orange-700 text-gray-700 dark:text-gray-300 hover:text-primary-orange dark:hover:text-orange-400 transition-all duration-200 text-xs sm:text-sm font-medium shadow-sm hover:shadow-md"
-                  style={{
-                    animation: `scaleIn 0.3s ease-out ${0.1 + index * 0.02}s both`
-                  }}
-                >
-                  <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-primary-orange flex-shrink-0" />
-                  <span>{suggestion}</span>
-                </button>
-              ))
-            ) : (
-              <p className="text-sm text-gray-500 dark:text-gray-400">No recent searches</p>
-            )}
-          </div>
-        </div>
-
         {/* Food Grid */}
         <div
           style={{
@@ -521,7 +502,11 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
                   style={{
                     animation: `slideUp 0.3s ease-out ${0.25 + 0.05 * (index % 12)}s both`
                   }}
-                  onClick={() => handleFoodClick(food)}
+                  onClick={() => (
+                    food?.itemType === "category"
+                      ? handleCategoryClick(food)
+                      : handleFoodClick(food)
+                  )}
                 >
                   <div className="relative w-full aspect-square rounded-full overflow-hidden transition-all duration-200 shadow-md group-hover:shadow-lg bg-white dark:bg-[#1a1a1a] p-1 sm:p-1.5">
                     {food.image && !imageErrors.has(food.id || food.slug) ? (

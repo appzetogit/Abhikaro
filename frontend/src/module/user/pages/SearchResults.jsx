@@ -1,47 +1,63 @@
 import { useState, useMemo, useRef, useEffect } from "react"
-import { useSearchParams, Link, useNavigate } from "react-router-dom"
-import { ArrowLeft, Star, Clock, Search, SlidersHorizontal, ChevronDown, Bookmark, BadgePercent, Mic, Loader2 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
+import { useSearchParams, useNavigate } from "react-router-dom"
+import { ArrowLeft, Search, Loader2, Clock, Bookmark, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import StickyCartCard from "../components/StickyCartCard"
-import { useProfile } from "../context/ProfileContext"
 import { useLocation } from "../hooks/useLocation"
 import { useZone } from "../hooks/useZone"
 import { restaurantAPI, adminAPI } from "@/lib/api"
+import allFoodImage from "@/assets/allfodd.png"
 
 // Import shared food images - prevents duplication
 import { foodImages } from "@/constants/images"
-
-// Filter options
-const filterOptions = [
-  { id: 'under-30-mins', label: 'Under 30 mins' },
-  { id: 'price-match', label: 'Price Match', hasIcon: true },
-  { id: 'flat-50-off', label: 'Flat 50% OFF', hasIcon: true },
-  { id: 'under-250', label: 'Under ₹250' },
-  { id: 'rating-4-plus', label: 'Rating 4.0+' },
-]
 
 // Mock data removed - using backend data only
 
 export default function SearchResults() {
   const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get("q") || ""
+  const categoryParam = searchParams.get("cat") || ""
   const navigate = useNavigate()
   const { location } = useLocation()
   const { zoneId, isOutOfService } = useZone(location)
   const [searchQuery, setSearchQuery] = useState(query)
   const [selectedCategory, setSelectedCategory] = useState('all')
-  const [activeFilters, setActiveFilters] = useState(new Set())
-  const [favorites, setFavorites] = useState(new Set())
   const categoryScrollRef = useRef(null)
   const [restaurantsData, setRestaurantsData] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [categories, setCategories] = useState([
-    { id: 'all', name: "All", image: foodImages[7] }
+    { id: 'all', name: "All", image: allFoodImage }
   ])
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [categoryKeywords, setCategoryKeywords] = useState({})
+  const categoryIdsSignature = useMemo(
+    () => categories.map((cat) => String(cat.id)).join("|"),
+    [categories]
+  )
+
+  const getCategoryKey = (cat = {}) => {
+    const rawName = typeof cat?.name === "string" ? cat.name.trim() : ""
+    return (
+      cat?.slug ||
+      cat?.id ||
+      cat?._id ||
+      (rawName ? rawName.toLowerCase().replace(/\s+/g, "-") : "")
+    )
+  }
+
+  const normalizeCategoryValue = (value) => String(value || "").trim().toLowerCase()
+
+  const categoryMatchesParam = (cat, param) => {
+    const normalizedParam = normalizeCategoryValue(param)
+    if (!normalizedParam) return false
+
+    const byId = normalizeCategoryValue(cat?.id)
+    const bySlug = normalizeCategoryValue(cat?.slug)
+    const byName = normalizeCategoryValue(cat?.name).replace(/\s+/g, "-")
+
+    return normalizedParam === byId || normalizedParam === bySlug || normalizedParam === byName
+  }
 
   // Fetch categories from admin API
   useEffect(() => {
@@ -55,9 +71,9 @@ export default function SearchResults() {
           
           // Transform API categories to match expected format
           const transformedCategories = [
-            { id: 'all', name: "All", image: foodImages[7], offerPercentage: 0 },
+            { id: 'all', name: "All", image: allFoodImage, offerPercentage: 0 },
             ...categoriesArray.map((cat) => ({
-              id: cat.slug || cat.id,
+              id: getCategoryKey(cat),
               name: cat.name,
               image: cat.image || foodImages[0],
               type: cat.type,
@@ -70,7 +86,7 @@ export default function SearchResults() {
           // Generate category keywords dynamically from category names
           const keywordsMap = {}
           categoriesArray.forEach((cat) => {
-            const categoryId = cat.slug || cat.id
+            const categoryId = getCategoryKey(cat)
             const categoryName = cat.name.toLowerCase()
             
             // Generate keywords from category name
@@ -137,44 +153,6 @@ export default function SearchResults() {
     }
     
     return false
-  }
-
-  // Helper function to get featured dish for a category from menu
-  const getCategoryDishFromMenu = (menu, categoryId) => {
-    if (!menu || !menu.sections || !Array.isArray(menu.sections)) {
-      return null
-    }
-    
-    const keywords = categoryKeywords[categoryId] || []
-    if (keywords.length === 0) {
-      return null
-    }
-    
-    // Find first matching item
-    for (const section of menu.sections) {
-      const sectionItems = Array.isArray(section.items) ? section.items : []
-      const subsectionItems = Array.isArray(section.subsections)
-        ? section.subsections.flatMap((subsection) =>
-            Array.isArray(subsection?.items) ? subsection.items : []
-          )
-        : []
-      const allItems = [...sectionItems, ...subsectionItems]
-
-      if (allItems.length > 0) {
-        for (const item of allItems) {
-          const itemNameLower = (item.name || '').toLowerCase()
-          const itemCategoryLower = (item.category || '').toLowerCase()
-
-          if (keywords.some(keyword => 
-            itemNameLower.includes(keyword) || itemCategoryLower.includes(keyword)
-          )) {
-            return item.name
-          }
-        }
-      }
-    }
-    
-    return null
   }
 
   // Fetch restaurants from API
@@ -413,260 +391,128 @@ export default function SearchResults() {
     fetchRestaurants()
   }, [zoneId, isOutOfService])
 
-  // Update search query when URL changes
+  // Sync selected category and search query from URL params
   useEffect(() => {
+    setSearchQuery(query)
+
+    if (categoryParam) {
+      const matchedCategory = categories.find((cat) => categoryMatchesParam(cat, categoryParam))
+      setSelectedCategory(matchedCategory ? matchedCategory.id : "all")
+      return
+    }
+
     if (query) {
-      setSearchQuery(query)
-      // Try to match query to a category
-      const matchedCategory = categories.find(cat => 
+      const matchedCategory = categories.find((cat) =>
         cat.name.toLowerCase() === query.toLowerCase() ||
         cat.id === query.toLowerCase().replace(/\s+/g, '-')
       )
       if (matchedCategory) {
         setSelectedCategory(matchedCategory.id)
+      } else {
+        setSelectedCategory("all")
       }
+    } else {
+      setSelectedCategory("all")
     }
-  }, [query])
-
-  const toggleFilter = (filterId) => {
-    setActiveFilters(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(filterId)) {
-        newSet.delete(filterId)
-      } else {
-        newSet.add(filterId)
-      }
-      return newSet
-    })
-  }
-
-  const toggleFavorite = (id) => {
-    setFavorites(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(id)) {
-        newSet.delete(id)
-      } else {
-        newSet.add(id)
-      }
-      return newSet
-    })
-  }
+  }, [query, categoryParam, categoryIdsSignature])
 
   const handleSearch = (e) => {
     e.preventDefault()
     if (searchQuery.trim()) {
-      setSearchParams({ q: searchQuery.trim() })
+      const nextParams = { q: searchQuery.trim() }
+      if (selectedCategory && selectedCategory !== "all") {
+        nextParams.cat = selectedCategory
+      }
+      setSearchParams(nextParams)
+    } else if (selectedCategory && selectedCategory !== "all") {
+      setSearchParams({ cat: selectedCategory })
+    } else {
+      setSearchParams({})
     }
   }
 
   const handleCategorySelect = (catId) => {
     setSelectedCategory(catId)
-    // Update search query to match category name
     const category = categories.find(c => c.id === catId)
     if (category && category.id !== 'all') {
-      setSearchQuery(category.name)
-      setSearchParams({ q: category.name })
+      // Category click should open only that category in search page.
+      setSearchQuery("")
+      setSearchParams({ cat: category.id })
     } else {
       setSearchQuery("")
       setSearchParams({})
     }
   }
 
-  // Filter restaurants based on search query, selected category, and filters
-  const filteredRecommended = useMemo(() => {
-    // Use ONLY backend data - no hardcoded fallback
-    const sourceData = restaurantsData.length > 0 ? restaurantsData : []
-    let filtered = [...sourceData]
+  const filteredFoodItems = useMemo(() => {
+    const lowerQuery = query.trim().toLowerCase()
+    const selectedKeywords = categoryKeywords[selectedCategory] || []
+    const allFoods = []
 
-    // Filter by search query
-    if (query.trim()) {
-      const lowerQuery = query.toLowerCase()
-      filtered = filtered.filter(r => 
-        r.name?.toLowerCase().includes(lowerQuery) ||
-        r.cuisine?.toLowerCase().includes(lowerQuery) ||
-        r.featuredDish?.toLowerCase().includes(lowerQuery) ||
-        r.category === selectedCategory
-      )
-    }
+    restaurantsData.forEach((restaurant) => {
+      const sections = Array.isArray(restaurant?.menu?.sections) ? restaurant.menu.sections : []
+      sections.forEach((section) => {
+        const sectionItems = Array.isArray(section?.items) ? section.items : []
+        const subsectionItems = Array.isArray(section?.subsections)
+          ? section.subsections.flatMap((subsection) => Array.isArray(subsection?.items) ? subsection.items : [])
+          : []
+        const items = [...sectionItems, ...subsectionItems]
 
-    // Filter by category - Dynamic filtering based on menu items
-    if (selectedCategory && selectedCategory !== 'all') {
-      filtered = filtered.filter(r => {
-        // If restaurant has menu data, check menu for category items
-        if (r.menu) {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            // Update featured dish for this category
-            const categoryDish = getCategoryDishFromMenu(r.menu, selectedCategory)
-            if (categoryDish && !r.categoryFeaturedDish) {
-              r.categoryFeaturedDish = categoryDish
-            }
-            return true
-          }
-          // If menu exists but no match, don't show (menu was checked)
-          return false
-        }
-        
-        // Fallback for hardcoded data or restaurants without menu
-        // Check if restaurant matches category (hardcoded data)
-        if (r.category === selectedCategory) {
-          return true
-        }
-        
-        // For paneer-tikka (backward compatibility)
-        if (selectedCategory === 'paneer-tikka' && r.hasPaneer) {
-          return true
-        }
-        
-        // Check featured dish and cuisine for category keywords
-        const keywords = categoryKeywords[selectedCategory] || []
-        if (keywords.length > 0) {
-          const featuredDishLower = (r.featuredDish || '').toLowerCase()
-          const cuisineLower = (r.cuisine || '').toLowerCase()
-          const nameLower = (r.name || '').toLowerCase()
-          
-          const matches = keywords.some(keyword => 
-            featuredDishLower.includes(keyword) || 
-            cuisineLower.includes(keyword) ||
-            nameLower.includes(keyword)
-          )
-          
-          if (matches) return true
-        }
-        
-        // If no match found, don't show restaurant for this category
-        return false
+        items.forEach((item, index) => {
+          const name = item?.name || item?.dishName || item?.itemName
+          if (!name) return
+          const originalPrice = Number(item?.originalPrice ?? item?.price ?? 0)
+          const discountPercent = Number(item?.discountPercent ?? 0)
+          const finalPrice = discountPercent > 0
+            ? Math.round(originalPrice * (1 - discountPercent / 100))
+            : originalPrice
+          const image = item?.image || item?.imageUrl || item?.thumbnail || null
+
+          allFoods.push({
+            id: item?._id || item?.id || `${restaurant.id}-${name}-${index}`,
+            name,
+            category: item?.category || section?.name || "",
+            image,
+            finalPrice,
+            discountPercent,
+            restaurantName: restaurant.name,
+            restaurantSlug: restaurant.slug || restaurant.name?.toLowerCase().replace(/\s+/g, "-"),
+            restaurantDeliveryTime: restaurant.deliveryTime || "",
+            restaurantRating: restaurant.rating || null,
+            restaurantOffer: restaurant.offer || "",
+          })
+        })
       })
-    } else if (!query.trim()) {
-      // Show all restaurants when no category selected (category is 'all')
-      // Don't filter - show all restaurants
-    }
+    })
 
-    // Apply filters
-    if (activeFilters.has('under-30-mins')) {
-      filtered = filtered.filter(r => {
-        if (!r.deliveryTime) return false
-        const timeMatch = r.deliveryTime.match(/(\d+)/)
-        return timeMatch && parseInt(timeMatch[1]) <= 30
-      })
-    }
-    if (activeFilters.has('rating-4-plus')) {
-      filtered = filtered.filter(r => r.rating && r.rating >= 4.0)
-    }
-    if (activeFilters.has('flat-50-off')) {
-      filtered = filtered.filter(r => r.offer && r.offer.includes('50%'))
-    }
+    const filtered = allFoods.filter((food) => {
+      if (lowerQuery) {
+        const queryMatches =
+          food.name.toLowerCase().includes(lowerQuery) ||
+          food.category.toLowerCase().includes(lowerQuery) ||
+          food.restaurantName.toLowerCase().includes(lowerQuery)
+        if (!queryMatches) return false
+      }
 
-    return filtered
-  }, [query, selectedCategory, activeFilters, restaurantsData, categoryKeywords, loadingCategories])
+      if (selectedCategory !== "all" && selectedKeywords.length > 0) {
+        const combinedText = `${food.name} ${food.category}`.toLowerCase()
+        const matchesCategory = selectedKeywords.some((keyword) => combinedText.includes(keyword))
+        if (!matchesCategory) return false
+      }
 
-  const filteredAllRestaurants = useMemo(() => {
-    // Use ONLY backend data - no hardcoded fallback
-    const sourceData = restaurantsData.length > 0 ? restaurantsData : []
-    let filtered = [...sourceData]
+      return true
+    })
 
-    // Filter by search query - Search in name, cuisine, featured dish
-    if (query.trim()) {
-      const lowerQuery = query.toLowerCase()
-      filtered = filtered.filter(r => {
-        const nameMatch = r.name?.toLowerCase().includes(lowerQuery)
-        const cuisineMatch = r.cuisine?.toLowerCase().includes(lowerQuery)
-        const dishMatch = r.featuredDish?.toLowerCase().includes(lowerQuery)
-        
-        // Also search in menu items if menu is available
-        let menuMatch = false
-        if (r.menu && r.menu.sections) {
-          for (const section of r.menu.sections) {
-            if (section.items) {
-              for (const item of section.items) {
-                if (item.name?.toLowerCase().includes(lowerQuery) || 
-                    item.category?.toLowerCase().includes(lowerQuery)) {
-                  menuMatch = true
-                  break
-                }
-              }
-            }
-            if (menuMatch) break
-          }
-        }
-        
-        return nameMatch || cuisineMatch || dishMatch || menuMatch || r.category === selectedCategory
-      })
-    }
+    const uniqueByRestaurantAndFood = new Map()
+    filtered.forEach((food) => {
+      const key = `${food.restaurantSlug}-${food.name.toLowerCase()}`
+      if (!uniqueByRestaurantAndFood.has(key)) {
+        uniqueByRestaurantAndFood.set(key, food)
+      }
+    })
 
-    // Filter by category - Dynamic filtering based on menu items
-    if (selectedCategory && selectedCategory !== 'all') {
-      filtered = filtered.filter(r => {
-        // If restaurant has menu data, check menu for category items
-        if (r.menu) {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            // Update featured dish for this category
-            const categoryDish = getCategoryDishFromMenu(r.menu, selectedCategory)
-            if (categoryDish && !r.categoryFeaturedDish) {
-              r.categoryFeaturedDish = categoryDish
-            }
-            return true
-          }
-          // If menu exists but no match, don't show (menu was checked)
-          return false
-        }
-        
-        // Fallback for hardcoded data or restaurants without menu
-        // Check if restaurant matches category (hardcoded data)
-        if (r.category === selectedCategory) {
-          return true
-        }
-        
-        // For paneer-tikka (backward compatibility)
-        if (selectedCategory === 'paneer-tikka' && r.hasPaneer) {
-          return true
-        }
-        
-        // Check featured dish and cuisine for category keywords
-        const keywords = categoryKeywords[selectedCategory] || []
-        if (keywords.length > 0) {
-          const featuredDishLower = (r.featuredDish || '').toLowerCase()
-          const cuisineLower = (r.cuisine || '').toLowerCase()
-          const nameLower = (r.name || '').toLowerCase()
-          
-          const matches = keywords.some(keyword => 
-            featuredDishLower.includes(keyword) || 
-            cuisineLower.includes(keyword) ||
-            nameLower.includes(keyword)
-          )
-          
-          if (matches) return true
-        }
-        
-        // If no match found, don't show restaurant for this category
-        return false
-      })
-    } else if (!query.trim()) {
-      // Show all restaurants when no category selected (category is 'all')
-      // Don't filter - show all restaurants
-    }
-
-    // Apply filters
-    if (activeFilters.has('under-30-mins')) {
-      filtered = filtered.filter(r => {
-        if (!r.deliveryTime) return false
-        const timeMatch = r.deliveryTime.match(/(\d+)/)
-        return timeMatch && parseInt(timeMatch[1]) <= 30
-      })
-    }
-    if (activeFilters.has('rating-4-plus')) {
-      filtered = filtered.filter(r => r.rating && r.rating >= 4.0)
-    }
-    if (activeFilters.has('under-250')) {
-      filtered = filtered.filter(r => r.featuredPrice && r.featuredPrice <= 250)
-    }
-    if (activeFilters.has('flat-50-off')) {
-      filtered = filtered.filter(r => r.offer && r.offer.includes('50%'))
-    }
-
-    return filtered
-  }, [query, selectedCategory, activeFilters, restaurantsData, categoryKeywords, loadingCategories])
+    return Array.from(uniqueByRestaurantAndFood.values())
+  }, [query, selectedCategory, restaurantsData, categoryKeywords])
 
   // Check if should show grayscale (user out of service)
   const shouldShowGrayscale = isOutOfService
@@ -677,7 +523,7 @@ export default function SearchResults() {
       <div className="sticky top-0 z-20 bg-white dark:bg-[#1a1a1a] shadow-sm">
         <div className="max-w-7xl mx-auto">
         {/* Search Bar with Back Button */}
-        <div className="flex items-center gap-2 px-3 sm:px-4 md:px-6 lg:px-8 py-3 md:py-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-2 px-3 sm:px-4 md:px-6 lg:px-8 pt-8 pb-3 md:pt-9 md:pb-4 border-b border-gray-100 dark:border-gray-800">
           <button 
             onClick={() => navigate('/user')}
             className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
@@ -691,11 +537,8 @@ export default function SearchResults() {
               placeholder="Restaurant name or a dish..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-10 h-11 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-sm dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
+              className="pl-10 pr-4 h-11 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-sm dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
               />
-            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2">
-              <Mic className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-            </button>
           </form>
             </div>
 
@@ -725,7 +568,7 @@ export default function SearchResults() {
                     <img 
                       src={cat.image} 
                       alt={cat.name}
-                      className="w-full h-full object-cover"
+                      className={`w-full h-full object-cover ${cat.id === "all" ? "scale-90" : ""}`}
                     />
                   </div>
                 ) : (
@@ -745,49 +588,6 @@ export default function SearchResults() {
           })}
         </div>
 
-      {/* Filters */}
-      <div 
-        className="flex items-center gap-2 sm:gap-3 lg:gap-4 overflow-x-auto scrollbar-hide px-4 sm:px-6 md:px-8 lg:px-10 py-3 md:py-4 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800"
-        style={{
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
-        }}
-      >
-        {/* Filter Button */}
-        <Button
-          variant="outline"
-          className="h-9 px-3 rounded-lg flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          <span className="text-sm font-bold text-black dark:text-white">Filters</span>
-          <ChevronDown className="h-3 w-3" />
-        </Button>
-
-        {/* Filter Options */}
-        {filterOptions.map((filter) => {
-          const isActive = activeFilters.has(filter.id)
-          return (
-                                    <Button
-              key={filter.id}
-              variant="outline"
-              onClick={() => toggleFilter(filter.id)}
-              className={`h-9 px-3 rounded-lg flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 transition-all font-medium ${
-                isActive
-                  ? 'bg-green-600 text-white border-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700'
-                  : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300'
-              }`}
-            >
-              {filter.hasIcon && filter.id === 'price-match' && (
-                <span className={`text-xs ${isActive ? 'text-white' : 'text-green-600 dark:text-green-400'}`}>✓</span>
-              )}
-              {filter.hasIcon && filter.id === 'flat-50-off' && (
-                <span className={`text-xs ${isActive ? 'text-white' : 'text-blue-500 dark:text-blue-400'}`}>★</span>
-              )}
-              <span className={`text-sm font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
-                                    </Button>
-          )
-        })}
-      </div>
       </div>
       </div>
 
@@ -801,218 +601,118 @@ export default function SearchResults() {
           </div>
         )}
         
-        {/* RECOMMENDED FOR YOU Section */}
-        {!loadingRestaurants && filteredRecommended.length > 0 && (
-          <section>
-            <h2 className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4">
-              RECOMMENDED FOR YOU
-            </h2>
-            
-            {/* Small Restaurant Cards - Horizontal Scroll */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4 lg:gap-5">
-              {filteredRecommended.slice(0, 6).map((restaurant) => {
-                return (
-                  <Link 
-                    key={restaurant.id} 
-                    to={`/user/restaurants/${restaurant.slug || restaurant.name.toLowerCase().replace(/\s+/g, '-')}`}
-                    className="block"
-                  >
-                    <div className={`group ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
-                    {/* Image Container */}
-                    <div className="relative aspect-square rounded-xl overflow-hidden mb-2 bg-gray-200 dark:bg-gray-800">
-                              {restaurant.image ? (
-                                <img
-                                  src={restaurant.image}
-                                  alt={restaurant.name}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                  onError={(e) => {
-                                    e.target.style.display = 'none'
-                                  }}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <span className="text-2xl">🍽️</span>
-                                </div>
-                              )}
-                      {/* Offer Badge - Only show if offer exists */}
-                      {restaurant.offer && (
-                        <div className="absolute top-1.5 left-1.5 bg-blue-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">
-                          {restaurant.offer}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Rating Badge - Only show if rating exists */}
-                    {restaurant.rating && (
-                      <div className="flex items-center gap-1 mb-1">
-                        <div className="bg-green-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                          {restaurant.rating}
-                          <Star className="h-2.5 w-2.5 fill-white" />
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Restaurant Info */}
-                    <h3 className="font-semibold text-gray-900 dark:text-white text-xs line-clamp-1">
-                      {restaurant.name}
-                    </h3>
-                    {restaurant.deliveryTime && (
-                      <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[10px]">
-                        <Clock className="h-2.5 w-2.5" />
-                        <span>{restaurant.deliveryTime}</span>
-                      </div>
-                    )}
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* ALL RESTAURANTS Section */}
         <section>
           <h2 className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4">
-            ALL RESTAURANTS
+            ALL FOODS
           </h2>
           
-          {/* Large Restaurant Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5 lg:gap-6">
-            {filteredAllRestaurants.map((restaurant) => {
-              const restaurantSlug = restaurant.name.toLowerCase().replace(/\s+/g, "-")
-              const isFavorite = favorites.has(restaurant.id)
-
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {filteredFoodItems.map((food) => {
               return (
-                <Link key={restaurant.id} to={`/user/restaurants/${restaurant.slug || restaurantSlug}`} className="h-full flex">
-                  <Card className={`overflow-hidden cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-md flex flex-col h-full w-full ${
+                <div
+                  key={food.id}
+                  className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none ${
                     shouldShowGrayscale ? 'grayscale opacity-75' : ''
-                  }`}>
-                    {/* Image Section */}
-                    <div className="relative h-44 sm:h-52 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-md flex-shrink-0 bg-gray-200 dark:bg-gray-800">
-                        {restaurant.image ? (
-                          <img
-                            src={restaurant.image}
-                            alt={restaurant.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            onError={(e) => {
-                              e.target.style.display = 'none'
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-800">
-                            <span className="text-4xl">🍽️</span>
-                          </div>
-                        )}
-                      
-                      {/* Featured Dish Badge - Top Left - Only show if data exists */}
-                      {(() => {
-                        let displayText = null
-                        
-                        // If category is selected and restaurant has menu, show category-specific dish
-                        if (selectedCategory && selectedCategory !== 'all' && restaurant.menu) {
-                          const categoryDish = getCategoryDishFromMenu(restaurant.menu, selectedCategory)
-                          if (categoryDish && restaurant.featuredPrice) {
-                            displayText = `${categoryDish} · ₹${restaurant.featuredPrice}`
-                          }
-                        }
-                        
-                        // Fallback to featured dish
-                        if (!displayText && restaurant.featuredDish && restaurant.featuredPrice) {
-                          displayText = `${restaurant.featuredDish} · ₹${restaurant.featuredPrice}`
-                        }
-                        
-                        return displayText ? (
-                          <div className="absolute top-3 left-3">
-                            <div className="bg-gray-800/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium">
-                              {displayText}
-                            </div>
-                          </div>
-                        ) : null
-                      })()}
-                      
-                      {/* Ad Badge */}
-                      {restaurant.isAd && (
-                        <div className="absolute top-3 right-14 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded">
-                          Ad
-                        </div>
-                      )}
-                      
-                      {/* Bookmark Icon - Top Right */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-3 right-3 h-9 w-9 bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm rounded-lg hover:bg-white dark:hover:bg-[#2a2a2a] transition-colors"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          toggleFavorite(restaurant.id)
-                        }}
-                      >
-                        <Bookmark className={`h-5 w-5 ${isFavorite ? "fill-gray-800 dark:fill-gray-200 text-gray-800 dark:text-gray-200" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
-                      </Button>
+                  }`}
+                >
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/user/restaurants/${food.restaurantSlug}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        navigate(`/user/restaurants/${food.restaurantSlug}`)
+                      }
+                    }}
+                    className="flex-1 min-w-0 text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-4 h-4 border-2 border-green-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                        <div className="w-2 h-2 bg-green-600 rounded-full" />
+                      </div>
                     </div>
-                    
-                    {/* Content Section */}
-                    <CardContent className="p-3 sm:p-4 lg:p-5 flex flex-col flex-grow">
-                      {/* Restaurant Name & Rating */}
-                      <div className="flex items-start justify-between gap-2 mb-2 lg:mb-3">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white line-clamp-1 lg:line-clamp-2">
-                            {restaurant.name}
-                          </h3>
-                        </div>
-                        {restaurant.rating && (
-                          <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 lg:px-3 lg:py-1.5 rounded-lg flex items-center gap-1">
-                            <span className="text-sm lg:text-base font-bold">{restaurant.rating}</span>
-                            <Star className="h-3 w-3 lg:h-4 lg:w-4 fill-white text-white" />
-                          </div>
+                    <h3 className="font-bold text-gray-800 dark:text-white text-lg leading-tight line-clamp-1">
+                      {food.name}
+                    </h3>
+                    {food.finalPrice > 0 && (
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="font-semibold text-gray-900 dark:text-white">₹{food.finalPrice}</span>
+                        {food.restaurantDeliveryTime && (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                            <Clock className="h-3 w-3 text-gray-500" />
+                            {food.restaurantDeliveryTime}
+                          </span>
                         )}
                       </div>
-                      
-                      {/* Delivery Time & Distance - Only show if data exists */}
-                      {(restaurant.deliveryTime || restaurant.distance) && (
-                        <div className="flex items-center gap-1 text-sm lg:text-base text-gray-500 dark:text-gray-400 mb-2 lg:mb-3">
-                          {restaurant.deliveryTime && (
-                            <>
-                              <Clock className="h-4 w-4 lg:h-5 lg:w-5" strokeWidth={1.5} />
-                              <span className="font-medium">{restaurant.deliveryTime}</span>
-                            </>
-                          )}
-                          {restaurant.deliveryTime && restaurant.distance && (
-                            <span className="mx-1">|</span>
-                          )}
-                          {restaurant.distance && (
-                            <span className="font-medium">{restaurant.distance}</span>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Offer Badge */}
-                      {restaurant.offer && (
-                        <div className="flex items-center gap-2 text-sm lg:text-base mt-auto">
-                          <BadgePercent className="h-4 w-4 lg:h-5 lg:w-5 text-blue-600 dark:text-blue-400" strokeWidth={2} />
-                          <span className="text-gray-700 dark:text-gray-300 font-medium">{restaurant.offer}</span>
-                        </div>
-                      )}
-                      </CardContent>
-                    </Card>
-                </Link>
+                    )}
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                      The Taste is Yummy
+                    </p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 truncate">
+                      {food.restaurantName}
+                    </p>
+
+                    <div className="flex gap-4 mt-3">
+                      <button
+                        type="button"
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      >
+                        <Bookmark className="h-[18px] w-[18px]" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      >
+                        <Share2 className="h-[18px] w-[18px]" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative w-32 h-32 flex-shrink-0">
+                    <div className="w-full h-full rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+                    {food.image ? (
+                      <img
+                        src={food.image}
+                        alt={food.name}
+                        className="w-full h-full object-cover rounded-2xl shadow-sm"
+                        onError={(e) => {
+                          e.target.style.display = 'none'
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-800">
+                        <span className="text-4xl">🍽️</span>
+                      </div>
+                    )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/user/restaurants/${food.restaurantSlug}`)}
+                      className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border border-green-600 text-green-600 hover:bg-green-50 dark:bg-[#1a1a1a] dark:text-green-400 dark:border-green-500 font-bold px-4 py-1.5 rounded-lg shadow-md min-w-[104px]"
+                    >
+                      ADD +
+                    </button>
+                  </div>
+                </div>
               )
             })}
             
             {/* Empty State */}
-            {filteredAllRestaurants.length === 0 && (
+            {filteredFoodItems.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-gray-500 dark:text-gray-400">
                   {query
-                    ? `No restaurants found for "${query}"`
-                    : "No restaurants found with selected filters"}
+                    ? `No foods found for "${query}"`
+                    : "No foods found with selected filters"}
                 </p>
                 <Button
                   variant="outline"
                   className="mt-4 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                   onClick={() => {
-                    setActiveFilters(new Set())
                     setSearchQuery("")
                     setSelectedCategory('all')
                     setSearchParams({})
