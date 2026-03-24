@@ -1,8 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect } from "react"
 import OptimizedImage from "@/components/OptimizedImage"
 
-export const RestaurantImageCarousel = React.memo(({ restaurant, priority = false }) => {
-  // Prefer food/menu photos when available; otherwise fall back to generic images array.
+export const RestaurantImageCarousel = React.memo(({ restaurant, priority = false, menuOnly = false }) => {
+  // Prefer food/menu photos. In menuOnly mode, never fall back to gallery/cover images.
   const images = useMemo(() => {
     const collected = []
 
@@ -10,7 +10,7 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
       collected.push(...restaurant.menuImages)
     }
 
-    if (Array.isArray(restaurant.images) && restaurant.images.length > 0) {
+    if (!menuOnly && Array.isArray(restaurant.images) && restaurant.images.length > 0) {
       collected.push(...restaurant.images)
     }
 
@@ -23,7 +23,7 @@ export const RestaurantImageCarousel = React.memo(({ restaurant, priority = fals
     )
 
     return unique.length > 0 ? unique : null
-  }, [restaurant.menuImages, restaurant.images])
+  }, [restaurant.menuImages, restaurant.images, menuOnly])
   const [currentIndex, setCurrentIndex] = useState(0)
   const failedIndexesRef = useRef(new Set())
   const touchStartX = useRef(0)

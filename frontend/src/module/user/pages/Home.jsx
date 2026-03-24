@@ -946,39 +946,21 @@ export default function Home() {
             ? restaurant.cuisines[0]
             : "Multi-cuisine"
 
-          // Get cover images (separate from menu images) for carousel
-          const coverImages = restaurant.coverImages && restaurant.coverImages.length > 0
-            ? restaurant.coverImages
-              .map((img) => normalizeImageUrl(img?.url || img))
-              .filter(Boolean)
-            : []
-
-          // Fallback to menuImages only if coverImages don't exist (for backward compatibility)
-          // Backend already normalizes menuImages to simple URL strings
-          const fallbackImages = Array.isArray(restaurant.menuImages) && restaurant.menuImages.length > 0
+          // Always prefer restaurant menu photos for user discovery cards.
+          const menuImagesPrimary = Array.isArray(restaurant.menuImages) && restaurant.menuImages.length > 0
             ? restaurant.menuImages
               .map((img) => normalizeImageUrl(img?.url || img))
               .filter(Boolean)
             : []
+          const menuImages = Array.from(new Set(menuImagesPrimary))
 
-          // Prefer onboarding.step2.profileImageUrl if available (more accurate)
-          const profileImageUrl = normalizeImageUrl(
-            restaurant.onboarding?.step2?.profileImageUrl?.url
-            || restaurant.profileImage?.url
-            || (typeof restaurant.profileImage === 'string' ? restaurant.profileImage : null)
-          )
-
-          // Use cover images first, then fallback to menu images, then profile image
-          const allImages = coverImages.length > 0
-            ? coverImages
-            : (fallbackImages.length > 0
-              ? fallbackImages
-              : (profileImageUrl
-                ? [profileImageUrl]
-                : ["https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop"]))
+          // Strict: only menu images are allowed on delivery discovery cards.
+          const allImages = menuImages.length > 0
+            ? menuImages
+            : []
 
           // Keep single image for backward compatibility
-          const image = allImages[0]
+          const image = allImages[0] || null
 
           const rating = (() => {
             const candidates = [
@@ -1003,8 +985,8 @@ export default function Home() {
             distance: distance,
             distanceInKm: distanceInKm, // Store numeric distance for sorting
             image: image,
-            images: allImages, // Array of images for carousel (cover/menu/profile)
-            menuImages: fallbackImages, // Preserve menuImages for components that prefer food photos
+            images: allImages, // Array of images for carousel (menu only)
+            menuImages: menuImages, // Preserve menuImages for components that prefer food photos
             priceRange: restaurant.priceRange || "$$", // Use from API or default
             featuredDish: restaurant.featuredDish || (restaurant.cuisines && restaurant.cuisines.length > 0
               ? `${restaurant.cuisines[0]} Special`
@@ -1075,7 +1057,7 @@ export default function Home() {
 
     const preloadCandidates = restaurantsData
       .slice(0, 6)
-      .map((r) => (Array.isArray(r.menuImages) && r.menuImages.length > 0 ? r.menuImages[0] : r.image))
+      .map((r) => (Array.isArray(r.menuImages) && r.menuImages.length > 0 ? r.menuImages[0] : null))
       .filter((src) => typeof src === 'string' && src.trim() !== '')
 
     if (preloadCandidates.length === 0) return
@@ -1860,6 +1842,7 @@ export default function Home() {
                             <RestaurantImageCarousel
                               restaurant={restaurant}
                               priority={index < 4}
+                              menuOnly
                             />
 
                             {/* CURRENTLY CLOSED Banner - Center Overlay (when restaurant is offline) */}
@@ -1955,6 +1938,7 @@ export default function Home() {
                               <RestaurantImageCarousel
                                 restaurant={restaurant}
                                 priority={index < 4}
+                                menuOnly
                               />
 
                               {/* Featured Dish Badge - Top Left */}

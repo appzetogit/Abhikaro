@@ -119,6 +119,11 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 // This replaces Google Places API Nearby Search, cutting API costs by 99%
 export const getRestaurants = async (req, res) => {
   try {
+    const isLikelyQrImageUrl = (value) => {
+      if (typeof value !== 'string') return false;
+      // Heuristic guard: avoid QR/payment scanner assets being used as menu photos.
+      return /(qr|qrcode|upi|scanner|payment-qr|pay-qr)/i.test(value);
+    };
     const { 
       limit = 50, 
       offset = 0,
@@ -510,7 +515,7 @@ export const getRestaurants = async (req, res) => {
               if (typeof img === 'object' && img.url) return img.url;
               return null;
             })
-            .filter((url) => typeof url === 'string' && url.trim() !== '')
+            .filter((url) => typeof url === 'string' && url.trim() !== '' && !isLikelyQrImageUrl(url))
         : [];
 
       restaurant.menuImages = normalizedMenuImages;
@@ -533,15 +538,13 @@ export const getRestaurants = async (req, res) => {
       return restaurant;
     });
 
-    // If some restaurants still don't have menuImages, derive them from their Menu items.
-    // This lets the user see actual food photos on the listing cards.
-    const restaurantsNeedingMenuImages = restaurants.filter(r => !Array.isArray(r.menuImages) || r.menuImages.length === 0);
-
-    if (restaurantsNeedingMenuImages.length > 0) {
+    // Derive menu images from active Menu items for all restaurants and prefer those.
+    // This ensures listing cards show real dish photos even if onboarding images are stale.
+    if (restaurants.length > 0) {
       const maxImagesPerRestaurant = 6;
 
       await Promise.all(
-        restaurantsNeedingMenuImages.map(async (restaurant) => {
+        restaurants.map(async (restaurant) => {
           try {
             const menu = await Menu.findOne({
               restaurant: restaurant._id,
@@ -587,10 +590,12 @@ export const getRestaurants = async (req, res) => {
               new Set(
                 collected
                   .filter((url) => typeof url === 'string' && url.trim() !== '')
+                  .filter((url) => !isLikelyQrImageUrl(url))
                   .map((url) => url.trim())
               )
             );
 
+            // Strict for discovery: expose only menu-item images from Menu collection.
             restaurant.menuImages = uniqueUrls.slice(0, maxImagesPerRestaurant);
           } catch (err) {
             console.error('Error deriving menuImages from Menu for restaurant', restaurant._id, err);
