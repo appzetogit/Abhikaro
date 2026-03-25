@@ -36,6 +36,7 @@ import { useLocation } from "../hooks/useLocation"
 import { useZone } from "../hooks/useZone"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import offerImage from "@/assets/offerimage.png"
+import closeappImage from "@/assets/closeapp.png"
 import api, { restaurantAPI, orderAPI } from "@/lib/api"
 import { API_BASE_URL, API_ENDPOINTS } from "@/lib/api/config"
 import OptimizedImage from "@/components/OptimizedImage"
@@ -1286,6 +1287,94 @@ export default function Home() {
       {children}
     </div>
   )
+
+  // Out of Zone Screen - shows when user is outside the service area
+  if (isOutOfService && !zoneLoading) {
+    return (
+      <div className="relative min-h-screen bg-white dark:bg-[#0a0a0a] pb-28 md:pb-24">
+        {/* Out of Zone Full Screen */}
+        <div className="relative w-full min-h-screen">
+          {/* Background Image - closeapp.png */}
+          <div className="absolute inset-0 z-0">
+            <img
+              src={closeappImage}
+              alt="Service not available"
+              className="w-full h-full object-cover"
+            />
+          </div>
+
+          {/* Top Overlay Content */}
+          <div className="relative z-10">
+            {/* Navbar - Location, Wallet, Cart */}
+            <div className="pt-7 sm:pt-7 lg:pt-7">
+              <PageNavbar textColor="black" zIndex={20} mobileTranslateYClass="translate-y-[12px]" />
+            </div>
+
+            {/* Search Bar and VEG MODE Container */}
+            <div className="w-full py-6 sm:py-8 md:py-12 lg:py-12">
+              <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-6 lg:px-8">
+                <div className="flex items-center gap-3 sm:gap-4 lg:gap-6">
+                  {/* Search Bar */}
+                  <SearchBar
+                    value={heroSearch}
+                    onChange={setHeroSearch}
+                    onFocus={handleSearchFocus}
+                    onClose={handleSearchClose}
+                    isSearchOpen={isSearchOpen}
+                  />
+
+                  {/* VEG MODE Toggle */}
+                  <VegModeToggle
+                    checked={vegMode}
+                    onCheckedChange={handleVegModeChange}
+                    toggleRef={vegModeToggleRef}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Veg Mode Popups - keep functional */}
+        <VegModePopup
+          open={showVegModePopup}
+          onClose={() => setShowVegModePopup(false)}
+          onApply={(option) => {
+            setIsApplyingVegMode(true)
+            setVegModeOption(option)
+            setVegModeContext(true)
+            setShowVegModePopup(false)
+            setTimeout(() => setIsApplyingVegMode(false), 300)
+          }}
+          position={popupPosition}
+          vegModeOption={vegModeOption}
+          setVegModeOption={setVegModeOption}
+          isApplying={isApplyingVegMode}
+        />
+        <SwitchOffVegModePopup
+          open={showSwitchOffPopup}
+          onClose={() => {
+            setShowSwitchOffPopup(false)
+            isHandlingSwitchOff.current = false
+          }}
+          onConfirm={() => {
+            setIsSwitchingOffVegMode(true)
+            setVegModeContext(false)
+            setShowSwitchOffPopup(false)
+            setTimeout(() => {
+              setIsSwitchingOffVegMode(false)
+              isHandlingSwitchOff.current = false
+            }, 300)
+          }}
+          position={popupPosition}
+          isSwitching={isSwitchingOffVegMode}
+        />
+
+        <StickyCartCard />
+        <OrderTrackingCard />
+      </div>
+    )
+  }
 
   return (
     <div className="relative min-h-screen bg-white dark:bg-[#0a0a0a] pb-28 md:pb-24">

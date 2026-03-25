@@ -1,8 +1,12 @@
 import { Link, useLocation } from "react-router-dom"
 import { UtensilsCrossed, Tag, User, Truck } from "lucide-react"
+import { useLocation as useUserLocation } from "../hooks/useLocation"
+import { useZone } from "../hooks/useZone"
 
 export default function BottomNavigation() {
   const location = useLocation()
+  const { location: userLocation } = useUserLocation()
+  const { isOutOfService } = useZone(userLocation)
 
   // Check active routes - support both /user/* and /* paths
   const isDining = location.pathname === "/dining" || location.pathname === "/user/dining"
@@ -41,45 +45,50 @@ export default function BottomNavigation() {
           )}
         </Link>
 
-        {/* Divider */}
-        <div className="h-8 w-px bg-gray-300 dark:bg-gray-700" />
+        {/* Under 250 and Dining tabs - hidden when out of zone */}
+        {!isOutOfService && (
+          <>
+            {/* Divider */}
+            <div className="h-8 w-px bg-gray-300 dark:bg-gray-700" />
 
-        {/* Under 250 Tab */}
-        <Link
-          to="/user/under-250"
-          className={`flex flex-col items-center gap-1.5 px-4 sm:px-5 py-2 transition-all duration-200 relative ${isUnder250
-              ? "text-green-700 dark:text-green-500"
-              : "text-gray-600 dark:text-gray-400"
-            }`}
-        >
-          <Tag className={`h-5 w-5 ${isUnder250 ? "text-green-700 dark:text-green-500 fill-green-700 dark:fill-green-500" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
-          <span className={`text-xs sm:text-sm font-medium ${isUnder250 ? "text-green-700 dark:text-green-500 font-semibold" : "text-gray-600 dark:text-gray-400"}`}>
-            Under 250
-          </span>
-          {isUnder250 && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-green-700 dark:bg-green-500 rounded-b-full" />
-          )}
-        </Link>
+            {/* Under 250 Tab */}
+            <Link
+              to="/user/under-250"
+              className={`flex flex-col items-center gap-1.5 px-4 sm:px-5 py-2 transition-all duration-200 relative ${isUnder250
+                  ? "text-green-700 dark:text-green-500"
+                  : "text-gray-600 dark:text-gray-400"
+                }`}
+            >
+              <Tag className={`h-5 w-5 ${isUnder250 ? "text-green-700 dark:text-green-500 fill-green-700 dark:fill-green-500" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
+              <span className={`text-xs sm:text-sm font-medium ${isUnder250 ? "text-green-700 dark:text-green-500 font-semibold" : "text-gray-600 dark:text-gray-400"}`}>
+                Under 250
+              </span>
+              {isUnder250 && (
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-green-700 dark:bg-green-500 rounded-b-full" />
+              )}
+            </Link>
 
-        {/* Divider */}
-        <div className="h-8 w-px bg-gray-300 dark:bg-gray-700" />
+            {/* Divider */}
+            <div className="h-8 w-px bg-gray-300 dark:bg-gray-700" />
 
-        {/* Dining Tab */}
-        <Link
-          to="/user/dining"
-          className={`flex flex-col items-center gap-1.5 px-4 sm:px-5 py-2 transition-all duration-200 relative ${isDining
-              ? "text-green-700 dark:text-green-500"
-              : "text-gray-600 dark:text-gray-400"
-            }`}
-        >
-          <UtensilsCrossed className={`h-5 w-5 ${isDining ? "text-green-700 dark:text-green-500 fill-green-700 dark:fill-green-500" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
-          <span className={`text-xs sm:text-sm font-medium ${isDining ? "text-green-700 dark:text-green-500 font-semibold" : "text-gray-600 dark:text-gray-400"}`}>
-            Dining
-          </span>
-          {isDining && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-green-700 dark:bg-green-500 rounded-b-full" />
-          )}
-        </Link>
+            {/* Dining Tab */}
+            <Link
+              to="/user/dining"
+              className={`flex flex-col items-center gap-1.5 px-4 sm:px-5 py-2 transition-all duration-200 relative ${isDining
+                  ? "text-green-700 dark:text-green-500"
+                  : "text-gray-600 dark:text-gray-400"
+                }`}
+            >
+              <UtensilsCrossed className={`h-5 w-5 ${isDining ? "text-green-700 dark:text-green-500 fill-green-700 dark:fill-green-500" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
+              <span className={`text-xs sm:text-sm font-medium ${isDining ? "text-green-700 dark:text-green-500 font-semibold" : "text-gray-600 dark:text-gray-400"}`}>
+                Dining
+              </span>
+              {isDining && (
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-green-700 dark:bg-green-500 rounded-b-full" />
+              )}
+            </Link>
+          </>
+        )}
 
         {/* Divider */}
         <div className="h-8 w-px bg-gray-300 dark:bg-gray-700" />
