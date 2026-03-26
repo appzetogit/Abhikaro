@@ -96,8 +96,8 @@ export default function RestaurantLogin() {
     const digitsOnly = phone.replace(/\D/g, "")
 
     // Minimum length check (at least 7 digits)
-    if (digitsOnly.length < 7) {
-      return "Phone number must be at least 7 digits"
+    if (digitsOnly.length < 10) {
+      return "Phone number must be at least 10 digits"
     }
 
     // Maximum length check (typically 15 digits for international numbers)

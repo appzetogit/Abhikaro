@@ -435,7 +435,8 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           zoomControl: true,
           mapTypeControl: false,
           streetViewControl: false,
-          fullscreenControl: false
+          fullscreenControl: false,
+          gestureHandling: "greedy"
         })
 
         googleMapRef.current = map
@@ -1528,11 +1529,30 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             area = pointOfInterest || premise || street || ""
           }
 
-          // Remove "India" from formatted address if present
-          if (formattedAddress && formattedAddress.endsWith(', India')) {
-            formattedAddress = formattedAddress.replace(', India', '').trim()
+          // Deduplicate and clean up formattedAddress (e.g. remove repeating cities and 'India')
+          if (formattedAddress) {
+            const parts = formattedAddress.split(',').map(p => p.trim()).filter(Boolean);
+            const uniqueParts = [];
+            
+            parts.forEach(part => {
+              if (part.toLowerCase() === 'india') return; // Remove India
+              
+              // Normalize by removing common suffixes for comparison
+              const normalize = (str) => str.toLowerCase()
+                  .replace(/\s+(city|tahsil|tehsil|district)$/, '')
+                  .trim();
+                  
+              const normalizedPart = normalize(part);
+              
+              // Check if we already have this part
+              const isDuplicate = uniqueParts.some(existing => normalize(existing) === normalizedPart);
+              
+              if (!isDuplicate) {
+                uniqueParts.push(part);
+              }
+            });
+            formattedAddress = uniqueParts.join(', ');
           }
-
 
           // Update current address display
           setCurrentAddress(formattedAddress || `${roundedLat.toFixed(6)}, ${roundedLng.toFixed(6)}`)
@@ -2078,46 +2098,21 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
               <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg p-3 flex items-center gap-3">
                 <MapPin className="h-5 w-5 text-green-600 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                    {loadingAddress ? "Locating..." : (currentAddress || addressFormData.city && addressFormData.state
-                      ? `${addressFormData.city}, ${addressFormData.state}`
-                      : "Select location on map")}
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300 break-words">
+                    {loadingAddress ? "Locating..." : (
+                      currentAddress 
+                        ? currentAddress
+                        : (addressFormData.city && addressFormData.state)
+                          ? `${addressFormData.city}, ${addressFormData.state}`
+                          : "Select location on map"
+                    )}
                   </p>
                 </div>
                 <ChevronRight className="h-5 w-5 text-gray-400 flex-shrink-0" />
               </div>
             </div>
 
-            {/* Address Details */}
-            <div>
-              <Label htmlFor="additionalDetails" className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 block">
-                Address details*
-              </Label>
-              <Input
-                id="additionalDetails"
-                name="additionalDetails"
-                placeholder="E.g. Floor, House no."
-                value={addressFormData.additionalDetails}
-                onChange={handleAddressFormChange}
-                className="bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-gray-700"
-              />
-            </div>
 
-            {/* Receiver Details */}
-            <div>
-              <Label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 block">
-                Receiver details for this address
-              </Label>
-              <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg p-3 flex items-center gap-3">
-                <Phone className="h-5 w-5 text-gray-600 dark:text-gray-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">
-                    {userProfile?.name || "User"}, {addressFormData.phone || userProfile?.phone || "Add phone"}
-                  </p>
-                </div>
-                <ChevronRight className="h-5 w-5 text-gray-400 flex-shrink-0" />
-              </div>
-            </div>
 
             {/* Save Address As */}
             <div>

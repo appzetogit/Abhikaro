@@ -155,7 +155,6 @@ export default function RestaurantOnboarding() {
   })
 
   const [step2, setStep2] = useState({
-    menuImages: [],
     profileImage: null,
     cuisines: [],
     // Default timings so required validation passes even if user keeps defaults
@@ -224,9 +223,7 @@ export default function RestaurantOnboarding() {
 
     let inputId = null;
 
-    if (imageType === 'menuImages') {
-      inputId = source === 'camera' ? 'menuImagesCameraInput' : 'menuImagesInput';
-    } else if (imageType === 'profileImage') {
+    if (imageType === 'profileImage') {
       inputId = source === 'camera' ? 'profileImageCameraInput' : 'profileImageInput';
     } else if (imageType === 'panImage') {
       inputId = source === 'camera' ? 'panImageCameraInput' : 'panImageInput';
@@ -267,9 +264,7 @@ export default function RestaurantOnboarding() {
           result.fileName || `camera_${Date.now()}.jpg`
         );
 
-        if (imageType === 'menuImages') {
-          setStep2((prev) => ({ ...prev, menuImages: [...(prev.menuImages || []), file] }));
-        } else if (imageType === 'profileImage') {
+        if (imageType === 'profileImage') {
           setStep2((prev) => ({ ...prev, profileImage: file }));
         } else if (imageType === 'panImage') {
           setStep3((prev) => ({ ...prev, panImage: file }));
@@ -332,16 +327,10 @@ export default function RestaurantOnboarding() {
           )
         );
 
-        if (imageType === 'menuImages') {
-          setStep2((prev) => ({
-            ...prev,
-            menuImages: [...(prev.menuImages || []), ...files],
-          }));
-        } else {
-          const file = files[0];
-          if (!file) return;
+        const file = files[0];
+        if (!file) return;
 
-          if (imageType === 'profileImage') {
+        if (imageType === 'profileImage') {
             setStep2((prev) => ({ ...prev, profileImage: file }));
           } else if (imageType === 'panImage') {
             setStep3((prev) => ({ ...prev, panImage: file }));
@@ -350,7 +339,6 @@ export default function RestaurantOnboarding() {
           } else if (imageType === 'fssaiImage') {
             setStep3((prev) => ({ ...prev, fssaiImage: file }));
           }
-        }
       } catch (err) {
         console.error('Error processing Flutter gallery result:', err);
         toast.error('Failed to process image from gallery');
@@ -402,8 +390,6 @@ export default function RestaurantOnboarding() {
           }
           if (data.step2) {
             setStep2({
-              // Load menu images from URLs if available
-              menuImages: data.step2.menuImageUrls || [],
               // Load profile image URL if available
               profileImage: data.step2.profileImageUrl || null,
               cuisines: data.step2.cuisines || [],
@@ -553,23 +539,6 @@ export default function RestaurantOnboarding() {
   const validateStep2 = () => {
     const errors = []
 
-    // Check menu images - must have at least one File or existing URL
-    const hasMenuImages = step2.menuImages && step2.menuImages.length > 0
-    if (!hasMenuImages) {
-      errors.push("At least one menu image is required")
-    } else {
-      // Verify that menu images are either File objects or have valid URLs
-      const validMenuImages = step2.menuImages.filter(img => {
-        if (img instanceof File) return true
-        if (img?.url && typeof img.url === 'string') return true
-        if (typeof img === 'string' && img.startsWith('http')) return true
-        return false
-      })
-      if (validMenuImages.length === 0) {
-        errors.push("Please upload at least one valid menu image")
-      }
-    }
-
     // Check profile image - must be a File or existing URL
     if (!step2.profileImage) {
       errors.push("Restaurant profile image is required")
@@ -592,15 +561,19 @@ export default function RestaurantOnboarding() {
     const openingTime = step2.openingTime?.trim() || "10:00" // Default if not set
     const closingTime = step2.closingTime?.trim() || "22:00" // Default if not set
     
-    // Validate that closing time is not less than opening time
+    // Validate that closing time is not less than or equal to opening time
     if (openingTime && closingTime) {
-      const [openHour, openMin] = openingTime.split(":").map(Number)
-      const [closeHour, closeMin] = closingTime.split(":").map(Number)
+      const openParts = openingTime.split(":")
+      const closeParts = closingTime.split(":")
+      const openHour = parseInt(openParts[0], 10) || 0
+      const openMin = parseInt(openParts[1], 10) || 0
+      const closeHour = parseInt(closeParts[0], 10) || 0
+      const closeMin = parseInt(closeParts[1], 10) || 0
       const openMinutes = openHour * 60 + openMin
       const closeMinutes = closeHour * 60 + closeMin
       
-      if (closeMinutes < openMinutes) {
-        errors.push("Closing time should not be less than opening time")
+      if (closeMinutes <= openMinutes) {
+        errors.push("closing time should not be less than opening time and both cant be same")
       }
     }
     
@@ -751,10 +724,6 @@ export default function RestaurantOnboarding() {
       toast.success("Step 1 (Basic Info) auto-filled")
     } else if (step === 2) {
       setStep2({
-        menuImages: [
-          "https://res.cloudinary.com/dbv5id2cy/image/upload/v1707212000/menu_sample_1.jpg",
-          "https://res.cloudinary.com/dbv5id2cy/image/upload/v1707212001/menu_sample_2.jpg"
-        ],
         profileImage: "https://res.cloudinary.com/dbv5id2cy/image/upload/v1707212002/restaurant_profile.jpg",
         cuisines: ["North Indian", "Chinese", "Bakery"],
         openingTime: "10:00",
@@ -872,30 +841,6 @@ export default function RestaurantOnboarding() {
         await api.put("/restaurant/onboarding", payload)
         setStep(2)
       } else if (step === 2) {
-        const menuUploads = []
-        // Upload menu images if they are File objects
-        for (const file of step2.menuImages.filter((f) => f instanceof File)) {
-          try {
-            const uploaded = await handleUpload(file, "restaurant/menu")
-            // Verify upload was successful and has valid URL
-            if (!uploaded || !uploaded.url) {
-              throw new Error(`Failed to upload menu image: ${file.name}`)
-            }
-            menuUploads.push(uploaded)
-          } catch (uploadError) {
-            console.error('Menu image upload error:', uploadError)
-            throw new Error(`Failed to upload menu image: ${uploadError.message}`)
-          }
-        }
-        // If menuImages already have URLs (from previous save), include them
-        const existingMenuUrls = step2.menuImages.filter((img) => !(img instanceof File) && (img?.url || (typeof img === 'string' && img.startsWith('http'))))
-        const allMenuUrls = [...existingMenuUrls, ...menuUploads]
-
-        // Verify we have at least one menu image
-        if (allMenuUrls.length === 0) {
-          throw new Error('At least one menu image must be uploaded')
-        }
-
         // Upload profile image if it's a File object
         let profileUpload = null
         if (step2.profileImage instanceof File) {
@@ -924,7 +869,6 @@ export default function RestaurantOnboarding() {
 
         const payload = {
           step2: {
-            menuImageUrls: allMenuUrls.length > 0 ? allMenuUrls : [],
             profileImageUrl: profileUpload,
             cuisines: step2.cuisines || [],
             deliveryTimings: {
@@ -936,7 +880,6 @@ export default function RestaurantOnboarding() {
           completedSteps: 2,
         }
         console.log('📤 Step2 payload:', {
-          menuImageUrlsCount: payload.step2.menuImageUrls.length,
           hasProfileImage: !!payload.step2.profileImageUrl,
           cuisines: payload.step2.cuisines,
           openDays: payload.step2.openDays,
@@ -1305,130 +1248,6 @@ export default function RestaurantOnboarding() {
     <div className="space-y-6">
       {/* Images section */}
       <section className="bg-white p-4 sm:p-6 rounded-md space-y-5">
-        <h2 className="text-lg font-semibold text-black">Menu & photos</h2>
-        <p className="text-xs text-gray-500">
-          Add clear photos of your printed menu and a primary profile image. This helps customers
-          understand what you serve.
-        </p>
-
-        {/* Menu images */}
-        <div className="space-y-2">
-          <Label className="text-xs font-medium text-gray-700">Menu images</Label>
-          <div className="mt-1 border border-dashed border-gray-300 rounded-md bg-gray-50/70 px-4 py-3 flex items-center justify-between flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-md bg-white flex items-center justify-center">
-                <ImageIcon className="w-5 h-5 text-gray-700" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-medium text-gray-900">Upload menu images</span>
-                <span className="text-[11px] text-gray-500">
-                  JPG, PNG, WebP • You can select multiple files
-                </span>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (isFlutterApp()) {
-                    handleFlutterCamera('menuImages', true);
-                  } else {
-                    document.getElementById('menuImagesCameraInput')?.click();
-                  }
-                }}
-                className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
-              >
-                <ImageIcon className="w-4 h-4" />
-                <span>Camera</span>
-              </button>
-            <input
-              id="menuImagesCameraInput"
-              type="file"
-              multiple
-              accept="image/*"
-              capture="environment"
-                className="hidden"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || [])
-                  if (!files.length) return
-                  setStep2((prev) => ({ ...prev, menuImages: [...(prev.menuImages || []), ...files] }))
-                  e.target.value = ""
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  triggerFileInputFallback('menuImages', { isMultiple: true, source: 'gallery' });
-                }}
-                className="inline-flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
-              >
-                <Upload className="w-4.5 h-4.5" />
-                <span>Gallery</span>
-              </button>
-              <input
-                id="menuImagesInput"
-                type="file"
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || [])
-                  if (!files.length) return
-                  setStep2((prev) => ({ ...prev, menuImages: [...(prev.menuImages || []), ...files] }))
-                  e.target.value = ""
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Menu image previews */}
-          {!!step2.menuImages.length && (
-            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {step2.menuImages.map((file, idx) => {
-                // Handle both File objects and URL objects
-                let imageUrl = null
-                let imageName = `Image ${idx + 1}`
-
-                if (file instanceof File) {
-                  imageUrl = URL.createObjectURL(file)
-                  imageName = file.name
-                } else if (file?.url) {
-                  // If it's an object with url property (from backend)
-                  imageUrl = file.url
-                  imageName = file.name || `Image ${idx + 1}`
-                } else if (typeof file === 'string') {
-                  // If it's a direct URL string
-                  imageUrl = file
-                }
-
-                return (
-                  <div
-                    key={idx}
-                    className="relative aspect-[4/5] rounded-md overflow-hidden bg-gray-100"
-                  >
-                    {imageUrl ? (
-                      <img
-                        src={imageUrl}
-                        alt={`Menu ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[11px] text-gray-500 px-2 text-center">
-                        Preview unavailable
-                      </div>
-                    )}
-                    <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1">
-                      <p className="text-[10px] text-white truncate">
-                        {imageName}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
         {/* Profile image */}
         <div className="space-y-2">
           <Label className="text-xs font-medium text-gray-700">Restaurant profile image</Label>
@@ -1555,12 +1374,36 @@ export default function RestaurantOnboarding() {
             <TimeSelector
               label="Opening time"
               value={step2.openingTime || ""}
-              onChange={(val) => setStep2({ ...step2, openingTime: val || "" })}
+              onChange={(val) => {
+                if (val && step2.closingTime) {
+                  const oParts = val.split(":")
+                  const cParts = step2.closingTime.split(":")
+                  const oMin = (parseInt(oParts[0], 10) || 0) * 60 + (parseInt(oParts[1], 10) || 0)
+                  const cMin = (parseInt(cParts[0], 10) || 0) * 60 + (parseInt(cParts[1], 10) || 0)
+                  if (cMin <= oMin) {
+                    toast.error("closing time should not be less than opening time and both cant be same")
+                    return
+                  }
+                }
+                setStep2({ ...step2, openingTime: val || "" })
+              }}
             />
             <TimeSelector
               label="Closing time"
               value={step2.closingTime || ""}
-              onChange={(val) => setStep2({ ...step2, closingTime: val || "" })}
+              onChange={(val) => {
+                if (val && step2.openingTime) {
+                  const oParts = step2.openingTime.split(":")
+                  const cParts = val.split(":")
+                  const oMin = (parseInt(oParts[0], 10) || 0) * 60 + (parseInt(oParts[1], 10) || 0)
+                  const cMin = (parseInt(cParts[0], 10) || 0) * 60 + (parseInt(cParts[1], 10) || 0)
+                  if (cMin <= oMin) {
+                    toast.error("closing time should not be less than opening time and both cant be same")
+                    return
+                  }
+                }
+                setStep2({ ...step2, closingTime: val || "" })
+              }}
             />
           </div>
         </div>
