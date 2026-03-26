@@ -204,6 +204,10 @@ export const createZone = asyncHandler(async (req, res) => {
       await zone.populate('createdBy', 'name email');
     }
 
+    // Invalidate cache
+    await invalidateCachePattern('zones*');
+    await invalidateCachePattern('zoneDetect*');
+
     return successResponse(res, 201, 'Zone created successfully', {
       zone
     });
@@ -256,6 +260,10 @@ export const updateZone = asyncHandler(async (req, res) => {
       await zone.populate('createdBy', 'name email');
     }
 
+    // Invalidate cache
+    await invalidateCachePattern('zones*');
+    await invalidateCachePattern('zoneDetect*');
+
     return successResponse(res, 200, 'Zone updated successfully', {
       zone
     });
@@ -281,6 +289,10 @@ export const deleteZone = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, 'Zone not found');
     }
 
+    // Invalidate cache
+    await invalidateCachePattern('zones*');
+    await invalidateCachePattern('zoneDetect*');
+
     return successResponse(res, 200, 'Zone deleted successfully');
   } catch (error) {
     console.error('Error deleting zone:', error);
@@ -303,6 +315,10 @@ export const toggleZoneStatus = asyncHandler(async (req, res) => {
 
     zone.isActive = !zone.isActive;
     await zone.save();
+
+    // Invalidate cache
+    await invalidateCachePattern('zones*');
+    await invalidateCachePattern('zoneDetect*');
 
     return successResponse(res, 200, `Zone ${zone.isActive ? 'activated' : 'deactivated'} successfully`, {
       zone
