@@ -29,7 +29,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useOrders } from "../../context/OrdersContext"
 import { useProfile } from "../../context/ProfileContext"
-import { useLocation as useUserLocation } from "../../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import DeliveryTrackingMap from "../../components/DeliveryTrackingMap"
 import { orderAPI, restaurantAPI } from "@/lib/api"
 import circleIcon from "@/assets/circleicon.png"
@@ -71,7 +71,7 @@ const AnimatedCheckmark = ({ delay = 0 }) => (
 
 // Real Delivery Map Component with User Live Location
 const DeliveryMap = ({ orderId, order, isVisible }) => {
-  const { location: userLocation } = useUserLocation() // Get user's live location
+  const { location: userLocation } = useSharedLocation() // Get user's live location
 
   // Get coordinates from order or use defaults (Indore)
   const getRestaurantCoords = () => {

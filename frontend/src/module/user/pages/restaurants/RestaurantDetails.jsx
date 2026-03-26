@@ -6,7 +6,7 @@ import { restaurantAPI, diningAPI, adminAPI } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
-import { useLocation } from "../../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useZone } from "../../hooks/useZone"
 import {
   ArrowLeft,
@@ -56,7 +56,7 @@ export default function RestaurantDetails() {
   const dishParam = searchParams.get('dish')
   const { addToCart, updateQuantity, removeFromCart, getCartItem, getCartItemId, cart } = useCart()
   const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite } = useProfile()
-  const { location: userLocation } = useLocation() // Get user's current location
+  const { location: userLocation } = useSharedLocation() // Get user's current location
   const { zoneId, zone, loading: loadingZone, isOutOfService } = useZone(userLocation) // Get user's zone for zone-based filtering
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [highlightIndex, setHighlightIndex] = useState(0)

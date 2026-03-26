@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import AnimatedPage from "../components/AnimatedPage"
 import { useLocationSelector } from "../components/UserLayout"
-import { useLocation as useLocationHook } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useProfile } from "../context/ProfileContext"
 import { diningAPI } from "@/lib/api"
 import api from "@/lib/api"
@@ -63,7 +63,7 @@ export default function Dining() {
   const filterSectionRefs = useRef({})
   const rightContentRef = useRef(null)
   const { openLocationSelector } = useLocationSelector()
-  const { location } = useLocationHook()
+  const { location } = useSharedLocation()
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
 
   const [categories, setCategories] = useState([])

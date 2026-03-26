@@ -4,7 +4,7 @@ import { ArrowLeft, Search, Loader2, Clock, Bookmark, Share2 } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import StickyCartCard from "../components/StickyCartCard"
-import { useLocation } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useZone } from "../hooks/useZone"
 import { restaurantAPI, adminAPI } from "@/lib/api"
 import allFoodImage from "@/assets/allfodd.png"
@@ -19,7 +19,7 @@ export default function SearchResults() {
   const query = searchParams.get("q") || ""
   const categoryParam = searchParams.get("cat") || ""
   const navigate = useNavigate()
-  const { location } = useLocation()
+  const { location } = useSharedLocation()
   const { zoneId, isOutOfService } = useZone(location)
   const [searchQuery, setSearchQuery] = useState(query)
   const [selectedCategory, setSelectedCategory] = useState('all')

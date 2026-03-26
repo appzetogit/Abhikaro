@@ -5,6 +5,7 @@ import UserLayout from "./UserLayout"
 import UserPreventRedirect from "./UserPreventRedirect"
 import { Suspense, lazy, useEffect } from "react"
 import Loader from "@/components/Loader"
+import { LocationProvider } from "@/lib/context/LocationContext"
 
 // Lazy Loading Pages
 
@@ -110,6 +111,7 @@ function UserRouteTracker({ children }) {
 export default function UserRouter() {
   return (
     <Suspense fallback={<Loader />}>
+      <LocationProvider>
       <UserRouteTracker>
         <Routes>
           <Route element={<UserLayout />}>
@@ -433,6 +435,7 @@ export default function UserRouter() {
           </Route>
         </Routes>
       </UserRouteTracker>
+      </LocationProvider>
     </Suspense>
   )
 }

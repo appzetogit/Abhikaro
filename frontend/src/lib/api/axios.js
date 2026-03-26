@@ -562,6 +562,46 @@ apiClient.interceptors.response.use(
       }
     }
 
+    // ===== Handle 429 Too Many Requests with exponential backoff =====
+    if (error.response?.status === 429) {
+      const retryCount = originalRequest._retryCount || 0;
+      const maxRetries = 2; // Max 2 retries for 429 errors
+      const method = (originalRequest.method || "get").toLowerCase();
+      const isIdempotent = ["get", "head", "options"].includes(method);
+
+      if (isIdempotent && retryCount < maxRetries) {
+        originalRequest._retryCount = retryCount + 1;
+
+        // Use server-provided retryAfter or exponential backoff
+        const serverRetryAfter = error.response.data?.retryAfter; // seconds
+        const backoffMs = serverRetryAfter
+          ? serverRetryAfter * 1000
+          : Math.min(2000 * Math.pow(2, retryCount), 30000); // 2s, 4s, max 30s
+
+        if (import.meta.env.DEV) {
+          console.warn(
+            `⏳ Rate limited (429). Retrying ${originalRequest.url} in ${backoffMs}ms (attempt ${retryCount + 1}/${maxRetries})`
+          );
+        }
+
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(apiClient(originalRequest)), backoffMs);
+        });
+      }
+
+      // Max retries exceeded — suppress toast spam for rate limits
+      const now = Date.now();
+      if (now - networkErrorState.lastToastTime >= networkErrorState.TOAST_COOLDOWN_PERIOD) {
+        networkErrorState.lastToastTime = now;
+        toast.error("Too many requests. Please wait a moment and try again.", {
+          duration: 5000,
+          id: "rate-limit-toast",
+        });
+      }
+
+      return Promise.reject(error);
+    }
+
     // Handle network errors specifically (backend not running)
     if (error.code === "ERR_NETWORK" || error.message === "Network Error") {
       if (import.meta.env.DEV) {

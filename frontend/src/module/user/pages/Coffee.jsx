@@ -4,7 +4,7 @@ import { Star, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import AnimatedPage from "../components/AnimatedPage"
 import { useLocationSelector } from "../components/UserLayout"
-import { useLocation as useLocationHook } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { FaLocationDot } from "react-icons/fa6"
 // Using placeholder for coffee banner
 const coffeeBanner = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=1200&h=400&fit=crop"
@@ -103,7 +103,7 @@ const blueTokaiStores = [
 export default function Coffee() {
   const navigate = useNavigate()
   const { openLocationSelector } = useLocationSelector()
-  const { location } = useLocationHook()
+  const { location } = useSharedLocation()
   const cityName = location?.city || "Select"
 
   const handleLocationClick = useCallback(() => {

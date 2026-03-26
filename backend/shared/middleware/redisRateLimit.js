@@ -137,8 +137,13 @@ export const userRateLimit = createRedisRateLimit({
   maxRequests: 200, // Default, will be overridden by role
   message: 'Too many requests from your account. Please try again later.',
   keyGenerator: (req) => {
-    const userId = req.user?.id || req.user?._id || req.auth?.userId;
-    const role = req.user?.role || req.auth?.role;
+    const userId = req.user?.id || req.user?._id || 
+                   req.auth?.userId || 
+                   req.restaurant?._id || req.restaurant?.id ||
+                   req.admin?._id || req.admin?.id ||
+                   req.deliveryPartner?._id || req.deliveryPartner?.id ||
+                   req.hotel?._id || req.hotel?.id;
+    const role = req.user?.role || req.auth?.role || req.restaurant?.role || req.admin?.role || req.deliveryPartner?.role || req.hotel?.role;
     
     if (!userId) {
       return `ratelimit:ip:${req.ip || req.connection.remoteAddress}`;
@@ -205,16 +210,21 @@ export const tieredUserRateLimit = async (req, res, next) => {
     return next();
   }
 
-  const userId = req.user?.id || req.user?._id || req.auth?.userId;
+  const userId = req.user?.id || req.user?._id || 
+                 req.auth?.userId || 
+                 req.restaurant?._id || req.restaurant?.id ||
+                 req.admin?._id || req.admin?.id ||
+                 req.deliveryPartner?._id || req.deliveryPartner?.id ||
+                 req.hotel?._id || req.hotel?.id;
 
   // Normalise role string so it matches ROLE_RATE_LIMITS keys
-  let role = (req.user?.role || req.auth?.role || 'default')
+  let role = (req.user?.role || req.auth?.role || req.restaurant?.role || req.admin?.role || req.deliveryPartner?.role || req.hotel?.role || 'default')
     .toString()
     .toLowerCase();
 
-  // If role isn't directly mapped, infer from path so admins/restaurants/delivery
-  // don't fall back to the very strict "default" bucket.
-  if (!ROLE_RATE_LIMITS[role]) {
+  // If role isn't directly mapped, or corresponds to default (due to missing role field), infer from path
+  // so admins/restaurants/delivery don't fall back to the very strict "default" bucket.
+  if (!ROLE_RATE_LIMITS[role] || role === 'default') {
     if (path.startsWith('/admin/')) {
       role = 'admin';
     } else if (path.startsWith('/restaurant/')) {
@@ -340,7 +350,12 @@ export const strictRateLimit = createRedisRateLimit({
   maxRequests: 20, // Increased from 10 to 20 for better UX
   message: 'Too many attempts. Please try again after some time.',
   keyGenerator: (req) => {
-    const userId = req.user?.id || req.user?._id || req.auth?.userId;
+    const userId = req.user?.id || req.user?._id || 
+                   req.auth?.userId || 
+                   req.restaurant?._id || req.restaurant?.id ||
+                   req.admin?._id || req.admin?.id ||
+                   req.deliveryPartner?._id || req.deliveryPartner?.id ||
+                   req.hotel?._id || req.hotel?.id;
     if (userId) {
       return `ratelimit:strict:user:${userId}`;
     }

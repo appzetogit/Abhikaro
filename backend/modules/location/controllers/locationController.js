@@ -11,6 +11,38 @@ const logger = winston.createLogger({
   ],
 });
 
+// ==============================================
+// IN-MEMORY CACHE for Reverse Geocode results
+// Prevents hammering Nominatim's rate-limited API
+// Key: "lat_lng" rounded to 4 decimals (~11m precision)
+// TTL: 1 hour (addresses don't change)
+// Max entries: 500 (auto-evicts oldest)
+// ==============================================
+const geocodeCache = new Map();
+const GEOCODE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const GEOCODE_CACHE_MAX_SIZE = 500;
+
+function getGeocodeFromCache(lat, lng) {
+  const key = `${Math.round(lat * 10000) / 10000}_${Math.round(lng * 10000) / 10000}`;
+  const entry = geocodeCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > GEOCODE_CACHE_TTL_MS) {
+    geocodeCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setGeocodeCache(lat, lng, data) {
+  const key = `${Math.round(lat * 10000) / 10000}_${Math.round(lng * 10000) / 10000}`;
+  // Evict oldest entries if cache is full
+  if (geocodeCache.size >= GEOCODE_CACHE_MAX_SIZE) {
+    const firstKey = geocodeCache.keys().next().value;
+    geocodeCache.delete(firstKey);
+  }
+  geocodeCache.set(key, { data, timestamp: Date.now() });
+}
+
 // Haversine distance (meters) - reuse for nearest-town lookup
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
@@ -153,6 +185,18 @@ export const reverseGeocode = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid latitude or longitude",
+      });
+    }
+
+    // CHECK IN-MEMORY CACHE FIRST — avoid Nominatim call entirely
+    const cachedResult = getGeocodeFromCache(latNum, lngNum);
+    if (cachedResult) {
+      // Set Cache-Control header so browser also caches
+      res.set('Cache-Control', 'public, max-age=1800'); // 30 minutes browser cache
+      return res.json({
+        success: true,
+        data: cachedResult,
+        source: "cache",
       });
     }
 
@@ -316,6 +360,12 @@ export const reverseGeocode = async (req, res) => {
         },
       ],
     };
+
+    // CACHE the result for future requests
+    setGeocodeCache(latNum, lngNum, processedData);
+
+    // Set Cache-Control header so browser also caches
+    res.set('Cache-Control', 'public, max-age=1800'); // 30 minutes browser cache
 
     return res.json({
       success: true,

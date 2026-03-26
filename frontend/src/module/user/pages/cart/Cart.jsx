@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { useCart } from "../../context/CartContext"
 import { useProfile } from "../../context/ProfileContext"
 import { useOrders } from "../../context/OrdersContext"
-import { useLocation as useUserLocation } from "../../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useZone } from "../../hooks/useZone"
 import { orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
@@ -85,7 +85,7 @@ export default function Cart() {
   const { cart, updateQuantity, addToCart, getCartCount, clearCart, cleanCartForRestaurant } = cartContext;
   const { getDefaultAddress, getDefaultPaymentMethod, addresses, paymentMethods, userProfile } = useProfile()
   const { createOrder } = useOrders()
-  const { location: currentLocation } = useUserLocation() // Get live location address
+  const { location: currentLocation } = useSharedLocation() // Get live location address
   const { zoneId } = useZone(currentLocation) // Get user's zone
 
   const [showCoupons, setShowCoupons] = useState(false)

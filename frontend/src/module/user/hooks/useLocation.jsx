@@ -2019,10 +2019,10 @@ export function useLocation() {
                 }
                 
                 // Retry reverse geocoding with backend API (more reliable)
-                // Retry up to 3 times with increasing delays
-                if (retryCountRef.current < 3) {
+                // Reduced to 1 retry (from 3) to prevent API burst that causes 429 errors
+                if (retryCountRef.current < 1) {
                   retryCountRef.current += 1
-                  const retryDelay = retryCountRef.current * 2000 // 2s, 4s, 6s
+                  const retryDelay = 5000 // 5 seconds delay (was 2-6s with escalation)
                   
                   setTimeout(() => {
                     // Force fresh reverse geocoding
@@ -2036,8 +2036,6 @@ export function useLocation() {
                           setLocation(retryLocation)
                           setPermissionGranted(true)
                           updateLocationInDB(retryLocation).catch(() => {})
-                        } else {
-                          // Still placeholder, will retry again if under limit
                         }
                         // Start watching regardless of retry result
                         startWatchingLocation()
@@ -2080,10 +2078,6 @@ export function useLocation() {
     // Cleanup timeout and watcher
     return () => {
       clearTimeout(loadingTimeout)
-      stopWatchingLocation()
-    }
-
-    return () => {
       stopWatchingLocation()
     }
   }, [])

@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import AnimatedPage from "../components/AnimatedPage"
 import { Button } from "@/components/ui/button"
 import { useLocationSelector } from "../components/UserLayout"
-import { useLocation } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useZone } from "../hooks/useZone"
 import { useCart } from "../context/CartContext"
 import PageNavbar from "../components/PageNavbar"
@@ -21,7 +21,7 @@ import { restaurantAPI } from "@/lib/api"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 
 export default function Under250() {
-  const { location } = useLocation()
+  const { location } = useSharedLocation()
   const { zoneId, zoneStatus, isInService, isOutOfService } = useZone(location)
   const navigate = useNavigate()
   const { addToCart, updateQuantity, removeFromCart, getCartItem, getCartItemId, cart } = useCart()

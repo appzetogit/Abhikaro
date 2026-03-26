@@ -32,7 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useLocation } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useZone } from "../hooks/useZone"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import offerImage from "@/assets/offerimage.png"
@@ -711,7 +711,7 @@ export default function Home() {
 
   const { addFavorite, removeFavorite, isFavorite, getFavorites } = profileContext
   const { addToCart, cart } = useCart()
-  const { location, loading, requestLocation } = useLocation()
+  const { location, loading, requestLocation } = useSharedLocation()
   const { zoneId, zoneStatus, isInService, isOutOfService, loading: zoneLoading } = useZone(location)
   const [showToast, setShowToast] = useState(false)
   const [showManageCollections, setShowManageCollections] = useState(false)

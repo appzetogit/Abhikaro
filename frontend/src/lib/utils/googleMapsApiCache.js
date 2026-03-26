@@ -18,11 +18,11 @@ const CACHE_TTL = {
   places: 24 * 60 * 60 * 1000 // 24 hours (places don't change often)
 };
 
-// Rate limiting: Max API calls per minute (STRICTER to reduce billing)
+// Rate limiting: Max API calls per minute (STRICT to prevent 429 errors)
 const RATE_LIMITS = {
-  geocoding: 5, // Max 5 geocoding calls per minute (reduced from 10)
-  directions: 3, // Max 3 directions calls per minute (reduced from 5)
-  places: 3 // Max 3 places calls per minute (reduced from 5)
+  geocoding: 2, // Max 2 geocoding calls per minute (reduced from 5)
+  directions: 2, // Max 2 directions calls per minute (reduced from 3)
+  places: 2 // Max 2 places calls per minute (reduced from 3)
 };
 
 // Track API call timestamps for rate limiting

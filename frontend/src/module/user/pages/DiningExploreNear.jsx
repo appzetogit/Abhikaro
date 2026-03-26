@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import AnimatedPage from "../components/AnimatedPage"
 import { useSearchOverlay, useLocationSelector } from "../components/UserLayout"
-import { useLocation as useLocationHook } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useProfile } from "../context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
 import { diningAPI } from "@/lib/api"
@@ -84,7 +84,7 @@ export default function DiningExploreNear() {
   const rightContentRef = useRef(null)
   const { openSearch, closeSearch, setSearchValue } = useSearchOverlay()
   const { openLocationSelector } = useLocationSelector()
-  const { location, loading } = useLocationHook()
+  const { location, loading } = useSharedLocation()
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
   const cityName = location?.city || "Select"
   const stateName = location?.state || "Location"
