@@ -95,16 +95,16 @@ const TrackingPage = () => {
             <Marker 
               position={restaurantPos} 
               icon={{
-                url: "http://maps.google.com/mapfiles/ms/icons/restaurant.png",
-                scaledSize: new window.google.maps.Size(40, 40)
-              }}
+              url: "https://maps.google.com/mapfiles/ms/icons/restaurant.png",
+              scaledSize: new window.google.maps.Size(40, 40)
+            }}
             />
             <Marker 
               position={userPos} 
               icon={{
-                url: "http://maps.google.com/mapfiles/ms/icons/homegardenbusiness.png",
-                scaledSize: new window.google.maps.Size(40, 40)
-              }}
+              url: "https://maps.google.com/mapfiles/ms/icons/homegardenbusiness.png",
+              scaledSize: new window.google.maps.Size(40, 40)
+            }}
             />
             {/* Dotted Polyline */}
             <Polyline

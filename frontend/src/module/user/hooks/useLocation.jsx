@@ -1964,14 +1964,12 @@ export function useLocation() {
           // Fallback for browsers without permissions API - assume not granted to be safe
         }
 
-        // If permission NOT granted, and we don't have a specific user request (this is page load),
-        // we should SKIP automatic fetching/watching to allow the user to choose when to enable it.
-        // UNLESS we already have a valid initial location from localStorage/DB, in which case we might want to refresh?
-        // Actually, even then, we shouldn't prompt.
-        if (!permissionGranted) {
-          // If we have an initial location, we are fine (it's displayed).
-          // If we don't, we show "Select Location".
-          // In either case, we avoid the PROMPT.
+        // Prompt the user for location immediately on app start if we don't have it yet.
+        if (!permissionGranted && !hasInitialLocation) {
+          // Do not return here. Let the code proceed to call getLocation which will 
+          // trigger the browser's native location permission prompt.
+        } else if (!permissionGranted) {
+          // If we already have a cached location but no permission, just use the cache.
           // Ensure loading is false so UI doesn't hang
           setLoading(false);
           hasInitializedRef.current = false // Reset flag if permission not granted
