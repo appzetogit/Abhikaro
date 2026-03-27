@@ -4,7 +4,7 @@ import AuthRedirect from "@/components/AuthRedirect"
 import NetworkStatusBanner from "@/components/NetworkStatusBanner"
 import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
 
-import { Suspense, lazy, useEffect, useState } from "react"
+import { Suspense, lazy, useEffect, useState, useRef } from "react"
 import Loader from "@/components/Loader"
 import { restoreUserSession, isModuleAuthenticated } from "@/lib/utils/auth.js"
 
@@ -155,12 +155,19 @@ export default function App() {
     const location = useLocation();
     const navigate = useNavigate();
 
+    const hasRestored = useRef(false);
+
     useEffect(() => {
-      if (!sessionRestored) return;
+      if (!sessionRestored || hasRestored.current) return;
 
       try {
         const nav = performance.getEntriesByType?.("navigation")?.[0];
-        const isReload = nav?.type === "reload";
+        const isReload = nav?.type === "reload" || nav?.type === "navigate";
+        
+        // Mark as restored regardless of whether we actually navigate, 
+        // to prevent this effect from blocking future SPA navigations.
+        hasRestored.current = true;
+        
         if (!isReload) return;
 
         const currentPath = location.pathname;
@@ -216,7 +223,7 @@ export default function App() {
       } catch {
         // ignore errors
       }
-    }, [location.pathname, sessionRestored, navigate]);
+    }, [sessionRestored, navigate]); // Removed location.pathname to avoid repeated runs
 
     return children;
   }

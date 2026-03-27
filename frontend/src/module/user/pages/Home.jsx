@@ -570,7 +570,7 @@ export default function Home() {
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
-      smoothTouch: true,
+      smoothTouch: false, // Disabled to prevent double-click issues on touch-enabled devices
     })
 
     function raf(time) {

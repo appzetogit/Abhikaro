@@ -301,6 +301,7 @@ export default function OrderTracking() {
   const [showInstructionsDialog, setShowInstructionsDialog] = useState(false)
   const [instructionsText, setInstructionsText] = useState("")
   const [isSavingInstructions, setIsSavingInstructions] = useState(false)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false)
 
   const defaultAddress = getDefaultAddress()
 
@@ -1176,6 +1177,18 @@ export default function OrderTracking() {
     }
   }
 
+  // Auto refresh interval triggered by manual refresh
+  useEffect(() => {
+    let interval;
+    if (autoRefreshEnabled) {
+      interval = setInterval(() => {
+        handleRefresh();
+      }, 10000); // 10 seconds
+    }
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefreshEnabled]);
+
   // Loading state
   if (loading) {
     return (
@@ -1327,14 +1340,33 @@ export default function OrderTracking() {
                 </>
               )}
               <motion.button
-                onClick={handleRefresh}
-                className="ml-1"
+                onClick={() => {
+                  if (!autoRefreshEnabled) {
+                    setAutoRefreshEnabled(true);
+                    handleRefresh();
+                  }
+                }}
+                className={`ml-1 ${autoRefreshEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 animate={{ rotate: isRefreshing ? 360 : 0 }}
                 transition={{ duration: 0.5 }}
+                disabled={autoRefreshEnabled}
               >
                 <RefreshCw className="w-4 h-4" />
               </motion.button>
             </motion.div>
+
+            <AnimatePresence>
+              {autoRefreshEnabled && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-3 text-[13px] text-white/90"
+                >
+                  Order status auto refreshes every 10 seconds
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
       )}
