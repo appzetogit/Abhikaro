@@ -52,16 +52,18 @@ import {
   toggleGourmetRestaurantStatus
 } from '../controllers/heroBannerController.js';
 
+import { redisCache } from '../../../shared/middleware/cacheMiddleware.js';
+
 const router = express.Router();
 
-// Public routes
-router.get('/public', getHeroBanners);
-router.get('/landing/public', getLandingConfig);
+// Public routes - cached to support high concurrency (5000+ users)
+router.get('/public', redisCache({ ttl: 600 }), getHeroBanners);
+router.get('/landing/public', redisCache({ ttl: 600 }), getLandingConfig);
 
-router.get('/under-250/public', getUnder250Banners);
-router.get('/dining/public', getDiningBanners);
-router.get('/top-10/public', getTop10Restaurants);
-router.get('/gourmet/public', getGourmetRestaurants);
+router.get('/under-250/public', redisCache({ ttl: 600 }), getUnder250Banners);
+router.get('/dining/public', redisCache({ ttl: 600 }), getDiningBanners);
+router.get('/top-10/public', redisCache({ ttl: 600 }), getTop10Restaurants);
+router.get('/gourmet/public', redisCache({ ttl: 600 }), getGourmetRestaurants);
 
 // Admin routes - Hero Banners
 router.get('/', authenticateAdmin, getAllHeroBanners);

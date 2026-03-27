@@ -105,6 +105,11 @@ if (missingEnvVars.length > 0) {
 
 // Initialize Express app
 const app = express();
+
+// Trust proxy - CRITICAL for rate limiting when behind Nginx/Heroku/Load Balancer
+// This ensures req.ip correctly identifies the client instead of the proxy
+app.set('trust proxy', 1);
+
 const httpServer = createServer(app);
 
 // Simple env flag to avoid heavy logging in production hot paths
@@ -495,30 +500,11 @@ app.use(cookieParser());
 // Data sanitization
 app.use(mongoSanitize());
 
-// Rate limiting - Use Redis-based rate limiting if available, fallback to express-rate-limit
-// Redis-based is more effective (per-user) and works across multiple servers
-if (process.env.NODE_ENV === 'production') {
-  // Try Redis-based rate limiting first (per-user with tiered limits)
-  const redisClient = getRedisClient();
-  if (redisClient && redisClient.isOpen) {
-    // Import tiered rate limiter
-    const { tieredUserRateLimit } = await import('./shared/middleware/redisRateLimit.js');
-    // Use tiered rate limiting (role-based limits)
-    app.use('/api/', tieredUserRateLimit);
-    console.log('✅ Redis-based tiered rate limiting enabled (role-based, production mode)');
-  } else {
-    // Fallback to express-rate-limit (IP-based)
-    const limiter = rateLimit({
-      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-      message: 'Too many requests from this IP, please try again later.'
-    });
-    app.use('/api/', limiter);
-    console.log('⚠️ IP-based rate limiting enabled (Redis not available, production mode)');
-  }
-} else {
-  console.log('Rate limiting disabled (development mode)');
-}
+// Rate limiting - Hardened Redis-based rolling window (supports 5000+ users)
+// Role-based tiered limits with automatic fail-open if Redis is unavailable
+const { tieredUserRateLimit } = await import('./shared/middleware/redisRateLimit.js');
+app.use('/api/', tieredUserRateLimit);
+console.log('✅ Hardened Redis-based tiered rate limiting enabled (role-based)');
 
 // Strict rate limiting for sensitive endpoints (OTP, login, etc.)
 app.use('/api/auth/send-otp', strictRateLimit);
@@ -925,14 +911,57 @@ function initializeScheduledTasks() {
   });
 }
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Promise Rejection:', err);
-  // Close server & exit process
-  httpServer.close(() => {
-    process.exit(1);
-  });
+// Handle unhandled errors globally
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  // Graceful shutdown on fatal error
+  gracefulShutdown('uncaughtException');
+});
+
+// Graceful shutdown handling
+function gracefulShutdown(signal) {
+  console.log(`\n🛑 ${signal} received. Starting graceful shutdown...`);
+  
+  // Stop accepting new requests
+  httpServer.close(async () => {
+    console.log('📡 HTTP server closed.');
+    
+    try {
+      // Close database connection
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.connection.close();
+        console.log('📁 MongoDB connection closed.');
+      }
+      
+      // Close Redis connection
+      const redisClient = getRedisClient();
+      if (redisClient && redisClient.isOpen) {
+        await redisClient.quit();
+        console.log('🧠 Redis connection closed.');
+      }
+      
+      console.log('👋 Graceful shutdown complete.');
+      process.exit(0);
+    } catch (err) {
+      console.error('❌ Error during graceful shutdown:', err);
+      process.exit(1);
+    }
+  });
+
+  // Force shutdown after 10 seconds if graceful shutdown fails
+  setTimeout(() => {
+    console.error('⚠️ Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 10000);
+}
+
+// OS signals for shutdown
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;
 

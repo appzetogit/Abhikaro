@@ -444,7 +444,7 @@ export default function Home() {
     }
 
     pollAndMaybeSchedule()
-    const intervalId = setInterval(pollAndMaybeSchedule, 10_000)
+    const intervalId = setInterval(pollAndMaybeSchedule, 60_000) // Poll every 1 minute instead of 10 seconds to reduce load
 
     return () => {
       cancelled = true

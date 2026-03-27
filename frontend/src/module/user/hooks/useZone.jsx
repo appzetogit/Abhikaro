@@ -26,6 +26,7 @@ export function useZone(location) {
     return R * c
   }
 
+  const isRequestInProgress = useRef(false)
   const isAbortLikeError = (err) => {
     if (!err) return false
     return (
@@ -39,14 +40,17 @@ export function useZone(location) {
 
   // Detect zone when location is available
   const detectZone = useCallback(async (lat, lng) => {
-    if (!lat || !lng) {
-      setZoneStatus('OUT_OF_SERVICE')
-      setZoneId(null)
-      setZone(null)
+    if (!lat || !lng || isRequestInProgress.current) {
+      if (!lat || !lng) {
+        setZoneStatus('OUT_OF_SERVICE')
+        setZoneId(null)
+        setZone(null)
+      }
       return
     }
 
     try {
+      isRequestInProgress.current = true
       setLoading(true)
       setError(null)
 
@@ -94,6 +98,7 @@ export function useZone(location) {
         setZoneStatus('IN_SERVICE')
       }
     } finally {
+      isRequestInProgress.current = false
       setLoading(false)
     }
   }, [])

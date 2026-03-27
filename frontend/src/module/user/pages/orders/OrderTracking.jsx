@@ -382,9 +382,9 @@ export default function OrderTracking() {
       currentPhase === 'at_pickup' ||
       currentPhase === 'en_route_to_delivery';
 
-    // If delivery partner is assigned, reduce polling frequency to 45 seconds (increased from 30s)
-    // If not assigned, poll every 10 seconds to detect assignment (increased from 5s)
-    const pollInterval = hasDeliveryPartner ? 45000 : 10000;
+    // If delivery partner is assigned, reduce polling frequency to 60 seconds (increased from 45s)
+    // If not assigned, poll every 30 seconds to detect assignment (increased from 10s)
+    const pollInterval = hasDeliveryPartner ? 60000 : 30000;
 
     const interval = setInterval(async () => {
       // Only poll when page is visible to reduce unnecessary requests
