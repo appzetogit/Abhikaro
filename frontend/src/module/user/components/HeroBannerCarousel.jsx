@@ -148,7 +148,7 @@ export default function HeroBannerCarousel({ banners, loading }) {
 
   return (
     <div
-      className="absolute top-0 left-0 right-0 bottom-0 z-0 cursor-grab active:cursor-grabbing overflow-hidden"
+      className="absolute top-0 md:top-16 lg:top-20 left-0 right-0 bottom-0 z-0 cursor-grab active:cursor-grabbing overflow-hidden"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

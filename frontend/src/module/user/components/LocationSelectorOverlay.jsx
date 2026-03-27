@@ -61,7 +61,8 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   const [mapLoading, setMapLoading] = useState(false)
   const mapContainerRef = useRef(null)
   const googleMapRef = useRef(null) // Google Maps instance
-  const greenMarkerRef = useRef(null) // Green marker for address selection
+  // Green marker ref removed - using sticky center pin instead
+  // const greenMarkerRef = useRef(null) 
   const blueDotCircleRef = useRef(null) // Blue dot circle for Google Maps
   const userLocationMarkerRef = useRef(null) // Blue dot marker for user location
   const userLocationAccuracyCircleRef = useRef(null) // Accuracy circle for MapLibre/Mapbox
@@ -81,6 +82,16 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     import('@/lib/utils/googleMapsApiKey.js').then(({ getGoogleMapsApiKey }) => {
       getGoogleMapsApiKey().then(key => {
         setGOOGLE_MAPS_API_KEY(key)
+
+        // Pre-load Google Maps SDK with Places library as soon as we have the key
+        if (key) {
+          const loader = new Loader({
+            apiKey: key,
+            version: "weekly",
+            libraries: ["places"]
+          })
+          loader.load().catch(() => {})
+        }
       })
     })
   }, [])
@@ -226,10 +237,54 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
 
     const timer = setTimeout(async () => {
       try {
-        const response = await locationAPI.getNearbyLocations(baseLat, baseLng, 3000, query)
-        if (requestId !== searchRequestIdRef.current) return
+        let locations = []
+        
+        // Try Google Places Autocomplete first
+        if (window.google && window.google.maps && window.google.maps.places && GOOGLE_MAPS_API_KEY) {
+          try {
+            const autocompleteService = new window.google.maps.places.AutocompleteService()
+            const response = await new Promise((resolve) => {
+              autocompleteService.getPlacePredictions({
+                input: query,
+                locationBias: { radius: 50000, center: { lat: baseLat, lng: baseLng } }, // 50km bias
+                componentRestrictions: { country: 'in' }
+              }, (predictions, status) => {
+                if (status === "OK" && predictions) {
+                  resolve(predictions)
+                } else {
+                  resolve([])
+                }
+              })
+            })
 
-        const locations = response?.data?.data?.locations || []
+            locations = response.map((p, idx) => {
+              const mainText = p.structured_formatting?.main_text || p.description.split(',')[0]
+              const secondaryText = p.structured_formatting?.secondary_text || ""
+              
+              // Include sub-locality in name if mainText is very short or generic
+              const name = (mainText.length < 4 && secondaryText) 
+                ? `${mainText}, ${secondaryText.split(',')[0]}` 
+                : mainText
+
+              return {
+                id: p.place_id || `p_${idx}`,
+                name: name,
+                address: p.description || secondaryText || "", // Google full description
+                isGoogle: true
+              }
+            })
+          } catch (googleError) {
+          }
+        }
+
+        // Fallback to backend Nominatim if Google found nothing OR is unavailable
+        if (locations.length === 0) {
+          const response = await locationAPI.getNearbyLocations(baseLat, baseLng, 5000, query)
+          if (requestId !== searchRequestIdRef.current) return
+          locations = response?.data?.data?.locations || []
+        }
+
+        if (requestId !== searchRequestIdRef.current) return
         setSearchResults(Array.isArray(locations) ? locations : [])
       } catch (error) {
         if (requestId !== searchRequestIdRef.current) return
@@ -243,7 +298,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     }, 350)
 
     return () => clearTimeout(timer)
-  }, [searchValue, location?.latitude, location?.longitude, mapPosition])
+  }, [searchValue, location?.latitude, location?.longitude, mapPosition?.[0], mapPosition?.[1], GOOGLE_MAPS_API_KEY])
 
   // Global error suppression for legacy map SDK errors (runs on component mount)
   useEffect(() => {
@@ -408,6 +463,11 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       return
     }
 
+    // Check if map is already initialized to prevent re-creation on GPS updates
+    if (googleMapRef.current && showAddressForm) {
+      return
+    }
+
     let isMounted = true
     setMapLoading(true)
 
@@ -416,6 +476,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         const loader = new Loader({
           apiKey: GOOGLE_MAPS_API_KEY,
           version: "weekly",
+          libraries: ["places"]
         })
 
         const google = await loader.load()
@@ -441,29 +502,18 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
 
         googleMapRef.current = map
 
-        // Create Green Marker (draggable for address selection)
-        const greenMarker = new google.maps.Marker({
-          position: initialLocation,
-          map: map,
-          icon: {
-            url: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
-            scaledSize: new google.maps.Size(40, 40),
-            anchor: new google.maps.Point(20, 40)
-          },
-          draggable: true,
-          title: "Drag to select location"
-        })
 
-        greenMarkerRef.current = greenMarker
+        // Handle map move: Update address when map stops moving
+        google.maps.event.addListener(map, 'idle', () => {
+          const center = map.getCenter();
+          const lat = center.lat();
+          const lng = center.lng();
+          setMapPosition([lat, lng]);
+          handleMapMoveEnd(lat, lng);
+        });
 
-        // Handle marker drag - update address
-        google.maps.event.addListener(greenMarker, 'dragend', function () {
-          const newPos = greenMarker.getPosition()
-          const newLat = newPos.lat()
-          const newLng = newPos.lng()
-          setMapPosition([newLat, newLng])
-          handleMapMoveEnd(newLat, newLng)
-        })
+        // Initialize address for the starting position
+        handleMapMoveEnd(initialLocation.lat, initialLocation.lng);
 
         // Function to create/update blue dot and accuracy circle
         const createBlueDotWithCircle = (position, accuracyValue) => {
@@ -621,9 +671,11 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         watchPositionIdRef.current = null
       }
       // Cleanup markers
+      /* greenMarkerRef removed
       if (greenMarkerRef.current) {
         greenMarkerRef.current.setMap(null)
       }
+      */
       if (userLocationMarkerRef.current) {
         try {
           userLocationMarkerRef.current.setMap(null)
@@ -860,9 +912,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             googleMapRef.current.panTo({ lat: locationData.latitude, lng: locationData.longitude })
             googleMapRef.current.setZoom(17)
 
-            if (greenMarkerRef.current) {
-              greenMarkerRef.current.setPosition({ lat: locationData.latitude, lng: locationData.longitude })
-            }
+            /* Green marker position update removed - center-aligned pin used instead */
 
             // Fetch detailed address using Places API
             setTimeout(async () => {
@@ -938,18 +988,59 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   }
 
   const handleSearchResultSelect = async (result) => {
-    const lat = parseFloat(result?.latitude)
-    const lng = parseFloat(result?.longitude)
+    let lat = parseFloat(result?.latitude)
+    let lng = parseFloat(result?.longitude)
+
+    // Handle Google Places Results (they don't have lat/lng directly)
+    if (result.isGoogle && window.google && window.google.maps) {
+      setSearchLoading(true)
+      try {
+        const geocoder = new window.google.maps.Geocoder()
+        const geocodeResult = await new Promise((resolve, reject) => {
+          geocoder.geocode({ placeId: result.id }, (results, status) => {
+            if (status === "OK" && results && results[0]) {
+              resolve(results[0])
+            } else {
+              reject(new Error("Geocoding failed: " + status))
+            }
+          })
+        })
+
+        if (geocodeResult && geocodeResult.geometry && geocodeResult.geometry.location) {
+          lat = geocodeResult.geometry.location.lat()
+          lng = geocodeResult.geometry.location.lng()
+        }
+      } catch (err) {
+        toast.error("Could not find exact location for this place.")
+        setSearchLoading(false)
+        return
+      }
+      setSearchLoading(false)
+    }
 
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
       toast.error("Invalid location selected")
       return
     }
+    // Move map to the search result (sticky pin stays at center)
+    if (googleMapRef.current && window.google && window.google.maps) {
+      try {
+        googleMapRef.current.panTo({ lat, lng })
+        googleMapRef.current.setZoom(17)
+      } catch (mapError) {
+        console.error("Error moving map:", mapError)
+      }
+    }
 
     setMapPosition([lat, lng])
-    setCurrentAddress(result?.address || result?.name || "")
+    setCurrentAddress(result?.address || result?.name || "Locating...")
     setSearchValue(result?.address || result?.name || "")
     setShowSearchResults(false)
+
+    // Trigger reverse geocode for this exact spot to get full House/Nagar details
+    setTimeout(() => {
+      handleMapMoveEnd(lat, lng)
+    }, 500)
 
     setAddressFormData(prev => ({
       ...prev,
@@ -1464,8 +1555,6 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
 
       setLoadingAddress(true)
       try {
-
-        // Use backend location API (OLA Maps / fallback) for complete address details
         let formattedAddress = ""
         let city = ""
         let state = ""
@@ -1475,45 +1564,159 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         let postalCode = ""
         let pointOfInterest = ""
         let premise = ""
+        let building = ""
 
-        try {
-          // Always use backend reverse geocode to avoid direct Google billing
-          const response = await locationAPI.reverseGeocode(roundedLat, roundedLng)
-          const backendData = response?.data?.data
-          const result = backendData?.results?.[0] || backendData?.result?.[0] || null
+        // Try Google Maps Geocoding first (much more detailed for India)
+        let googleSuccess = false
+        if (window.google && window.google.maps && GOOGLE_MAPS_API_KEY) {
+          try {
+            const geocoder = new window.google.maps.Geocoder()
+            const response = await new Promise((resolve, reject) => {
+              geocoder.geocode({ location: { lat: roundedLat, lng: roundedLng } }, (results, status) => {
+                if (status === "OK" && results && results[0]) {
+                  resolve(results[0])
+                } else {
+                  reject(new Error("Google geocoding failed: " + status))
+                }
+              })
+            })
 
-          if (result) {
-            formattedAddress = result.formatted_address || result.formattedAddress || ""
-            const addressComponents = result.address_components || {}
-            city = addressComponents.city || ""
-            state = addressComponents.state || ""
-            area = addressComponents.area || ""
-            // Optional extra fields if backend provides them
-            street = addressComponents.street || street
-            streetNumber = addressComponents.streetNumber || streetNumber
-            postalCode = addressComponents.postalCode || postalCode
-            pointOfInterest = addressComponents.pointOfInterest || pointOfInterest
-            premise = addressComponents.premise || premise
+            if (response) {
+              formattedAddress = response.formatted_address || ""
+              const components = response.address_components || []
+              
+              // Extract components accurately from Google
+              const getComp = (type) => components.find(c => c.types.includes(type))?.long_name || ""
+              
+              streetNumber = getComp("street_number") || getComp("subpremise") || getComp("premise")
+              street = getComp("route") || getComp("sublocality_level_2")
+              const neighborhood = getComp("neighborhood") || getComp("sublocality_level_1")
+              const sublocality = getComp("sublocality")
+              city = getComp("locality") || getComp("administrative_area_level_2")
+              state = getComp("administrative_area_level_1")
+              postalCode = getComp("postal_code")
+              pointOfInterest = getComp("point_of_interest") || getComp("establishment")
+              premise = getComp("premise")
+              area = neighborhood || sublocality || ""
+              
+              // Build custom detailed address for India: "House/Building, Gali/Street, Nagar/Colony, City"
+              const detailParts = []
+              
+              // 1. House Number / Building
+              const houseAndBuilding = [streetNumber, premise || pointOfInterest].filter(Boolean).join(', ')
+              if (houseAndBuilding) detailParts.push(houseAndBuilding)
+              
+              // 2. Street / Road
+              if (street && !houseAndBuilding.toLowerCase().includes(street.toLowerCase())) {
+                detailParts.push(street)
+              }
+              
+              // 3. Nagar / Sublocality (Crucial for user)
+              // Filter out generic administrative terms like "Nagar Tahsil"
+              const nagar = (neighborhood || sublocality || area || "").replace(/\s+Nagar Tahsil/i, '').trim()
+              if (nagar && nagar.length > 2 && !detailParts.some(p => p.toLowerCase().includes(nagar.toLowerCase()))) {
+                detailParts.push(nagar)
+              }
+              
+              // 4. District / City
+              const cityClean = (city || "").replace(/\s+Nagar Tahsil/i, '').trim()
+              if (cityClean && !detailParts.some(p => p.toLowerCase().includes(cityClean.toLowerCase()))) {
+                detailParts.push(cityClean)
+              }
+
+              // Combine detailed parts
+              if (detailParts.length > 0) {
+                // If we have specific details, use our custom string for the start
+                const baseInfo = detailParts.join(', ')
+                // Add pincode if available
+                formattedAddress = baseInfo + (postalCode ? `, ${postalCode}` : '')
+              }
+              
+              googleSuccess = true
+            }
+          } catch (googleError) {
           }
-        } catch (backendError) {
+        }
+
+        // If Google failed or not available, fallback to backend Nominatim API
+        if (!googleSuccess) {
+          try {
+            // Always use backend reverse geocode to avoid direct Google billing
+            const response = await locationAPI.reverseGeocode(roundedLat, roundedLng)
+            const backendData = response?.data?.data
+            const result = backendData?.results?.[0] || backendData?.result?.[0] || null
+
+            if (result) {
+              formattedAddress = result.formatted_address || result.formattedAddress || ""
+              const addressComponents = result.address_components || {}
+              city = addressComponents.city || ""
+              state = addressComponents.state || ""
+              area = addressComponents.area || addressComponents.suburb || addressComponents.neighbourhood || ""
+              // Optional extra fields if backend provides them
+              street = addressComponents.road || addressComponents.street || street
+              streetNumber = addressComponents.houseNumber || addressComponents.streetNumber || streetNumber
+              postalCode = addressComponents.postcode || addressComponents.postalCode || postalCode
+              pointOfInterest = addressComponents.building || addressComponents.landmark || addressComponents.pointOfInterest || pointOfInterest
+              premise = addressComponents.premise || ""
+              
+              // Reconstruct a more detailed address if possible (In India, specific to general)
+              const addressParts = []
+              
+              // 1. Building/House Name/Number
+              const houseInfo = [addressComponents.houseNumber, building || pointOfInterest].filter(Boolean).join(', ')
+              if (houseInfo) addressParts.push(houseInfo)
+              
+              // 2. Street/Road
+              if (street && !houseInfo.includes(street)) addressParts.push(street)
+              
+              // 3. Sublocality/Neighborhood (Nagar/Colony)
+              const sublocality = addressComponents.neighbourhood || addressComponents.suburb || addressComponents.sublocality || ""
+              if (sublocality && !addressParts.some(p => p.includes(sublocality))) addressParts.push(sublocality)
+              
+              // 4. Area (fallback if different from sublocality)
+              if (area && !addressParts.some(p => p.includes(area))) addressParts.push(area)
+              
+              // Combine these parts for a highly detailed base
+              const detailedBase = addressParts.join(', ')
+              
+              // If our detailed base is longer or has more info than the first parts of formattedAddress, let's use it
+              if (detailedBase && formattedAddress) {
+                const formattedParts = formattedAddress.split(',').map(p => p.trim())
+                // If the first part of formattedAddress is just the city or general area, replace it with our detailed base
+                if (formattedParts.length > 0 && (formattedParts[0] === city || formattedParts[0] === area || formattedParts[0].length < 5)) {
+                  // Keep the rest of formattedAddress (city, state, etc)
+                  const restOfAddress = formattedParts.slice(1).join(', ')
+                  formattedAddress = detailedBase + (restOfAddress ? ', ' + restOfAddress : '')
+                } else if (!formattedAddress.includes(detailedBase.split(',')[0])) {
+                  // If the detailed base isn't in there, prepend it if it's not redundant
+                  formattedAddress = detailedBase + ', ' + formattedAddress
+                }
+              } else if (detailedBase) {
+                // Fallback if formattedAddress is missing
+                const tail = [city, state, postalCode].filter(Boolean).join(', ')
+                formattedAddress = detailedBase + (tail ? ', ' + tail : '')
+              }
+            }
+          } catch (backendError) {
+          }
         }
 
         if (formattedAddress || city || state) {
-          // Build complete address if we have components
+          // Build complete address if we have components (already done above, but keeping fallback)
           if (!formattedAddress || formattedAddress.split(',').length < 3) {
-            // Build from components
-            const addressParts = []
-            if (pointOfInterest) addressParts.push(pointOfInterest)
-            if (premise && premise !== pointOfInterest) addressParts.push(premise)
-            if (streetNumber && street) addressParts.push(`${streetNumber} ${street}`)
-            else if (street) addressParts.push(street)
-            else if (area) addressParts.push(area)
-            if (city) addressParts.push(city)
+            // Build from components (fallback)
+            const fallbackParts = []
+            if (pointOfInterest) fallbackParts.push(pointOfInterest)
+            if (premise && premise !== pointOfInterest) fallbackParts.push(premise)
+            const st = (streetNumber ? `${streetNumber}, ` : '') + (street || '')
+            if (st) fallbackParts.push(st)
+            if (area) fallbackParts.push(area)
+            if (city) fallbackParts.push(city)
             if (state) {
-              if (postalCode) addressParts.push(`${state} ${postalCode}`)
-              else addressParts.push(state)
+              if (postalCode) fallbackParts.push(`${state} ${postalCode}`)
+              else fallbackParts.push(state)
             }
-            formattedAddress = addressParts.join(', ')
+            formattedAddress = fallbackParts.join(', ')
           }
 
           // Set street from formatted address if not set
@@ -1651,10 +1854,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           googleMapRef.current.panTo({ lat, lng })
           googleMapRef.current.setZoom(17)
 
-          // Update green marker position
-          if (greenMarkerRef.current) {
-            greenMarkerRef.current.setPosition({ lat, lng })
-          }
+          /* Green marker position update removed - center-aligned pin used instead */
 
           // Update blue dot marker position
           if (userLocationMarkerRef.current) {
@@ -1746,10 +1946,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                   googleMapRef.current.panTo({ lat: cachedLocation.latitude, lng: cachedLocation.longitude });
                   googleMapRef.current.setZoom(17);
 
-                  // Update markers
-                  if (greenMarkerRef.current) {
-                    greenMarkerRef.current.setPosition({ lat: cachedLocation.latitude, lng: cachedLocation.longitude });
-                  }
+                  /* Green marker position update removed - center-aligned pin used instead */
                   if (blueDotCircleRef.current) {
                     blueDotCircleRef.current.setCenter({ lat: cachedLocation.latitude, lng: cachedLocation.longitude });
                   }
@@ -1889,6 +2086,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       label: "Home",
       phone: "",
     })
+    onClose() // Ensure the overlay is closed
     navigate("/")
   }
 
@@ -1945,10 +2143,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           googleMapRef.current.panTo({ lat: latitude, lng: longitude })
           googleMapRef.current.setZoom(17)
 
-          // Update green marker position
-          if (greenMarkerRef.current) {
-            greenMarkerRef.current.setPosition({ lat: latitude, lng: longitude })
-          }
+          /* Green marker position update removed - center-aligned pin used instead */
 
           // Fetch and update address details
           setTimeout(async () => {
@@ -2030,11 +2225,46 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             <Input
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
+              onFocus={() => setShowSearchResults(true)}
               placeholder="Search for area, street name..."
               className="pl-12 pr-4 h-12 w-full bg-gray-50 dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-700 focus:border-green-600 dark:focus:border-green-600 rounded-xl"
             />
           </div>
         </div>
+
+        {/* Search Results List (Overlays or pushes map) */}
+        {showSearchResults && searchValue.trim().length >= 3 && (
+          <div className="flex-shrink-0 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-gray-800 max-h-64 overflow-y-auto z-50">
+            {searchLoading ? (
+              <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                Searching addresses...
+              </div>
+            ) : searchError ? (
+              <div className="px-4 py-3 text-sm text-red-500">
+                {searchError}
+              </div>
+            ) : searchResults.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                No addresses found
+              </div>
+            ) : (
+              searchResults.map((result) => (
+                <button
+                  key={result.id}
+                  onClick={() => handleSearchResultSelect(result)}
+                  className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 border-t border-gray-100 dark:border-gray-800 first:border-t-0"
+                >
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                    {result.name || "Selected location"}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {result.address}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        )}
 
         {/* Map Section - Google Maps */}
         <div className="flex-shrink-0 relative" style={{ height: '40vh', minHeight: '300px' }}>
@@ -2052,6 +2282,21 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
               zIndex: 1
             }}
           />
+
+          {/* Sticky Centered Pin */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[calc(100%-2px)] z-10 pointer-events-none mb-0 flex flex-col items-center">
+            <div className="relative group">
+              {/* Green Pin Head */}
+              <div className="relative mb-0.5">
+                <MapPin 
+                  className="h-10 w-10 text-green-600 fill-green-600 drop-shadow-xl z-20" 
+                  strokeWidth={2.5} 
+                />
+              </div>
+              {/* Point Indicator/Shadow on Map */}
+              <div className="w-1.5 h-1.5 bg-green-800 rounded-full mx-auto shadow-inner ring-1 ring-white/50"></div>
+            </div>
+          </div>
 
           {/* Loading State */}
           {mapLoading && (
@@ -2251,7 +2496,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                 <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                   {result.name || "Selected location"}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
                   {result.address}
                 </p>
                 {result.distance && (

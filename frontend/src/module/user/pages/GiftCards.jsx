@@ -123,7 +123,7 @@ export default function GiftCards() {
         
         {/* Help Button */}
         <Link 
-          to="/user/help"
+          to="/help"
           className="absolute top-4 right-4 z-10 flex items-center gap-1.5 text-white font-medium text-sm"
         >
           <HelpCircle className="h-4 w-4" />

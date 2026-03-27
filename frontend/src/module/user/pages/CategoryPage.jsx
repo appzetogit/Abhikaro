@@ -1673,7 +1673,7 @@ export default function CategoryPage() {
           }
         }
       `}</style>
-      <AddToCartAnimation linkTo="/user/cart" bottomOffset={140} />
+      <AddToCartAnimation linkto="/cart" bottomOffset={140} />
     </div>
   )
 }

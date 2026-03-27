@@ -11,7 +11,7 @@ import {
 } from "./controllers/restaurantFinanceController.js";
 import { getWallet, getWalletTransactions, getWalletStats } from './controllers/restaurantWalletController.js';
 import { createWithdrawalRequest, getRestaurantWithdrawalRequests } from './controllers/withdrawalController.js';
-import { getMenu, updateMenu, getMenuByRestaurantId, addSection, addItemToSection, addSubsectionToSection, addItemToSubsection, addAddon, getAddons, getAddonsByRestaurantId, updateAddon, deleteAddon, deleteMenuItem } from './controllers/menuController.js';
+import { getMenu, updateMenu, getMenuByRestaurantId, getBulkMenus, addSection, addItemToSection, addSubsectionToSection, addItemToSubsection, addAddon, getAddons, getAddonsByRestaurantId, updateAddon, deleteAddon, deleteMenuItem } from './controllers/menuController.js';
 import { scheduleItemAvailability, cancelScheduledAvailability, getItemSchedule } from './controllers/menuScheduleController.js';
 import { getInventory, updateInventory, getInventoryByRestaurantId } from './controllers/inventoryController.js';
 import { addStaff, getStaff, getStaffById, updateStaff, deleteStaff } from './controllers/staffManagementController.js';
@@ -124,6 +124,7 @@ router.patch('/dining-menu/items', authenticate, updateDiningMenuItem);
 // Restaurant routes (public - for user module)
 router.get('/list', getRestaurants);
 router.get('/under-250', getRestaurantsWithDishesUnder250);
+router.get('/bulk-menus', getBulkMenus);
 // Menu and inventory routes must come before /:id to avoid route conflicts
 router.get('/:restaurantId/offers/item/:itemId/coupons', getCouponsByItemIdPublic);
 router.get('/:restaurantId/outlet-timings', getOutletTimingsByRestaurantId);

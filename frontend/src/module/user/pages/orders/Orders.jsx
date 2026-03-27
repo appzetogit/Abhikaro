@@ -495,7 +495,7 @@ Order again from this restaurant in the ${companyName} app.`
     return (
       <div className="min-h-screen bg-gray-50 pb-10">
         <div className="bg-white px-4 pb-4 pt-8 flex items-center shadow-sm sticky top-0 z-10">
-          <Link to="/user">
+          <Link to="/">
             <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
           </Link>
           <h1 className="ml-4 text-xl font-semibold text-gray-800">Your Orders</h1>
@@ -511,14 +511,14 @@ Order again from this restaurant in the ${companyName} app.`
     return (
       <div className="min-h-screen bg-gray-50 pb-10">
         <div className="bg-white px-4 pb-4 pt-8 flex items-center shadow-sm sticky top-0 z-10">
-          <Link to="/user">
+          <Link to="/">
             <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
           </Link>
           <h1 className="ml-4 text-xl font-semibold text-gray-800">Your Orders</h1>
         </div>
         <div className="px-4 py-8 text-center">
           <p className="text-gray-600">You haven't placed any orders yet</p>
-          <Link to="/user">
+          <Link to="/">
             <button className="mt-4 text-red-500 font-medium">Start Ordering</button>
           </Link>
         </div>
@@ -530,7 +530,7 @@ Order again from this restaurant in the ${companyName} app.`
     <div className="min-h-screen bg-gray-50 pb-10 font-sans">
       {/* Header */}
       <div className="bg-white px-4 pb-4 pt-8 flex items-center shadow-sm sticky top-0 z-10">
-        <Link to="/user">
+        <Link to="/">
           <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
         </Link>
         <h1 className="ml-4 text-xl font-semibold text-gray-800">Your Orders</h1>

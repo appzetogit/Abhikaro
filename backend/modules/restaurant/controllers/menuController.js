@@ -1151,3 +1151,48 @@ export const deleteAddon = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Get bulk menus for multiple restaurants (public - for user discovery)
+ * Helps reduce the number of parallel requests from client (N+1 issue)
+ */
+export const getBulkMenus = asyncHandler(async (req, res) => {
+  const { ids } = req.query; // Comma-separated list of restaurantIds/mongoIds
+
+  if (!ids || typeof ids !== 'string' || ids.trim() === '') {
+    return successResponse(res, 200, 'Empty bulk menus response', { menus: [] });
+  }
+
+  const restaurantIds = ids.split(',').filter(id => id.trim() !== '');
+  
+  // Use a map to store menus by restaurantId for efficiency
+  const orConditions = restaurantIds.map(id => {
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      return { restaurant: new mongoose.Types.ObjectId(id) };
+    }
+    return { restaurantId: id }; // Handle legacy restaurantId field
+  });
+
+  // Find all menus for these restaurants in one query
+  const menus = await Menu.find({
+    $or: orConditions,
+    isActive: true
+  }).select('restaurant restaurantId sections.name sections.items.name sections.items.price sections.items.originalPrice sections.items.discountPercent sections.items.image sections.items.category sections.items.approvalStatus sections.items.isAvailable sections.subsections.name sections.subsections.items.name sections.subsections.items.price sections.subsections.items.image sections.subsections.items.category sections.subsections.items.approvalStatus sections.subsections.items.isAvailable')
+  .lean();
+
+  // Return limited data to keep response size manageable for bulk results
+  return successResponse(res, 200, 'Bulk menus retrieved successfully', { 
+    menus: menus.map(menu => ({
+      restaurant: menu.restaurant,
+      restaurantId: menu.restaurantId,
+      sections: (menu.sections || []).map(section => ({
+        name: section.name,
+        items: (section.items || []).filter(i => i.isAvailable !== false && (i.approvalStatus === 'approved' || !i.approvalStatus)),
+        subsections: (section.subsections || []).map(ss => ({
+          name: ss.name,
+          items: (ss.items || []).filter(i => i.isAvailable !== false && (i.approvalStatus === 'approved' || !i.approvalStatus))
+        }))
+      }))
+    }))
+  });
+});
+

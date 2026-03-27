@@ -22,7 +22,7 @@ export default function OrderInvoice() {
       <AnimatedPage className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] p-4">
         <div className="max-w-4xl mx-auto text-center py-20">
           <h1 className="text-lg sm:text-xl md:text-2xl font-bold mb-4">Order Not Found</h1>
-          <Link to="/user/orders">
+          <Link to="/orders">
             <Button>Back to Orders</Button>
           </Link>
         </div>
@@ -281,7 +281,7 @@ export default function OrderInvoice() {
                 Track Order
               </Button>
             </Link>
-            <Link to="/user/orders" className="flex-1">
+            <Link to="/orders" className="flex-1">
               <Button variant="outline" className="w-full text-sm sm:text-base h-10 sm:h-11">
                 Back to Orders
               </Button>

@@ -1208,7 +1208,7 @@ export default function OrderTracking() {
         <div className="max-w-lg mx-auto text-center py-20">
           <h1 className="text-lg sm:text-xl md:text-2xl font-bold mb-4">Order Not Found</h1>
           <p className="text-gray-600 mb-6">{error || 'The order you\'re looking for doesn\'t exist.'}</p>
-          <Link to="/user/orders">
+          <Link to="/orders">
             <Button>Back to Orders</Button>
           </Link>
         </div>
@@ -1303,7 +1303,7 @@ export default function OrderTracking() {
         >
            {/* Navigation bar */}
            <div className="flex items-center px-4 pt-7 pb-3 relative">
-             <Link to="/user/orders" className="absolute left-4">
+             <Link to="/orders" className="absolute left-4">
                <motion.button
                  className="w-10 h-10 flex items-center justify-center"
                  whileTap={{ scale: 0.9 }}

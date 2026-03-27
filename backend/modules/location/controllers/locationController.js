@@ -249,7 +249,7 @@ export const reverseGeocode = async (req, res) => {
 
     const addr = data.address || {};
 
-    const city =
+    let city =
       addr.city ||
       addr.town ||
       addr.village ||
@@ -257,9 +257,9 @@ export const reverseGeocode = async (req, res) => {
       addr.municipality ||
       addr.county ||
       "";
-    const state = addr.state || "";
-    const country = addr.country || "";
-    const area =
+    let state = addr.state || "";
+    let country = addr.country || "";
+    let area =
       addr.suburb ||
       addr.neighbourhood ||
       addr.quarter ||
@@ -267,9 +267,13 @@ export const reverseGeocode = async (req, res) => {
       addr.village ||
       addr.hamlet ||
       "";
-    const road = addr.road || addr.street || addr.residential || "";
-    const building = addr.building || addr.amenity || addr.shop || "";
-    const postcode = addr.postcode || "";
+    let road = addr.road || addr.street || addr.residential || "";
+    let building = addr.building || addr.amenity || addr.shop || addr.house_name || "";
+    let houseNumber = addr.house_number || "";
+    let postcode = addr.postcode || "";
+    let suburb = addr.suburb || "";
+    let neighbourhood = addr.neighbourhood || "";
+    let cityDistrict = addr.city_district || "";
 
     let formattedAddress = data.display_name || "";
 
@@ -315,14 +319,19 @@ export const reverseGeocode = async (req, res) => {
       }
     }
 
+    // Enhance derivedArea with neighborhood/suburb if missing
+    if (!derivedArea && (neighbourhood || suburb)) {
+      derivedArea = neighbourhood || suburb;
+    }
+
     // If city looks like only a small village/area, try to find nearest town/city
     let nearestTownName = null;
     try {
       const shouldLookupNearestTown =
         !city ||
-        (area &&
+        (derivedArea &&
           city &&
-          city.toLowerCase() === area.toLowerCase());
+          city.toLowerCase() === derivedArea.toLowerCase());
 
       if (shouldLookupNearestTown) {
         nearestTownName = await findNearestTown(latNum, lngNum);
@@ -348,6 +357,10 @@ export const reverseGeocode = async (req, res) => {
             area: derivedArea,
             road: road,
             building: building,
+            houseNumber: houseNumber,
+            suburb: suburb,
+            neighbourhood: neighbourhood,
+            cityDistrict: cityDistrict,
             postcode: postcode,
             nearestTown: nearestTownName || "",
           },

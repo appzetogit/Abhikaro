@@ -239,7 +239,7 @@ export default function Help() {
         {/* Quick Actions */}
         <ScrollReveal delay={0.2}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5 lg:gap-6">
-            <Link to="/user/orders">
+            <Link to="/orders">
                 <CardContent className="p-4 md:p-5 lg:p-6">
                   <div className="flex items-center gap-3 md:gap-4">
                     <div className="p-2 md:p-3 bg-yellow-100 rounded-lg">
@@ -252,7 +252,7 @@ export default function Help() {
                   </div>
                 </CardContent>
             </Link>
-            <Link to="/user/profile">
+            <Link to="/profile">
                 <CardContent className="p-4 md:p-5 lg:p-6">
                   <div className="flex items-center gap-3 md:gap-4">
                     <div className="p-2 md:p-3 bg-blue-100 rounded-lg">

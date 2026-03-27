@@ -73,7 +73,7 @@ export default function CollectionDetail() {
             <CardContent className="py-12 text-center">
               <Heart className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
               <p className="text-muted-foreground text-lg mb-4">This collection is empty</p>
-              <Link to="/user">
+              <Link to="/">
                 <Button className="bg-gradient-to-r bg-primary-orange hover:opacity-90 text-white">
                   Explore Restaurants
                 </Button>

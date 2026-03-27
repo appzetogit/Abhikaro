@@ -180,6 +180,7 @@ export const API_ENDPOINTS = {
     STAFF: "/restaurant/staff",
     MENU: "/restaurant/menu",
     MENU_BY_RESTAURANT_ID: "/restaurant/:id/menu",
+    BULK_MENUS: "/restaurant/bulk-menus",
     ADDONS_BY_RESTAURANT_ID: "/restaurant/:id/addons",
     MENU_ITEM_SCHEDULE: "/restaurant/menu/item/schedule",
     MENU_ITEM_SCHEDULE_BY_ID: "/restaurant/menu/item/schedule/:scheduleId",

@@ -990,7 +990,7 @@ export default function PageNavbar({
         {/* Right: Actions - Hidden on desktop, shown on mobile */}
         <div className="flex md:hidden items-center gap-2 sm:gap-3 flex-shrink-0">
           {/* Wallet Icon */}
-          <Link to="/user/wallet">
+          <Link to="/wallet">
             <Button
               variant="ghost"
               size="icon"
@@ -1004,7 +1004,7 @@ export default function PageNavbar({
           </Link>
 
           {/* Cart Icon */}
-          <Link to="/user/cart">
+          <Link to="/cart">
             <Button
               variant="ghost"
               size="icon"

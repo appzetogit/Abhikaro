@@ -304,68 +304,64 @@ export default function SearchResults() {
               }
             })
           
-          // Fetch menus for all restaurants in parallel
-          const menuPromises = restaurantsWithIds.map(async (restaurant) => {
-            try {
-              const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurant.restaurantId)
-              if (menuResponse.data && menuResponse.data.success && menuResponse.data.data && menuResponse.data.data.menu) {
-                const menu = menuResponse.data.data.menu
-                
-                // Store menu data for dynamic filtering
-                const hasPaneer = checkCategoryInMenu(menu, 'paneer-tikka')
-                
-                // Get featured dish and price from menu if not set in restaurant
-                let featuredDish = restaurant.featuredDish
-                let featuredPrice = restaurant.featuredPrice
-                
-                // If featured dish/price not set, get from first available menu item
-                if (!featuredDish || !featuredPrice) {
-                  for (const section of (menu.sections || [])) {
-                    if (section.items && section.items.length > 0) {
-                      const firstItem = section.items[0]
-                      if (!featuredDish) featuredDish = firstItem.name
-                      if (!featuredPrice) {
-                        // Calculate final price considering discounts
-                        const originalPrice = firstItem.originalPrice || firstItem.price || 0
-                        const discountPercent = firstItem.discountPercent || 0
-                        featuredPrice = discountPercent > 0 
-                          ? Math.round(originalPrice * (1 - discountPercent / 100))
-                          : originalPrice
-                      }
-                      break
-                    }
-                  }
-                }
-                
-                return {
-                  ...restaurant,
-                  menu: menu,
-                  hasPaneer: hasPaneer,
-                  featuredDish: featuredDish || null,
-                  featuredPrice: featuredPrice || null,
-                  categoryMatches: {},
-                }
-              }
-              return {
-                ...restaurant,
-                menu: null,
-                hasPaneer: false,
-                categoryMatches: {},
-              }
-            } catch (error) {
-              // If menu fetch fails, keep restaurant without menu data
-              console.warn(`Failed to fetch menu for restaurant ${restaurant.restaurantId}:`, error)
-              return {
-                ...restaurant,
-                menu: null,
-                hasPaneer: false,
-                categoryMatches: {},
-              }
-            }
-          })
+          // Fetch menus for all restaurants in one bulk request to prevent rate limiting (Deep Fix)
+          const restaurantIds = restaurantsWithIds.map(r => r.restaurantId);
+          let transformedRestaurants = restaurantsWithIds;
           
-          // Wait for all menu fetches to complete
-          const transformedRestaurants = await Promise.all(menuPromises)
+          if (restaurantIds.length > 0) {
+            try {
+              const bulkMenusResponse = await restaurantAPI.getBulkMenus(restaurantIds);
+              if (bulkMenusResponse.data?.success && bulkMenusResponse.data?.data?.menus) {
+                const bulkMenus = bulkMenusResponse.data.data.menus;
+                
+                // Map menus back to restaurants
+                transformedRestaurants = restaurantsWithIds.map(restaurant => {
+                  const menu = bulkMenus.find(m => 
+                    String(m.restaurantId) === String(restaurant.restaurantId) || 
+                    String(m.restaurant) === String(restaurant.id)
+                  );
+                  
+                  if (menu) {
+                    const hasPaneer = checkCategoryInMenu(menu, 'paneer-tikka');
+                    
+                    let featuredDish = restaurant.featuredDish;
+                    let featuredPrice = restaurant.featuredPrice;
+                    
+                    if (!featuredDish || !featuredPrice) {
+                      for (const section of (menu.sections || [])) {
+                        const items = section.items || [];
+                        if (items.length > 0) {
+                          if (!featuredDish) featuredDish = items[0].name;
+                          if (!featuredPrice) {
+                            featuredPrice = items[0].price || 0;
+                          }
+                          break;
+                        }
+                      }
+                    }
+                    
+                    return {
+                      ...restaurant,
+                      menu: menu,
+                      hasPaneer: hasPaneer,
+                      featuredDish: featuredDish || null,
+                      featuredPrice: featuredPrice || null,
+                      categoryMatches: {},
+                    };
+                  }
+                  
+                  return {
+                    ...restaurant,
+                    menu: null,
+                    hasPaneer: false,
+                    categoryMatches: {},
+                  };
+                });
+              }
+            } catch (err) {
+              console.error("Failed to fetch bulk menus, falling back to basic data:", err);
+            }
+          }
           
           console.log(`✅ Final transformed restaurants: ${transformedRestaurants.length}`)
           setRestaurantsData(transformedRestaurants)

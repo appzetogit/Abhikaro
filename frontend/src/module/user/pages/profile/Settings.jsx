@@ -11,7 +11,7 @@ export default function Settings() {
     <AnimatedPage className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] p-4">
       <div className="max-w-4xl mx-auto space-y-6 pt-4 sm:pt-5">
         <div className="flex items-center gap-3">
-          <Link to="/user/profile">
+          <Link to="/profile">
             <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
               <ArrowLeft className="h-5 w-5 text-black dark:text-white" />
             </Button>

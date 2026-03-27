@@ -511,6 +511,11 @@ export const restaurantAPI = {
       ),
     );
   },
+  getBulkMenus: (ids) => {
+    return apiClient.get(API_ENDPOINTS.RESTAURANT.BULK_MENUS, {
+      params: { ids: Array.isArray(ids) ? ids.join(",") : ids },
+    });
+  },
 
   // Dining management (restaurant)
   getDiningConfig: () => {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { useParams, useNavigate, useSearchParams } from "react-router-dom"
+import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import { restaurantAPI, diningAPI, adminAPI } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
 import { toast } from "sonner"
@@ -51,6 +51,7 @@ import { isModuleAuthenticated } from "@/lib/utils/auth"
 export default function RestaurantDetails() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
   const dishParam = searchParams.get('dish')
@@ -88,8 +89,10 @@ export default function RestaurantDetails() {
   const [categoryOffers, setCategoryOffers] = useState([])
 
   // Restaurant data state
-  const [restaurant, setRestaurant] = useState(null)
-  const [loadingRestaurant, setLoadingRestaurant] = useState(true)
+  // Check if restaurant data was passed through navigation state for instant loading
+  const stateRestaurant = location.state?.restaurant
+  const [restaurant, setRestaurant] = useState(stateRestaurant || null)
+  const [loadingRestaurant, setLoadingRestaurant] = useState(!stateRestaurant)
   const [restaurantError, setRestaurantError] = useState(null)
   const fetchedRestaurantRef = useRef(false) // Track if restaurant has been fetched for current slug
 
@@ -146,85 +149,45 @@ export default function RestaurantDetails() {
     const fetchRestaurant = async () => {
       if (!slug) return
 
-      // Prevent re-fetching if we've already fetched for this slug and zoneId hasn't changed meaningfully
-      // Only re-fetch if slug changed or if we're waiting for zoneId and it just became available
+      // If we already have the basic restaurant object from state and we've fetched the menu once, skip
       if (fetchedRestaurantRef.current && restaurant && restaurant.slug === slug) {
-        // Only re-fetch if zoneId changed from null to a value (zone just detected)
-        if (zoneId && !loadingZone) {
-          // Zone is available, but we already have restaurant data - don't re-fetch
-          return
-        }
+        return
       }
 
       try {
-        setLoadingRestaurant(true)
+        // Only show loading spinner if we don't even have partial data from Link state
+        if (!restaurant) {
+          setLoadingRestaurant(true)
+        }
         setRestaurantError(null)
 
-        let response = null
         let apiRestaurant = null
+        let rId = restaurant?.id || restaurant?.restaurantId || restaurant?._id
 
-        // Try dining API first
-        try {
-          response = await diningAPI.getRestaurantBySlug(slug)
-          if (response.data && response.data.success && response.data.data) {
-            apiRestaurant = response.data.data
-          }
-        } catch (diningError) {
-          // If dining API fails with 404, try restaurant API
-          if (diningError.response?.status === 404) {
-            try {
-              // First, try to get restaurant directly by slug (getRestaurantById supports both ID and slug)
-              // This doesn't require zoneId, so it works even if zone is not detected
-              try {
-                response = await restaurantAPI.getRestaurantById(slug)
-                if (response.data && response.data.success && response.data.data) {
-                  apiRestaurant = response.data.data
-                }
-              } catch (directLookupError) {
-                // If direct lookup fails, try searching by name (requires zoneId)
-                // Only search if zoneId is available (zoneId is required by backend for search)
-                if (!zoneId) {
-                  // Don't throw error - let it fall through to show "Restaurant not found" message
-                } else {
-                  // Include zoneId for zone-based filtering
-                  const searchParams = { limit: 100, zoneId: zoneId }
-                  const searchResponse = await restaurantAPI.getRestaurants(searchParams)
-                  const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
-
-                  // Try to find by slug match or name match
-                  const restaurantName = slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-                  const matchingRestaurant = restaurants.find(r =>
-                    r.slug === slug ||
-                    r.name?.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase() ||
-                    r.name?.toLowerCase() === restaurantName.toLowerCase()
-                  )
-
-                  if (matchingRestaurant) {
-                    // Get full restaurant details by ID
-                    const fullResponse = await restaurantAPI.getRestaurantById(matchingRestaurant._id || matchingRestaurant.restaurantId)
-                    if (fullResponse.data && fullResponse.data.success && fullResponse.data.data) {
-                      apiRestaurant = fullResponse.data.data
-                    }
-                  }
-                }
-              }
-            } catch (restaurantError) {
-              // Only throw if we haven't found the restaurant yet
-              if (!apiRestaurant) {
-                throw diningError // Throw original error to show "Restaurant not found"
-              }
+        // If we don't have restaurant metadata yet (e.g. direct URL access), fetch it first
+        if (!restaurant || !rId) {
+          try {
+            // Try dining API first
+            const response = await diningAPI.getRestaurantBySlug(slug)
+            if (response.data && response.data.success && response.data.data) {
+              apiRestaurant = response.data.data
             }
-          } else {
-            throw diningError // Re-throw if it's not a 404
+          } catch (diningError) {
+            if (diningError.response?.status === 404) {
+              const directResponse = await restaurantAPI.getRestaurantById(slug)
+              if (directResponse.data && directResponse.data.success) {
+                apiRestaurant = directResponse.data.data
+              }
+            } else {
+              throw diningError
+            }
           }
         }
 
         if (apiRestaurant) {
-          // Check if this is a dining restaurant with nested restaurant data
           let actualRestaurant = apiRestaurant?.restaurant || apiRestaurant
 
-          // Dining slug response can miss live rating aggregates.
-          // Enrich with restaurant endpoint snapshot when possible.
+          // Snapshot enrichment for ratings
           try {
             const ratingSnapshotResp = await restaurantAPI.getRestaurantById(slug)
             const snapshotData = ratingSnapshotResp?.data?.data
@@ -232,459 +195,127 @@ export default function RestaurantDetails() {
             if (snapshotRestaurant && typeof snapshotRestaurant === "object") {
               actualRestaurant = {
                 ...actualRestaurant,
-                averageRating:
-                  snapshotRestaurant.averageRating ?? actualRestaurant.averageRating,
+                averageRating: snapshotRestaurant.averageRating ?? actualRestaurant.averageRating,
                 rating: snapshotRestaurant.rating ?? actualRestaurant.rating,
-                totalRatings:
-                  snapshotRestaurant.totalRatings ?? actualRestaurant.totalRatings,
-                reviewCount:
-                  snapshotRestaurant.reviewCount ?? actualRestaurant.reviewCount,
-                totalReviews:
-                  snapshotRestaurant.totalReviews ?? actualRestaurant.totalReviews,
-                ratingsCount:
-                  snapshotRestaurant.ratingsCount ?? actualRestaurant.ratingsCount,
+                totalRatings: snapshotRestaurant.totalRatings ?? actualRestaurant.totalRatings,
+                reviewCount: snapshotRestaurant.reviewCount ?? actualRestaurant.reviewCount,
+                totalReviews: snapshotRestaurant.totalReviews ?? actualRestaurant.totalReviews,
+                ratingsCount: snapshotRestaurant.ratingsCount ?? actualRestaurant.ratingsCount,
               }
             }
-          } catch {
-            // Keep original dining payload if snapshot call fails.
+          } catch { /* ignore */ }
+
+          // Transformation Logic (Consistent with previous version)
+          const formatAddress = (obj) => {
+            if (!obj) return "Location"
+            if (typeof obj === 'string') return obj
+            const parts = [obj.addressLine1, obj.addressLine2, obj.area, obj.city, obj.state, obj.pincode || obj.zipCode]
+              .filter(p => p && p.toString().trim() !== "")
+            return parts.length >= 2 ? parts.join(', ') : (obj.formattedAddress || obj.address || "Location")
           }
 
-          // Helper function to format address with zone and pin code
-          const formatRestaurantAddress = (locationObj) => {
-            if (!locationObj) return "Location"
-
-            // If location is a string, return it as is
-            if (typeof locationObj === 'string') {
-              return locationObj
-            }
-
-            // PRIORITY 1: Use formattedAddress if it's complete and has pin code
-            // formattedAddress usually has the most complete information from Google Maps
-            if (locationObj.formattedAddress && locationObj.formattedAddress.trim() !== "" && locationObj.formattedAddress !== "Select location") {
-              const isCoordinates = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(locationObj.formattedAddress.trim())
-              if (!isCoordinates) {
-                const formattedAddr = locationObj.formattedAddress.trim()
-                // Check if it contains a pin code (6 digit number)
-                const hasPinCode = /\b\d{6}\b/.test(formattedAddr)
-                // If it has pin code, it's complete - use it directly
-                if (hasPinCode) {
-                  // Clean up the address - remove Google Plus Code if present (e.g., "PV6X+JXX, ")
-                  const cleanedAddr = formattedAddr.replace(/^[A-Z0-9]+\+[A-Z0-9]+,\s*/i, '')
-                  return cleanedAddr
-                }
-                // If it has multiple parts (3+), it's likely complete
-                if (formattedAddr.split(',').length >= 3) {
-                  const cleanedAddr = formattedAddr.replace(/^[A-Z0-9]+\+[A-Z0-9]+,\s*/i, '')
-                  return cleanedAddr
-                }
-              }
-            }
-
-            // PRIORITY 2: Build address from location object components (with zone and pin code)
-            // This ensures we always show zone and pin code if available
-            const addressParts = []
-
-            // Add addressLine1 if available
-            if (locationObj.addressLine1 && locationObj.addressLine1.trim() !== "") {
-              addressParts.push(locationObj.addressLine1.trim())
-            }
-
-            // Add addressLine2 if available
-            if (locationObj.addressLine2 && locationObj.addressLine2.trim() !== "") {
-              addressParts.push(locationObj.addressLine2.trim())
-            }
-
-            // Add area (zone) if available
-            if (locationObj.area && locationObj.area.trim() !== "") {
-              addressParts.push(locationObj.area.trim())
-            }
-
-            // Add city if available
-            if (locationObj.city && locationObj.city.trim() !== "") {
-              addressParts.push(locationObj.city.trim())
-            }
-
-            // Add state if available
-            if (locationObj.state && locationObj.state.trim() !== "") {
-              addressParts.push(locationObj.state.trim())
-            }
-
-            // Add pin code (priority: pincode > zipCode > postalCode)
-            const pinCode = locationObj.pincode || locationObj.zipCode || locationObj.postalCode
-            if (pinCode && pinCode.toString().trim() !== "") {
-              addressParts.push(pinCode.toString().trim())
-            }
-
-            // If we have at least 3 parts (complete address), use it
-            if (addressParts.length >= 3) {
-              return addressParts.join(', ')
-            }
-
-            // If we have at least 2 parts, use it
-            if (addressParts.length >= 2) {
-              return addressParts.join(', ')
-            }
-
-            // PRIORITY 3: Fallback to formattedAddress (even if incomplete)
-            if (locationObj.formattedAddress && locationObj.formattedAddress.trim() !== "" && locationObj.formattedAddress !== "Select location") {
-              const isCoordinates = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(locationObj.formattedAddress.trim())
-              if (!isCoordinates) {
-                const cleanedAddr = locationObj.formattedAddress.trim().replace(/^[A-Z0-9]+\+[A-Z0-9]+,\s*/i, '')
-                return cleanedAddr
-              }
-            }
-
-            // PRIORITY 4: Fallback to address field
-            if (locationObj.address && locationObj.address.trim() !== "") {
-              return locationObj.address.trim()
-            }
-
-            // PRIORITY 5: Last fallback - use area or city
-            return locationObj.area || locationObj.city || "Location"
-          }
-
-          // Get location object for address formatting
           const locationObj = actualRestaurant?.location || apiRestaurant?.location
-          const formattedAddress = formatRestaurantAddress(locationObj)
+          const formattedAddress = formatAddress(locationObj)
 
-          // Calculate distance from user to restaurant
-          const calculateDistance = (lat1, lng1, lat2, lng2) => {
-            const R = 6371 // Earth's radius in kilometers
-            const dLat = (lat2 - lat1) * Math.PI / 180
-            const dLng = (lng2 - lng1) * Math.PI / 180
-            const a =
-              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLng / 2) * Math.sin(dLng / 2)
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-            return R * c // Distance in kilometers
-          }
-
-          // Get restaurant coordinates
-          // Priority: latitude/longitude fields > coordinates array (GeoJSON format: [lng, lat])
-          const restaurantLat = locationObj?.latitude || (locationObj?.coordinates && Array.isArray(locationObj.coordinates) ? locationObj.coordinates[1] : null)
-          const restaurantLng = locationObj?.longitude || (locationObj?.coordinates && Array.isArray(locationObj.coordinates) ? locationObj.coordinates[0] : null)
-
-          // Get user coordinates
-          const userLat = userLocation?.latitude
-          const userLng = userLocation?.longitude
-
-          // Calculate distance if both coordinates are available
-          let calculatedDistance = null
-          if (userLat && userLng && restaurantLat && restaurantLng &&
-            !isNaN(userLat) && !isNaN(userLng) && !isNaN(restaurantLat) && !isNaN(restaurantLng)) {
-            const distanceInKm = calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
-            // Format distance: show 1 decimal place if >= 1km, otherwise show in meters
-            if (distanceInKm >= 1) {
-              calculatedDistance = `${distanceInKm.toFixed(1)} km`
-            } else {
-              const distanceInMeters = Math.round(distanceInKm * 1000)
-              calculatedDistance = `${distanceInMeters} m`
-            }
-          }
-
-          const pickFirstPositiveNumber = (...values) => {
-            for (const value of values) {
-              const num = Number(value)
-              if (Number.isFinite(num) && num > 0) return num
-            }
-            return 0
-          }
-
-          const pickFirstNonNegativeInteger = (...values) => {
-            for (const value of values) {
-              const num = Number(value)
-              if (Number.isFinite(num) && num >= 0) return Math.floor(num)
-            }
-            return 0
-          }
-
-          // Transform API data to match expected format with comprehensive fallbacks
-          // Handle both dining restaurant and regular restaurant data structures
-          const transformedRestaurant = {
+          const transformed = {
             id: actualRestaurant?.restaurantId || actualRestaurant?._id || actualRestaurant?.id || apiRestaurant?.restaurantId || apiRestaurant?._id || null,
-            // Prefer onboarding.step1.restaurantName if available (more accurate)
-            name: actualRestaurant?.onboarding?.step1?.restaurantName 
-              || apiRestaurant?.onboarding?.step1?.restaurantName
-              || actualRestaurant?.name 
-              || apiRestaurant?.name 
-              || apiRestaurant?.restaurantName 
-              || "Unknown Restaurant",
-            cuisine: (actualRestaurant?.cuisines && Array.isArray(actualRestaurant.cuisines) && actualRestaurant.cuisines.length > 0)
-              ? actualRestaurant.cuisines[0]
-              : (apiRestaurant?.cuisines && Array.isArray(apiRestaurant.cuisines) && apiRestaurant.cuisines.length > 0)
-                ? apiRestaurant.cuisines[0]
-                : (actualRestaurant?.cuisine || apiRestaurant?.cuisine || actualRestaurant?.category || apiRestaurant?.category || "Multi-cuisine"),
-            rating: pickFirstPositiveNumber(
-              actualRestaurant?.averageRating,
-              apiRestaurant?.averageRating,
-              actualRestaurant?.avgRating,
-              apiRestaurant?.avgRating,
-              actualRestaurant?.rating,
-              apiRestaurant?.rating
-            ),
-            reviews: pickFirstNonNegativeInteger(
-              actualRestaurant?.totalRatings,
-              apiRestaurant?.totalRatings,
-              actualRestaurant?.totalReviews,
-              apiRestaurant?.totalReviews,
-              actualRestaurant?.ratingsCount,
-              apiRestaurant?.ratingsCount,
-              actualRestaurant?.reviewCount,
-              apiRestaurant?.reviewCount,
-              actualRestaurant?.reviews?.length,
-              apiRestaurant?.reviews?.length
-            ),
-            deliveryTime: actualRestaurant?.estimatedDeliveryTime || apiRestaurant?.estimatedDeliveryTime || actualRestaurant?.deliveryTime || apiRestaurant?.deliveryTime || actualRestaurant?.avgDeliveryTime || apiRestaurant?.avgDeliveryTime || "25-30 mins",
-            distance: calculatedDistance || actualRestaurant?.distance || apiRestaurant?.distance || actualRestaurant?.distanceFromUser || apiRestaurant?.distanceFromUser || "1.2 km",
+            name: actualRestaurant?.onboarding?.step1?.restaurantName || apiRestaurant?.onboarding?.step1?.restaurantName || actualRestaurant?.name || apiRestaurant?.name || "Unknown Restaurant",
+            cuisine: (actualRestaurant?.cuisines?.[0]) || actualRestaurant?.cuisine || "Multi-cuisine",
+            rating: Number(actualRestaurant?.averageRating || actualRestaurant?.rating || 0),
+            reviews: Number(actualRestaurant?.totalRatings || actualRestaurant?.reviewCount || 0),
+            deliveryTime: actualRestaurant?.estimatedDeliveryTime || "25-30 mins",
+            distance: actualRestaurant?.distance || "1.2 km",
             location: formattedAddress,
-            locationObject: locationObj, // Store full location object for reference
-            // Prefer onboarding.step2.profileImageUrl if available (more accurate)
-            image: actualRestaurant?.onboarding?.step2?.profileImageUrl?.url
-              || apiRestaurant?.onboarding?.step2?.profileImageUrl?.url
-              || actualRestaurant?.profileImage?.url
-              || apiRestaurant?.profileImage?.url
-              || (typeof actualRestaurant?.profileImage === 'string' ? actualRestaurant.profileImage : null)
-              || (typeof apiRestaurant?.profileImage === 'string' ? apiRestaurant.profileImage : null)
-              || actualRestaurant?.profileImage
-              || apiRestaurant?.profileImage
-              || (Array.isArray(actualRestaurant?.menuImages) && actualRestaurant.menuImages.length > 0
-                ? (actualRestaurant.menuImages[0]?.url || actualRestaurant.menuImages[0])
-                : null)
-              || (Array.isArray(apiRestaurant?.menuImages) && apiRestaurant.menuImages.length > 0
-                ? (apiRestaurant.menuImages[0]?.url || apiRestaurant.menuImages[0])
-                : null)
-              || actualRestaurant?.image
-              || apiRestaurant?.image
-              || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop",
+            locationObject: locationObj,
+            image: actualRestaurant?.onboarding?.step2?.profileImageUrl?.url || actualRestaurant?.profileImage?.url || actualRestaurant?.image || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop",
             priceRange: apiRestaurant?.priceRange || "$$",
-            offers: Array.isArray(apiRestaurant?.offers) ? apiRestaurant.offers : [], // Will be populated from menu/offers API later
-            offerText: apiRestaurant?.offer || "FLAT 50% OFF",
-            offerCount: apiRestaurant?.offerCount ?? 0,
-            restaurantOffers: {
-              goldOffer: {
-                title: apiRestaurant?.restaurantOffers?.goldOffer?.title || "Gold exclusive offer",
-                description: apiRestaurant?.restaurantOffers?.goldOffer?.description || "Free delivery above ₹99",
-                unlockText: apiRestaurant?.restaurantOffers?.goldOffer?.unlockText || "join Gold to unlock",
-                buttonText: apiRestaurant?.restaurantOffers?.goldOffer?.buttonText || "Add Gold - ₹1",
-              },
-              coupons: Array.isArray(apiRestaurant?.restaurantOffers?.coupons)
-                ? apiRestaurant.restaurantOffers.coupons
-                : [],
-            },
-            outlets: Array.isArray(apiRestaurant?.outlets) ? apiRestaurant.outlets : [],
-            categories: Array.isArray(apiRestaurant?.categories) ? apiRestaurant.categories : [],
-            menu: Array.isArray(apiRestaurant?.menu) ? apiRestaurant.menu : [],
-            slug: apiRestaurant?.slug || apiRestaurant?.name?.toLowerCase().replace(/\s+/g, '-') || slug || "unknown",
-            restaurantId: apiRestaurant?.restaurantId || apiRestaurant?._id || apiRestaurant?.id || null,
-            // Add other fields with defaults
-            featuredDish: apiRestaurant?.featuredDish || "Special Dish",
-            featuredPrice: apiRestaurant?.featuredPrice ?? 249,
-            // Additional safety fields
-            openDays: Array.isArray(apiRestaurant?.openDays) ? apiRestaurant.openDays : [],
-            deliveryTimings: apiRestaurant?.deliveryTimings || {
-              openingTime: "09:00",
-              closingTime: "22:00",
-            },
-            cuisines: Array.isArray(apiRestaurant?.cuisines) ? apiRestaurant.cuisines : [],
-            // Prefer onboarding.step2.profileImageUrl if available
-            profileImage: apiRestaurant?.onboarding?.step2?.profileImageUrl?.url
-              || (typeof apiRestaurant?.profileImage === 'string' ? apiRestaurant.profileImage : null)
-              || apiRestaurant?.profileImage?.url
-              || apiRestaurant?.profileImage
-              || null,
-            menuImages: Array.isArray(apiRestaurant?.menuImages) ? apiRestaurant.menuImages : [],
-            // Menu sections for display (will be populated from menu API)
-            menuSections: [],
-            // Availability fields for grayscale styling
-            isActive: actualRestaurant?.isActive !== false, // Default to true if not specified
-            isAcceptingOrders: actualRestaurant?.isAcceptingOrders !== false, // Default to true if not specified
+            slug: apiRestaurant?.slug || slug || "unknown",
+            isActive: actualRestaurant?.isActive !== false,
+            isAcceptingOrders: actualRestaurant?.isAcceptingOrders !== false,
+            menuSections: []
           }
 
-          // Some APIs return average rating but omit rating-count fields.
-          // In that case, avoid showing "No user ratings yet" when rating is available.
-          if (
-            Number(transformedRestaurant.reviews || 0) === 0 &&
-            Number(transformedRestaurant.rating || 0) > 0
-          ) {
-            transformedRestaurant.reviews = 1
-          }
+          setRestaurant(transformed)
+          rId = transformed.id
+        }
 
-          if (!transformedRestaurant.id) {
-          }
+        // Fetch menu and inventory in PARALLEL
+        if (rId) {
+          const [menuRes, inventoryRes] = await Promise.allSettled([
+            restaurantAPI.getMenuByRestaurantId(rId),
+            restaurantAPI.getInventoryByRestaurantId(rId)
+          ])
 
-          setRestaurant(transformedRestaurant)
-          fetchedRestaurantRef.current = true // Mark as fetched
-
-          // Fetch menu and inventory for this restaurant
-          // If no restaurant ID, try to find matching restaurant by name
-          let restaurantIdForMenu = transformedRestaurant.id
-
-          if (!restaurantIdForMenu) {
-            try {
-              // CRITICAL: Only search if zoneId is available (zoneId is required by backend)
-              if (!zoneId) {
-                // Continue without menu - restaurant details are still available
-                return
-              }
-
-              // Include zoneId for zone-based filtering
-              const searchParams = { limit: 100, zoneId: zoneId }
-              const searchResponse = await restaurantAPI.getRestaurants(searchParams)
-              const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
-
-              // Try to find by exact name match
-              const matchingRestaurant = restaurants.find(r =>
-                r.name?.toLowerCase().trim() === transformedRestaurant.name?.toLowerCase().trim()
-              )
-
-              if (matchingRestaurant) {
-                restaurantIdForMenu = matchingRestaurant._id || matchingRestaurant.restaurantId || matchingRestaurant.id
-
-                // Update the restaurant ID in state
-                setRestaurant(prev => ({
-                  ...prev,
-                  id: restaurantIdForMenu,
-                  restaurantId: restaurantIdForMenu
-                }))
-              }
-            } catch (searchError) {
-              // Error searching for restaurant
-            }
-          }
-
-          if (restaurantIdForMenu) {
-            try {
-              const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurantIdForMenu)
-              if (menuResponse.data && menuResponse.data.success && menuResponse.data.data && menuResponse.data.data.menu) {
-                const menuSections = menuResponse.data.data.menu.sections || []
-
-                // Collect all recommended items from all sections
-                // Only include items that are both recommended (isRecommended === true) AND available (isAvailable !== false)
-                const recommendedItems = []
-                menuSections.forEach(section => {
-                  // Check direct items - only include if isRecommended is explicitly true (strict check) AND item is available
-                  if (section.items && Array.isArray(section.items)) {
-                    section.items.forEach(item => {
-                      // Strict check: isRecommended must be exactly boolean true
-                      // This will exclude: false, undefined, null, 0, "", and any other falsy values
-                      if (item.isRecommended === true && typeof item.isRecommended === 'boolean' && item.isAvailable !== false) {
-                        recommendedItems.push(item)
-                      }
-                    })
-                  }
-                  // Check subsection items - only include if isRecommended is explicitly true (strict check) AND item is available
-                  if (section.subsections && Array.isArray(section.subsections)) {
-                    section.subsections.forEach(subsection => {
-                      if (subsection.items && Array.isArray(subsection.items)) {
-                        subsection.items.forEach(item => {
-                          // Strict check: isRecommended must be exactly boolean true
-                          // This will exclude: false, undefined, null, 0, "", and any other falsy values
-                          if (item.isRecommended === true && typeof item.isRecommended === 'boolean' && item.isAvailable !== false) {
-                            recommendedItems.push(item)
-                          }
-                        })
-                      }
-                    })
-                  }
+          if (menuRes.status === 'fulfilled' && menuRes.value.data?.success) {
+            const menuSections = menuRes.value.data.data.menu.sections || []
+            const recommendedItems = []
+            menuSections.forEach(section => {
+              if (section.items) section.items.forEach(item => {
+                if (item.isRecommended === true && item.isAvailable !== false) recommendedItems.push(item)
+              })
+              if (section.subsections) section.subsections.forEach(sub => {
+                if (sub.items) sub.items.forEach(item => {
+                  if (item.isRecommended === true && item.isAvailable !== false) recommendedItems.push(item)
                 })
-
-                // Always create recommended section (even if empty) - will show "No dish Yet" if empty
-                const finalMenuSections = [{ name: "Recommended for you", items: recommendedItems, subsections: [] }, ...menuSections]
-
-                setRestaurant(prev => ({
-                  ...prev,
-                  menuSections: finalMenuSections,
-                }))
-
-                // Expand all sections by default so category panels (e.g., Burger/Starter) stay open initially.
-                const defaultExpandedSections = new Set(
-                  finalMenuSections.map((_, index) => index)
-                )
-                setExpandedSections(defaultExpandedSections)
-              }
-            } catch (menuError) {
-              // Error fetching menu
-            }
-
-            try {
-              const inventoryResponse = await restaurantAPI.getInventoryByRestaurantId(restaurantIdForMenu)
-              if (inventoryResponse.data && inventoryResponse.data.success && inventoryResponse.data.data && inventoryResponse.data.data.inventory) {
-                const inventoryCategories = inventoryResponse.data.data.inventory.categories || []
-
-                // Normalize inventory categories to ensure proper structure
-                const normalizedInventory = inventoryCategories.map((category, index) => ({
-                  id: category.id || `category-${index}`,
-                  name: category.name || "Unnamed Category",
-                  description: category.description || "",
-                  itemCount: category.itemCount ?? (category.items?.length || 0),
-                  inStock: category.inStock !== undefined ? category.inStock : true,
-                  items: Array.isArray(category.items) ? category.items.map(item => ({
-                    id: String(item.id || Date.now() + Math.random()),
-                    name: item.name || "Unnamed Item",
-                    inStock: item.inStock !== undefined ? item.inStock : true,
-                    isVeg: item.isVeg !== undefined ? item.isVeg : true,
-                    stockQuantity: item.stockQuantity || "Unlimited",
-                    unit: item.unit || "piece",
-                    expiryDate: item.expiryDate || null,
-                    lastRestocked: item.lastRestocked || null,
-                  })) : [],
-                  order: category.order !== undefined ? category.order : index,
-                }))
-
-                setRestaurant(prev => ({
-                  ...prev,
-                  inventory: normalizedInventory,
-                }))
-              }
-            } catch (inventoryError) {
-              // Error fetching inventory
-            }
+              })
+            })
+            const final = [{ name: "Recommended for you", items: recommendedItems, subsections: [] }, ...menuSections]
+            setRestaurant(prev => ({ ...prev, menuSections: final }))
+            setExpandedSections(new Set(final.map((_, i) => i)))
           }
-        } else {
-          setRestaurantError('Restaurant not found')
-          setRestaurant(null)
+
+          if (inventoryRes.status === 'fulfilled' && inventoryRes.value.data?.success) {
+            setRestaurant(prev => ({ ...prev, inventory: inventoryRes.value.data.data.inventory.categories || [] }))
+          }
         }
+
+        fetchedRestaurantRef.current = true
+        setLoadingRestaurant(false)
       } catch (error) {
-        // Check if it's a network error (backend not running)
-        const isNetworkError = error.code === 'ERR_NETWORK' || error.message === 'Network Error'
-
-        // Check if it's a 404 error (restaurant doesn't exist)
-        const is404Error = error.response?.status === 404
-
-        if (isNetworkError) {
-          // Network error - backend is not running
-          // Don't show "Restaurant not found" for network errors
-          // The axios interceptor will show a toast notification
-          setRestaurantError('Backend server is not connected. Please make sure the backend is running.')
-          setRestaurant(null)
-        } else if (is404Error) {
-          // 404 error - restaurant doesn't exist in database
-          setRestaurantError('Restaurant not found')
-          setRestaurant(null)
-        } else {
-          // Other errors
-          setRestaurantError(error.message || 'Failed to load restaurant')
-          setRestaurant(null)
-        }
-      } finally {
+        console.error("Fetch error:", error)
+        setRestaurantError(error.message || 'Failed to load restaurant')
         setLoadingRestaurant(false)
       }
     }
 
-    // Reset fetched flag when slug changes
+    fetchRestaurant()
+  }, [slug])
+
+  // Reset fetched flag when slug changes - CRITICAL for navigating between restaurants
+  useEffect(() => {
     if (fetchedRestaurantRef.current && restaurant?.slug !== slug) {
       fetchedRestaurantRef.current = false
     }
+  }, [slug, restaurant?.slug])
 
-    // Wait for zone to load before fetching (if zone-based search might be needed)
-    // But don't block if we're fetching by direct ID
-    if (loadingZone) {
-      return
+  // Helper function for granular address formatting (Restored)
+  const formatRestaurantAddress = (locationObj) => {
+    if (!locationObj) return "Location"
+    if (typeof locationObj === 'string') return locationObj
+
+    if (locationObj.formattedAddress && locationObj.formattedAddress.trim() !== "" && locationObj.formattedAddress !== "Select location") {
+      const isCoordinates = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(locationObj.formattedAddress.trim())
+      if (!isCoordinates) {
+        const formattedAddr = locationObj.formattedAddress.trim()
+        const hasPinCode = /\b\d{6}\b/.test(formattedAddr)
+        if (hasPinCode || formattedAddr.split(',').length >= 3) {
+          return formattedAddr.replace(/^[A-Z0-9]+\+[A-Z0-9]+,\s*/i, '')
+        }
+      }
     }
 
-    fetchRestaurant()
-  }, [slug, zoneId, loadingZone, restaurant?.slug])
+    const addressParts = [
+      locationObj.addressLine1, 
+      locationObj.addressLine2, 
+      locationObj.area, 
+      locationObj.city, 
+      locationObj.state, 
+      locationObj.pincode || locationObj.zipCode || locationObj.postalCode
+    ].filter(p => p && p.toString().trim() !== "")
+
+    if (addressParts.length >= 2) return addressParts.join(', ')
+    return locationObj.formattedAddress || locationObj.address || locationObj.area || "Location"
+  }
 
   // Helper: get category offer percentage for a given menu item based on admin categories
   const getCategoryOfferForItem = (item) => {
@@ -1494,8 +1125,8 @@ export default function RestaurantDetails() {
     return () => clearInterval(interval)
   }, [highlightOffers.length])
 
-  // Show loading state
-  if (loadingRestaurant) {
+  // Show loading state (only if we don't have basic data from state)
+  if (loadingRestaurant && !restaurant) {
     return (
       <AnimatedPage>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">

@@ -181,21 +181,27 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     )
 
     if (restaurantIds.length === 0) return []
-
-    const menuResults = await Promise.allSettled(
-      restaurantIds.map((restaurantId) => restaurantAPI.getMenuByRestaurantId(restaurantId))
-    )
+    
+    // Deep Fix: Use bulk menus API to avoid N+1 parallel requests and 429 errors
+    let menuData = []
+    try {
+      const bulkMenusResponse = await restaurantAPI.getBulkMenus(restaurantIds)
+      if (bulkMenusResponse.data?.success && bulkMenusResponse.data?.data?.menus) {
+        menuData = bulkMenusResponse.data.data.menus
+      }
+    } catch (err) {
+      console.warn("SearchOverlay: Bulk menus fetch failed:", err)
+    }
 
     const allFoods = []
-    menuResults.forEach((result, index) => {
-      if (result.status !== "fulfilled") return
-      const menu = result?.value?.data?.data?.menu
-      const restaurantId = restaurantIds[index]
-      const restaurantName = restaurantNamesById.get(restaurantId) || null
-      const restaurantSlug = restaurantSlugsById.get(restaurantId) || null
+    menuData.forEach((menu) => {
+      const rId = menu.restaurantId || menu.restaurant
+      const restaurantName = restaurantNamesById.get(rId) || restaurantNamesById.get(String(rId)) || null
+      const restaurantSlug = restaurantSlugsById.get(rId) || restaurantSlugsById.get(String(rId)) || null
+      
       const foods = extractFoodsFromMenu(menu, {
         restaurantName,
-        restaurantId,
+        restaurantId: rId,
         restaurantSlug,
       })
       allFoods.push(...foods)
@@ -421,7 +427,16 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
         : null)
 
     if (restaurantSlug) {
-      navigate(`/user/restaurants/${restaurantSlug}`)
+      // Pass restaurant metadata via state for instant load in RestaurantDetails
+      navigate(`/user/restaurants/${restaurantSlug}`, {
+        state: {
+          restaurant: {
+            name: food.restaurantName || food.name,
+            slug: restaurantSlug,
+            // (Note: we don't always have restaurant image here, but name is enough for a fast header)
+          }
+        }
+      })
     } else {
       navigate(`/search?q=${encodeURIComponent(food.name)}`)
     }

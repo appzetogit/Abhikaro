@@ -79,7 +79,7 @@ export default function DesktopNavbar() {
 
   return (
     <nav
-      className="hidden md:block fixed top-2 left-0 right-0 z-50"
+      className="hidden md:block fixed top-0 left-0 right-0 z-50"
     >
       {/* Background */}
       <div className="absolute inset-0 bg-white/98 dark:bg-[#1a1a1a]/98 border-b border-gray-200/50 dark:border-gray-800/50 shadow-sm" />
@@ -91,7 +91,7 @@ export default function DesktopNavbar() {
             {/* Left: Logo + Location */}
             <div className="flex items-center gap-3 lg:gap-4 min-w-0">
               {/* Company Logo from Business Settings */}
-              <Link to="/user" className="flex items-center justify-center flex-shrink-0 pr-6">
+              <div className="flex items-center justify-center flex-shrink-0 pr-6 cursor-default">
                 {logoUrl ? (
                   <img
                     src={logoUrl}
@@ -104,7 +104,7 @@ export default function DesktopNavbar() {
                     {companyName}
                   </span>
                 ) : null}
-              </Link>
+              </div>
 
               {/* Location */}
               <Button

@@ -1489,7 +1489,7 @@ export default function Home() {
       </div>
 
       {/* Unified Navbar & Hero Section */}
-      <div className="relative w-full overflow-hidden min-h-[39vh] lg:min-h-[50vh] md:pt-16">
+      <div className="relative w-full overflow-hidden min-h-[39vh] lg:min-h-[50vh] md:pt-36">
         {/* Hero Banner Carousel Background */}
         <HeroBannerCarousel banners={heroBannersData} loading={loadingBanners} />
 
@@ -2026,7 +2026,11 @@ export default function Home() {
                         </Card>
                       </div>
                       ) : (
-                        <Link to={`/user/restaurants/${restaurantSlug}`} className="h-full flex">
+                        <Link 
+                          to={`/user/restaurants/${restaurantSlug}`} 
+                          state={{ restaurant }}
+                          className="h-full flex"
+                        >
                           <Card className={`overflow-hidden gap-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] border-background transition-all duration-500 py-0 rounded-2xl sm:rounded-3xl flex flex-col h-full w-full relative ${isOutOfService ? 'grayscale-[100%] opacity-80' : ''
                             }`}>
                             {/* Image Section with Carousel */}
@@ -2118,7 +2122,7 @@ export default function Home() {
             </div>
           </div>
           <div className="flex justify-center pt-2 sm:pt-3">
-            {/* <Link to="/user/restaurants">
+            {/* <Link to="/restaurants">
               <Button variant="outline" className="bg-transparent outline-none text-green-600 hover:opacity-80 border-none underline shadow-none  text-xs sm:text-sm md:text-base sm:hidden">
                 See All Restaurants
               </Button>

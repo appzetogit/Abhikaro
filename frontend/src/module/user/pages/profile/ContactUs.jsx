@@ -82,7 +82,7 @@ export default function ContactUs() {
     <AnimatedPage className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a]">
       <div className="max-w-5xl mx-auto px-4 md:px-6 lg:px-8 pt-8 pb-6 md:pt-9 md:pb-8 lg:pt-10 lg:pb-10">
         <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6 lg:mb-8">
-          <Link to="/user/profile">
+          <Link to="/profile">
             <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 p-0">
               <ArrowLeft className="h-4 w-4 md:h-5 md:w-5 text-black dark:text-white" />
             </Button>
