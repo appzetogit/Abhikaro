@@ -25,8 +25,7 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
     const io = await getIOInstance();
 
     if (!io) {
-      console.warn('Socket.IO not initialized, skipping restaurant notification');
-      return;
+      console.warn('⚠️ Socket.IO not initialized, skipping real-time emission but continuing with FCM fallback');
     }
 
     // CRITICAL: Validate restaurantId matches order's restaurantId
@@ -104,122 +103,102 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
     };
     console.log('📢 Restaurant notification payload paymentMethod:', orderNotification.paymentMethod, { override: paymentMethodOverride, orderPaymentMethod: order.payment?.method });
 
-    // Get restaurant namespace
-    const restaurantNamespace = io.of('/restaurant');
-
-    // Normalize restaurantId to string (handle both ObjectId and string)
-    const normalizedRestaurantId = restaurantId?.toString() || restaurantId;
-
-    // Try multiple room formats to ensure we find the restaurant
-    const roomVariations = [
-      `restaurant:${normalizedRestaurantId}`,
-      `restaurant:${restaurantId}`,
-      ...(mongoose.Types.ObjectId.isValid(normalizedRestaurantId)
-        ? [`restaurant:${new mongoose.Types.ObjectId(normalizedRestaurantId).toString()}`]
-        : [])
-    ];
-
-    // Get all connected sockets in the restaurant room
+    // 1. Socket.IO emission
     let socketsInRoom = [];
-    for (const room of roomVariations) {
-      const sockets = await restaurantNamespace.in(room).fetchSockets();
-      if (sockets.length > 0) {
-        socketsInRoom = sockets;
-        console.log(`📢 Found ${sockets.length} socket(s) in room: ${room}`);
-        break;
-      }
-    }
+    if (io) {
+      try {
+        // Get restaurant namespace
+        const restaurantNamespace = io.of('/restaurant');
 
-    const primaryRoom = roomVariations[0];
+        // Normalize restaurantId to string (handle both ObjectId and string)
+        const normalizedRestaurantId = restaurantId?.toString() || restaurantId;
 
-    console.log(`📢 CRITICAL: Attempting to notify restaurant about new order:`);
-    console.log(`📢 Order ID: ${order.orderId}`);
-    console.log(`📢 Order MongoDB ID: ${order._id?.toString()}`);
-    console.log(`📢 Restaurant ID (normalized): ${normalizedRestaurantId}`);
-    console.log(`📢 Restaurant Name: ${order.restaurantName}`);
-    console.log(`📢 Restaurant ID from order: ${order.restaurantId}`);
-    console.log(`📢 Room variations to try:`, roomVariations);
-    console.log(`📢 Connected sockets in primary room ${primaryRoom}: ${socketsInRoom.length}`);
+        // Try multiple room formats to ensure we find the restaurant
+        const roomVariations = [
+          `restaurant:${normalizedRestaurantId}`,
+          `restaurant:${restaurantId}`,
+          ...(mongoose.Types.ObjectId.isValid(normalizedRestaurantId)
+            ? [`restaurant:${new mongoose.Types.ObjectId(normalizedRestaurantId).toString()}`]
+            : [])
+        ];
 
-    // CRITICAL: Only emit to the specific restaurant room - NEVER broadcast to all restaurants
-    // This ensures orders only go to the correct restaurant
-    if (socketsInRoom.length > 0) {
-      // Found sockets in the restaurant room - send notification only to that room
-      roomVariations.forEach(room => {
-        restaurantNamespace.to(room).emit('new_order', orderNotification);
-        restaurantNamespace.to(room).emit('play_notification_sound', {
-          type: 'new_order',
-          orderId: order.orderId,
-          message: `New order received: ${order.orderId}`
-        });
-        console.log(`📤 Sent notification to room: ${room}`);
-      });
-      console.log(`✅ Notified restaurant ${normalizedRestaurantId} about new order ${order.orderId} (${socketsInRoom.length} socket(s) connected)`);
-    } else {
-      // No sockets found in restaurant room - log error but DO NOT broadcast to all restaurants
-      console.error(`❌ CRITICAL: No sockets found for restaurant ${normalizedRestaurantId} in any room!`);
-      console.error(`❌ Order ${order.orderId} will NOT be delivered to restaurant ${normalizedRestaurantId}`);
-      console.error(`❌ Room variations tried:`, roomVariations);
-      console.error(`❌ Restaurant name: ${order.restaurantName}`);
-      console.error(`❌ Restaurant ID from order: ${order.restaurantId}`);
-      console.error(`❌ Normalized restaurant ID: ${normalizedRestaurantId}`);
-      
-      // Log all connected restaurant sockets for debugging (but don't send to them)
-      const allSockets = await restaurantNamespace.fetchSockets();
-      console.log(`📊 Total restaurant sockets connected: ${allSockets.length}`);
-      if (allSockets.length > 0) {
-        // Get room information for each socket
-        const socketRooms = [];
-        for (const socket of allSockets) {
-          const rooms = Array.from(socket.rooms);
-          socketRooms.push({
-            socketId: socket.id,
-            rooms: rooms.filter(r => r.startsWith('restaurant:'))
+        // Get all connected sockets in the restaurant room
+        for (const room of roomVariations) {
+          const sockets = await restaurantNamespace.in(room).fetchSockets();
+          if (sockets.length > 0) {
+            socketsInRoom = sockets;
+            console.log(`📢 Found ${sockets.length} socket(s) in room: ${room}`);
+            break;
+          }
+        }
+
+        const primaryRoom = roomVariations[0];
+
+        console.log(`📢 CRITICAL: Attempting to notify restaurant about new order:`);
+        console.log(`📢 Order ID: ${order.orderId}`);
+        console.log(`📢 Socket Status: ${socketsInRoom.length} socket(s) in room ${primaryRoom}`);
+
+        // CRITICAL: Only emit to the specific restaurant room - NEVER broadcast to all restaurants
+        if (socketsInRoom.length > 0) {
+          // Found sockets in the restaurant room - send notification only to that room
+          roomVariations.forEach(room => {
+            restaurantNamespace.to(room).emit('new_order', orderNotification);
+            restaurantNamespace.to(room).emit('play_notification_sound', {
+              type: 'new_order',
+              orderId: order.orderId,
+              message: `New order received: ${order.orderId}`
+            });
+            console.log(`📤 Sent notification to room: ${room}`);
+          });
+          console.log(`✅ Notified restaurant ${normalizedRestaurantId} about new order ${order.orderId} (${socketsInRoom.length} socket(s) connected)`);
+        } else {
+          // Still try to emit to room variations (in case socket connects later)
+          roomVariations.forEach(room => {
+            restaurantNamespace.to(room).emit('new_order', orderNotification);
+            restaurantNamespace.to(room).emit('play_notification_sound', {
+              type: 'new_order',
+              orderId: order.orderId,
+              message: `New order received: ${order.orderId}`
+            });
+            console.log(`📤 Emitted to room ${room} (delayed logic)`);
           });
         }
-        console.log(`📊 Connected restaurant sockets and their rooms:`, socketRooms);
+      } catch (ioError) {
+        console.warn('⚠️ [Socket.io] Error during emission, continuing with FCM:', ioError.message);
       }
-      
-      // Still try to emit to room variations (in case socket connects later)
-      // But DO NOT broadcast to all restaurants
-      roomVariations.forEach(room => {
-        restaurantNamespace.to(room).emit('new_order', orderNotification);
-        restaurantNamespace.to(room).emit('play_notification_sound', {
-          type: 'new_order',
-          orderId: order.orderId,
-          message: `New order received: ${order.orderId}`
-        });
-        console.log(`📤 Emitted to room ${room} (no sockets found, but room exists for future connections)`);
-      });
-      
-      // Return error instead of success
-      return {
-        success: false,
-        restaurantId,
-        orderId: order.orderId,
-        error: 'Restaurant not connected to Socket.IO',
-        message: `Restaurant ${normalizedRestaurantId} (${order.restaurantName}) is not connected. Order notification not sent.`
-      };
+    } else {
+      console.warn('⚠️ Skipping Socket.IO emission - server not initialized yet');
     }
 
-    // FCM push notification (if restaurant not on Socket)
+    // 2. FCM push notification (Attempt this regardless of Socket.IO status to ensure backup delivery)
     try {
       const { sendToUser } = await import('../../fcm/services/fcmService.js');
-      await sendToUser(restaurantId, 'restaurant', {
+      // Resolve payment method for push: override > order.payment > collection
+      let fcmPaymentMethod = paymentMethodOverride ?? order.payment?.method ?? 'razorpay';
+      
+      const fcmResult = await sendToUser(restaurantId, 'restaurant', {
         title: 'Order has arrived',
-        body: `Order #${order.orderId} has arrived. Amount: ₹${order.pricing?.total || 0}`,
-      }, { type: 'new_order', orderId: order.orderId });
+        body: `Order #${order.orderId} has arrived. Amount: ₹${order.pricing?.total || 0}. Method: ${fcmPaymentMethod === 'cash' ? 'COD' : fcmPaymentMethod.toUpperCase()}`,
+      }, { 
+        type: 'new_order', 
+        orderId: order.orderId,
+        orderMongoId: order._id.toString(),
+        tag: `new_order_${order.orderId}`
+      });
+      console.log(`📱 [FCM] Push notification result for restaurant ${restaurantId}:`, fcmResult.success ? 'Success' : 'Failed', fcmResult.error || '');
     } catch (fcmErr) {
-      console.warn('FCM restaurant notification:', fcmErr.message);
+      console.warn('⚠️ [FCM] Restaurant push notification error:', fcmErr.message);
     }
 
+    // Return true if at least one notification method should have worked
     return {
       success: true,
       restaurantId,
-      orderId: order.orderId
+      orderId: order.orderId,
+      socketConnected: socketsInRoom.length > 0
     };
   } catch (error) {
-    console.error('Error notifying restaurant:', error);
+    console.error('❌ Error notifying restaurant:', error);
     throw error;
   }
 }

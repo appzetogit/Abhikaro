@@ -2765,6 +2765,7 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
       }
     }
     window.addEventListener('order_assigned', handleOrderAssigned)
+    window.addEventListener('new_order_received', handleOrderAssigned)
 
     // Refresh orders every 15 seconds (increased from 10s to reduce rate limit issues)
     // Only poll when page is visible to reduce unnecessary requests
@@ -2793,6 +2794,7 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
     return () => {
       isMounted = false
       window.removeEventListener('order_assigned', handleOrderAssigned)
+      window.removeEventListener('new_order_received', handleOrderAssigned)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (intervalId) {
         clearInterval(intervalId)
@@ -3034,6 +3036,7 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
       }
     }
     window.addEventListener('order_assigned', handleOrderAssigned)
+    window.addEventListener('new_order_received', handleOrderAssigned)
 
     // Refresh every 10 seconds (reduced frequency to avoid spam if backend is down)
     intervalId = setInterval(() => {
@@ -3045,6 +3048,7 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
     return () => {
       isMounted = false
       window.removeEventListener('order_assigned', handleOrderAssigned)
+      window.removeEventListener('new_order_received', handleOrderAssigned)
       if (intervalId) {
         clearInterval(intervalId)
       }
@@ -3163,6 +3167,13 @@ const OutForDeliveryOrders = ({ onSelectOrder, fetchAllOrders }) => {
 
     fetchOrders()
 
+    // Listen for events to refresh list
+    const handleRefresh = () => {
+      if (isMounted) fetchOrders()
+    }
+    window.addEventListener('new_order_received', handleRefresh)
+    window.addEventListener('order_assigned', handleRefresh)
+
     // Refresh every 10 seconds
     intervalId = setInterval(() => {
       if (isMounted) {
@@ -3172,6 +3183,8 @@ const OutForDeliveryOrders = ({ onSelectOrder, fetchAllOrders }) => {
 
     return () => {
       isMounted = false
+      window.removeEventListener('new_order_received', handleRefresh)
+      window.removeEventListener('order_assigned', handleRefresh)
       if (intervalId) {
         clearInterval(intervalId)
       }

@@ -25,7 +25,7 @@ function getModelByRole(role) {
 }
 
 /**
- * Initialize Firebase Admin SDK (uses database config - never expose to frontend)
+ * Initialize Firebase Admin SDK (credentials from backend .env — never expose to frontend)
  */
 export async function initializeFcm() {
   if (fcmInitialized) return true;
@@ -47,7 +47,7 @@ export async function initializeFcm() {
 
     if (!projectId || !privateKey || !clientEmail) {
       console.warn(
-        '⚠️ FCM not initialized: Missing FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, or FIREBASE_CLIENT_EMAIL in database'
+        '⚠️ FCM not initialized: Missing FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, or FIREBASE_CLIENT_EMAIL in backend .env',
       );
       return false;
     }
@@ -62,7 +62,7 @@ export async function initializeFcm() {
       });
     }
     fcmInitialized = true;
-    console.log('✅ Firebase Admin SDK initialized for FCM with database configuration');
+    console.log('✅ Firebase Admin SDK initialized for FCM (.env credentials)');
     return true;
   } catch (err) {
     console.error('❌ FCM initialization error:', err.message);

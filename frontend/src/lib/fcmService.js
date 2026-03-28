@@ -64,9 +64,15 @@ export async function getFcmToken() {
 
     const { getToken } = await import("firebase/messaging");
     
-    // Firebase automatically looks for /firebase-messaging-sw.js at the root
-    // The backend serves this dynamically via proxy, or it's in public/ as fallback
-    const token = await getToken(messaging, { vapidKey });
+    const serviceWorkerRegistration =
+      "serviceWorker" in navigator
+        ? await navigator.serviceWorker.register("/firebase-messaging-sw.js")
+        : undefined;
+
+    const token = await getToken(messaging, {
+      vapidKey,
+      ...(serviceWorkerRegistration ? { serviceWorkerRegistration } : {}),
+    });
     
     return token || null;
   } catch (err) {

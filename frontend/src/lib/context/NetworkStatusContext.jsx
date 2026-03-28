@@ -9,6 +9,7 @@ const NetworkStatusContext = createContext({
   isOnline: true,
   isSlow: false,
   isOffline: false,
+  isBackendUnavailable: false,
 });
 
 export function NetworkStatusProvider({ children }) {
@@ -26,6 +27,7 @@ export function NetworkStatusProvider({ children }) {
     isOnline: status === "online",
     isSlow: status === "slow",
     isOffline: status === "offline",
+    isBackendUnavailable: status === "backend_unavailable",
   };
 
   return (

@@ -1,3 +1,4 @@
+import winston from "winston";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import {
   successResponse,
@@ -7,8 +8,11 @@ import EnvironmentVariable from "../models/EnvironmentVariable.js";
 import {
   getAllEnvVars,
   clearEnvCache,
+  getEnvVar,
+  ENV_ONLY_KEYS,
 } from "../../../shared/utils/envService.js";
-import winston from "winston";
+
+const ENV_ONLY_SET = new Set(ENV_ONLY_KEYS);
 
 const logger = winston.createLogger({
   level: "info",
@@ -30,6 +34,9 @@ export const getEnvVariables = asyncHandler(async (req, res) => {
 
     // Return all variables (excluding sensitive data in response, but include in database)
     const envData = envVars.toEnvObject();
+    ENV_ONLY_KEYS.forEach((k) => {
+      delete envData[k];
+    });
 
     logger.info("Environment variables retrieved successfully");
 
@@ -57,17 +64,19 @@ export const getPublicEnvVariables = asyncHandler(async (req, res) => {
     // This now automatically handles injection for all schema fields via getAllEnvVars
     const envData = await getAllEnvVars();
 
-    // Return only public variables that frontend needs
+    // Return only public variables that frontend needs (Firebase from .env via getEnvVar)
     const publicEnvData = {
-      VITE_GOOGLE_MAPS_API_KEY: envData.VITE_GOOGLE_MAPS_API_KEY || "",
-      FIREBASE_API_KEY: envData.FIREBASE_API_KEY || "",
-      FIREBASE_AUTH_DOMAIN: envData.FIREBASE_AUTH_DOMAIN || "",
-      FIREBASE_PROJECT_ID: envData.FIREBASE_PROJECT_ID || "",
-      FIREBASE_STORAGE_BUCKET: envData.FIREBASE_STORAGE_BUCKET || "",
-      FIREBASE_MESSAGING_SENDER_ID: envData.FIREBASE_MESSAGING_SENDER_ID || "",
-      FIREBASE_APP_ID: envData.FIREBASE_APP_ID || "",
-      MEASUREMENT_ID: envData.MEASUREMENT_ID || "",
-      FIREBASE_VAPID_KEY: envData.FIREBASE_VAPID_KEY || "",
+      VITE_GOOGLE_MAPS_API_KEY: await getEnvVar("VITE_GOOGLE_MAPS_API_KEY"),
+      FIREBASE_API_KEY: await getEnvVar("FIREBASE_API_KEY"),
+      FIREBASE_AUTH_DOMAIN: await getEnvVar("FIREBASE_AUTH_DOMAIN"),
+      FIREBASE_PROJECT_ID: await getEnvVar("FIREBASE_PROJECT_ID"),
+      FIREBASE_STORAGE_BUCKET: await getEnvVar("FIREBASE_STORAGE_BUCKET"),
+      FIREBASE_MESSAGING_SENDER_ID: await getEnvVar(
+        "FIREBASE_MESSAGING_SENDER_ID",
+      ),
+      FIREBASE_APP_ID: await getEnvVar("FIREBASE_APP_ID"),
+      MEASUREMENT_ID: await getEnvVar("MEASUREMENT_ID"),
+      FIREBASE_VAPID_KEY: await getEnvVar("FIREBASE_VAPID_KEY"),
     };
 
     return successResponse(
@@ -138,6 +147,9 @@ export const saveEnvVariables = asyncHandler(async (req, res) => {
     // Update all fields (encryption will happen in pre-save hook)
     const updatedFields = [];
     Object.keys(envData).forEach((key) => {
+      if (ENV_ONLY_SET.has(key)) {
+        return;
+      }
       if (envVars.schema.paths[key]) {
         // Set the value directly - pre-save hook will encrypt it
         let value = envData[key];
@@ -161,6 +173,14 @@ export const saveEnvVariables = asyncHandler(async (req, res) => {
     logger.info(
       `Updated ${updatedFields.length} fields: ${updatedFields.join(", ")}`,
     );
+
+    if (updatedFields.length === 0) {
+      return successResponse(res, 200, "Environment variables saved successfully", {
+        message:
+          "No admin-managed fields to update. Integrations are configured in backend .env.",
+        updatedAt: envVars.lastUpdatedAt,
+      });
+    }
 
     // Update metadata
     envVars.lastUpdatedBy = admin._id;

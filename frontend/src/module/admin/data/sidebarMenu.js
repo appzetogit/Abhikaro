@@ -506,18 +506,4 @@ export const sidebarMenuData = [
       },
     ],
   },
-
-  {
-    type: "section",
-    label: "SYSTEM ENV",
-    items: [
-      {
-        type: "link",
-        label: "ENV Setup",
-        path: "/admin/system-addons",
-        icon: "Plus",
-        onlySuperAdmin: true,
-      },
-    ],
-  },
 ];

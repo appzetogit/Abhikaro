@@ -44,7 +44,7 @@ async function initializeCloudinary() {
       if (!apiSecret) missing.push('CLOUDINARY_API_SECRET');
       
       console.error(
-        `❌ Cloudinary is not fully configured. Missing: ${missing.join(', ')}. Set these in ENV Setup or backend .env`
+        `❌ Cloudinary is not fully configured. Missing: ${missing.join(', ')}. Set these in backend .env`
       );
       throw new Error(`Cloudinary configuration incomplete. Missing: ${missing.join(', ')}`);
     }

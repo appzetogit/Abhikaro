@@ -18,7 +18,7 @@ class GoogleMapsService {
     if (!this.apiKey) {
       this.apiKey = await getGoogleMapsApiKey();
       if (!this.apiKey) {
-        console.warn('⚠️ Google Maps API key not found in database. Please set it in Admin → System → Environment Variables');
+        console.warn('⚠️ Google Maps API key not found. Set VITE_GOOGLE_MAPS_API_KEY in backend .env');
       }
     }
     return this.apiKey;

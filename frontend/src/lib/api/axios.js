@@ -666,7 +666,7 @@ apiClient.interceptors.response.use(
 
           // Show helpful error message (only once per minute)
           toast.error(
-            `Backend not connected! Start server: cd backend && npm run dev`,
+            `Backend server is unavailable at ${API_BASE_URL}. Start the backend or check the API port.`,
             {
               duration: 10000,
               id: "network-error-toast", // Use ID to prevent duplicate toasts

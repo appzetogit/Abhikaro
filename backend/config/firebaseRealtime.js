@@ -35,7 +35,7 @@ export async function initializeFirebaseRealtime() {
       
       if (!credentials.projectId || !credentials.privateKey || !credentials.clientEmail) {
         console.warn('⚠️ Firebase Realtime Database not initialized: Missing credentials');
-        console.warn('💡 Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in .env or Admin Panel');
+        console.warn('💡 Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in backend .env');
         return null;
       }
 

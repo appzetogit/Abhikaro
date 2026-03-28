@@ -81,8 +81,6 @@ const AboutUs = lazy(() => import("../pages/settings/AboutUs"));
 const RefundPolicy = lazy(() => import("../pages/settings/RefundPolicy"));
 const ShippingPolicy = lazy(() => import("../pages/settings/ShippingPolicy"));
 const CancellationPolicy = lazy(() => import("../pages/settings/CancellationPolicy"));
-// ENV Setup (formerly System Addons)
-const SystemAddons = lazy(() => import("../pages/system/SystemAddons"));
 const LandingPageManagement = lazy(() => import("../pages/system/LandingPageManagement"));
 const DiningManagement = lazy(() => import("../pages/system/DiningManagement"));
 const DiningList = lazy(() => import("../pages/system/DiningList"));
@@ -268,8 +266,6 @@ export default function AdminRouter() {
 
           {/* SYSTEM SETTINGS */}
 
-          {/* ENV SETUP */}
-          <Route path="system-addons" element={<SystemAddons />} />
           {/* HERO BANNER MANAGEMENT */}
           <Route path="hero-banner-management" element={<LandingPageManagement />} />
           {/* DINING MANAGEMENT */}

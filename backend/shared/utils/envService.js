@@ -17,6 +17,39 @@ let envCache = null;
 let cacheTimestamp = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+/** Firebase keys — backend .env only (not Admin / MongoDB) */
+export const FIREBASE_ENV_ONLY_KEYS = [
+  "FIREBASE_API_KEY",
+  "FIREBASE_AUTH_DOMAIN",
+  "FIREBASE_STORAGE_BUCKET",
+  "FIREBASE_MESSAGING_SENDER_ID",
+  "FIREBASE_APP_ID",
+  "MEASUREMENT_ID",
+  "FIREBASE_PROJECT_ID",
+  "FIREBASE_CLIENT_EMAIL",
+  "FIREBASE_PRIVATE_KEY",
+  "FIREBASE_VAPID_KEY",
+];
+
+/** All integration secrets — backend .env only */
+export const ENV_ONLY_KEYS = [
+  ...FIREBASE_ENV_ONLY_KEYS,
+  "RAZORPAY_API_KEY",
+  "RAZORPAY_SECRET_KEY",
+  "CLOUDINARY_CLOUD_NAME",
+  "CLOUDINARY_API_KEY",
+  "CLOUDINARY_API_SECRET",
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_USER",
+  "SMTP_PASS",
+  "SMSINDIAHUB_API_KEY",
+  "SMSINDIAHUB_SENDER_ID",
+  "VITE_GOOGLE_MAPS_API_KEY",
+];
+
+const ENV_ONLY_SET = new Set(ENV_ONLY_KEYS);
+
 /**
  * Get environment variable value from database
  * Falls back to process.env if not found in database
@@ -27,6 +60,22 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
  */
 export async function getEnvVar(key, defaultValue = "") {
   try {
+    if (ENV_ONLY_SET.has(key)) {
+      const fromEnv = process.env[key];
+      if (fromEnv !== undefined && String(fromEnv).trim() !== "") {
+        let value = String(fromEnv);
+        if (value && isEncrypted(value)) {
+          try {
+            value = decrypt(value);
+          } catch (error) {
+            logger.warn(`Error decrypting ${key}: ${error.message}`);
+            return defaultValue;
+          }
+        }
+        return value;
+      }
+    }
+
     const envVars = await getAllEnvVars();
     let value = envVars[key] || process.env[key] || defaultValue;
 
@@ -88,6 +137,9 @@ export async function getAllEnvVars() {
 
       // If DB value is empty, check process.env
       if (!envData[key] || envData[key] === "") {
+        if (ENV_ONLY_SET.has(key)) {
+          continue;
+        }
         // Check both direct key and VITE_ prefixed key
         const envValue = process.env[key] || process.env[`VITE_${key}`];
 

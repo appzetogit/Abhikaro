@@ -67,7 +67,7 @@ class FirebaseAuthService {
 
       if (!projectId || !clientEmail || !privateKey) {
         logger.warn(
-          "Firebase Admin not fully configured. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in ENV Setup or .env or provide firebaseconfig.json in backend root to enable Firebase auth.",
+          "Firebase Admin not fully configured. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in backend .env or provide firebaseconfig.json in backend root to enable Firebase auth.",
         );
         return;
       }

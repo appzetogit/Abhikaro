@@ -370,7 +370,10 @@ connectRedis().then(async (redisClient) => {
   console.log('⚠️ Redis not available - Socket.IO will work in single-server mode');
 });
 
-// Security middleware - configure CSP to allow Firebase scripts
+// Serve static files from 'public' directory (e.g., audio, images)
+app.use(express.static('public'));
+
+// Secure headers with Helmet
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {

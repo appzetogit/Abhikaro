@@ -74,7 +74,7 @@ async function ensureFirebaseInitialized() {
       missingFields,
     );
     console.warn(
-      "💡 Authentication features may not work until configured in Admin Panel.",
+      "💡 Set VITE_FIREBASE_* in frontend .env or FIREBASE_* in backend .env (public API).",
     );
     return;
   }
@@ -83,9 +83,7 @@ async function ensureFirebaseInitialized() {
     const existingApps = getApps();
     if (existingApps.length === 0) {
       app = initializeApp(firebaseConfig);
-      console.log(
-        "🚀 Firebase initialized successfully with config from database",
-      );
+      console.log("🚀 Firebase initialized successfully");
     } else {
       app = existingApps[0];
     }

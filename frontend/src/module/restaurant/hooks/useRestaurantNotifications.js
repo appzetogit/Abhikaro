@@ -224,6 +224,9 @@ export const useRestaurantNotifications = () => {
     socketRef.current.on('new_order', (orderData) => {
       setNewOrder(orderData);
       
+      // Trigger UI refresh
+      window.dispatchEvent(new CustomEvent('new_order_received', { detail: orderData }));
+
       // Play notification sound
       playNotificationSound();
     });

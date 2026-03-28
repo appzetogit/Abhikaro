@@ -1,20 +1,20 @@
 import { useNetworkStatus } from "@/lib/context/NetworkStatusContext.jsx";
 
 export default function NetworkStatusBanner() {
-  const { status, isSlow, isOffline } = useNetworkStatus();
+  const { status, isSlow, isOffline, isBackendUnavailable } = useNetworkStatus();
 
-  if (!isSlow && !isOffline) {
+  if (!isSlow && !isOffline && !isBackendUnavailable) {
     return null;
   }
 
   const isOfflineState = isOffline;
-  const bgClass = isOfflineState
-    ? "bg-red-600"
-    : "bg-amber-500";
+  const bgClass = isOfflineState ? "bg-red-600" : "bg-amber-500";
 
   const message = isOfflineState
     ? "You are offline. Data cannot be saved to the server. Please check your internet connection."
-    : "Network is very slow. Data is not stored locally and may not reach the server. Please try again on a stable connection.";
+    : isBackendUnavailable
+      ? "Internet is connected, but the backend server is unavailable. Data cannot be saved right now."
+      : "Network is very slow. Data is not stored locally and may not reach the server. Please try again on a stable connection.";
 
   return (
     <div

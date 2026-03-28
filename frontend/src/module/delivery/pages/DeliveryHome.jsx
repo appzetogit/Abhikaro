@@ -4965,7 +4965,7 @@ export default function DeliveryHome() {
 
           await initializeGoogleMap();
         } else {
-          const errorMsg = 'Google Maps API key not found. Please set it in Admin → System → ENV Setup';
+          const errorMsg = 'Google Maps API key not found. Set VITE_GOOGLE_MAPS_API_KEY in frontend .env and backend .env';
 
           window.__googleMapsLoading = false;
           setMapLoading(false);
@@ -4973,7 +4973,7 @@ export default function DeliveryHome() {
         }
       } catch (error) {
         const errorMsg = error.message?.includes('InvalidKey') || error.message?.includes('invalid')
-          ? 'Invalid Google Maps API Key. Please check Admin → System → ENV Setup'
+          ? 'Invalid Google Maps API Key. Check VITE_GOOGLE_MAPS_API_KEY in .env'
           : error.message?.includes('Billing') || error.message?.includes('billing')
             ? 'Google Maps billing not enabled. Please enable billing in Google Cloud Console'
             : `Failed to load Google Maps: ${error.message || 'Unknown error'}`;

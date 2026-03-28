@@ -3,7 +3,7 @@
 
 import { API_BASE_URL } from "../api/config.js";
 
-// Possible values: 'online' | 'slow' | 'offline'
+// Possible values: 'online' | 'slow' | 'offline' | 'backend_unavailable'
 let currentStatus = "online";
 
 const listeners = new Set();
@@ -72,8 +72,9 @@ async function pingBackend() {
     }
   } catch (error) {
     clearTimeout(timeoutId);
-    // Any failure here means we should treat backend as offline
-    setStatus("offline");
+    // Only mark the app as offline when the browser itself is offline.
+    // A failed health check while online means the backend is unavailable.
+    setStatus(navigator.onLine === false ? "offline" : "backend_unavailable");
     if (import.meta.env.DEV) {
       console.warn("[networkStatus] Health check failed:", error?.message || error);
     }
@@ -132,6 +133,10 @@ export function isSlow() {
 
 export function isOffline() {
   return currentStatus === "offline";
+}
+
+export function isBackendUnavailable() {
+  return currentStatus === "backend_unavailable";
 }
 
 export function subscribeNetworkStatus(listener) {

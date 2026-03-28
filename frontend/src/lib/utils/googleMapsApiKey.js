@@ -64,7 +64,7 @@ export async function getGoogleMapsApiKey(forceRefresh = false) {
         return cachedApiKey;
       }
       
-      console.error('❌ Google Maps API key not found (backend empty and VITE_GOOGLE_MAPS_API_KEY missing). Please set it in Admin → System → Environment Variables or .env');
+      console.error('❌ Google Maps API key not found (backend empty and VITE_GOOGLE_MAPS_API_KEY missing). Set VITE_GOOGLE_MAPS_API_KEY in frontend and backend .env');
       return '';
     } catch (error) {
       console.error('❌ Failed to fetch Google Maps API key from backend:', error);
