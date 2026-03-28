@@ -173,8 +173,8 @@ export default function App() {
         }
       };
       
-      // Delay slightly to prioritize core UI
-      const timer = setTimeout(syncFcmToken, 2000);
+      // Short delay so session tokens are stable; FCM should register soon after login
+      const timer = setTimeout(syncFcmToken, 600);
       return () => clearTimeout(timer);
     }
   }, [sessionRestored]);

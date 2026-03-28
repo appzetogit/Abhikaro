@@ -90,13 +90,31 @@ export const getPublicEnvVariables = asyncHandler(async (req, res) => {
       `Error fetching public environment variables: ${error.message}`,
       { stack: error.stack },
     );
+    // Still return Firebase/VAPID from .env so web push works if DB/cache fails
+    const keys = [
+      "VITE_GOOGLE_MAPS_API_KEY",
+      "FIREBASE_API_KEY",
+      "FIREBASE_AUTH_DOMAIN",
+      "FIREBASE_PROJECT_ID",
+      "FIREBASE_STORAGE_BUCKET",
+      "FIREBASE_MESSAGING_SENDER_ID",
+      "FIREBASE_APP_ID",
+      "MEASUREMENT_ID",
+      "FIREBASE_VAPID_KEY",
+    ];
+    const publicEnvData = {};
+    for (const key of keys) {
+      try {
+        publicEnvData[key] = await getEnvVar(key);
+      } catch {
+        publicEnvData[key] = process.env[key] || "";
+      }
+    }
     return successResponse(
       res,
       200,
       "Public environment variables retrieved successfully",
-      {
-        VITE_GOOGLE_MAPS_API_KEY: "",
-      },
+      publicEnvData,
     );
   }
 });

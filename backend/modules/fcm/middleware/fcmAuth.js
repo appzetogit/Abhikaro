@@ -13,7 +13,8 @@ export const fcmAuth = async (req, res, next) => {
     }
     const token = authHeader.substring(7);
     const decoded = jwtService.verifyAccessToken(token);
-    req.user = { userId: decoded.userId, role: decoded.role || 'user' };
+    const userId = decoded.userId || decoded.id || decoded.sub;
+    req.user = { userId, role: decoded.role || 'user' };
     next();
   } catch (error) {
     return errorResponse(res, 401, error.message || 'Invalid token');

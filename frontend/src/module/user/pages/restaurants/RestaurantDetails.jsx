@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom"
@@ -91,8 +91,25 @@ export default function RestaurantDetails() {
   const stateRestaurant = location.state?.restaurant
   const [restaurant, setRestaurant] = useState(stateRestaurant || null)
   const [loadingRestaurant, setLoadingRestaurant] = useState(!stateRestaurant)
+  const [loadingMenu, setLoadingMenu] = useState(() => {
+    const m = stateRestaurant?.menuSections
+    return !stateRestaurant || !Array.isArray(m) || m.length === 0
+  })
   const [restaurantError, setRestaurantError] = useState(null)
   const fetchedRestaurantRef = useRef(false) // Track if restaurant has been fetched for current slug
+  const restaurantRef = useRef(restaurant)
+  restaurantRef.current = restaurant
+
+  // Drop stale restaurant immediately when slug changes (avoids wrong menu id + faster perceived load)
+  useLayoutEffect(() => {
+    setRestaurant((prev) => {
+      if (prev?.slug && prev.slug !== slug) {
+        fetchedRestaurantRef.current = false
+        return null
+      }
+      return prev
+    })
+  }, [slug])
 
   const getItemDomId = (item, sectionIndex, subsectionIndex = null) => {
     const rawId = String(item?.id || item?._id || item?.name || "item")
@@ -142,30 +159,38 @@ export default function RestaurantDetails() {
     fetchCategoryOffers()
   }, [])
 
-  // Fetch restaurant data from API
+  // Fetch restaurant data from API (metadata first for instant shell; menu + ratings in parallel)
   useEffect(() => {
     const fetchRestaurant = async () => {
       if (!slug) return
 
-      // If we already have the basic restaurant object from state and we've fetched the menu once, skip
-      if (fetchedRestaurantRef.current && restaurant && restaurant.slug === slug) {
+      const aligned = restaurantRef.current?.slug === slug ? restaurantRef.current : null
+
+      if (
+        fetchedRestaurantRef.current &&
+        aligned?.slug === slug &&
+        Array.isArray(aligned.menuSections) &&
+        aligned.menuSections.length > 0
+      ) {
         return
       }
 
       try {
-        // Only show loading spinner if we don't even have partial data from Link state
-        if (!restaurant) {
+        if (!aligned) {
           setLoadingRestaurant(true)
+          setLoadingMenu(true)
         }
         setRestaurantError(null)
 
         let apiRestaurant = null
-        let rId = restaurant?.id || restaurant?.restaurantId || restaurant?._id
+        let rId = aligned?.id || aligned?.restaurantId || aligned?._id
+        const hasMenuFromState =
+          aligned &&
+          Array.isArray(aligned.menuSections) &&
+          aligned.menuSections.length > 0
 
-        // If we don't have restaurant metadata yet (e.g. direct URL access), fetch it first
-        if (!restaurant || !rId) {
+        if (!aligned || !rId) {
           try {
-            // Try dining API first
             const response = await diningAPI.getRestaurantBySlug(slug)
             if (response.data && response.data.success && response.data.data) {
               apiRestaurant = response.data.data
@@ -185,25 +210,6 @@ export default function RestaurantDetails() {
         if (apiRestaurant) {
           let actualRestaurant = apiRestaurant?.restaurant || apiRestaurant
 
-          // Snapshot enrichment for ratings
-          try {
-            const ratingSnapshotResp = await restaurantAPI.getRestaurantById(slug)
-            const snapshotData = ratingSnapshotResp?.data?.data
-            const snapshotRestaurant = snapshotData?.restaurant || snapshotData
-            if (snapshotRestaurant && typeof snapshotRestaurant === "object") {
-              actualRestaurant = {
-                ...actualRestaurant,
-                averageRating: snapshotRestaurant.averageRating ?? actualRestaurant.averageRating,
-                rating: snapshotRestaurant.rating ?? actualRestaurant.rating,
-                totalRatings: snapshotRestaurant.totalRatings ?? actualRestaurant.totalRatings,
-                reviewCount: snapshotRestaurant.reviewCount ?? actualRestaurant.reviewCount,
-                totalReviews: snapshotRestaurant.totalReviews ?? actualRestaurant.totalReviews,
-                ratingsCount: snapshotRestaurant.ratingsCount ?? actualRestaurant.ratingsCount,
-              }
-            }
-          } catch { /* ignore */ }
-
-          // Transformation Logic (Consistent with previous version)
           const formatAddress = (obj) => {
             if (!obj) return "Location"
             if (typeof obj === 'string') return obj
@@ -234,57 +240,105 @@ export default function RestaurantDetails() {
           }
 
           setRestaurant(transformed)
+          setLoadingRestaurant(false)
+          setLoadingMenu(true)
           rId = transformed.id
+        } else if (aligned && rId) {
+          setLoadingRestaurant(false)
+          if (!hasMenuFromState) setLoadingMenu(true)
         }
 
-        // Fetch menu and inventory in PARALLEL
-        if (rId) {
-          const [menuRes, inventoryRes] = await Promise.allSettled([
-            restaurantAPI.getMenuByRestaurantId(rId),
-            restaurantAPI.getInventoryByRestaurantId(rId)
-          ])
+        if (!rId) {
+          setRestaurantError("Restaurant not found")
+          setLoadingRestaurant(false)
+          setLoadingMenu(false)
+          return
+        }
 
-          if (menuRes.status === 'fulfilled' && menuRes.value.data?.success) {
-            const menuSections = menuRes.value.data.data.menu.sections || []
-            const recommendedItems = []
-            menuSections.forEach(section => {
-              if (section.items) section.items.forEach(item => {
+        if (hasMenuFromState) {
+          fetchedRestaurantRef.current = true
+          setLoadingRestaurant(false)
+          setLoadingMenu(false)
+          return
+        }
+
+        const [snapRes, menuRes, inventoryRes] = await Promise.allSettled([
+          restaurantAPI.getRestaurantById(slug),
+          restaurantAPI.getMenuByRestaurantId(rId),
+          restaurantAPI.getInventoryByRestaurantId(rId),
+        ])
+
+        if (snapRes.status === "fulfilled") {
+          const snapshotData = snapRes.value?.data?.data
+          const snapshotRestaurant = snapshotData?.restaurant || snapshotData
+          if (snapshotRestaurant && typeof snapshotRestaurant === "object") {
+            setRestaurant((prev) => {
+              if (!prev || prev.slug !== slug) return prev
+              return {
+                ...prev,
+                rating: Number(
+                  snapshotRestaurant.averageRating ??
+                    snapshotRestaurant.rating ??
+                    prev.rating ??
+                    0,
+                ),
+                reviews: Number(
+                  snapshotRestaurant.totalRatings ??
+                    snapshotRestaurant.reviewCount ??
+                    snapshotRestaurant.totalReviews ??
+                    prev.reviews ??
+                    0,
+                ),
+              }
+            })
+          }
+        }
+
+        if (menuRes.status === "fulfilled" && menuRes.value.data?.success) {
+          const menuSections = menuRes.value.data.data.menu.sections || []
+          const recommendedItems = []
+          menuSections.forEach((section) => {
+            if (section.items) {
+              section.items.forEach((item) => {
                 if (item.isRecommended === true && item.isAvailable !== false) recommendedItems.push(item)
               })
-              if (section.subsections) section.subsections.forEach(sub => {
-                if (sub.items) sub.items.forEach(item => {
-                  if (item.isRecommended === true && item.isAvailable !== false) recommendedItems.push(item)
-                })
+            }
+            if (section.subsections) {
+              section.subsections.forEach((sub) => {
+                if (sub.items) {
+                  sub.items.forEach((item) => {
+                    if (item.isRecommended === true && item.isAvailable !== false) recommendedItems.push(item)
+                  })
+                }
               })
-            })
-            const final = [{ name: "Recommended for you", items: recommendedItems, subsections: [] }, ...menuSections]
-            setRestaurant(prev => ({ ...prev, menuSections: final }))
-            setExpandedSections(new Set(final.map((_, i) => i)))
-          }
+            }
+          })
+          const final = [{ name: "Recommended for you", items: recommendedItems, subsections: [] }, ...menuSections]
+          setRestaurant((prev) => (prev && prev.slug === slug ? { ...prev, menuSections: final } : prev))
+          setExpandedSections(new Set(final.map((_, i) => i)))
+        }
 
-          if (inventoryRes.status === 'fulfilled' && inventoryRes.value.data?.success) {
-            setRestaurant(prev => ({ ...prev, inventory: inventoryRes.value.data.data.inventory.categories || [] }))
-          }
+        if (inventoryRes.status === "fulfilled" && inventoryRes.value.data?.success) {
+          setRestaurant((prev) =>
+            prev && prev.slug === slug
+              ? { ...prev, inventory: inventoryRes.value.data.data.inventory.categories || [] }
+              : prev,
+          )
         }
 
         fetchedRestaurantRef.current = true
+        setLoadingMenu(false)
         setLoadingRestaurant(false)
       } catch (error) {
         console.error("Fetch error:", error)
-        setRestaurantError(error.message || 'Failed to load restaurant')
+        setRestaurantError(error.message || "Failed to load restaurant")
         setLoadingRestaurant(false)
+        setLoadingMenu(false)
       }
     }
 
     fetchRestaurant()
   }, [slug])
-
-  // Reset fetched flag when slug changes - CRITICAL for navigating between restaurants
-  useEffect(() => {
-    if (fetchedRestaurantRef.current && restaurant?.slug !== slug) {
-      fetchedRestaurantRef.current = false
-    }
-  }, [slug, restaurant?.slug])
 
   // Helper function for granular address formatting (Restored)
   const formatRestaurantAddress = (locationObj) => {
@@ -1411,6 +1465,13 @@ export default function RestaurantDetails() {
             </div>
           </div>
         </div>
+
+        {loadingMenu && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 flex flex-col items-center justify-center py-16 gap-3">
+            <Loader2 className="h-8 w-8 text-green-600 animate-spin" />
+            <span className="text-sm text-gray-600 dark:text-gray-400">Loading menu…</span>
+          </div>
+        )}
 
         {/* Menu Items Section */}
         {restaurant?.menuSections && Array.isArray(restaurant.menuSections) && restaurant.menuSections.length > 0 && (

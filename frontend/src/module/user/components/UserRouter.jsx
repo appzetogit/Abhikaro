@@ -109,6 +109,11 @@ function UserRouteTracker({ children }) {
 }
 
 export default function UserRouter() {
+  // Preload restaurant detail chunk early so first visit to /restaurants/:slug is not blocked on JS download
+  useEffect(() => {
+    import("../pages/restaurants/RestaurantDetails")
+  }, [])
+
   return (
     <Suspense fallback={<Loader />}>
       <LocationProvider>

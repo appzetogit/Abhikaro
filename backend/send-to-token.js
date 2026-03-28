@@ -1,57 +1,32 @@
-import admin from 'firebase-admin';
-import dotenv from 'dotenv';
-dotenv.config();
+/**
+ * One-off FCM test: node send-to-token.js "<FCM_REGISTRATION_TOKEN>"
+ * Uses FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_* in .env
+ */
+import "dotenv/config";
 
-const token = 'dxzTiOYxTuqLlfW0qiqsUe:APA91bF93Y24dPcgMvyck14iDyhFpZnOdibSiIfqOTprkD68-RNJdacAA3MQqdPzZcMB_b1e8pf1wTZI3dk2ffRmYpqjyYf6zyMfGjK01koX8atZNy07Ctg';
+import { sendNotification } from "./modules/fcm/services/fcmService.js";
 
-async function sendToExplicitToken() {
-  console.log('🚀 Direct test to token:', token.substring(0, 30) + '...');
-  
-  try {
-    const projectId = 'abhikaro-d2df6';
-    const clientEmail = 'firebase-adminsdk-fbsvc@abhikaro-d2df6.iam.gserviceaccount.com';
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
-
-    if (admin.apps.length === 0) {
-        admin.initializeApp({
-            credential: admin.credential.cert({
-                projectId,
-                clientEmail,
-                privateKey
-            })
-        });
-        console.log('✅ Admin initialized manually');
-    }
-
-    const message = {
-        token: token,
-        notification: {
-            title: 'Test Success! 🚀',
-            body: 'Antigravity has proven the notification delivery works directly to your browser.'
-        },
-        data: {
-            type: 'manual_test',
-            click_action: '/'
-        },
-        android: { priority: 'high' },
-        webpush: {
-            headers: { Urgency: 'high' },
-            notification: { requireInteraction: true }
-        }
-    };
-
-    console.log('🚀 Sending message...');
-    const result = await admin.messaging().send(message);
-    console.log('✅ Message sent successfully! Response ID:', result);
-    
-    process.exit(0);
-  } catch (error) {
-    console.error('❌ Error sending message:', error.message);
-    if (error.code === 'messaging/invalid-registration-token' || error.code === 'messaging/registration-token-not-registered') {
-        console.log('⚠️  NOTE: The token provided is invalid or stale (maybe from a previous project registration). Please refresh your browser.');
-    }
-    process.exit(1);
-  }
+const token = (process.argv[2] || "").trim();
+if (!token) {
+  console.error("Usage: node send-to-token.js \"<FCM_REGISTRATION_TOKEN>\"");
+  process.exit(1);
 }
 
-sendToExplicitToken();
+async function main() {
+  console.log("🚀 Sending test push to token:", token.slice(0, 24) + "…");
+  const result = await sendNotification(
+    token,
+    {
+      title: "Abhikaro — test push",
+      body: "Agar yeh dikh raha hai, FCM delivery theek hai.",
+    },
+    { type: "script_test", tag: `test_${Date.now()}` },
+  );
+  console.log("📊 Result:", JSON.stringify(result, null, 2));
+  process.exit(result.success ? 0 : 1);
+}
+
+main().catch((err) => {
+  console.error("❌", err.message);
+  process.exit(1);
+});

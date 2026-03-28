@@ -6,7 +6,7 @@ import Hotel from '../../hotel/models/Hotel.js';
 import Admin from '../../admin/models/Admin.js';
 import mongoose from 'mongoose';
 
-import { getFirebaseCredentials } from '../../../shared/utils/envService.js';
+import { ensureFirebaseAdminApp } from '../../../shared/utils/firebaseAdminInit.js';
 
 let fcmInitialized = false;
 
@@ -25,44 +25,18 @@ function getModelByRole(role) {
 }
 
 /**
- * Initialize Firebase Admin SDK (credentials from backend .env — never expose to frontend)
+ * Initialize Firebase Admin default app for FCM (shared loader: JSON file or .env)
  */
 export async function initializeFcm() {
   if (fcmInitialized) return true;
 
   try {
-    const creds = await getFirebaseCredentials();
-    const projectId = creds.projectId;
-    const privateKey = creds.privateKey?.replace(/\\n/g, '\n');
-    const clientEmail = creds.clientEmail;
-
-    console.log('FCM Initializing with:', {
-      projectId,
-      clientEmail,
-      hasPrivateKey: !!privateKey,
-      privateKeyType: typeof privateKey,
-      projectIdType: typeof projectId,
-      clientEmailType: typeof clientEmail
-    });
-
-    if (!projectId || !privateKey || !clientEmail) {
-      console.warn(
-        '⚠️ FCM not initialized: Missing FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, or FIREBASE_CLIENT_EMAIL in backend .env',
-      );
+    const ok = await ensureFirebaseAdminApp();
+    if (!ok) {
       return false;
     }
-
-    if (admin.apps.length === 0) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          privateKey,
-          clientEmail,
-        }),
-      });
-    }
     fcmInitialized = true;
-    console.log('✅ Firebase Admin SDK initialized for FCM (.env credentials)');
+    console.log('✅ FCM: Firebase Admin ready (admin.messaging)');
     return true;
   } catch (err) {
     console.error('❌ FCM initialization error:', err.message);
@@ -289,7 +263,10 @@ export async function sendNotification(tokens, notification, data = {}) {
     response.responses.forEach((resp, idx) => {
       if (!resp.success) {
         console.error(`❌ [FCM] Token ${idx} failed:`, resp.error?.code, resp.error?.message);
-        if (resp.error?.code === 'messaging/invalid-registration-token') {
+        if (
+          resp.error?.code === 'messaging/invalid-registration-token' ||
+          resp.error?.code === 'messaging/registration-token-not-registered'
+        ) {
           invalidTokens.push(tokenArray[idx]);
         }
       }

@@ -10,6 +10,8 @@ const registerTokenSchema = Joi.object({
   fcmToken: Joi.string().required().min(1),
   platform: Joi.string().valid('web', 'android', 'ios').default('web'),
   deviceId: Joi.string().optional().allow(null, ''),
+  sendWelcome: Joi.boolean().optional(),
+  sendLoginAlert: Joi.boolean().optional(),
 });
 
 const removeTokenSchema = Joi.object({

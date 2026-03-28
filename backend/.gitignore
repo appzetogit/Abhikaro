@@ -1,6 +1,11 @@
 node_modules/
 .env
 .DS_Store
+
+# Firebase service account JSON (use FIREBASE_SERVICE_ACCOUNT_PATH in .env)
+secrets/*.json
+**/firebase-adminsdk*.json
+firebaseconfig.json
 dist/
 build/
 coverage/

@@ -43,41 +43,65 @@ async function getVapidKey() {
 export async function getFcmToken() {
   try {
     if (!("Notification" in window)) {
+      if (import.meta.env.DEV) {
+        console.warn("[FCM] Notifications API not available in this browser");
+      }
       return null;
     }
-    
-    const permission = await Notification.requestPermission();
-    
-    if (permission !== "granted") {
+
+    if (Notification.permission === "denied") {
+      if (import.meta.env.DEV) {
+        console.warn("[FCM] Notification permission denied — enable notifications for this site in browser settings");
+      }
       return null;
+    }
+
+    if (Notification.permission !== "granted") {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        if (import.meta.env.DEV) {
+          console.warn("[FCM] Notification permission not granted:", permission);
+        }
+        return null;
+      }
     }
 
     const messaging = await getMessaging();
     if (!messaging) {
+      if (import.meta.env.DEV) {
+        console.warn("[FCM] Firebase Messaging not supported or Firebase app missing");
+      }
       return null;
     }
 
     const vapidKey = await getVapidKey();
-    if (!vapidKey) {
+    if (!vapidKey || String(vapidKey).trim() === "") {
+      if (import.meta.env.DEV) {
+        console.warn(
+          "[FCM] Missing VAPID key — set FIREBASE_VAPID_KEY in backend .env or VITE_FIREBASE_VAPID_KEY in frontend .env",
+        );
+      }
       return null;
     }
 
     const { getToken } = await import("firebase/messaging");
-    
-    const serviceWorkerRegistration =
-      "serviceWorker" in navigator
-        ? await navigator.serviceWorker.register("/firebase-messaging-sw.js")
-        : undefined;
+
+    let serviceWorkerRegistration;
+    if ("serviceWorker" in navigator) {
+      serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+      await navigator.serviceWorker.ready;
+    }
 
     const token = await getToken(messaging, {
-      vapidKey,
+      vapidKey: String(vapidKey).trim(),
       ...(serviceWorkerRegistration ? { serviceWorkerRegistration } : {}),
     });
-    
+
     return token || null;
   } catch (err) {
-    // Handle service worker registration errors gracefully
-    // Return null to allow app to continue without FCM (non-blocking)
+    if (import.meta.env.DEV) {
+      console.warn("[FCM] getFcmToken failed:", err?.message || err);
+    }
     return null;
   }
 }
@@ -114,8 +138,14 @@ export async function registerFcmToken(accessToken, options = {}) {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
     );
+    if (import.meta.env.DEV) {
+      console.log("[FCM] Token registered with backend");
+    }
   } catch (err) {
-    // Registration failed
+    const msg = err?.response?.data?.message || err?.message || "unknown error";
+    if (import.meta.env.DEV) {
+      console.warn("[FCM] Backend registration failed:", msg, err?.response?.status);
+    }
   }
 }
 

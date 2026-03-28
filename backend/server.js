@@ -1,5 +1,7 @@
+// Load .env before any other local imports (ESM hoists imports; dotenv must run first)
+import "dotenv/config";
+
 import express from 'express';
-import dotenv from 'dotenv';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -11,9 +13,6 @@ import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import cron from 'node-cron';
 import mongoose from 'mongoose';
-
-// Load environment variables
-dotenv.config();
 
 // Import configurations
 import { connectDB } from './config/database.js';

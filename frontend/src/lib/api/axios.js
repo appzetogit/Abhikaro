@@ -271,8 +271,14 @@ apiClient.interceptors.request.use(
     // we never \"fake save\" anything in the frontend or localStorage.
     const method = (config.method || "get").toLowerCase();
     const isWriteMethod = ["post", "put", "patch", "delete"].includes(method);
+    const requestPath = String(config.url || "");
+    // Push token registration must not be blocked on "slow" — otherwise devices never get FCM tokens
+    const isFcmOrPushRoute =
+      requestPath.includes("/fcm/") ||
+      requestPath.includes("fcm/register-token") ||
+      requestPath.includes("fcm/remove-token");
 
-    if (isWriteMethod) {
+    if (isWriteMethod && !isFcmOrPushRoute) {
       const status = getNetworkStatus();
       if (status === "offline" || status === "slow") {
         const message =
