@@ -140,12 +140,12 @@ self.addEventListener('notificationclick', (event) => {
     res.setHeader('Content-Type', 'application/javascript');
     res.setHeader('Cache-Control', 'no-cache');
     // Allow Firebase scripts in service worker - CSP for service worker context
-    res.setHeader('Content-Security-Policy', "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://apis.google.com; connect-src 'self' https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebase.googleapis.com https://fcm.googleapis.com https://*.googleapis.com;");
+    res.setHeader('Content-Security-Policy', "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://apis.google.com; connect-src 'self' https://apis.google.com https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebase.googleapis.com https://fcm.googleapis.com https://*.googleapis.com;");
     res.send(swContent);
   } catch (err) {
     console.error('firebase-messaging-sw.js error:', err.message);
     res.setHeader('Content-Type', 'application/javascript');
-    res.setHeader('Content-Security-Policy', "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://apis.google.com; connect-src 'self' https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebase.googleapis.com https://fcm.googleapis.com https://*.googleapis.com;");
+    res.setHeader('Content-Security-Policy', "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://apis.google.com; connect-src 'self' https://apis.google.com https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebase.googleapis.com https://fcm.googleapis.com https://*.googleapis.com;");
     res.status(500).send('// FCM SW config error: ' + err.message);
   }
 });

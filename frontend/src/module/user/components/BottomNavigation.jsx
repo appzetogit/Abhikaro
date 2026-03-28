@@ -1,12 +1,10 @@
 import { Link, useLocation } from "react-router-dom"
 import { UtensilsCrossed, Tag, User, Truck } from "lucide-react"
-import { useLocation as useUserLocation } from "../hooks/useLocation"
-import { useZone } from "../hooks/useZone"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 
 export default function BottomNavigation() {
   const location = useLocation()
-  const { location: userLocation } = useUserLocation()
-  const { isOutOfService } = useZone(userLocation)
+  const { location: userLocation, isOutOfService } = useSharedLocation()
 
   // Check active routes - support both /user/* and /* paths
   const isDining = location.pathname === "/dining" || location.pathname === "/user/dining"

@@ -105,7 +105,6 @@ const hotelWalletSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       unique: true,
-      index: true,
     },
     // Balance fields
     totalBalance: {
@@ -151,7 +150,6 @@ const hotelWalletSchema = new mongoose.Schema(
 );
 
 // Indexes
-hotelWalletSchema.index({ hotelId: 1 });
 hotelWalletSchema.index({ "transactions.orderId": 1 });
 hotelWalletSchema.index({ "transactions.status": 1 });
 hotelWalletSchema.index({ "transactions.type": 1 });

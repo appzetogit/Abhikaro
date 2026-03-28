@@ -404,6 +404,7 @@ app.use(helmet({
       ],
       connectSrc: [
         "'self'",
+        "https://apis.google.com",
         "https://api.razorpay.com",
         "https://lumberjack.razorpay.com",
         "https://www.googleapis.com",
@@ -964,4 +965,3 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;
-

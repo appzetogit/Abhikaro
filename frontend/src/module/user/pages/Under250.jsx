@@ -7,7 +7,6 @@ import AnimatedPage from "../components/AnimatedPage"
 import { Button } from "@/components/ui/button"
 import { useLocationSelector } from "../components/UserLayout"
 import { useSharedLocation } from "@/lib/context/LocationContext"
-import { useZone } from "../hooks/useZone"
 import { useCart } from "../context/CartContext"
 import PageNavbar from "../components/PageNavbar"
 import { foodImages } from "@/constants/images"
@@ -21,8 +20,7 @@ import { restaurantAPI } from "@/lib/api"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 
 export default function Under250() {
-  const { location } = useSharedLocation()
-  const { zoneId, zoneStatus, isInService, isOutOfService } = useZone(location)
+  const { location, zoneId, zoneStatus, isInService, isOutOfService } = useSharedLocation()
   const navigate = useNavigate()
   const { addToCart, updateQuantity, removeFromCart, getCartItem, getCartItemId, cart } = useCart()
   const [activeCategory, setActiveCategory] = useState(null)

@@ -6,6 +6,8 @@ import Hotel from '../../hotel/models/Hotel.js';
 import Admin from '../../admin/models/Admin.js';
 import mongoose from 'mongoose';
 
+import { getFirebaseCredentials } from '../../../shared/utils/envService.js';
+
 let fcmInitialized = false;
 
 /**
@@ -23,23 +25,33 @@ function getModelByRole(role) {
 }
 
 /**
- * Initialize Firebase Admin SDK (uses env vars - never expose to frontend)
+ * Initialize Firebase Admin SDK (uses database config - never expose to frontend)
  */
-export function initializeFcm() {
+export async function initializeFcm() {
   if (fcmInitialized) return true;
 
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-
-  if (!projectId || !privateKey || !clientEmail) {
-    console.warn(
-      '⚠️ FCM not initialized: Missing FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, or FIREBASE_CLIENT_EMAIL in .env'
-    );
-    return false;
-  }
-
   try {
+    const creds = await getFirebaseCredentials();
+    const projectId = creds.projectId;
+    const privateKey = creds.privateKey?.replace(/\\n/g, '\n');
+    const clientEmail = creds.clientEmail;
+
+    console.log('FCM Initializing with:', {
+      projectId,
+      clientEmail,
+      hasPrivateKey: !!privateKey,
+      privateKeyType: typeof privateKey,
+      projectIdType: typeof projectId,
+      clientEmailType: typeof clientEmail
+    });
+
+    if (!projectId || !privateKey || !clientEmail) {
+      console.warn(
+        '⚠️ FCM not initialized: Missing FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, or FIREBASE_CLIENT_EMAIL in database'
+      );
+      return false;
+    }
+
     if (admin.apps.length === 0) {
       admin.initializeApp({
         credential: admin.credential.cert({
@@ -50,7 +62,7 @@ export function initializeFcm() {
       });
     }
     fcmInitialized = true;
-    console.log('✅ Firebase Admin SDK initialized for FCM');
+    console.log('✅ Firebase Admin SDK initialized for FCM with database configuration');
     return true;
   } catch (err) {
     console.error('❌ FCM initialization error:', err.message);
@@ -193,7 +205,7 @@ export async function getTokensForUser(userId, role) {
  * @param {object} data - optional data payload
  */
 export async function sendNotification(tokens, notification, data = {}) {
-  if (!initializeFcm()) return { success: false, error: 'FCM not initialized' };
+  if (!await initializeFcm()) return { success: false, error: 'FCM not initialized' };
 
   const tokenArray = Array.isArray(tokens) ? tokens : [tokens].filter(Boolean);
   if (tokenArray.length === 0) return { success: false, error: 'No tokens provided' };

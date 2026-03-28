@@ -16,7 +16,6 @@ import { restaurantAPI, adminAPI } from "@/lib/api"
 import { useProfile } from "../context/ProfileContext"
 import { useCart } from "../context/CartContext"
 import { useSharedLocation } from "@/lib/context/LocationContext"
-import { useZone } from "../hooks/useZone"
 
 // Filter options
 const filterOptions = [
@@ -34,8 +33,7 @@ export default function CategoryPage() {
   const navigate = useNavigate()
   const { vegMode } = useProfile()
   const { addToCart, getCartItem, updateQuantity, getCartItemId } = useCart()
-  const { location } = useSharedLocation()
-  const { zoneId, isOutOfService } = useZone(location)
+  const { location, zoneId, isOutOfService } = useSharedLocation()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || 'all')
   const [activeFilters, setActiveFilters] = useState(new Set())

@@ -107,8 +107,7 @@ const deliveryWalletSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Delivery',
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   // Balance fields
   totalBalance: {
@@ -156,7 +155,6 @@ const deliveryWalletSchema = new mongoose.Schema({
 });
 
 // Indexes
-deliveryWalletSchema.index({ deliveryId: 1 }, { unique: true });
 deliveryWalletSchema.index({ 'transactions.orderId': 1 });
 deliveryWalletSchema.index({ 'transactions.status': 1 });
 deliveryWalletSchema.index({ 'transactions.type': 1 });

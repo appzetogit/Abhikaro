@@ -19,7 +19,7 @@ async function cleanupInvalidTokens() {
   console.log('🧹 ========================================\n');
 
   // Initialize FCM
-  if (!initializeFcm()) {
+  if (!await initializeFcm()) {
     console.error('❌ FCM not initialized');
     process.exit(1);
   }

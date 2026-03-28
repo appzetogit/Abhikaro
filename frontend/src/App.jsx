@@ -6,7 +6,8 @@ import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
 
 import { Suspense, lazy, useEffect, useState, useRef } from "react"
 import Loader from "@/components/Loader"
-import { restoreUserSession, isModuleAuthenticated } from "@/lib/utils/auth.js"
+import { restoreUserSession, isModuleAuthenticated, getModuleToken } from "@/lib/utils/auth.js"
+import { registerFcmToken } from "@/lib/fcmService.js"
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@/module/user/components/UserRouter"))
@@ -150,6 +151,33 @@ export default function App() {
         setSessionRestored(true)
       });
   }, []);
+
+  // Sync FCM token automatically for authenticated users on app mount
+  useEffect(() => {
+    if (sessionRestored) {
+      const syncFcmToken = async () => {
+        try {
+          // Check all modules for authentication
+          const modules = ['admin', 'restaurant', 'delivery', 'user', 'hotel'];
+          for (const module of modules) {
+            if (isModuleAuthenticated(module)) {
+              const token = getModuleToken(module);
+              if (token) {
+                // Background registration (no welcome notification)
+                registerFcmToken(token, { sendWelcome: false, sendLoginAlert: false });
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [App] Failed to auto-sync FCM token:', error.message);
+        }
+      };
+      
+      // Delay slightly to prioritize core UI
+      const timer = setTimeout(syncFcmToken, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionRestored]);
 
   function UserReloadHandler({ children }) {
     const location = useLocation();

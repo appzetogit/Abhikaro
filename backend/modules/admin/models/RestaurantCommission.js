@@ -53,8 +53,7 @@ const restaurantCommissionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Restaurant',
       required: true,
-      unique: true,
-      index: true
+      unique: true
     },
     restaurantName: {
       type: String,
@@ -117,8 +116,6 @@ const restaurantCommissionSchema = new mongoose.Schema(
 );
 
 // Indexes
-restaurantCommissionSchema.index({ restaurant: 1 });
-restaurantCommissionSchema.index({ restaurantId: 1 });
 restaurantCommissionSchema.index({ status: 1 });
 restaurantCommissionSchema.index({ createdAt: -1 });
 restaurantCommissionSchema.index({ createdBy: 1 });

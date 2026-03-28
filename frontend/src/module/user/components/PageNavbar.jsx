@@ -2,7 +2,7 @@ import { Link } from "react-router-dom"
 import { useState, useEffect, useMemo, useRef } from "react"
 import { ChevronDown, ShoppingCart, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useLocation } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useCart } from "../context/CartContext"
 import { useLocationSelector } from "./UserLayout"
 import { FaLocationDot } from "react-icons/fa6"
@@ -16,7 +16,7 @@ export default function PageNavbar({
   onNavClick,
   mobileTranslateYClass = "translate-y-[32px]",
 }) {
-  const { location, loading, requestLocation } = useLocation()
+  const { location, loading, requestLocation } = useSharedLocation()
   const { getCartCount } = useCart()
   const { openLocationSelector } = useLocationSelector()
   const cartCount = getCartCount()
@@ -33,10 +33,10 @@ export default function PageNavbar({
     )
   }, [userProfile])
 
-  // Auto-trigger location fetch if we have placeholder values (only once on mount)
+  // Trigger location fetch if we have placeholder values (only once on shift/mount)
   const hasTriggeredRef = useRef(false)
   useEffect(() => {
-    // Only trigger once, and only if address contains coordinates or is placeholder
+    // Only trigger if address contains coordinates or is placeholder
     if (location &&
       !loading &&
       requestLocation &&
@@ -45,26 +45,20 @@ export default function PageNavbar({
         location.city === "Current Location" ||
         (location.address && location.address.includes('Location (')) ||
         (location.formattedAddress && location.formattedAddress.includes('Location (')))) {
-      hasTriggeredRef.current = true // Prevent multiple triggers
-      // Wait a bit to avoid multiple rapid calls, and only trigger once
+      
+      hasTriggeredRef.current = true // Mark as triggered to avoid loop
+      
+      // Wait 3 seconds to let context initialization settle
       const timeoutId = setTimeout(() => {
-        requestLocation().then((fetchedLocation) => {
-          if (fetchedLocation &&
-            fetchedLocation.formattedAddress !== "Select location" &&
-            fetchedLocation.city !== "Current Location" &&
-            !fetchedLocation.formattedAddress.includes('Location (')) {
-            hasTriggeredRef.current = false // Reset on success so it can retry if needed
-          } else {
-            hasTriggeredRef.current = false // Reset so it can retry later
-          }
-        }).catch(err => {
-          hasTriggeredRef.current = false // Reset on error
+        requestLocation().catch(() => {
+          // Reset after a long delay (30s) if still placeholder to allow eventual retry
+          setTimeout(() => { hasTriggeredRef.current = false }, 30000)
         })
-      }, 2000) // Wait 2 seconds before triggering
+      }, 3000)
 
       return () => clearTimeout(timeoutId)
     }
-  }, [location, loading, requestLocation]) // Include dependencies to prevent stale closures
+  }, [location?.formattedAddress, loading])
 
   // Load business settings logo
   useEffect(() => {

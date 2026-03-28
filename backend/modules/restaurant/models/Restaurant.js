@@ -345,7 +345,6 @@ restaurantSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 restaurantSchema.index({ 'location.geoLocation': '2dsphere' });
 // Additional indexes for scalability
 restaurantSchema.index({ isActive: 1, zoneId: 1 }); // For filtering active restaurants by zone
-restaurantSchema.index({ slug: 1 }, { unique: true, sparse: true }); // For slug-based lookups
 restaurantSchema.index({ isActive: 1, isAcceptingOrders: 1 }); // For active and accepting orders
 restaurantSchema.index({ createdAt: -1 }); // For sorting by creation date
 

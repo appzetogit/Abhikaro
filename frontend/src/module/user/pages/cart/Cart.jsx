@@ -11,7 +11,6 @@ import { useCart } from "../../context/CartContext"
 import { useProfile } from "../../context/ProfileContext"
 import { useOrders } from "../../context/OrdersContext"
 import { useSharedLocation } from "@/lib/context/LocationContext"
-import { useZone } from "../../hooks/useZone"
 import { orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
 import { initRazorpayPayment } from "@/lib/utils/razorpay"
@@ -85,8 +84,7 @@ export default function Cart() {
   const { cart, updateQuantity, addToCart, getCartCount, clearCart, cleanCartForRestaurant } = cartContext;
   const { getDefaultAddress, getDefaultPaymentMethod, addresses, paymentMethods, userProfile } = useProfile()
   const { createOrder } = useOrders()
-  const { location: currentLocation } = useSharedLocation() // Get live location address
-  const { zoneId } = useZone(currentLocation) // Get user's zone
+  const { location: currentLocation, zoneId } = useSharedLocation() // Get live location address and zone
 
   const [showCoupons, setShowCoupons] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null)

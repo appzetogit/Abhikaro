@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router-dom"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { ChevronDown, ShoppingCart, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useLocation as useLocationHook } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useCart } from "../context/CartContext"
 import { useLocationSelector } from "./UserLayout"
 import { FaLocationDot } from "react-icons/fa6"
@@ -10,7 +10,7 @@ import { getCachedSettings, loadBusinessSettings } from "@/lib/utils/businessSet
 
 export default function DesktopNavbar() {
   const location = useLocation()
-  const { location: userLocation, loading: locationLoading } = useLocationHook()
+  const { location: userLocation, loading: locationLoading } = useSharedLocation()
   const { getCartCount } = useCart()
   const { openLocationSelector } = useLocationSelector()
   const cartCount = getCartCount()

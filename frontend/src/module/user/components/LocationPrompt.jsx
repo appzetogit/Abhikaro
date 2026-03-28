@@ -2,10 +2,10 @@ import { useEffect, useState, useRef } from "react"
 import { MapPin, X } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { useLocation } from "../hooks/useLocation"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 
 export default function LocationPrompt() {
-  const { location, loading, permissionGranted, requestLocation } = useLocation()
+  const { location, loading, permissionGranted, requestLocation } = useSharedLocation()
   const [showPrompt, setShowPrompt] = useState(false)
   const cardRef = useRef(null)
 

@@ -1,44 +1,45 @@
-/**
- * LocationContext - Shared Location State
- * 
- * CRITICAL FIX for 429 errors:
- * Previously, every page that imported useLocation() created its OWN instance,
- * each starting geolocation watches, DB fetches, and reverse geocode API calls.
- * With 15+ pages doing this, it caused 45-120+ API calls on a single page load.
- * 
- * This context shares a SINGLE useLocation() instance across the entire user module.
- * All pages consume location data from this context instead of creating new hooks.
- */
-
-import { createContext, useContext } from "react"
+import { createContext, useContext, useMemo } from "react"
 import { useLocation as useLocationHook } from "@/module/user/hooks/useLocation"
+import { useZone as useZoneHook } from "@/module/user/hooks/useZone"
 
 const LocationContext = createContext(null)
 
 /**
- * LocationProvider - Wraps user module routes to provide shared location state.
- * Only ONE instance of useLocation() runs for the entire user module.
+ * LocationProvider - Wraps user module routes to provide shared location and zone state.
+ * Only ONE instance of useLocation() and useZone() runs for the entire user module.
  */
 export function LocationProvider({ children }) {
+  // 1. Get location state (watching, DB updates, etc.)
   const locationState = useLocationHook()
   
+  // 2. Get zone state (depends on location)
+  // useZoneHook already has internal distance-based thresholds (200m)
+  const zoneState = useZoneHook(locationState.location)
+  
+  // 3. Combine both states into a single context value
+  const contextValue = useMemo(() => {
+    return {
+      ...locationState,
+      ...zoneState,
+      // Avoid name collisions if any, but hooks are designed to complement
+      zoneLoading: zoneState.loading,
+      locationLoading: locationState.loading
+    }
+  }, [locationState, zoneState])
+  
   return (
-    <LocationContext.Provider value={locationState}>
+    <LocationContext.Provider value={contextValue}>
       {children}
     </LocationContext.Provider>
   )
 }
 
 /**
- * useSharedLocation - Use this instead of useLocation() in page components.
- * Returns the same { location, loading, error, permissionGranted, requestLocation, ... }
+ * useSharedLocation - Use this instead of useLocation() or useZone() in page components.
+ * Returns both location data AND zone detection status.
  * 
  * Usage:
- *   import { useSharedLocation } from "@/lib/context/LocationContext"
- *   const { location, loading, requestLocation } = useSharedLocation()
- * 
- * Falls back to a safe empty state if used outside LocationProvider
- * (e.g., in restaurant/admin/delivery modules that don't need user location).
+ *   const { location, zoneId, isInService, isOutOfService } = useSharedLocation()
  */
 export function useSharedLocation() {
   const context = useContext(LocationContext)
@@ -53,6 +54,14 @@ export function useSharedLocation() {
       requestLocation: async () => null,
       startWatchingLocation: () => {},
       stopWatchingLocation: () => {},
+      // Zone fallbacks
+      zoneId: null,
+      zone: null,
+      zoneStatus: 'loading',
+      isInService: false,
+      isOutOfService: false,
+      zoneLoading: false,
+      refreshZone: () => {}
     }
   }
   
