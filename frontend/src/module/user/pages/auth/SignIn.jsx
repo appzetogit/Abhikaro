@@ -213,15 +213,11 @@ export default function SignIn() {
           return
         }
 
-        // Check if we're coming back from a redirect
+        // Await redirect result fully — a short timeout race can resolve null before Firebase
+        // finishes and breaks Google sign-in after returning from the OAuth redirect.
         let result = null
         try {
-          result = await Promise.race([
-            getRedirectResult(firebaseAuth),
-            new Promise((resolve) =>
-              setTimeout(() => resolve(null), 3000)
-            )
-          ])
+          result = await getRedirectResult(firebaseAuth)
         } catch (redirectError) {
           console.log("ℹ️ getRedirectResult error:", redirectError?.code)
           result = null
@@ -455,47 +451,80 @@ export default function SignIn() {
         throw new Error("Firebase Auth is not initialized. Please check your Firebase configuration.")
       }
 
-      // 📱 1. Flutter in-app webview (native Google Sign-In via bridge)
-      if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === "function") {
+      // 📱 1. Flutter in-app webview — native bridge when implemented; timeout + web fallback if not
+      const flutterBridge = window.flutter_inappwebview
+      const FLUTTER_GOOGLE_TIMEOUT_MS = 12000
+
+      if (flutterBridge && typeof flutterBridge.callHandler === "function") {
         try {
           console.log("📱 Starting Google sign-in via Flutter native bridge...")
 
-          // 2. Call the native Google Sign-In in Flutter (account chooser)
-          const result = await window.flutter_inappwebview.callHandler("nativeGoogleSignIn")
+          const result = await Promise.race([
+            flutterBridge.callHandler("nativeGoogleSignIn"),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("FLUTTER_NATIVE_GOOGLE_TIMEOUT")),
+                FLUTTER_GOOGLE_TIMEOUT_MS,
+              ),
+            ),
+          ])
 
           if (result && result.success && result.idToken) {
             const idToken = result.idToken
-
             const { GoogleAuthProvider, signInWithCredential } = await import("firebase/auth")
-
-            // 3. Authenticate with Firebase on the website using Flutter's ID token
             const credential = GoogleAuthProvider.credential(idToken)
             const userCredential = await signInWithCredential(firebaseAuth, credential)
-
             console.log("✅ Website login successful via Flutter App!")
             await processSignedInUser(userCredential.user, "flutter-bridge")
             return
+          }
+
+          console.log("ℹ️ User cancelled native sign-in or no idToken returned.")
+          redirectHandledRef.current = true
+          setIsLoading(false)
+          return
+        } catch (e) {
+          if (e?.message === "FLUTTER_NATIVE_GOOGLE_TIMEOUT") {
+            console.warn(
+              "ℹ️ Flutter nativeGoogleSignIn did not respond in time — falling back to web Google sign-in.",
+            )
           } else {
-            console.log("ℹ️ User cancelled native sign-in or no idToken returned.")
+            console.error("❌ Flutter Bridge Error during Google sign-in:", e)
             redirectHandledRef.current = true
             setIsLoading(false)
             return
           }
-        } catch (e) {
-          console.error("❌ Flutter Bridge Error during Google sign-in:", e)
+        }
+      }
+
+      // 🌐 2. Web: popup first (reliable on desktop); redirect if popup blocked or unsupported
+      console.log("🚀 Starting Google sign-in (web)...")
+
+      const { signInWithPopup, signInWithRedirect } = await import("firebase/auth")
+
+      try {
+        const userCredential = await signInWithPopup(firebaseAuth, googleProvider)
+        await processSignedInUser(userCredential.user, "popup")
+      } catch (popupError) {
+        const code = popupError?.code || ""
+        if (
+          code === "auth/popup-closed-by-user" ||
+          code === "auth/cancelled-popup-request"
+        ) {
           redirectHandledRef.current = true
           setIsLoading(false)
           return
         }
+        const useRedirect =
+          code === "auth/popup-blocked" ||
+          code === "auth/operation-not-supported-in-this-environment"
+
+        if (useRedirect) {
+          await signInWithRedirect(firebaseAuth, googleProvider)
+          return
+        }
+        throw popupError
       }
-
-      // 🌐 2. Fallback: normal browser (Chrome/Safari etc.) -> redirect flow
-      console.log("🚀 Starting Google sign-in (web browser redirect)...")
-
-      const { signInWithRedirect } = await import("firebase/auth")
-
-      await signInWithRedirect(firebaseAuth, googleProvider)
-      // Redirect result will be handled by getRedirectResult / onAuthStateChanged
     } catch (error) {
       console.error("❌ Google sign-in error:", error)
       setIsLoading(false)
