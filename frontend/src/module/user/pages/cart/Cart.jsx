@@ -102,12 +102,81 @@ export default function Cart() {
   const [showNoteInput, setShowNoteInput] = useState(false)
   const [sendCutlery, setSendCutlery] = useState(true)
   const [additionalAddress, setAdditionalAddress] = useState("")
+  const [isEditingContact, setIsEditingContact] = useState(false)
+  const [contactName, setContactName] = useState("")
+  const [contactPhone, setContactPhone] = useState("")
+  const [isSavingContact, setIsSavingContact] = useState(false)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [showBillDetails, setShowBillDetails] = useState(false)
   const [showPlacingOrder, setShowPlacingOrder] = useState(false)
   const [orderProgress, setOrderProgress] = useState(0)
   const [showOrderSuccess, setShowOrderSuccess] = useState(false)
   const [placedOrderId, setPlacedOrderId] = useState(null)
+
+  const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(-10)
+
+  // Checkout-only contact draft:
+  // - Initialize from sessionStorage if present
+  // - Otherwise initialize once from profile (if fields empty)
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("checkout_contact_draft")
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.name) setContactName(String(parsed.name))
+        if (parsed?.phone) setContactPhone(String(parsed.phone))
+        return
+      }
+    } catch {
+      // ignore
+    }
+
+    // If no draft, initialize once from profile (only if fields are empty)
+    setContactName((prev) => prev || (userProfile?.name || userProfile?.fullName || ""))
+    setContactPhone((prev) => prev || (userProfile?.phone || ""))
+  }, [])
+
+  // Persist checkout contact draft for this session (does not touch profile)
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        "checkout_contact_draft",
+        JSON.stringify({
+          name: contactName || "",
+          phone: contactPhone || "",
+        }),
+      )
+    } catch {
+      // ignore
+    }
+  }, [contactName, contactPhone])
+
+  const handleSaveContact = async () => {
+    const trimmedName = String(contactName || "").trim()
+    const phone10 = normalizePhone10(contactPhone)
+
+    if (!trimmedName) {
+      toast.error("Please enter your name")
+      return
+    }
+    if (phone10.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number")
+      return
+    }
+
+    try {
+      setIsSavingContact(true)
+      // Checkout-only: do NOT sync to profile. Keep it only for this order/session.
+      setContactName(trimmedName)
+      setContactPhone(phone10)
+      setIsEditingContact(false)
+      toast.success("Contact details saved for this order")
+    } catch (e) {
+      toast.error("Failed to save contact details")
+    } finally {
+      setIsSavingContact(false)
+    }
+  }
 
   // Restaurant and pricing state
   const [restaurantData, setRestaurantData] = useState(null)
@@ -1275,14 +1344,14 @@ export default function Cart() {
         throw new Error(razorpay ? "Razorpay payment gateway is not configured. Please contact support." : "Failed to initialize payment")
       }
 
-      // Get user info for Razorpay prefill
+      // Get user info for Razorpay prefill (use edited contact values if provided)
       const userInfo = userProfile || {}
-      const userPhone = userInfo.phone || defaultAddress?.phone || ""
       const userEmail = userInfo.email || ""
-      const userName = userInfo.name || ""
+      const userName = String(contactName || userInfo.name || userInfo.fullName || "").trim()
+      const userPhone = normalizePhone10(contactPhone || userInfo.phone || defaultAddress?.phone || "")
 
       // Format phone number (remove non-digits, take last 10 digits)
-      const formattedPhone = userPhone.replace(/\D/g, "").slice(-10)
+      const formattedPhone = normalizePhone10(userPhone)
 
       // Get company name for Razorpay
       const companyName = await getCompanyNameAsync()
@@ -1918,15 +1987,92 @@ export default function Cart() {
 
               {/* Contact */}
               <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
-                <Link to="/profile" className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <Phone className="h-4 w-4 md:h-5 md:w-5 text-gray-500 dark:text-gray-400" />
-                    <p className="text-sm md:text-base text-gray-800 dark:text-gray-200">
-                      {userProfile?.name || "Your Name"}, <span className="font-medium">{userProfile?.phone || "+91-XXXXXXXXXX"}</span>
-                    </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
+                    <Phone className="h-4 w-4 md:h-5 md:w-5 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                    {!isEditingContact ? (
+                      <p className="text-sm md:text-base text-gray-800 dark:text-gray-200 truncate">
+                        {contactName || userProfile?.name || "Your Name"},{" "}
+                        <span className="font-medium">
+                          {contactPhone || userProfile?.phone || "+91-XXXXXXXXXX"}
+                        </span>
+                      </p>
+                    ) : (
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <Input
+                          type="text"
+                          value={contactName}
+                          onChange={(e) => setContactName(e.target.value)}
+                          placeholder="Enter your name"
+                          className="w-full text-sm md:text-base text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                        />
+                        <Input
+                          type="tel"
+                          inputMode="numeric"
+                          value={contactPhone}
+                          onChange={(e) => setContactPhone(e.target.value)}
+                          placeholder="Enter mobile number"
+                          className="w-full text-sm md:text-base text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => {
+                              setIsEditingContact(false)
+                              try {
+                                const raw = sessionStorage.getItem("checkout_contact_draft")
+                                if (raw) {
+                                  const parsed = JSON.parse(raw)
+                                  setContactName(parsed?.name || "")
+                                  setContactPhone(parsed?.phone || "")
+                                } else {
+                                  setContactName(contactName)
+                                  setContactPhone(contactPhone)
+                                }
+                              } catch {
+                                setContactName(contactName)
+                                setContactPhone(contactPhone)
+                              }
+                            }}
+                            disabled={isSavingContact}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 bg-primary-orange hover:opacity-90 text-white"
+                            onClick={handleSaveContact}
+                            disabled={isSavingContact}
+                          >
+                            {isSavingContact ? "Saving..." : "Save"}
+                          </Button>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                          Mobile number should be 10 digits (we’ll auto-format it).
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <ChevronRight className="h-4 w-4 md:h-5 md:w-5 text-gray-400" />
-                </Link>
+
+                  {!isEditingContact ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsEditingContact(true)}
+                      className="h-8 w-8 flex-shrink-0"
+                      title="Edit contact"
+                    >
+                      <Pencil className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                    </Button>
+                  ) : null}
+                </div>
+
+                {/* Checkout-only: no profile linkage from this editor */}
               </div>
 
               {/* Bill Details - extra margin for spacing between total bill and footer */}

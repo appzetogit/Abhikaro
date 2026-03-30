@@ -1359,55 +1359,59 @@ export const markOrderReady = asyncHandler(async (req, res) => {
       console.error("Error sending restaurant notification:", notifError);
     }
 
-    // FIXED: Assign delivery partner if not already assigned (order is now ready)
+    // IMPORTANT: Do NOT auto-assign (set deliveryPartnerId) when restaurant marks "ready".
+    // A delivery partner must ACCEPT the order first (first-come-first-serve).
+    // We only notify eligible delivery partners and keep the order unassigned until acceptance.
     if (!populatedOrder.deliveryPartnerId && !isHotelOrder) {
       try {
-        // Get restaurant location for assignment
-        const restaurantDoc = await Restaurant.findById(restaurantId).lean();
+        const restaurantDoc = await Restaurant.findById(restaurantId)
+          .select("location")
+          .lean();
+
         if (restaurantDoc?.location?.coordinates && restaurantDoc.location.coordinates.length >= 2) {
-          const restaurantLat = restaurantDoc.location.coordinates[1];
-          const restaurantLng = restaurantDoc.location.coordinates[0];
-          
-          console.log(`🔄 Order ${order.orderId} is ready but has no delivery partner. Attempting assignment...`);
-          const assignmentResult = await assignOrderToDeliveryBoy(
-            order,
+          const [restaurantLng, restaurantLat] = restaurantDoc.location.coordinates;
+
+          const priorityDeliveryBoys = await findNearestDeliveryBoys(
             restaurantLat,
             restaurantLng,
             restaurantId,
+            20, // 20km priority radius
+            10, // Top 10
           );
-          
-          if (assignmentResult && assignmentResult.deliveryPartnerId) {
-            console.log(`✅ Order ${order.orderId} assigned to delivery partner ${assignmentResult.deliveryPartnerId} after being marked ready`);
-            // Reload order to get updated delivery partner info
-            const updatedOrder = await Order.findById(order._id)
-              .populate("restaurantId", "name location address phone")
-              .populate("userId", "name phone")
-              .populate("deliveryPartnerId", "name phone")
-              .lean();
-            
-            // Notify the assigned delivery partner
-            try {
-              const { notifyDeliveryBoyOrderReady } =
-                await import("../../order/services/deliveryNotificationService.js");
-              await notifyDeliveryBoyOrderReady(updatedOrder, assignmentResult.deliveryPartnerId);
-              console.log(`✅ Order ready notification sent to newly assigned delivery partner ${assignmentResult.deliveryPartnerId}`);
-            } catch (notifError) {
-              console.error("Error notifying newly assigned delivery partner:", notifError);
-            }
-            
-            return successResponse(res, 200, "Order marked as ready and assigned to delivery partner", {
-              order: updatedOrder || populatedOrder || order,
-              assignment: assignmentResult,
+
+          const notifiedIds =
+            priorityDeliveryBoys && priorityDeliveryBoys.length > 0
+              ? priorityDeliveryBoys.map((db) => db.deliveryPartnerId)
+              : [];
+
+          if (notifiedIds.length > 0) {
+            await Order.findByIdAndUpdate(order._id, {
+              $set: {
+                "assignmentInfo.priorityDeliveryPartnerIds": notifiedIds,
+                "assignmentInfo.assignedBy": "nearest_available",
+                "assignmentInfo.assignedAt": new Date(),
+              },
             });
+
+            await notifyMultipleDeliveryBoys(populatedOrder, notifiedIds, "priority");
+            console.log(
+              `✅ Order ${order.orderId} ready notification sent to ${notifiedIds.length} delivery partners (awaiting acceptance)`,
+            );
           } else {
-            console.warn(`⚠️ Order ${order.orderId} is ready but no delivery partners available for assignment`);
+            console.warn(
+              `⚠️ Order ${order.orderId} is ready but no nearby delivery partners found to notify`,
+            );
           }
         } else {
-          console.error(`❌ Restaurant ${restaurantId} location not found. Cannot assign delivery partner.`);
+          console.error(
+            `❌ Restaurant ${restaurantId} location not found. Cannot notify delivery partners.`,
+          );
         }
-      } catch (assignmentError) {
-        console.error(`❌ Error assigning delivery partner to ready order ${order.orderId}:`, assignmentError);
-        // Continue even if assignment fails - order is still marked as ready
+      } catch (notifyError) {
+        console.error(
+          `❌ Error notifying delivery partners for ready order ${order.orderId}:`,
+          notifyError,
+        );
       }
     }
     
