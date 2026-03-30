@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { Search, Download, ChevronDown, Calendar, Eye, FileDown, FileSpreadsheet, FileText, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle, Pencil, Trash2, Wallet } from "lucide-react"
+import { Search, Download, ChevronDown, Calendar, Eye, FileDown, FileSpreadsheet, FileText, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle, Pencil, Trash2, Wallet, IndianRupee } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { exportCustomersToCSV, exportCustomersToExcel, exportCustomersToPDF } from "../components/customers/customersExportUtils"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 
 export default function Customers() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -29,12 +30,30 @@ export default function Customers() {
 
   const [isWalletOpen, setIsWalletOpen] = useState(false)
   const [savingWallet, setSavingWallet] = useState(false)
+  const [walletCustomer, setWalletCustomer] = useState(null)
   const [walletForm, setWalletForm] = useState({
     id: "",
     type: "addition",
     amount: "",
     reason: "",
   })
+
+  // Wallet adjust OTP gate (admin phone)
+  const [isWalletOtpOpen, setIsWalletOtpOpen] = useState(false)
+  const [walletOtpCustomer, setWalletOtpCustomer] = useState(null)
+  const [walletOtp, setWalletOtp] = useState("")
+  const [walletOtpDestination, setWalletOtpDestination] = useState("")
+  const [sendingWalletOtp, setSendingWalletOtp] = useState(false)
+  const [verifyingWalletOtp, setVerifyingWalletOtp] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  const maskPhone = useCallback((value) => {
+    if (value == null) return ""
+    const digits = String(value).replace(/\D/g, "")
+    if (!digits) return ""
+    if (digits.length <= 4) return `******${digits}`
+    return `${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`
+  }, [])
   const [filters, setFilters] = useState({
     orderDate: "",
     joiningDate: "",
@@ -232,6 +251,7 @@ export default function Customers() {
   }
 
   const openWalletAdjust = (customer) => {
+    setWalletCustomer(customer)
     setWalletForm({
       id: customer.id,
       type: "addition",
@@ -240,6 +260,96 @@ export default function Customers() {
     })
     setIsWalletOpen(true)
   }
+
+  const closeWalletOtpDialog = useCallback(() => {
+    setIsWalletOtpOpen(false)
+    setWalletOtpCustomer(null)
+    setWalletOtp("")
+    setWalletOtpDestination("")
+    setSendingWalletOtp(false)
+    setVerifyingWalletOtp(false)
+    setResendCooldown(0)
+  }, [])
+
+  const sendWalletAdjustOtp = useCallback(async () => {
+    try {
+      setSendingWalletOtp(true)
+      const resp = await adminAPI.sendWalletAdjustOTP()
+      const data = resp?.data?.data || resp?.data || {}
+
+      const destinationRaw =
+        data?.maskedPhone ||
+        data?.phoneMasked ||
+        data?.destinationMasked ||
+        data?.phone ||
+        data?.destination ||
+        ""
+
+      const masked = destinationRaw ? maskPhone(destinationRaw) : ""
+      setWalletOtpDestination(masked)
+
+      const nextCooldown =
+        Number(data?.cooldownSeconds) ||
+        Number(data?.resendCooldownSeconds) ||
+        30
+      setResendCooldown(Number.isFinite(nextCooldown) ? Math.max(0, nextCooldown) : 30)
+
+      toast.success("OTP sent to your admin phone")
+    } catch (error) {
+      console.error("Error sending wallet adjust OTP:", error)
+      toast.error(error?.response?.data?.message || "Failed to send OTP")
+    } finally {
+      setSendingWalletOtp(false)
+    }
+  }, [maskPhone])
+
+  const openWalletAdjustWithOtpGate = useCallback(
+    async (customer) => {
+      setWalletOtpCustomer(customer)
+      setIsWalletOtpOpen(true)
+      setWalletOtp("")
+      setWalletOtpDestination("")
+      setVerifyingWalletOtp(false)
+      await sendWalletAdjustOtp()
+    },
+    [sendWalletAdjustOtp],
+  )
+
+  const handleVerifyWalletOtp = useCallback(async () => {
+    const otp = String(walletOtp || "").trim()
+    if (!otp) {
+      toast.error("Enter the OTP")
+      return
+    }
+    if (otp.length < 6) {
+      toast.error("Enter the 6-digit OTP")
+      return
+    }
+    try {
+      setVerifyingWalletOtp(true)
+      await adminAPI.verifyWalletAdjustOTP(otp)
+      toast.success("OTP verified")
+
+      const customer = walletOtpCustomer
+      closeWalletOtpDialog()
+      if (customer) openWalletAdjust(customer)
+    } catch (error) {
+      console.error("Error verifying wallet adjust OTP:", error)
+      toast.error(error?.response?.data?.message || "Invalid OTP")
+    } finally {
+      setVerifyingWalletOtp(false)
+    }
+  }, [walletOtp, walletOtpCustomer, closeWalletOtpDialog])
+
+  // Resend cooldown ticker
+  useEffect(() => {
+    if (!isWalletOtpOpen) return
+    if (!resendCooldown || resendCooldown <= 0) return
+    const t = window.setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+    return () => window.clearInterval(t)
+  }, [isWalletOtpOpen, resendCooldown])
 
   const handleAdjustWallet = async () => {
     try {
@@ -569,7 +679,7 @@ export default function Customers() {
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => openWalletAdjust(customer)}
+                            onClick={() => openWalletAdjustWithOtpGate(customer)}
                             className="p-1.5 rounded text-emerald-700 hover:bg-emerald-50 transition-colors"
                             title="Adjust Wallet"
                           >
@@ -851,61 +961,190 @@ export default function Customers() {
 
       {/* Wallet Adjust Modal */}
       <Dialog open={isWalletOpen} onOpenChange={setIsWalletOpen}>
-        <DialogContent className="max-w-lg mx-auto">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-slate-900">Adjust Wallet</DialogTitle>
+        <DialogContent className="max-w-md bg-white rounded-xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-5 pb-3 border-b border-slate-200 bg-slate-50/80">
+            <DialogTitle className="flex items-center gap-2 text-base md:text-lg">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                <IndianRupee className="w-4 h-4" />
+              </span>
+              <span className="font-semibold text-slate-900">Adjust Wallet</span>
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Type</label>
+          <div className="px-6 py-4 space-y-4">
+            {walletCustomer && (
+              <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-xs md:text-sm text-slate-700 flex items-center justify-between gap-3">
+                <p className="font-semibold text-slate-900 truncate">
+                  {walletCustomer.name || "Customer"}
+                </p>
+                <p className="text-[11px] md:text-xs text-slate-600">
+                  Current:{" "}
+                  <span className="font-semibold text-emerald-700">
+                    ₹{Number(walletCustomer.walletBalance ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs md:text-sm font-medium text-slate-700">
+                  Type
+                </label>
                 <select
                   value={walletForm.type}
-                  onChange={(e) => setWalletForm(prev => ({ ...prev, type: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                  onChange={(e) => setWalletForm((prev) => ({ ...prev, type: e.target.value }))}
+                  className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
                   <option value="addition">Add</option>
                   <option value="deduction">Deduct</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Amount</label>
+
+              <div className="space-y-1.5">
+                <label className="text-xs md:text-sm font-medium text-slate-700">
+                  Amount
+                </label>
                 <input
                   type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
                   value={walletForm.amount}
-                  onChange={(e) => setWalletForm(prev => ({ ...prev, amount: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  onChange={(e) => setWalletForm((prev) => ({ ...prev, amount: e.target.value }))}
+                  className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   placeholder="Ex: 100"
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Reason</label>
-              <input
+
+            <div className="space-y-1.5">
+              <label className="text-xs md:text-sm font-medium text-slate-700">
+                Reason <span className="text-slate-400">(optional)</span>
+              </label>
+              <textarea
                 value={walletForm.reason}
-                onChange={(e) => setWalletForm(prev => ({ ...prev, reason: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                onChange={(e) => setWalletForm((prev) => ({ ...prev, reason: e.target.value }))}
+                className="w-full min-h-[88px] px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 placeholder="Reason / note"
               />
             </div>
           </div>
 
-          <div className="mt-5 flex items-center justify-end gap-2">
-            <button
-              onClick={() => setIsWalletOpen(false)}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50"
+          <div className="px-6 pb-5 pt-3 border-t border-slate-200 bg-white flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsWalletOpen(false)
+                setWalletCustomer(null)
+              }}
               disabled={savingWallet}
+              className="h-10"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
               onClick={handleAdjustWallet}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
               disabled={savingWallet}
+              className="h-10 bg-emerald-600 hover:bg-emerald-700"
             >
               {savingWallet ? "Saving..." : "Update Wallet"}
-            </button>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Wallet Adjust OTP Lock Dialog */}
+      <Dialog
+        open={isWalletOtpOpen}
+        onOpenChange={(open) => {
+          if (open) setIsWalletOtpOpen(true)
+          else closeWalletOtpDialog()
+        }}
+      >
+        <DialogContent className="max-w-md bg-white rounded-xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-5 pb-3 border-b border-slate-200 bg-slate-50/80">
+            <DialogTitle className="text-base md:text-lg font-semibold text-slate-900">
+              Verify OTP to Adjust Wallet
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="px-6 py-4 space-y-3">
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-xs md:text-sm text-slate-700">
+              <p className="font-semibold text-slate-900 truncate">
+                {walletOtpCustomer?.name || "Customer"}
+              </p>
+              <p className="mt-1 text-[11px] md:text-xs text-slate-600">
+                OTP sent to:{" "}
+                <span className="font-semibold text-slate-900">
+                  {walletOtpDestination || "your admin phone"}
+                </span>
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs md:text-sm font-medium text-slate-700">
+                OTP
+              </label>
+              <input
+                value={walletOtp}
+                onChange={(e) => setWalletOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="Enter 6-digit OTP"
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                disabled={sendingWalletOtp || verifyingWalletOtp}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleVerifyWalletOtp()
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9"
+                onClick={sendWalletAdjustOtp}
+                disabled={sendingWalletOtp || verifyingWalletOtp || resendCooldown > 0}
+              >
+                {sendingWalletOtp
+                  ? "Sending..."
+                  : resendCooldown > 0
+                    ? `Resend in ${resendCooldown}s`
+                    : "Resend OTP"}
+              </Button>
+              <button
+                type="button"
+                className="text-xs text-slate-600 hover:text-slate-900 underline underline-offset-2 disabled:opacity-60"
+                onClick={closeWalletOtpDialog}
+                disabled={sendingWalletOtp || verifyingWalletOtp}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+
+          <div className="px-6 pb-5 pt-3 border-t border-slate-200 bg-white flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeWalletOtpDialog}
+              disabled={sendingWalletOtp || verifyingWalletOtp}
+              className="h-10"
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              onClick={handleVerifyWalletOtp}
+              disabled={sendingWalletOtp || verifyingWalletOtp || String(walletOtp).trim().length !== 6}
+              className="h-10 bg-emerald-600 hover:bg-emerald-700"
+            >
+              {verifyingWalletOtp ? "Verifying..." : "Verify & Continue"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

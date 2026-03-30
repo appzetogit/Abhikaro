@@ -279,6 +279,10 @@ import { getDiningEarnings } from "../controllers/diningEarningsController.js";
 import { updateDiningSeating } from "../../restaurant/controllers/diningManagementController.js";
 import { updateRestaurantDiningCommission } from "../controllers/diningRestaurantSettingsController.js";
 import zoneRoutes from "./zoneRoutes.js";
+import {
+  sendWalletAdjustOTP,
+  verifyWalletAdjustOTP,
+} from "../controllers/adminWalletOtpController.js";
 import { authenticateAdmin, authorizeAdmin } from "../middleware/adminAuth.js";
 import { uploadMiddleware } from "../../../shared/utils/cloudinaryService.js";
 import { requirePermissions } from "../middleware/adminPermission.js";
@@ -290,6 +294,10 @@ console.log("📦 Loading adminRoutes.js - All routes will be registered");
 
 // All admin routes require admin authentication
 router.use(authenticateAdmin);
+
+// Security: Wallet adjust OTP lock
+router.post("/security/wallet-adjust/otp/send", sendWalletAdjustOTP);
+router.post("/security/wallet-adjust/otp/verify", verifyWalletAdjustOTP);
 
 // Debug middleware - log ALL requests to help debug routing
 router.use((req, res, next) => {

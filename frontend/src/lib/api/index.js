@@ -1335,6 +1335,14 @@ export const adminAPI = {
     );
   },
 
+  // Wallet adjust OTP gate (admin)
+  sendWalletAdjustOTP: () => {
+    return apiClient.post(API_ENDPOINTS.ADMIN.WALLET_ADJUST_OTP_SEND);
+  },
+  verifyWalletAdjustOTP: (otp) => {
+    return apiClient.post(API_ENDPOINTS.ADMIN.WALLET_ADJUST_OTP_VERIFY, { otp });
+  },
+
   // Get restaurants
   getRestaurants: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.ADMIN.RESTAURANTS, { params });

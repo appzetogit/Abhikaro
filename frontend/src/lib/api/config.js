@@ -305,6 +305,9 @@ export const API_ENDPOINTS = {
     USER_BY_ID: "/admin/users/:id",
     USER_STATUS: "/admin/users/:id/status",
     USER_WALLET_ADJUSTMENT: "/admin/users/:id/wallet/adjustment",
+    // Security (admin) - OTP gates
+    WALLET_ADJUST_OTP_SEND: "/admin/security/wallet-adjust/otp/send",
+    WALLET_ADJUST_OTP_VERIFY: "/admin/security/wallet-adjust/otp/verify",
     RESTAURANTS: "/admin/restaurants",
     RESTAURANT_BY_ID: "/admin/restaurants/:id",
     RESTAURANT_ANALYTICS: "/admin/restaurant-analytics/:restaurantId",
