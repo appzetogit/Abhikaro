@@ -2,8 +2,9 @@
  * Single place to load Firebase Admin credentials.
  *
  * Priority:
- * 1) FIREBASE_SERVICE_ACCOUNT_PATH or GOOGLE_APPLICATION_CREDENTIALS → path to downloaded JSON (recommended: one download, gitignore the file)
- * 2) FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY via getFirebaseCredentials() / .env
+ * 1) FIREBASE_SERVICE_ACCOUNT_PATH or GOOGLE_APPLICATION_CREDENTIALS → JSON file (recommended)
+ * 2) If that path is missing or the file is invalid → FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL +
+ *    FIREBASE_PRIVATE_KEY from .env (typical on VPS when secrets JSON is not deployed)
  *
  * You do NOT need to rotate or re-download the JSON unless that key is revoked or leaked.
  *
@@ -39,6 +40,28 @@ function readServiceAccountJsonFile(resolvedPath) {
 }
 
 /**
+ * Build cert payload from .env (same project as the downloaded JSON would use).
+ * @returns {Promise<object|null>}
+ */
+async function serviceAccountFromEnv() {
+  const creds = await getFirebaseCredentials();
+  let privateKey = creds.privateKey;
+  if (privateKey && String(privateKey).includes("\\n")) {
+    privateKey = String(privateKey).replace(/\\n/g, "\n");
+  }
+
+  if (!creds.projectId || !privateKey || !creds.clientEmail) {
+    return null;
+  }
+
+  return {
+    projectId: creds.projectId,
+    privateKey,
+    clientEmail: creds.clientEmail,
+  };
+}
+
+/**
  * @returns {Promise<object>} Service account object for admin.credential.cert()
  */
 async function loadServiceAccountObject() {
@@ -64,33 +87,33 @@ async function loadServiceAccountObject() {
         return cachedServiceAccount;
       } catch (e) {
         console.error("❌ Firebase Admin: invalid service account file:", e.message);
-        return null;
+        console.warn(
+          "⚠️ Firebase Admin: falling back to FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY",
+        );
       }
+    } else {
+      console.warn(
+        "⚠️ Firebase Admin: service account file not found:",
+        resolved,
+        "— falling back to FIREBASE_* credentials in .env (deploy the JSON or unset FIREBASE_SERVICE_ACCOUNT_PATH)",
+      );
     }
-    console.error(
-      "❌ Firebase Admin: FIREBASE_SERVICE_ACCOUNT_PATH file not found:",
-      resolved,
-      "(fix path in .env — will NOT fall back to FIREBASE_PRIVATE_KEY to avoid wrong credentials)",
-    );
-    return null;
   }
 
-  const creds = await getFirebaseCredentials();
-  let privateKey = creds.privateKey;
-  if (privateKey && String(privateKey).includes("\\n")) {
-    privateKey = String(privateKey).replace(/\\n/g, "\n");
+  const fromEnv = await serviceAccountFromEnv();
+  if (fromEnv) {
+    cachedServiceAccount = fromEnv;
+    if (!explicitPath) {
+      console.log("✅ Firebase Admin: service account from environment variables");
+    } else {
+      console.log(
+        "✅ Firebase Admin: service account from environment variables (fallback)",
+      );
+    }
+    return cachedServiceAccount;
   }
 
-  if (!creds.projectId || !privateKey || !creds.clientEmail) {
-    return null;
-  }
-
-  cachedServiceAccount = {
-    projectId: creds.projectId,
-    privateKey,
-    clientEmail: creds.clientEmail,
-  };
-  return cachedServiceAccount;
+  return null;
 }
 
 function hasDefaultApp() {

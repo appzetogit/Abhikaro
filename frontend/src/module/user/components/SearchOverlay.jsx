@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
-import { X, Search, Loader2 } from "lucide-react"
+import { X, Search, Loader2, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { adminAPI, api, API_ENDPOINTS, restaurantAPI } from "@/lib/api"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 
 // LocalStorage key for recent searches
 const RECENT_SEARCHES_KEY = 'userRecentSearches'
@@ -12,8 +13,11 @@ const MAX_RECENT_SEARCHES = 8
 export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchChange }) {
   const navigate = useNavigate()
   const inputRef = useRef(null)
+  const { zoneId: contextZoneId } = useSharedLocation()
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
+  const [restaurants, setRestaurants] = useState([])
+  const [loadingRestaurants, setLoadingRestaurants] = useState(false)
   const [recentSearches, setRecentSearches] = useState([])
   const [filteredFoods, setFilteredFoods] = useState([])
   const [liveFoodSuggestions, setLiveFoodSuggestions] = useState([])
@@ -21,7 +25,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
   const [cachedMenuFoods, setCachedMenuFoods] = useState([])
   const [menuFoodsLoaded, setMenuFoodsLoaded] = useState(false)
   const [imageErrors, setImageErrors] = useState(new Set())
-  const zoneId = localStorage.getItem("userZoneId")
+  const zoneId = contextZoneId || localStorage.getItem("userZoneId")
 
   const getFoodImage = (item) => {
     if (!item || typeof item !== "object") return null
@@ -193,6 +197,44 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
       console.warn("SearchOverlay: Bulk menus fetch failed:", err)
     }
 
+    // Fallback: if bulk endpoint returns nothing (or is blocked), fetch a limited
+    // set of menus by restaurant id in small batches. This is slower but makes
+    // search reliable for menu items like "Rolls".
+    if (!Array.isArray(menuData) || menuData.length === 0) {
+      const idsToFetch = restaurantIds.slice(0, 40) // safety limit
+      const batchSize = 5
+      const fetchedMenus = []
+
+      for (let i = 0; i < idsToFetch.length; i += batchSize) {
+        const batch = idsToFetch.slice(i, i + batchSize)
+        const results = await Promise.allSettled(
+          batch.map((id) => restaurantAPI.getMenuByRestaurantId(id))
+        )
+        results.forEach((res, idx) => {
+          if (res.status !== "fulfilled") return
+          const data = res.value?.data
+          const menu =
+            data?.data?.menu ||
+            data?.data ||
+            data?.menu ||
+            null
+          const rId = batch[idx]
+          if (menu) {
+            fetchedMenus.push({
+              ...menu,
+              restaurantId: menu.restaurantId || menu.restaurant || rId,
+              restaurant: menu.restaurant || menu.restaurantId || rId,
+            })
+          }
+        })
+
+        // Early stop if we already have a decent amount of menus
+        if (fetchedMenus.length >= 20) break
+      }
+
+      menuData = fetchedMenus
+    }
+
     const allFoods = []
     menuData.forEach((menu) => {
       const rId = menu.restaurantId || menu.restaurant
@@ -254,6 +296,73 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
       fetchCategories()
     }
   }, [isOpen])
+
+  // Fetch restaurants for live suggestions (cached while overlay is open)
+  useEffect(() => {
+    const fetchRestaurants = async () => {
+      if (!zoneId) {
+        setRestaurants([])
+        return
+      }
+      try {
+        setLoadingRestaurants(true)
+        const response = await restaurantAPI.getRestaurants({ zoneId, limit: 200 })
+        const restaurantsArray = Array.isArray(response?.data?.data?.restaurants)
+          ? response.data.data.restaurants
+          : []
+
+        const normalized = restaurantsArray
+          .map((r) => {
+            const id = r?.restaurantId || r?._id || r?.id
+            const name = r?.onboarding?.step1?.restaurantName || r?.name || ""
+            const slug =
+              r?.slug ||
+              (name ? String(name).trim().toLowerCase().replace(/\s+/g, "-") : null)
+
+            const profileImageUrl =
+              r?.onboarding?.step2?.profileImageUrl?.url ||
+              r?.profileImage?.url ||
+              (typeof r?.profileImage === "string" ? r.profileImage : null)
+
+            const coverImage = Array.isArray(r?.coverImages) && r.coverImages.length > 0
+              ? (r.coverImages[0]?.url || r.coverImages[0])
+              : null
+
+            return {
+              id,
+              name: String(name || "").trim(),
+              slug,
+              cuisine: Array.isArray(r?.cuisines) ? r.cuisines.join(", ") : (r?.cuisine || ""),
+              image: coverImage || profileImageUrl || null,
+              itemType: "restaurant",
+            }
+          })
+          .filter((r) => r.id && r.name && r.slug)
+
+        setRestaurants(normalized)
+      } catch (err) {
+        console.error("SearchOverlay: Failed to fetch restaurants:", err)
+        setRestaurants([])
+      } finally {
+        setLoadingRestaurants(false)
+      }
+    }
+
+    if (isOpen) fetchRestaurants()
+  }, [isOpen, zoneId])
+
+  const filteredRestaurants = useMemo(() => {
+    const q = searchValue.trim().toLowerCase()
+    if (!q) return []
+
+    const matches = restaurants.filter((r) => {
+      const name = String(r?.name || "").toLowerCase()
+      const cuisine = String(r?.cuisine || "").toLowerCase()
+      return name.includes(q) || cuisine.includes(q)
+    })
+
+    return matches.slice(0, 8)
+  }, [restaurants, searchValue])
 
   // Load recent searches from localStorage
   useEffect(() => {
@@ -329,6 +438,19 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
         setLoadingLiveSuggestions(true)
         let normalized = []
 
+        const ensureMenuFoodsLoaded = async () => {
+          const loadedFoods = menuFoodsLoaded
+            ? cachedMenuFoods
+            : await loadFoodsFromRestaurantMenus()
+
+          if (!menuFoodsLoaded) {
+            setCachedMenuFoods(loadedFoods)
+            setMenuFoodsLoaded(true)
+          }
+
+          return loadedFoods
+        }
+
         try {
           const response = await api.get(API_ENDPOINTS.MENU.SEARCH, {
             params: {
@@ -339,19 +461,27 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
             },
           })
           normalized = normalizeFoodSuggestions(response?.data || {})
-        } catch (searchError) {
-          const loadedFoods = menuFoodsLoaded
-            ? cachedMenuFoods
-            : await loadFoodsFromRestaurantMenus()
 
-          if (!menuFoodsLoaded) {
-            setCachedMenuFoods(loadedFoods)
-            setMenuFoodsLoaded(true)
-          }
-
-          normalized = loadedFoods
+          // Always enrich with menu-cache matches so "all menu foods" are searchable,
+          // even when API returns partial/empty results.
+          const menuFoods = await ensureMenuFoodsLoaded()
+          const menuMatches = menuFoods
             .filter((food) => food.name.toLowerCase().includes(trimmedQuery.toLowerCase()))
-            .slice(0, 24)
+            .slice(0, 80)
+
+          // Merge & dedupe by restaurant + name (keeps broad coverage but avoids spam)
+          const merged = [...normalized, ...menuMatches]
+          const unique = new Map()
+          merged.forEach((item) => {
+            const key = `${String(item?.restaurantSlug || "")}::${String(item?.name || "").toLowerCase()}`
+            if (!unique.has(key)) unique.set(key, item)
+          })
+          normalized = Array.from(unique.values()).slice(0, 80)
+        } catch (searchError) {
+          const menuFoods = await ensureMenuFoodsLoaded()
+          normalized = menuFoods
+            .filter((food) => food.name.toLowerCase().includes(trimmedQuery.toLowerCase()))
+            .slice(0, 80)
 
           if (searchError?.response?.status !== 404) {
             console.error("Primary search endpoint failed, used menu fallback:", searchError)
@@ -377,6 +507,14 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
       clearTimeout(timer)
     }
   }, [isOpen, searchValue, menuFoodsLoaded, cachedMenuFoods, zoneId])
+
+  const filteredCategories = useMemo(() => {
+    const q = searchValue.trim().toLowerCase()
+    if (!q) return []
+    return categories
+      .filter((c) => String(c?.name || "").toLowerCase().includes(q))
+      .slice(0, 12)
+  }, [categories, searchValue])
 
   // Save search to recent searches
   const saveRecentSearch = (searchTerm) => {
@@ -495,6 +633,71 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
       </div>
 
       <div className="flex-1 overflow-y-auto max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 scrollbar-hide bg-white dark:bg-[#0a0a0a]">
+        {/* Restaurant Suggestions */}
+        {searchValue.trim() !== "" && (loadingRestaurants || filteredRestaurants.length > 0) && (
+          <div className="mb-8">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-4">
+              Restaurants
+            </h3>
+            {loadingRestaurants ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-7 w-7 animate-spin text-primary-orange" />
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-[#0a0a0a] rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+                {filteredRestaurants.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => {
+                      navigate(`/user/restaurants/${r.slug}`)
+                      onClose()
+                      onSearchChange("")
+                    }}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-[#141414] border-b border-gray-100 dark:border-gray-800 last:border-none"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-bold text-gray-900 dark:text-white line-clamp-1">
+                        {r.name}
+                      </p>
+                      {r.cuisine && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+                          {r.cuisine}
+                        </p>
+                      )}
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Category Suggestions */}
+        {searchValue.trim() !== "" && filteredCategories.length > 0 && (
+          <div className="mb-8">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-4">
+              Categories
+            </h3>
+            <div className="bg-white dark:bg-[#0a0a0a] rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+              {filteredCategories.map((cat) => (
+                <button
+                  key={cat.id || cat.slug}
+                  type="button"
+                  onClick={() => handleCategoryClick(cat)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-[#141414] border-b border-gray-100 dark:border-gray-800 last:border-none"
+                >
+                  <p className="font-semibold text-gray-900 dark:text-white line-clamp-1">
+                    {cat.name}
+                  </p>
+                  <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Food Grid */}
         <div
           style={{
@@ -562,6 +765,27 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
               <p className="text-sm sm:text-base text-gray-500 dark:text-gray-500 mt-2">
                 {searchValue.trim() ? "Try a different search term" : "Categories will appear here"}
               </p>
+            </div>
+          )}
+
+          {/* View all results CTA */}
+          {searchValue.trim() !== "" && (
+            <div className="mt-8 flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const q = searchValue.trim()
+                  if (!q) return
+                  saveRecentSearch(q)
+                  navigate(`/search?q=${encodeURIComponent(q)}`)
+                  onClose()
+                  onSearchChange("")
+                }}
+                className="rounded-full px-6 border-gray-200 dark:border-gray-800"
+              >
+                View all results
+              </Button>
             </div>
           )}
         </div>

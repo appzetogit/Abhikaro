@@ -1608,13 +1608,6 @@ export function useLocation() {
       return
     }
 
-    // If user is not authenticated, don't start live watch to avoid unnecessary updates
-    if (!isUserAuthenticated()) {
-      if (process.env.NODE_ENV === 'development') {
-      }
-      return
-    }
-
     // Clear any existing watch
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current)
@@ -1935,9 +1928,6 @@ export function useLocation() {
     // The background fetch will set the location, or we'll use the cached/DB location
     // Only set fallback if we have no location after all attempts
 
-    // Request fresh location in BACKGROUND (non-blocking)
-    // CRITICAL FIX: Only auto-request if permission is ALREADY granted
-    // This prevents "Requests geolocation permission on page load" warning
     const checkPermissionAndStart = async () => {
       // Prevent multiple simultaneous calls
       if (hasInitializedRef.current) {
@@ -1949,115 +1939,32 @@ export function useLocation() {
       hasInitializedRef.current = true
       
       try {
-        let permissionGranted = false;
-
-        if (navigator.permissions && navigator.permissions.query) {
-          try {
-            const result = await navigator.permissions.query({ name: 'geolocation' });
-            if (result.state === 'granted') {
-              permissionGranted = true;
-            } else {
-            }
-          } catch (permErr) {
-          }
-        } else {
-          // Fallback for browsers without permissions API - assume not granted to be safe
-        }
-
-        // Prompt the user for location immediately on app start if we don't have it yet.
-        if (!permissionGranted && !hasInitialLocation) {
-          // Do not return here. Let the code proceed to call getLocation which will 
-          // trigger the browser's native location permission prompt.
-        } else if (!permissionGranted) {
-          // If we already have a cached location but no permission, just use the cache.
-          // Ensure loading is false so UI doesn't hang
-          setLoading(false);
-          hasInitializedRef.current = false // Reset flag if permission not granted
-          return;
-        }
-
-
-        // Always fetch fresh location if we don't have a valid one
-        // Check current location state to see if it's a placeholder
+        // ZOMATO-STYLE: Always attempt to fetch on app open.
+        // This will trigger the browser's native permission prompt.
         const currentLocation = location
-        const hasPlaceholder = currentLocation &&
+        const hasPlaceholder =
+          currentLocation &&
           (currentLocation.formattedAddress === "Select location" ||
             currentLocation.city === "Current Location")
+        const shouldForceFreshFetch = shouldForceRefresh || !hasInitialLocation || hasPlaceholder
 
-        const shouldFetch = shouldForceRefresh || !hasInitialLocation || hasPlaceholder
-
-        if (shouldFetch) {
-          getLocation(true, shouldForceRefresh) // forceFresh = true if cached location is incomplete
-            .then((location) => {
-              if (location &&
-                location.formattedAddress !== "Select location" &&
-                location.city !== "Current Location") {
-                // CRITICAL: Update state with fresh location so PageNavbar displays it
-                setLocation(location)
-                setPermissionGranted(true)
-                
-                // CRITICAL: Save location to database and Firebase immediately
-                if (location.latitude && location.longitude) {
-                  updateLocationInDB(location).catch(err => {
-                  })
-                }
-                
-                // Start watching for live updates
-                startWatchingLocation()
-              } else {
-                // Address is placeholder, but coordinates are valid - save them and retry reverse geocoding
-                // Save coordinates to Firebase even if address is placeholder
-                setLocation(location)
-                setPermissionGranted(true)
-                
-                // Save coordinates to Firebase
-                if (location.latitude && location.longitude) {
-                  updateLocationInDB(location).catch(err => {
-                  })
-                }
-                
-                // Retry reverse geocoding with backend API (more reliable)
-                // Reduced to 1 retry (from 3) to prevent API burst that causes 429 errors
-                if (retryCountRef.current < 1) {
-                  retryCountRef.current += 1
-                  const retryDelay = 5000 // 5 seconds delay (was 2-6s with escalation)
-                  
-                  setTimeout(() => {
-                    // Force fresh reverse geocoding
-                    getLocation(true, true)
-                      .then((retryLocation) => {
-                        if (retryLocation &&
-                          retryLocation.formattedAddress !== "Select location" &&
-                          retryLocation.city !== "Current Location" &&
-                          !retryLocation.formattedAddress.includes('Location (')) {
-                          retryCountRef.current = 0 // Reset on success
-                          setLocation(retryLocation)
-                          setPermissionGranted(true)
-                          updateLocationInDB(retryLocation).catch(() => {})
-                        }
-                        // Start watching regardless of retry result
-                        startWatchingLocation()
-                      })
-                      .catch(() => {
-                        // On error, still start watching
-                        startWatchingLocation()
-                      })
-                  }, retryDelay)
-                } else {
-                  // Max retries reached, start watching - address will show "Current Location"
-                  retryCountRef.current = 0 // Reset for next time
-                  startWatchingLocation()
-                }
+        getLocation(true, shouldForceFreshFetch, false)
+          .then((freshLoc) => {
+            if (freshLoc) {
+              setLocation(freshLoc)
+              setPermissionGranted(true)
+              // Persist coordinates to backend/Firebase only if logged in (updateLocationInDB already guards)
+              if (freshLoc.latitude && freshLoc.longitude) {
+                updateLocationInDB(freshLoc).catch(() => {})
               }
-            })
-            .catch((err) => {
-              // Still start watching in case permission is granted later
-              startWatchingLocation()
-            })
-        } else {
-          // We have a valid location, just start watching
-          startWatchingLocation()
-        }
+            }
+            // Start watching for live updates regardless (guest users included)
+            startWatchingLocation()
+          })
+          .catch(() => {
+            // Even if initial fetch fails (e.g., denied), keep watcher active; it may succeed later.
+            startWatchingLocation()
+          })
       } catch (err) {
         setLoading(false);
         hasInitializedRef.current = false // Reset flag on error
@@ -2070,12 +1977,22 @@ export function useLocation() {
     };
 
     // Only check permissions/start watching if we already have a saved location
-    // Auto-fetch on app open is safe here because we first query Permissions API.
     checkPermissionAndStart();
+
+    // Battery/perf: pause watcher when tab is hidden; resume when visible.
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopWatchingLocation()
+      } else {
+        startWatchingLocation()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     // Cleanup timeout and watcher
     return () => {
       clearTimeout(loadingTimeout)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       stopWatchingLocation()
     }
   }, [])

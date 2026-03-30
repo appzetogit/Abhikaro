@@ -508,6 +508,61 @@ export default function SearchResults() {
     return Array.from(uniqueByRestaurantAndFood.values())
   }, [query, selectedCategory, restaurantsData, categoryKeywords])
 
+  const matchingCategories = useMemo(() => {
+    const lowerQuery = query.trim().toLowerCase()
+    if (!lowerQuery) return []
+    return categories
+      .filter((cat) => cat?.id !== "all")
+      .filter((cat) => String(cat?.name || "").toLowerCase().includes(lowerQuery))
+      .slice(0, 12)
+  }, [query, categories])
+
+  const matchingRestaurants = useMemo(() => {
+    const lowerQuery = query.trim().toLowerCase()
+    const menuMatchedRestaurantSlugs = new Set()
+
+    if (lowerQuery) {
+      filteredFoodItems.forEach((food) => {
+        const name = String(food?.name || "").toLowerCase()
+        const category = String(food?.category || "").toLowerCase()
+        if (name.includes(lowerQuery) || category.includes(lowerQuery)) {
+          menuMatchedRestaurantSlugs.add(food.restaurantSlug)
+        }
+      })
+    } else {
+      // If no query but category filter is applied, show restaurants that have foods in the selected category.
+      if (selectedCategory !== "all") {
+        filteredFoodItems.forEach((food) => menuMatchedRestaurantSlugs.add(food.restaurantSlug))
+      }
+    }
+
+    const matches = restaurantsData.filter((restaurant) => {
+      if (!restaurant) return false
+
+      // If category filter is applied, restrict to those restaurants first.
+      if (selectedCategory !== "all" && menuMatchedRestaurantSlugs.size > 0) {
+        return menuMatchedRestaurantSlugs.has(restaurant.slug)
+      }
+
+      if (!lowerQuery) return true
+
+      const name = String(restaurant?.name || "").toLowerCase()
+      const cuisine = String(restaurant?.cuisine || "").toLowerCase()
+      if (name.includes(lowerQuery) || cuisine.includes(lowerQuery)) return true
+
+      return menuMatchedRestaurantSlugs.has(restaurant.slug)
+    })
+
+    const uniqueBySlug = new Map()
+    matches.forEach((r) => {
+      const slug = r?.slug || r?.restaurantId || r?.id
+      if (!slug) return
+      if (!uniqueBySlug.has(slug)) uniqueBySlug.set(slug, r)
+    })
+
+    return Array.from(uniqueBySlug.values()).slice(0, 24)
+  }, [query, restaurantsData, filteredFoodItems, selectedCategory])
+
   // Check if should show grayscale (user out of service)
   const shouldShowGrayscale = isOutOfService
 
@@ -594,7 +649,111 @@ export default function SearchResults() {
             <span className="ml-3 text-gray-600">Loading restaurants...</span>
           </div>
         )}
-        
+
+        {!!query.trim() && matchingCategories.length > 0 && (
+          <section>
+            <h2 className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4">
+              CATEGORIES
+            </h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
+              {matchingCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleCategorySelect(cat.id)}
+                  className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-gray-50 dark:bg-[#121212] hover:bg-white dark:hover:bg-[#1a1a1a] border border-gray-100 dark:border-gray-800 transition-colors text-left"
+                >
+                  <div className="w-14 h-14 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800">
+                    {cat.image ? (
+                      <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="text-2xl">🍽️</span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200 line-clamp-2 text-center">
+                    {cat.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {!loadingRestaurants && matchingRestaurants.length > 0 && (
+          <section>
+            <h2 className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4">
+              RESTAURANTS
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {matchingRestaurants.map((r) => (
+                <button
+                  key={r.slug || r.restaurantId || r.id}
+                  type="button"
+                  onClick={() => navigate(`/user/restaurants/${r.slug}`)}
+                  className="flex gap-4 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#0f0f0f] hover:bg-gray-50 dark:hover:bg-[#141414] transition-colors text-left"
+                >
+                  <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+                    {r.image ? (
+                      <img
+                        src={r.image}
+                        alt={r.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.style.display = "none"
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="text-2xl">🍴</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-gray-900 dark:text-white line-clamp-1">
+                          {r.name}
+                        </h3>
+                        {r.cuisine && (
+                          <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1">
+                            {r.cuisine}
+                          </p>
+                        )}
+                      </div>
+                      {r.rating && (
+                        <span className="text-xs font-bold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full flex-shrink-0">
+                          ⭐ {r.rating}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {r.deliveryTime && (
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
+                          {r.deliveryTime}
+                        </span>
+                      )}
+                      {r.distance && (
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
+                          {r.distance}
+                        </span>
+                      )}
+                      {r.offer && (
+                        <span className="text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full">
+                          {r.offer}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section>
           <h2 className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4">
             ALL FOODS
