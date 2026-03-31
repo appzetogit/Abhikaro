@@ -6,7 +6,7 @@
 // Get API base URL from environment variable or use default
 // IMPORTANT: Backend runs on port 5000, frontend on port 5173
 let rawApiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+  import.meta.env.VITE_API_BASE_URL || "/api";
 
 // Normalize URL - fix common issues like double slashes, missing protocols
 if (rawApiBaseUrl && typeof rawApiBaseUrl === "string") {
@@ -53,12 +53,13 @@ if (rawApiBaseUrl && typeof rawApiBaseUrl === "string") {
 export const API_BASE_URL = rawApiBaseUrl;
 
 // Validate URL format - catch malformed URLs like "https:/" or "https://https://"
+if (!API_BASE_URL.startsWith('/')) {
 try {
   const urlObj = new URL(API_BASE_URL);
   if (!urlObj.protocol || !urlObj.hostname) {
     console.error("❌ Invalid API_BASE_URL format:", API_BASE_URL);
     console.error(
-      "💡 Expected format: https://your-domain.com/api or http://localhost:5000/api",
+      "💡 Expected format: https://your-domain.com/api or /api",
     );
   }
 } catch (urlError) {
@@ -69,7 +70,7 @@ try {
     import.meta.env.VITE_API_BASE_URL || "Not set",
   );
   console.error(
-    "💡 Expected format: https://your-domain.com/api or http://localhost:5000/api",
+    "💡 Expected format: https://your-domain.com/api or /api",
   );
 
   // Try to auto-fix common malformed patterns
@@ -89,6 +90,7 @@ try {
     // Still invalid, keep original
   }
 }
+}
 
 // Validate API base URL
 if (API_BASE_URL.includes("5173")) {
@@ -96,10 +98,10 @@ if (API_BASE_URL.includes("5173")) {
     "❌ ERROR: API_BASE_URL is pointing to frontend port (5173) instead of backend port (5000)",
   );
   console.error(
-    "💡 Fix: Set VITE_API_BASE_URL=http://localhost:5000/api in .env file",
+    "💡 Fix: Set VITE_API_BASE_URL=/api in .env file",
   );
   console.error(
-    "💡 Or remove VITE_API_BASE_URL to use default: http://localhost:5000/api",
+    "💡 Or remove VITE_API_BASE_URL to use default: /api",
   );
 }
 

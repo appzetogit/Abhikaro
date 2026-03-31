@@ -224,13 +224,51 @@ export async function notifyRestaurantOrderUpdate(orderId, status) {
     // Get restaurant namespace
     const restaurantNamespace = io.of('/restaurant');
 
-    restaurantNamespace.to(`restaurant:${order.restaurantId}`).emit('order_status_update', {
+    // Emit to multiple possible room keys to avoid restaurantId mismatch issues
+    // (some clients join with Restaurant _id, others with restaurant.restaurantId)
+    const rawRestaurantId = order.restaurantId?.toString() || order.restaurantId;
+    const roomVariations = [
+      `restaurant:${rawRestaurantId}`,
+    ];
+
+    // If it looks like an ObjectId, also emit to normalized ObjectId form
+    if (mongoose.Types.ObjectId.isValid(rawRestaurantId)) {
+      roomVariations.push(
+        `restaurant:${new mongoose.Types.ObjectId(rawRestaurantId).toString()}`
+      );
+    }
+
+    // Best-effort: try also emitting to restaurant document _id when order.restaurantId stores restaurantId string
+    try {
+      const restaurant = await Restaurant.findOne({
+        $or: [{ restaurantId: rawRestaurantId }, { _id: rawRestaurantId }],
+      })
+        .select('_id restaurantId')
+        .lean();
+      if (restaurant?._id) {
+        roomVariations.push(`restaurant:${restaurant._id.toString()}`);
+      }
+      if (restaurant?.restaurantId) {
+        roomVariations.push(`restaurant:${restaurant.restaurantId.toString()}`);
+      }
+    } catch (e) {
+      // ignore lookup failures
+    }
+
+    const payload = {
       orderId: order.orderId,
+      orderMongoId: order._id.toString(),
       status,
-      updatedAt: new Date()
+      updatedAt: new Date(),
+    };
+
+    [...new Set(roomVariations)].forEach((room) => {
+      restaurantNamespace.to(room).emit('order_status_update', payload);
     });
 
-    console.log(`📢 Notified restaurant ${order.restaurantId} about order ${order.orderId} status: ${status}`);
+    console.log(
+      `📢 Notified restaurant rooms [${[...new Set(roomVariations)].join(', ')}] about order ${order.orderId} status: ${status}`
+    );
   } catch (error) {
     console.error('Error notifying restaurant about order update:', error);
     throw error;

@@ -100,7 +100,14 @@ export const getOrders = asyncHandler(async (req, res) => {
       }).select('_id restaurantId').lean();
 
       if (restaurantDoc) {
-        query.restaurantId = restaurantDoc._id?.toString() || restaurantDoc.restaurantId;
+        // Order.restaurantId can be stored as ObjectId or string depending on legacy data.
+        // Match both forms to ensure filters work end-to-end.
+        const restaurantIdCandidates = [
+          restaurantDoc._id,
+          restaurantDoc._id?.toString?.(),
+          restaurantDoc.restaurantId
+        ].filter(Boolean);
+        query.restaurantId = { $in: restaurantIdCandidates };
       }
     }
 
@@ -1027,7 +1034,7 @@ export const getTransactionReport = asyncHandler(async (req, res) => {
       }).select('_id restaurantId').lean();
 
       if (restaurantDoc) {
-        query.restaurantId = restaurantDoc._id?.toString() || restaurantDoc.restaurantId;
+        query.restaurantId = { $in: [restaurantDoc._id, restaurantDoc._id?.toString?.(), restaurantDoc.restaurantId].filter(Boolean) };
       }
     }
 
@@ -1063,86 +1070,70 @@ export const getTransactionReport = asyncHandler(async (req, res) => {
     // Get total count
     const total = await Order.countDocuments(query);
 
-    // Calculate summary statistics
-    const AdminCommission = (await import('../models/AdminCommission.js')).default;
-    
-    // Build date query for summary stats
-    const summaryDateQuery = {};
-    if (fromDate || toDate) {
-      summaryDateQuery.orderDate = {};
-      if (fromDate) {
-        const startDate = new Date(fromDate);
-        startDate.setHours(0, 0, 0, 0);
-        summaryDateQuery.orderDate.$gte = startDate;
+    // Calculate summary statistics (real earnings/refunds) using OrderSettlement lookup.
+    // This avoids loading all orders into memory and gives accurate admin/restaurant/delivery earnings.
+    const summaryAgg = await Order.aggregate([
+      { $match: query },
+      {
+        $lookup: {
+          from: 'ordersettlements',
+          localField: '_id',
+          foreignField: 'orderId',
+          as: 'settlement'
+        }
+      },
+      { $unwind: { path: '$settlement', preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          _pricingTotal: { $ifNull: ['$pricing.total', 0] },
+          _paymentStatus: { $ifNull: ['$payment.status', null] },
+          _refundAmount: { $ifNull: ['$settlement.cancellationDetails.refundAmount', 0] },
+          _adminEarning: { $ifNull: ['$settlement.adminEarning.totalEarning', 0] },
+          _restaurantEarning: { $ifNull: ['$settlement.restaurantEarning.netEarning', 0] },
+          _deliveryEarning: { $ifNull: ['$settlement.deliveryPartnerEarning.totalEarning', 0] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          completedTransaction: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$status', 'delivered'] }, { $eq: ['$_paymentStatus', 'completed'] }] },
+                '$_pricingTotal',
+                0
+              ]
+            }
+          },
+          refundedTransaction: {
+            $sum: {
+              $cond: [
+                { $gt: ['$_refundAmount', 0] },
+                '$_refundAmount',
+                {
+                  $cond: [
+                    { $eq: ['$_paymentStatus', 'refunded'] },
+                    '$_pricingTotal',
+                    0
+                  ]
+                }
+              ]
+            }
+          },
+          adminEarning: { $sum: '$_adminEarning' },
+          restaurantEarning: { $sum: '$_restaurantEarning' },
+          deliverymanEarning: { $sum: '$_deliveryEarning' }
+        }
       }
-      if (toDate) {
-        const endDate = new Date(toDate);
-        endDate.setHours(23, 59, 59, 999);
-        summaryDateQuery.orderDate.$lte = endDate;
-      }
-    }
+    ]);
 
-    // Build restaurant filter for summary
-    let summaryRestaurantQuery = {};
-    if (restaurant && restaurant !== 'All restaurants') {
-      const Restaurant = (await import('../../restaurant/models/Restaurant.js')).default;
-      const restaurantDoc = await Restaurant.findOne({
-        $or: [
-          { name: { $regex: restaurant, $options: 'i' } },
-          { _id: mongoose.Types.ObjectId.isValid(restaurant) ? restaurant : null },
-          { restaurantId: restaurant }
-        ]
-      }).select('_id restaurantId').lean();
-
-      if (restaurantDoc) {
-        summaryRestaurantQuery.restaurantId = restaurantDoc._id || restaurantDoc.restaurantId;
-      }
-    }
-
-    // Get all orders for summary calculation (without pagination)
-    const summaryQuery = { ...query };
-    const allOrdersForSummary = await Order.find(summaryQuery)
-      .populate('userId', 'name')
-      .populate('restaurantId', 'name')
-      .lean();
-
-    // Calculate completed transactions (delivered orders)
-    const completedOrders = allOrdersForSummary.filter(order => 
-      order.status === 'delivered' && order.payment?.status === 'completed'
-    );
-    const completedTransaction = completedOrders.reduce((sum, order) => 
-      sum + (order.pricing?.total || 0), 0
-    );
-
-    // Calculate refunded transactions
-    const refundedOrders = allOrdersForSummary.filter(order => 
-      order.payment?.status === 'refunded' || order.status === 'cancelled'
-    );
-    const refundedTransaction = refundedOrders.reduce((sum, order) => 
-      sum + (order.pricing?.total || 0), 0
-    );
-
-    // Get admin earning from AdminCommission
-    const adminCommissionQuery = {
-      status: 'completed',
-      ...summaryDateQuery,
-      ...summaryRestaurantQuery
+    const computedSummary = summaryAgg?.[0] || {
+      completedTransaction: 0,
+      refundedTransaction: 0,
+      adminEarning: 0,
+      restaurantEarning: 0,
+      deliverymanEarning: 0
     };
-    const adminCommissions = await AdminCommission.find(adminCommissionQuery).lean();
-    const adminEarning = adminCommissions.reduce((sum, comm) => sum + (comm.commissionAmount || 0), 0);
-
-    // Calculate restaurant earning (order total - admin commission - delivery commission)
-    // For simplicity, we'll use restaurantEarning from AdminCommission if available
-    const restaurantEarning = adminCommissions.reduce((sum, comm) => sum + (comm.restaurantEarning || 0), 0);
-
-    // Calculate deliveryman earning (from delivery commissions)
-    // This would need to be calculated from delivery wallet transactions or order assignment info
-    // For now, we'll estimate based on delivery fee or use a placeholder
-    const deliverymanEarning = completedOrders.reduce((sum, order) => {
-      // Delivery commission is typically calculated from distance
-      // For now, we'll use a simple estimate or fetch from delivery wallet
-      return sum + (order.pricing?.deliveryFee || 0) * 0.8; // Estimate 80% of delivery fee goes to deliveryman
-    }, 0);
 
     // Transform orders to match frontend format
     const transformedTransactions = orders.map((order, index) => {
@@ -1187,11 +1178,11 @@ export const getTransactionReport = asyncHandler(async (req, res) => {
 
     return successResponse(res, 200, 'Transaction report retrieved successfully', {
       summary: {
-        completedTransaction,
-        refundedTransaction,
-        adminEarning,
-        restaurantEarning,
-        deliverymanEarning
+        completedTransaction: computedSummary.completedTransaction || 0,
+        refundedTransaction: computedSummary.refundedTransaction || 0,
+        adminEarning: computedSummary.adminEarning || 0,
+        restaurantEarning: computedSummary.restaurantEarning || 0,
+        deliverymanEarning: computedSummary.deliverymanEarning || 0
       },
       transactions: transformedTransactions,
       pagination: {
@@ -1515,7 +1506,7 @@ export const getRefundRequests = asyncHandler(async (req, res) => {
         }).select('_id restaurantId').lean();
 
         if (restaurantDoc) {
-          query.restaurantId = restaurantDoc._id?.toString() || restaurantDoc.restaurantId;
+          query.restaurantId = { $in: [restaurantDoc._id, restaurantDoc._id?.toString?.(), restaurantDoc.restaurantId].filter(Boolean) };
         }
       } catch (error) {
         console.error('Error filtering by restaurant:', error);

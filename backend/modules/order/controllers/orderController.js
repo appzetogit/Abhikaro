@@ -1880,6 +1880,19 @@ export const cancelOrder = async (req, res) => {
     order.cancelledAt = new Date();
     await order.save();
 
+    // Realtime notify restaurant so restaurant UI can dismiss popup/stop sound immediately
+    try {
+      const { notifyRestaurantOrderUpdate } = await import(
+        "../services/restaurantNotificationService.js"
+      );
+      await notifyRestaurantOrderUpdate(order._id.toString(), "cancelled");
+    } catch (notifError) {
+      // Don't fail cancellation if socket notification fails
+      logger.warn(
+        `Restaurant realtime notification failed for cancelled order ${order.orderId}: ${notifError.message}`,
+      );
+    }
+
     // Calculate refund amount only for online payments (Razorpay) and wallet
     // COD orders don't need refund since payment hasn't been made
     let refundMessage = "";

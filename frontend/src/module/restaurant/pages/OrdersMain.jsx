@@ -954,6 +954,46 @@ export default function OrdersMain() {
     }
   }, [showNewOrderPopup, isMuted])
 
+  // Close popup immediately if the user cancels the order (realtime via Socket.IO -> window event)
+  useEffect(() => {
+    const handleOrderStatusUpdate = (event) => {
+      const detail = event?.detail || {}
+      const status = (detail.status || '').toString().toLowerCase()
+      if (status !== 'cancelled' && status !== 'canceled') return
+
+      // Always stop popup sound on any cancel update (even if order id doesn't match current popup)
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.currentTime = 0
+      }
+
+      const currentOrder = popupOrder || newOrder
+      const currentIds = new Set(
+        [currentOrder?.orderId, currentOrder?.orderMongoId, currentOrder?.mongoId]
+          .filter(Boolean)
+          .map(v => v.toString())
+      )
+      const incomingIds = new Set(
+        [detail.orderId, detail.orderMongoId, detail.mongoId]
+          .filter(Boolean)
+          .map(v => v.toString())
+      )
+
+      if (currentIds.size === 0 || incomingIds.size === 0) return
+      const matches = [...incomingIds].some(id => currentIds.has(id))
+      if (!matches) return
+
+      setShowNewOrderPopup(false)
+      setPopupOrder(null)
+      clearNewOrder()
+      setCountdown(240)
+      setPrepTime(11)
+    }
+
+    window.addEventListener('order_status_update', handleOrderStatusUpdate)
+    return () => window.removeEventListener('order_status_update', handleOrderStatusUpdate)
+  }, [popupOrder, newOrder, clearNewOrder])
+
   // Countdown timer
   useEffect(() => {
     if (showNewOrderPopup && countdown > 0) {

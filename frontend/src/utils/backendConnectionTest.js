@@ -3,8 +3,10 @@
  * Tests backend connectivity and displays helpful error messages
  */
 
-const BACKEND_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:5000';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const BACKEND_URL = API_BASE_URL.startsWith('/')
+  ? window.location.origin
+  : API_BASE_URL.replace('/api', '');
 
 /**
  * Test backend health endpoint

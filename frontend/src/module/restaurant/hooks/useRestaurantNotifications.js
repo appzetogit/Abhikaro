@@ -238,6 +238,26 @@ export const useRestaurantNotifications = () => {
 
     // Listen for order status updates
     socketRef.current.on('order_status_update', (data) => {
+      // Always forward status updates to the UI (e.g., cancelled) so popups/sounds can be dismissed in realtime
+      try {
+        window.dispatchEvent(new CustomEvent('order_status_update', { detail: data }));
+      } catch (e) {
+        // ignore
+      }
+
+      // If an order gets cancelled, ensure any currently playing notification sound is stopped
+      try {
+        const status = (data?.status || '').toString().toLowerCase();
+        if (status === 'cancelled' || status === 'canceled') {
+          if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+
       // Trigger order refresh event for components to listen
       if (data.deliveryPartnerId) {
         window.dispatchEvent(new CustomEvent('order_assigned', {

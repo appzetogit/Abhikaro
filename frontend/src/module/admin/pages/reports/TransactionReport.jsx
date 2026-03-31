@@ -271,7 +271,7 @@ export default function TransactionReport() {
                 </div>
               </div>
               <div className="text-center">
-                <p className="text-lg font-bold text-green-600 mb-0.5">{formatCurrency(summary.completedTransaction)}</p>
+                <p className="text-lg font-bold text-green-600 mb-0.5">{formatFullCurrency(summary.completedTransaction)}</p>
                 <p className="text-xs text-slate-600 leading-tight">Completed Transaction</p>
               </div>
             </div>
@@ -309,7 +309,7 @@ export default function TransactionReport() {
                     </div>
                   </div>
                 </div>
-                <p className="text-base font-bold text-slate-900">{formatCurrency(summary.adminEarning)}</p>
+                <p className="text-base font-bold text-slate-900">{formatFullCurrency(summary.adminEarning)}</p>
               </div>
             </div>
 
@@ -327,7 +327,7 @@ export default function TransactionReport() {
                     </div>
                   </div>
                 </div>
-                <p className="text-base font-bold text-green-600">{formatCurrency(summary.restaurantEarning)}</p>
+                <p className="text-base font-bold text-green-600">{formatFullCurrency(summary.restaurantEarning)}</p>
               </div>
             </div>
 
@@ -345,7 +345,7 @@ export default function TransactionReport() {
                     </div>
                   </div>
                 </div>
-                <p className="text-base font-bold text-orange-600">{formatCurrency(summary.deliverymanEarning)}</p>
+                <p className="text-base font-bold text-orange-600">{formatFullCurrency(summary.deliverymanEarning)}</p>
               </div>
             </div>
           </div>
