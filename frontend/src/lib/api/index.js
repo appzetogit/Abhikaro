@@ -1394,6 +1394,14 @@ export const adminAPI = {
     );
   },
 
+  // Send email to restaurant owner (Admin)
+  sendRestaurantEmail: (id, subject, message) => {
+    return apiClient.post(`/admin/restaurants/${id}/send-email`, {
+      subject,
+      message,
+    });
+  },
+
   // Update restaurant dining settings
   updateRestaurantDiningSettings: (id, diningSettings) => {
     return apiClient.put(`/admin/restaurants/${id}/dining-settings`, {

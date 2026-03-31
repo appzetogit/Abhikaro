@@ -6,6 +6,7 @@ import AdminCommission from "../models/AdminCommission.js";
 import OrderSettlement from "../../order/models/OrderSettlement.js";
 import TableBooking from "../../dining/models/TableBooking.js";
 import AdminWallet from "../models/AdminWallet.js";
+import emailService from "../../auth/services/emailService.js";
 import {
   successResponse,
   errorResponse,
@@ -21,6 +22,7 @@ import {
   sanitizeAdminPermissions,
   getDefaultAdminPermissions,
 } from "../../../shared/constants/adminPermissions.js";
+import { invalidateCachePattern } from "../../../shared/utils/cache.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -1791,16 +1793,18 @@ export const getRestaurants = asyncHandler(async (req, res) => {
     // Build query
     const query = {};
 
-    // Status filter - Default to active only (approved restaurants)
-    // Only show inactive if explicitly requested via status filter
-    // IMPORTANT: Restaurants should only appear in main list AFTER admin approval
-    // Inactive restaurants (pending approval) should only appear in "New Joining Request" section
-    if (status === "inactive") {
-      query.isActive = false;
-    } else {
-      // Default: Show only active (approved) restaurants
-      // This ensures that restaurants only appear in main list after admin approval
+    // Only show approved restaurants in main list (approvedAt set)
+    // This keeps "New Joining Requests" separate from approved-but-inactive restaurants.
+    query.approvedAt = { $exists: true, $ne: null };
+
+    // Status filter:
+    // - status=active   -> only active restaurants
+    // - status=inactive -> only inactive restaurants
+    // - default (no status) -> show BOTH active + inactive in the main list
+    if (status === "active") {
       query.isActive = true;
+    } else if (status === "inactive") {
+      query.isActive = false;
     }
 
     console.log("🔍 Admin Restaurants List Query:", {
@@ -2022,6 +2026,12 @@ export const updateRestaurantStatus = asyncHandler(async (req, res) => {
     restaurant.isActive = isActive;
     await restaurant.save();
 
+    // Invalidate user-side restaurant discovery caches so status changes reflect immediately
+    // - List caches: restaurants:*
+    // - Details caches: restaurant:*
+    await invalidateCachePattern("restaurants:*");
+    await invalidateCachePattern("restaurant:*");
+
     logger.info(`Restaurant status updated: ${id}`, {
       isActive,
       updatedBy: req.user._id,
@@ -2130,6 +2140,89 @@ export const updateRestaurantLocation = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Send Email to Restaurant Owner
+ * POST /api/admin/restaurants/:id/send-email
+ * Body: { subject: string, message: string }
+ */
+export const sendRestaurantEmail = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { subject, message } = req.body || {};
+
+  if (!id) return errorResponse(res, 400, "Restaurant ID is required");
+  if (!subject || typeof subject !== "string" || !subject.trim()) {
+    return errorResponse(res, 400, "Subject is required");
+  }
+  if (!message || typeof message !== "string" || !message.trim()) {
+    return errorResponse(res, 400, "Message is required");
+  }
+
+  const restaurant = await Restaurant.findById(id).select("-password").lean();
+  if (!restaurant) return errorResponse(res, 404, "Restaurant not found");
+
+  const isRealEmail = (email) => {
+    if (!email || typeof email !== "string") return false;
+    const e = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false;
+    if (e.endsWith("@restaurant.local")) return false;
+    return true;
+  };
+
+  const candidates = [
+    restaurant.onboarding?.step1?.ownerEmail,
+    restaurant.ownerEmail,
+    restaurant.email,
+  ];
+
+  let to = "";
+  for (const c of candidates) {
+    if (isRealEmail(c)) {
+      to = c.trim();
+      break;
+    }
+  }
+
+  if (!to) {
+    return errorResponse(
+      res,
+      400,
+      "Email address not available for this restaurant",
+    );
+  }
+
+  const safeSubject = subject.trim().slice(0, 200);
+  const safeMessage = message.trim().slice(0, 10000);
+
+  // Escape HTML special chars + keep line breaks
+  const escaped = safeMessage
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br/>");
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
+      <p>${escaped}</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
+      <p style="font-size: 12px; color: #6b7280;">
+        Sent from Abhikaro Admin Panel
+      </p>
+    </div>
+  `;
+
+  const ok = await emailService.sendEmail({ to, subject: safeSubject, html });
+  if (!ok) return errorResponse(res, 500, "Failed to send email");
+
+  logger.info("Restaurant email sent", {
+    restaurantId: id,
+    to,
+    subject: safeSubject,
+    sentBy: req.user?._id,
+  });
+
+  return successResponse(res, 200, "Email sent successfully");
+});
+
+/**
  * Get Restaurant Join Requests
  * GET /api/admin/restaurants/requests
  * Query params: status (pending, rejected), page, limit, search
@@ -2139,7 +2232,7 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
     const { status = "pending", page = 1, limit = 50, search } = req.query;
 
     // Build query
-    const query = {};
+    let query = {};
 
     // Status filter
     // Pending = all inactive restaurants without rejection reason (regardless of onboarding completion)
@@ -2148,12 +2241,16 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
       // Show ALL inactive restaurants that don't have a rejection reason
       // This includes restaurants at any stage of onboarding, not just completed ones
       query.isActive = false;
+      // Only those NOT approved yet should be in join requests
+      query.approvedAt = { $in: [null, undefined] };
       query.$or = [
         { rejectionReason: { $exists: false } },
         { rejectionReason: null },
       ];
     } else if (status === "rejected") {
       query["rejectionReason"] = { $exists: true, $ne: null };
+      // Rejected join requests are also not approved
+      query.approvedAt = { $in: [null, undefined] };
       // For rejected, also check if onboarding is complete
       query.$or = [
         { "onboarding.completedSteps": 4 },

@@ -39,6 +39,7 @@ export default function OutletInfo() {
   const [mainImage, setMainImage] = useState("https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&h=400&fit=crop")
   const [thumbnailImage, setThumbnailImage] = useState("https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=200&h=200&fit=crop")
   const [coverImages, setCoverImages] = useState([]) // Array of cover images (separate from menu images)
+  const [bannerFailed, setBannerFailed] = useState(false)
   const [showEditNameDialog, setShowEditNameDialog] = useState(false)
   const [editNameValue, setEditNameValue] = useState("")
   const [restaurantId, setRestaurantId] = useState("")
@@ -175,6 +176,11 @@ export default function OutletInfo() {
       lenis.destroy()
     }
   }, [])
+
+  // Reset banner error state when image URL changes
+  useEffect(() => {
+    setBannerFailed(false)
+  }, [mainImage])
 
   // Handle profile image replacement
   const handleProfileImageReplace = async (event) => {
@@ -575,11 +581,25 @@ export default function OutletInfo() {
 
       {/* Main Image Section (display only, no cover image field controls) */}
       <div className="relative w-full h-[200px] overflow-visible">
-        <img
-          src={mainImage}
-          alt="Restaurant banner"
-          className="w-full h-full object-cover"
-        />
+        {!bannerFailed && mainImage ? (
+          <img
+            src={mainImage}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={() => setBannerFailed(true)}
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-r from-slate-900 to-slate-700 flex items-center justify-center">
+            <div className="text-center px-4">
+              <div className="text-white text-xl font-extrabold tracking-tight">
+                Abhikaro Restaurants
+              </div>
+              <div className="text-white/80 text-xs mt-1">
+                {restaurantName ? restaurantName : "Welcome"}
+              </div>
+            </div>
+          </div>
+        )}
         {/* Thumbnail Section - Overlapping bottom edge */}
         <div className="absolute bottom-0 left-4 -mb-[45px] flex flex-col gap-2 shrink-0 z-10">
           <div className="relative w-[70px] h-[70px] rounded overflow-hidden">

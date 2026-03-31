@@ -3,6 +3,10 @@ import { useNavigate } from "react-router-dom"
 import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, RefreshCw, Edit, Check, ChevronLeft, ChevronRight } from "lucide-react"
 import { adminAPI, restaurantAPI } from "../../../../lib/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { exportRestaurantsToPDF } from "../../components/restaurants/restaurantsExportUtils"
 import { toast } from "sonner"
 
@@ -31,6 +35,11 @@ export default function RestaurantsList() {
   const [zoneInput, setZoneInput] = useState("")
   const [updatingZone, setUpdatingZone] = useState(false)
   const [zones, setZones] = useState([]) // Available zones for dropdown
+  const [sendMailOpen, setSendMailOpen] = useState(false)
+  const [mailRestaurant, setMailRestaurant] = useState(null)
+  const [mailSubject, setMailSubject] = useState("")
+  const [mailMessage, setMailMessage] = useState("")
+  const [sendingMail, setSendingMail] = useState(false)
 
   // Format Restaurant ID to REST format (e.g., REST422829)
   const formatRestaurantId = (id) => {
@@ -71,6 +80,14 @@ export default function RestaurantsList() {
     }
     
     return `REST${lastDigits}`
+  }
+
+  const isRealEmail = (email) => {
+    if (!email || typeof email !== "string") return false
+    const e = email.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false
+    if (e.endsWith("@restaurant.local")) return false
+    return true
   }
 
   // Fetch available zones for dropdown
@@ -127,7 +144,9 @@ export default function RestaurantsList() {
               restaurant.ownerName ||
               "N/A",
             ownerPhone: restaurant.ownerPhone || restaurant.phone || "N/A",
+            // Prefer onboarding ownerEmail first (RestaurantEdit uses this)
             ownerEmail:
+              restaurant.onboarding?.step1?.ownerEmail ||
               restaurant.ownerEmail ||
               restaurant.email ||
               restaurant.contactEmail ||
@@ -297,54 +316,100 @@ export default function RestaurantsList() {
     return pages
   }
 
-  const handleToggleStatus = async (id) => {
+  const handleToggleStatus = async (rowId) => {
+    const target = restaurants.find((r) => r.id === rowId)
+    if (!target) return
+
+    const restaurantId = target._id || target.id
+    const nextStatus = !target.status
+
     try {
-      // Optimistically update UI
-      const updatedRestaurants = restaurants.map(restaurant =>
-        restaurant.id === id ? { ...restaurant, status: !restaurant.status } : restaurant
+      // Optimistic UI update
+      setRestaurants((prev) =>
+        prev.map((r) => (r.id === rowId ? { ...r, status: nextStatus } : r)),
       )
-      setRestaurants(updatedRestaurants)
-      
-      // TODO: Call API to update restaurant status
-      // await adminAPI.updateRestaurantStatus(id, !restaurants.find(r => r.id === id).status)
+
+      await adminAPI.updateRestaurantStatus(restaurantId, nextStatus)
+      toast.success(`Restaurant ${nextStatus ? "activated" : "deactivated"}`)
     } catch (err) {
       console.error("Error updating restaurant status:", err)
       // Revert on error
-      setRestaurants(restaurants)
+      setRestaurants((prev) =>
+        prev.map((r) => (r.id === rowId ? { ...r, status: !nextStatus } : r)),
+      )
+      toast.error(err?.response?.data?.message || "Failed to update status")
     }
   }
 
-  // Handle sending email to restaurant owner
-  const handleSendEmail = (restaurant) => {
-    const email =
-      restaurant.ownerEmail ||
-      restaurant.originalData?.ownerEmail ||
-      restaurant.originalData?.email ||
-      restaurant.email
+  const getRestaurantEmail = (restaurant) => {
+    const candidates = [
+      restaurant?.originalData?.onboarding?.step1?.ownerEmail,
+      restaurant?.ownerEmail,
+      restaurant?.originalData?.ownerEmail,
+      restaurant?.originalData?.email,
+      restaurant?.email,
+    ]
+    for (const c of candidates) {
+      if (isRealEmail(c)) return c.trim()
+    }
+    return ""
+  }
 
+  // Open Send Mail modal
+  const handleSendEmail = (restaurant) => {
+    const email = getRestaurantEmail(restaurant)
     if (!email) {
-      alert("Email address not available for this restaurant.")
+      toast.error("Email address not available for this restaurant.")
       return
     }
 
-    const subject = "Regarding your restaurant listing on Abhikaro"
-    const greetingName = restaurant.ownerName || restaurant.originalData?.ownerName || ""
-    const bodyLines = [
-      greetingName ? `Hi ${greetingName},` : "Hi,",
-      "",
-      "We are contacting you regarding your restaurant listing on Abhikaro.",
-      "",
-      "Best regards,",
-      "Abhikaro Team",
-    ]
+    setMailRestaurant(restaurant)
+    // Keep fields empty (user requested no default text)
+    setMailSubject("")
+    setMailMessage("")
+    setSendMailOpen(true)
+  }
 
-    const body = bodyLines.join("\n")
+  const closeSendMail = () => {
+    if (sendingMail) return
+    setSendMailOpen(false)
+    setMailRestaurant(null)
+    setMailSubject("")
+    setMailMessage("")
+  }
 
-    const mailtoLink = `mailto:${encodeURIComponent(
-      email,
-    )}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  const submitSendMail = async () => {
+    const email = getRestaurantEmail(mailRestaurant)
+    const id = mailRestaurant?._id || mailRestaurant?.id
 
-    window.location.href = mailtoLink
+    if (!id) {
+      toast.error("Restaurant ID not found.")
+      return
+    }
+    if (!email) {
+      toast.error("Email address not available for this restaurant.")
+      return
+    }
+    if (!mailSubject.trim()) {
+      toast.error("Please enter a subject")
+      return
+    }
+    if (!mailMessage.trim()) {
+      toast.error("Please enter a message")
+      return
+    }
+
+    try {
+      setSendingMail(true)
+      await adminAPI.sendRestaurantEmail(id, mailSubject.trim(), mailMessage.trim())
+      toast.success(`Email sent to ${email}`)
+      closeSendMail()
+    } catch (err) {
+      console.error("Error sending email:", err)
+      toast.error(err?.response?.data?.message || "Failed to send email. Please try again.")
+    } finally {
+      setSendingMail(false)
+    }
   }
 
   const totalRestaurants = restaurants.length
@@ -836,7 +901,7 @@ export default function RestaurantsList() {
                             <span className="text-xs text-slate-500">
                               {formatPhone(restaurant.ownerPhone)}
                             </span>
-                            {restaurant.ownerEmail && (
+                            {getRestaurantEmail(restaurant) && (
                               <button
                                 type="button"
                                 onClick={() => handleSendEmail(restaurant)}
@@ -893,7 +958,7 @@ export default function RestaurantsList() {
                               onClick={() => handleSendEmail(restaurant)}
                               className="p-1.5 rounded text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
                               title="Send Email"
-                              disabled={!restaurant.ownerEmail}
+                              disabled={!getRestaurantEmail(restaurant)}
                             >
                               <Mail className="w-4 h-4" />
                             </button>
@@ -1826,6 +1891,60 @@ export default function RestaurantsList() {
           </div>
         </div>
       )}
+
+      {/* Send Mail Modal */}
+      <Dialog open={sendMailOpen} onOpenChange={(open) => !open && closeSendMail()}>
+        <DialogContent className="w-[92vw] max-w-lg p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg md:text-xl font-bold text-slate-900">
+              Send Email
+            </DialogTitle>
+            <DialogDescription className="text-xs md:text-sm text-slate-600">
+              To: <span className="font-medium text-slate-800">{getRestaurantEmail(mailRestaurant) || "N/A"}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">Subject</label>
+              <Input
+                value={mailSubject}
+                onChange={(e) => setMailSubject(e.target.value)}
+                placeholder="Enter subject"
+                disabled={sendingMail}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">Message</label>
+              <Textarea
+                value={mailMessage}
+                onChange={(e) => setMailMessage(e.target.value)}
+                placeholder="Write your message..."
+                rows={8}
+                className="w-full min-h-[180px] resize-none border border-slate-300 rounded-lg bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                disabled={sendingMail}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="outline" type="button" onClick={closeSendMail} disabled={sendingMail}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={submitSendMail} disabled={sendingMail}>
+                {sendingMail ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sending...
+                  </span>
+                ) : (
+                  "Send"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
