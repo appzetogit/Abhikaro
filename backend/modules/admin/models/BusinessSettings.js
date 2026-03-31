@@ -133,6 +133,13 @@ const businessSettingsSchema = new mongoose.Schema(
       ref: "Admin",
       default: null,
     },
+    // Home page categories limit (used by /categories/public?home=true)
+    homeCategoriesLimit: {
+      type: Number,
+      default: 10,
+      min: 1,
+      max: 50,
+    },
   },
   {
     timestamps: true,

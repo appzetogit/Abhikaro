@@ -21,8 +21,10 @@ const logger = winston.createLogger({
  */
 export const getPublicCategories = asyncHandler(async (req, res) => {
   try {
-    // Generate cache key
-    const cacheKey = generateCacheKey('categories', 'public');
+    const home = String(req.query.home || '').toLowerCase() === 'true';
+
+    // Generate cache key (must vary by query)
+    const cacheKey = generateCacheKey('categories', 'public', home ? 'home' : 'all');
 
     // Try to get from cache first
     const cached = await getCache(cacheKey);
@@ -31,10 +33,33 @@ export const getPublicCategories = asyncHandler(async (req, res) => {
     }
 
     // Only get active categories for public access
-    const categories = await AdminCategoryManagement.find({ status: true })
+    const query = home ? { status: true, showOnHome: true } : { status: true };
+
+    // If home=true, apply admin-configured ordering + limit from settings
+    let sort = { createdAt: -1 };
+    let limit = null;
+
+    if (home) {
+      const BusinessSettings = (await import('../models/BusinessSettings.js')).default;
+      const settings = await BusinessSettings.getSettings().catch(() => null);
+      const configuredLimit = Number(settings?.homeCategoriesLimit);
+      limit = Number.isFinite(configuredLimit) ? configuredLimit : 10;
+      if (limit < 1) limit = 1;
+      if (limit > 50) limit = 50;
+
+      sort = { homeOrder: 1, createdAt: -1 };
+    }
+
+    let categoriesQuery = AdminCategoryManagement.find(query)
       .select('name image _id type offerPercentage offerUsageLimitPerDay')
-      .sort({ createdAt: -1 })
+      .sort(sort)
       .lean();
+
+    if (home && typeof limit === 'number') {
+      categoriesQuery = categoriesQuery.limit(limit);
+    }
+
+    const categories = await categoriesQuery;
 
     const formattedCategories = categories.map((category) => ({
       id: category._id.toString(),
@@ -287,7 +312,16 @@ export const createCategory = asyncHandler(async (req, res) => {
 export const updateCategory = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, image, status, type, offerPercentage, offerUsageLimitPerDay } = req.body;
+    const {
+      name,
+      image,
+      status,
+      type,
+      offerPercentage,
+      offerUsageLimitPerDay,
+      showOnHome,
+      homeOrder,
+    } = req.body;
 
     const category = await AdminCategoryManagement.findById(id);
 
@@ -367,6 +401,26 @@ export const updateCategory = asyncHandler(async (req, res) => {
     if (imageUrl !== undefined) category.image = imageUrl;
     if (type !== undefined) category.type = type && type.trim() ? type.trim() : undefined;
     if (status !== undefined) category.status = status;
+
+    // Home page controls
+    if (showOnHome !== undefined) {
+      // Accept boolean or common string forms
+      if (typeof showOnHome === 'boolean') {
+        category.showOnHome = showOnHome;
+      } else {
+        const raw = String(showOnHome).toLowerCase();
+        category.showOnHome = raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+      }
+    }
+
+    if (homeOrder !== undefined) {
+      const parsed = Number(homeOrder);
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+        return errorResponse(res, 400, 'Home order must be an integer');
+      }
+      category.homeOrder = parsed;
+    }
+
     category.updatedBy = req.user._id;
 
     await category.save();

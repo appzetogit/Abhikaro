@@ -87,6 +87,8 @@ export default function Home() {
   const [realCategories, setRealCategories] = useState([])
   const [loadingRealCategories, setLoadingRealCategories] = useState(true)
   const [showAllCategoriesModal, setShowAllCategoriesModal] = useState(false)
+  const [allCategories, setAllCategories] = useState([])
+  const [loadingAllCategories, setLoadingAllCategories] = useState(false)
   const isHandlingSwitchOff = useRef(false)
 
   // Rating & feedback popup (after order delivered)
@@ -485,7 +487,7 @@ export default function Home() {
     const fetchRealCategories = async () => {
       try {
         setLoadingRealCategories(true)
-        const response = await api.get('/categories/public')
+        const response = await api.get('/categories/public?home=true')
         if (response.data.success && response.data.data.categories) {
           const adminCategories = response.data.data.categories.map(cat => ({
             id: cat.id,
@@ -507,6 +509,36 @@ export default function Home() {
 
     fetchRealCategories()
   }, [])
+
+  // Fetch ALL active categories for the "See all" modal (not limited by home config)
+  useEffect(() => {
+    if (!showAllCategoriesModal) return
+
+    const fetchAllCategories = async () => {
+      try {
+        setLoadingAllCategories(true)
+        const response = await api.get('/categories/public')
+        if (response.data.success && response.data.data.categories) {
+          const adminCategories = response.data.data.categories.map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            image: cat.image || foodImages[0],
+            slug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'),
+            label: cat.name
+          }))
+          setAllCategories(adminCategories)
+        } else {
+          setAllCategories([])
+        }
+      } catch (error) {
+        setAllCategories([])
+      } finally {
+        setLoadingAllCategories(false)
+      }
+    }
+
+    fetchAllCategories()
+  }, [showAllCategoriesModal])
 
   // Fetch landing page config (categories, explore more, settings)
   useEffect(() => {
@@ -1546,6 +1578,7 @@ export default function Home() {
           categories={realCategories}
           landingCategories={landingCategories}
           loading={loadingRealCategories}
+          limit={10}
           onShowAllClick={() => setShowAllCategoriesModal(true)}
         />
 
@@ -2599,8 +2632,9 @@ export default function Home() {
               {/* Categories Grid - Scrollable */}
               <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 sm:py-5">
                 <div className="grid grid-cols-3 gap-4 sm:gap-5 md:gap-6">
-                  {(realCategories.length > 0 ? realCategories : landingCategories).map((category, index) => {
-                    const categoryData = realCategories.length > 0
+                  {(allCategories.length > 0 ? allCategories : (realCategories.length > 0 ? realCategories : landingCategories)).map((category, index) => {
+                    const isAdminCategory = allCategories.length > 0 || realCategories.length > 0
+                    const categoryData = isAdminCategory
                       ? { name: category.name, image: category.image, slug: category.slug }
                       : { name: category.label, image: category.imageUrl, slug: category.slug }
 

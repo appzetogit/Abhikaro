@@ -6,6 +6,7 @@ import {
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import { uploadToCloudinary } from "../../../shared/utils/cloudinaryService.js";
 import { initializeCloudinary } from "../../../config/cloudinary.js";
+import { invalidateCachePattern } from "../../../shared/utils/cache.js";
 
 /**
  * Get Business Settings (Public - for favicon, logo, company name)
@@ -82,6 +83,7 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       withdrawScheduleStartTime,
       maintenanceMode,
       deliveryAssignmentMode,
+      homeCategoriesLimit,
     } = req.body;
 
     // Get existing settings
@@ -196,6 +198,19 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       if (["automatic", "manual"].includes(deliveryAssignmentMode)) {
         settings.deliveryAssignmentMode = deliveryAssignmentMode;
       }
+    }
+
+    // Home categories limit (used by /categories/public?home=true)
+    if (homeCategoriesLimit !== undefined) {
+      const parsed = Number(homeCategoriesLimit);
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 50) {
+        return errorResponse(
+          res,
+          400,
+          "Home categories limit must be a number between 1 and 50",
+        );
+      }
+      settings.homeCategoriesLimit = parsed;
     }
 
     // Handle logo upload
@@ -322,6 +337,11 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
     }
 
     await settings.save();
+
+    // Invalidate categories cache when home categories limit changes
+    if (homeCategoriesLimit !== undefined) {
+      await invalidateCachePattern("categories:*");
+    }
 
     return successResponse(
       res,

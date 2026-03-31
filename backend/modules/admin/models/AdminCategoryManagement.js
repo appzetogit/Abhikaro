@@ -25,6 +25,16 @@ const adminCategoryManagementSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Home page display controls (admin-configurable)
+    showOnHome: {
+      type: Boolean,
+      default: false,
+    },
+    // Lower values appear first on home page
+    homeOrder: {
+      type: Number,
+      default: 0,
+    },
     description: {
       type: String,
       trim: true,
@@ -61,6 +71,7 @@ adminCategoryManagementSchema.index({ name: 1 });
 adminCategoryManagementSchema.index({ status: 1 });
 adminCategoryManagementSchema.index({ priority: 1 });
 adminCategoryManagementSchema.index({ createdAt: -1 });
+adminCategoryManagementSchema.index({ showOnHome: 1, homeOrder: 1, createdAt: -1 });
 
 // Virtual for serial number (for display purposes)
 adminCategoryManagementSchema.virtual('sl').get(function() {

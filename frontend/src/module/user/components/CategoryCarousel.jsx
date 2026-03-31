@@ -9,6 +9,7 @@ export default function CategoryCarousel({
   categories, 
   landingCategories, 
   loading,
+  limit = 10,
   onShowAllClick 
 }) {
   const navigate = useNavigate()
@@ -60,8 +61,8 @@ export default function CategoryCarousel({
 
         {displayCategories.length > 0 ? (
           <>
-            {/* Show only first 10 categories */}
-            {displayCategories.slice(0, 10).map((category, index) => {
+            {/* Show only first N categories */}
+            {displayCategories.slice(0, limit).map((category, index) => {
               const categoryData = categories.length > 0
                 ? { name: category.name, image: category.image, slug: category.slug }
                 : { name: category.label, image: category.imageUrl, slug: category.slug }
@@ -104,36 +105,34 @@ export default function CategoryCarousel({
                 </motion.div>
               )
             })}
-            {/* See All button - show if there are more than 10 categories */}
-            {displayCategories.length > 10 && (
-              <motion.div
-                key="see-all"
-                className="flex-shrink-0"
-                initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{
-                  duration: 0.4,
-                  delay: 0.1,
-                  type: "spring",
-                  stiffness: 100
-                }}
-                whileHover={{ scale: 1.05, y: -5 }}
-                whileTap={{ scale: 0.95 }}
+            {/* See All button - always show */}
+            <motion.div
+              key="see-all"
+              className="flex-shrink-0"
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              whileInView={{ opacity: 1, y: 0, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{
+                duration: 0.4,
+                delay: 0.1,
+                type: "spring",
+                stiffness: 100
+              }}
+              whileHover={{ scale: 1.05, y: -5 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <div
+                onClick={onShowAllClick}
+                className="flex flex-col items-center gap-2 group cursor-pointer"
               >
-                <div
-                  onClick={onShowAllClick}
-                  className="flex flex-col items-center gap-2 group cursor-pointer"
-                >
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 relative bg-pink-100 dark:bg-pink-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <UtensilsCrossed className="w-6 h-6 sm:w-8 sm:h-8 text-pink-600 dark:text-pink-400" />
-                  </div>
-                  <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 text-center whitespace-nowrap max-w-[80px] truncate">
-                    See all
-                  </span>
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 relative bg-pink-100 dark:bg-pink-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <UtensilsCrossed className="w-6 h-6 sm:w-8 sm:h-8 text-pink-600 dark:text-pink-400" />
                 </div>
-              </motion.div>
-            )}
+                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 text-center whitespace-nowrap max-w-[80px] truncate">
+                  See all
+                </span>
+              </div>
+            </motion.div>
           </>
         ) : null}
       </div>

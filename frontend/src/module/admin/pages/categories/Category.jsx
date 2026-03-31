@@ -14,6 +14,8 @@ export default function Category() {
   const [searchQuery, setSearchQuery] = useState("")
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
+  const [homeCategoriesLimit, setHomeCategoriesLimit] = useState(10)
+  const [savingHomeCategoriesLimit, setSavingHomeCategoriesLimit] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [sortBy, setSortBy] = useState(null)
@@ -68,6 +70,24 @@ export default function Category() {
     console.log('Admin Token:', adminToken ? 'Present' : 'Missing')
     
     fetchCategories()
+  }, [])
+
+  // Fetch business settings (for Home Categories Limit)
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await adminAPI.getBusinessSettings()
+        if (res.data?.success) {
+          const limit = Number(res.data?.data?.homeCategoriesLimit)
+          if (Number.isFinite(limit)) setHomeCategoriesLimit(limit)
+        }
+      } catch (e) {
+        // non-blocking; keep default
+        console.warn("Failed to load business settings:", e?.message || e)
+      }
+    }
+
+    fetchSettings()
   }, [])
 
   // Debounced search
@@ -218,6 +238,76 @@ export default function Category() {
       console.error('Error toggling status:', error)
       const errorMessage = error.response?.data?.message || 'Failed to update category status'
       toast.error(errorMessage)
+    }
+  }
+
+  const updateCategoryField = async (id, payload) => {
+    const formDataToSend = new FormData()
+    Object.entries(payload).forEach(([k, v]) => {
+      formDataToSend.append(k, String(v))
+    })
+    return adminAPI.updateCategory(id, formDataToSend)
+  }
+
+  const handleToggleShowOnHome = async (category) => {
+    try {
+      const nextValue = !Boolean(category.showOnHome)
+      await updateCategoryField(category.id, { showOnHome: nextValue })
+      toast.success("Home visibility updated")
+      setCategories((prev) =>
+        prev.map((c) => (c.id === category.id ? { ...c, showOnHome: nextValue } : c)),
+      )
+      setTimeout(() => fetchCategories(), 300)
+    } catch (error) {
+      console.error("Error updating showOnHome:", error)
+      toast.error(error.response?.data?.message || "Failed to update home visibility")
+    }
+  }
+
+  const handleHomeOrderChangeLocal = (id, value) => {
+    setCategories((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, homeOrder: value } : c)),
+    )
+  }
+
+  const handleHomeOrderBlur = async (category) => {
+    try {
+      const parsed = Number(category.homeOrder)
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+        toast.error("Home Order must be an integer")
+        setTimeout(() => fetchCategories(), 0)
+        return
+      }
+      await updateCategoryField(category.id, { homeOrder: parsed })
+      toast.success("Home order updated")
+      setTimeout(() => fetchCategories(), 300)
+    } catch (error) {
+      console.error("Error updating homeOrder:", error)
+      toast.error(error.response?.data?.message || "Failed to update home order")
+      setTimeout(() => fetchCategories(), 300)
+    }
+  }
+
+  const handleSaveHomeCategoriesLimit = async () => {
+    try {
+      const parsed = Number(homeCategoriesLimit)
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 50) {
+        toast.error("Limit must be between 1 and 50")
+        return
+      }
+      setSavingHomeCategoriesLimit(true)
+      const res = await adminAPI.updateBusinessSettings({ homeCategoriesLimit: String(parsed) })
+      if (res.data?.success) {
+        toast.success("Home categories limit updated")
+        setHomeCategoriesLimit(Number(res.data?.data?.homeCategoriesLimit) || parsed)
+      } else {
+        toast.error(res.data?.message || "Failed to update limit")
+      }
+    } catch (error) {
+      console.error("Error updating homeCategoriesLimit:", error)
+      toast.error(error.response?.data?.message || "Failed to update limit")
+    } finally {
+      setSavingHomeCategoriesLimit(false)
     }
   }
 
@@ -540,6 +630,26 @@ export default function Category() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
+              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                Home Categories Limit
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={homeCategoriesLimit}
+                onChange={(e) => setHomeCategoriesLimit(e.target.value)}
+                className="w-20 px-2 py-1 text-sm rounded border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+              <button
+                onClick={handleSaveHomeCategoriesLimit}
+                disabled={savingHomeCategoriesLimit}
+                className="px-3 py-1.5 text-xs font-semibold rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {savingHomeCategoriesLimit ? "Saving..." : "Save"}
+              </button>
+            </div>
             <div className="relative flex-1 sm:flex-initial min-w-[200px]">
               <input
                 type="text"
@@ -599,6 +709,12 @@ export default function Category() {
                   Uses / User / Day
                 </th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  Show on Home
+                </th>
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  Home Order
+                </th>
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Status
                 </th>
                 <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -609,7 +725,7 @@ export default function Category() {
             <tbody className="bg-white divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-20 text-center">
+                  <td colSpan={10} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
                       <p className="text-sm text-slate-500">Loading categories...</p>
@@ -618,7 +734,7 @@ export default function Category() {
                 </tr>
               ) : filteredCategories.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-20 text-center">
+                  <td colSpan={10} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                       <p className="text-sm text-slate-500">No categories match your search</p>
@@ -666,6 +782,33 @@ export default function Category() {
                       : "1"}
                   </span>
                 </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <button
+                        onClick={() => handleToggleShowOnHome(category)}
+                        disabled={loading}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          category.showOnHome
+                            ? "bg-emerald-600"
+                            : "bg-slate-300"
+                        }`}
+                        title={category.showOnHome ? "Shown on home" : "Hidden from home"}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            category.showOnHome ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <input
+                        type="number"
+                        value={category.homeOrder ?? 0}
+                        onChange={(e) => handleHomeOrderChangeLocal(category.id, e.target.value)}
+                        onBlur={() => handleHomeOrderBlur(category)}
+                        className="w-24 px-2 py-1 text-sm rounded border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <button
                         onClick={() => handleToggleStatus(category.id)}
