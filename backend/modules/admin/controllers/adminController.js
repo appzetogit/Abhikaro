@@ -3056,10 +3056,42 @@ export const createRestaurant = asyncHandler(async (req, res) => {
       return errorResponse(res, 400, "Either email or phone is required");
     }
 
-    // Normalize phone number if provided
+    // Normalize phone number(s) if provided
     const normalizedPhone = phone ? normalizePhoneNumber(phone) : null;
     if (phone && !normalizedPhone) {
       return errorResponse(res, 400, "Invalid phone number format");
+    }
+    const normalizedOwnerPhone = ownerPhone
+      ? normalizePhoneNumber(ownerPhone) || normalizedPhone
+      : normalizedPhone;
+    const normalizedPrimaryContactNumber = primaryContactNumber
+      ? normalizePhoneNumber(primaryContactNumber) || normalizedPhone
+      : normalizedPhone;
+
+    // If admin is setting any contact numbers, ensure they're not already used by another restaurant
+    // across any of the restaurant contact fields.
+    const candidateNumbers = [
+      normalizedPhone,
+      normalizedOwnerPhone,
+      normalizedPrimaryContactNumber,
+    ].filter(Boolean);
+
+    if (candidateNumbers.length > 0) {
+      const existingByNumber = await Restaurant.findOne({
+        $or: [
+          { phone: { $in: candidateNumbers } },
+          { ownerPhone: { $in: candidateNumbers } },
+          { primaryContactNumber: { $in: candidateNumbers } },
+        ],
+      }).select("_id phone ownerPhone primaryContactNumber");
+
+      if (existingByNumber) {
+        return errorResponse(
+          res,
+          409,
+          "This phone/contact number is already used by another restaurant. Please use a different number.",
+        );
+      }
     }
 
     // Generate random password if email is provided but password is not
@@ -3214,12 +3246,8 @@ export const createRestaurant = asyncHandler(async (req, res) => {
       name: restaurantName,
       ownerName,
       ownerEmail,
-      ownerPhone: ownerPhone
-        ? normalizePhoneNumber(ownerPhone) || normalizedPhone
-        : normalizedPhone,
-      primaryContactNumber: primaryContactNumber
-        ? normalizePhoneNumber(primaryContactNumber) || normalizedPhone
-        : normalizedPhone,
+      ownerPhone: normalizedOwnerPhone,
+      primaryContactNumber: normalizedPrimaryContactNumber,
       location: location || {},
       profileImage: profileImageData,
       menuImages: menuImagesData,
@@ -3257,12 +3285,8 @@ export const createRestaurant = asyncHandler(async (req, res) => {
         restaurantName,
         ownerName,
         ownerEmail,
-        ownerPhone: ownerPhone
-          ? normalizePhoneNumber(ownerPhone) || normalizedPhone
-          : normalizedPhone,
-        primaryContactNumber: primaryContactNumber
-          ? normalizePhoneNumber(primaryContactNumber) || normalizedPhone
-          : normalizedPhone,
+        ownerPhone: normalizedOwnerPhone,
+        primaryContactNumber: normalizedPrimaryContactNumber,
         location: location || {},
       },
       step2: {

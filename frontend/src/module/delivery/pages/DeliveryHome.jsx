@@ -411,6 +411,9 @@ export default function DeliveryHome() {
   const lastLocationRef = useRef(null) // Store last location for heading calculation
   const bikeMarkerRef = useRef(null) // Store bike marker instance
   const isUserPanningRef = useRef(false) // Track if user manually panned the map
+  // If the map was initialized with a fallback/default center (GPS not ready),
+  // we should force ONE recenter when the first valid GPS location arrives.
+  const mapInitializedWithDefaultCenterRef = useRef(false)
   const routePolylineRef = useRef(null) // Store route polyline instance (legacy - for fallback)
   const routeHistoryRef = useRef([]) // Store route history for traveled path
   const isOnlineRef = useRef(false) // Store online status for use in callbacks
@@ -5044,6 +5047,9 @@ export default function DeliveryHome() {
         if (!initialCenter) {
           // Default center over India; map will recenter when GPS is available
           initialCenter = { lat: 20.5937, lng: 78.9629 };
+          mapInitializedWithDefaultCenterRef.current = true;
+        } else {
+          mapInitializedWithDefaultCenterRef.current = false;
         }
 
         // Use google.maps.Map directly - with the direct script tag loading approach,
@@ -5579,10 +5585,14 @@ export default function DeliveryHome() {
 
     // STEP 3: Never recreate map - only pan to center if not already centered initially
     // After initial centering, marker will update but map viewport stays stable
-    if (window.deliveryMapInstance && !hasInitiallyCenteredOnBike) {
+    if (
+      window.deliveryMapInstance &&
+      (!hasInitiallyCenteredOnBike || mapInitializedWithDefaultCenterRef.current)
+    ) {
       try {
         window.deliveryMapInstance.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
         setHasInitiallyCenteredOnBike(true)
+        mapInitializedWithDefaultCenterRef.current = false
       } catch (error) {
 
       }

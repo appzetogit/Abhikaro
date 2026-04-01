@@ -101,6 +101,11 @@ export const sidebarMenuData = [
             permissionId: "menu.restaurants",
           },
           {
+            label: "Restaurant History",
+            path: "/admin/restaurants/history",
+            permissionId: "menu.restaurants",
+          },
+          {
             label: "Menu Add",
             path: "/admin/restaurants/menu-add",
             permissionId: "menu.restaurants",

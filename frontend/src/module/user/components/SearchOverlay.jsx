@@ -4,6 +4,7 @@ import { X, Search, Loader2, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { adminAPI, api, API_ENDPOINTS, restaurantAPI } from "@/lib/api"
+import { searchAPI } from "@/lib/api/search"
 import { useSharedLocation } from "@/lib/context/LocationContext"
 
 // LocalStorage key for recent searches
@@ -44,6 +45,24 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
 
     return null
   }
+
+  const highlightMatch = (text) => {
+    const q = searchValue?.trim();
+    const t = String(text || '');
+    if (!q) return t;
+    const idx = t.toLowerCase().indexOf(q.toLowerCase());
+    if (idx === -1) return t;
+    const before = t.slice(0, idx);
+    const match = t.slice(idx, idx + q.length);
+    const after = t.slice(idx + q.length);
+    return (
+      <>
+        {before}
+        <span className="text-primary-orange dark:text-orange-400 font-semibold">{match}</span>
+        {after}
+      </>
+    );
+  };
 
   const normalizeFoodSuggestions = (responseData) => {
     const candidates = [
@@ -261,6 +280,16 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     return Array.from(uniqueByName.values())
   }
 
+  // Create a deterministic, unique React key for grid items
+  const makeItemKey = (item, idx) => {
+    const type = String(item?.itemType || 'food');
+    const rest = String(item?.restaurantSlug || item?.restaurantId || 'na');
+    const ident = String(item?.slug || item?.id || item?.name || idx)
+      .toLowerCase()
+      .replace(/\s+/g, '-');
+    return `${type}::${rest}::${ident}#${idx}`;
+  };
+
   // Fetch categories from API
   useEffect(() => {
     const fetchCategories = async () => {
@@ -452,6 +481,26 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
         }
 
         try {
+          // New unified suggest endpoint (fast top-N)
+          let fromSuggestFoods = []
+          try {
+            const suggestResp = await searchAPI.suggest(trimmedQuery, 6)
+            const foods = Array.isArray(suggestResp?.data?.data?.foods)
+              ? suggestResp.data.data.foods
+              : []
+            fromSuggestFoods = foods.map((f, i) => ({
+              id: f?.id || `${f?.label || 'food'}-${i}`,
+              name: f?.label || '',
+              image: f?.imageUrl || null,
+              itemType: "food",
+              restaurantName: f?.restaurantName || null,
+              restaurantId: f?.restaurantId || null,
+              restaurantSlug: f?.restaurantSlug || null,
+            })).filter(x => x.name)
+          } catch (e) {
+            // non-fatal
+          }
+
           const response = await api.get(API_ENDPOINTS.MENU.SEARCH, {
             params: {
               q: trimmedQuery,
@@ -460,7 +509,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
               zoneId,
             },
           })
-          normalized = normalizeFoodSuggestions(response?.data || {})
+          normalized = [...fromSuggestFoods, ...normalizeFoodSuggestions(response?.data || {})]
 
           // Always enrich with menu-cache matches so "all menu foods" are searchable,
           // even when API returns partial/empty results.
@@ -681,9 +730,9 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
               Categories
             </h3>
             <div className="bg-white dark:bg-[#0a0a0a] rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-              {filteredCategories.map((cat) => (
+              {filteredCategories.map((cat, idx) => (
                 <button
-                  key={cat.id || cat.slug}
+                  key={`${String(cat.id || cat.slug || 'cat')}-${idx}`}
                   type="button"
                   onClick={() => handleCategoryClick(cat)}
                   className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-[#141414] border-b border-gray-100 dark:border-gray-800 last:border-none"
@@ -715,7 +764,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
               {displayFoods.map((food, index) => (
                 <div
-                  key={food.id || food.slug || index}
+                  key={makeItemKey(food, index)}
                   className="flex flex-col items-center gap-2 sm:gap-3 cursor-pointer group"
                   style={{
                     animation: `slideUp 0.3s ease-out ${0.25 + 0.05 * (index % 12)}s both`
@@ -745,11 +794,11 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
                   </div>
                   <div className="px-1 sm:px-2 text-center">
                     <span className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200 group-hover:text-primary-orange dark:group-hover:text-orange-400 transition-colors line-clamp-2">
-                      {food.name}
+                      {highlightMatch(food.name)}
                     </span>
                     {food.restaurantName && (
                       <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
-                        ({food.restaurantName})
+                        ({highlightMatch(food.restaurantName)})
                       </p>
                     )}
                   </div>

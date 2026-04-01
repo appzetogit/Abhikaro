@@ -29,6 +29,7 @@ const JoiningRequest = lazy(() => import("../pages/restaurant/JoiningRequest"));
 const RestaurantCommission = lazy(() => import("../pages/restaurant/RestaurantCommission"));
 const RestaurantComplaints = lazy(() => import("../pages/restaurant/RestaurantComplaints"));
 const RestaurantFinance = lazy(() => import("../pages/restaurant/RestaurantFinance"));
+const RestaurantHistory = lazy(() => import("../pages/restaurant/RestaurantHistory"));
 const MenuAdd = lazy(() => import("../pages/restaurant/MenuAdd"));
 // Hotel Management
 const HotelsList = lazy(() => import("../pages/hotels/HotelsList"));
@@ -181,6 +182,7 @@ export default function AdminRouter() {
           <Route path="restaurants/commission" element={<RestaurantCommission />} />
           <Route path="restaurants/complaints" element={<RestaurantComplaints />} />
           <Route path="restaurants/finance" element={<RestaurantFinance />} />
+          <Route path="restaurants/history" element={<RestaurantHistory />} />
           <Route path="restaurants/menu-add" element={<MenuAdd />} />
 
           {/* HOTEL MANAGEMENT */}

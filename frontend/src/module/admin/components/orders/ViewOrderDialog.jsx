@@ -107,14 +107,22 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] bg-white p-0 overflow-y-auto">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200 sticky top-0 bg-white z-10">
-          <DialogTitle className="flex items-center gap-2">
+        <DialogHeader className="relative px-6 pt-6 pb-4 border-b border-slate-200 sticky top-0 bg-white z-10">
+          <DialogTitle className="flex items-center gap-2 pr-10">
             <Eye className="w-5 h-5 text-orange-600" />
             Order Details
           </DialogTitle>
           <DialogDescription>
             View complete information about this order
           </DialogDescription>
+          <button
+            onClick={() => onOpenChange?.(false)}
+            className="absolute right-4 top-5 p-2 rounded-lg hover:bg-slate-100 transition-colors"
+            aria-label="Close"
+            type="button"
+          >
+            <X className="w-5 h-5 text-slate-600" />
+          </button>
         </DialogHeader>
         <div className="px-6 py-6 space-y-6">
           {/* Basic Order Information */}

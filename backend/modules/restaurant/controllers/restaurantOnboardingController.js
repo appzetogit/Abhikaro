@@ -45,6 +45,35 @@ export const upsertOnboarding = async (req, res) => {
 
     // Step1: Always update if provided
     if (step1) {
+      // If step1 includes contact numbers, prevent re-using them for another restaurant.
+      // Normalize to keep behavior consistent with Restaurant pre-save hooks.
+      const candidateNumbers = [
+        step1.ownerPhone,
+        step1.primaryContactNumber,
+      ]
+        .filter(Boolean)
+        .map((n) => normalizePhoneNumber(n))
+        .filter(Boolean);
+
+      if (candidateNumbers.length > 0) {
+        const existingByNumber = await Restaurant.findOne({
+          _id: { $ne: restaurantId },
+          $or: [
+            { phone: { $in: candidateNumbers } },
+            { ownerPhone: { $in: candidateNumbers } },
+            { primaryContactNumber: { $in: candidateNumbers } },
+          ],
+        }).select("_id phone ownerPhone primaryContactNumber");
+
+        if (existingByNumber) {
+          return errorResponse(
+            res,
+            409,
+            "This phone/contact number is already used by another restaurant. Please use a different number.",
+          );
+        }
+      }
+
       update["onboarding.step1"] = step1;
     }
 

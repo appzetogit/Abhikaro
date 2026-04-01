@@ -339,6 +339,9 @@ const restaurantSchema = new mongoose.Schema(
 restaurantSchema.index({ email: 1 }, { unique: true, sparse: true });
 restaurantSchema.index({ phone: 1 }, { unique: true, sparse: true });
 restaurantSchema.index({ googleId: 1 }, { unique: true, sparse: true });
+// Prevent re-using the same contact number for multiple restaurants (admin/onboarding flows)
+restaurantSchema.index({ primaryContactNumber: 1 }, { unique: true, sparse: true });
+restaurantSchema.index({ ownerPhone: 1 }, { unique: true, sparse: true });
 
 // CRITICAL: 2dsphere index for geospatial queries (replaces Google Places API)
 // This index enables $near and $geoWithin queries for finding nearby restaurants
@@ -347,6 +350,8 @@ restaurantSchema.index({ 'location.geoLocation': '2dsphere' });
 restaurantSchema.index({ isActive: 1, zoneId: 1 }); // For filtering active restaurants by zone
 restaurantSchema.index({ isActive: 1, isAcceptingOrders: 1 }); // For active and accepting orders
 restaurantSchema.index({ createdAt: -1 }); // For sorting by creation date
+// Basic index to speed up name-based lookups (search suggestions)
+restaurantSchema.index({ name: 1 });
 
 // Hash password before saving
 restaurantSchema.pre("save", async function (next) {
