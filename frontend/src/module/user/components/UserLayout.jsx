@@ -11,6 +11,7 @@ import BottomNavigation from "./BottomNavigation"
 import DesktopNavbar from "./DesktopNavbar"
 import ReplaceCartDialog from "./ReplaceCartDialog"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
+import { useSharedLocation } from "@/lib/context/LocationContext"
 
 // Create SearchOverlay context with default value
 const SearchOverlayContext = createContext({
@@ -117,6 +118,7 @@ function LocationSelectorProvider({ children }) {
 export default function UserLayout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { requestLocation, refreshZone } = useSharedLocation()
 
   // Handle foreground push notifications
   useForegroundNotifications({
@@ -156,6 +158,22 @@ export default function UserLayout() {
             // User might still be logged in via refresh token cookie
             console.warn("Session restoration on tab switch failed:", error)
           }
+        }
+
+        // Android WebView "in-app refresh" / returning to foreground:
+        // 1) refresh GPS + zone detection (best-effort, silent),
+        // 2) emit an explicit app-level refresh signal for pages like Home to refetch.
+        try {
+          refreshZone?.()
+          // requestLocation() forces a fresh location fetch; it internally falls back to cached location.
+          requestLocation?.().catch(() => {})
+        } catch {
+          // ignore
+        }
+        try {
+          window.dispatchEvent(new CustomEvent('app:refresh', { detail: { source: 'visibilitychange' } }))
+        } catch {
+          // ignore environments without CustomEvent support
         }
       }
     }

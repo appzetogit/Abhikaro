@@ -263,7 +263,7 @@ export const calculateOrderPricing = async ({
         console.warn('Stack trace:', firebaseError.stack);
       }
     } else {
-      console.log('ℹ️ No userId provided, skipping Firebase location fetch');
+      
     }
 
     // Use Firebase location if available (priority), otherwise use deliveryAddress
@@ -287,7 +287,7 @@ export const calculateOrderPricing = async ({
         postalCode: userLocationFromFirebase.postalCode || deliveryAddress?.postalCode || null
       };
     } else if (deliveryAddress) {
-      console.log('📍 Using deliveryAddress from request for order calculation');
+      
     } else {
       console.warn('⚠️ No location available (neither Firebase nor deliveryAddress)');
     }

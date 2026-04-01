@@ -91,6 +91,8 @@ export default function Home() {
   const [allCategories, setAllCategories] = useState([])
   const [loadingAllCategories, setLoadingAllCategories] = useState(false)
   const isHandlingSwitchOff = useRef(false)
+  const heroBannersRetryRef = useRef(false)
+  const landingConfigRetryRef = useRef(false)
 
   // Rating & feedback popup (after order delivered)
   const [ratingModal, setRatingModal] = useState({ open: false, order: null })
@@ -459,29 +461,35 @@ export default function Home() {
     }
   }, [ratingModal.open, shownRatingForOrders, handleOpenRatingModal, normalizeOrderForRating])
 
+  const fetchHeroBanners = useCallback(async ({ retry = false } = {}) => {
+    try {
+      setLoadingBanners(true)
+      const response = await api.get('/hero-banners/public')
+      if (response.data.success && response.data.data.banners) {
+        const banners = response.data.data.banners
+        setHeroBannersData(banners)
+        // Extract image URLs for display
+        setHeroBannerImages(banners.map(b => b.imageUrl || b))
+        heroBannersRetryRef.current = false
+      }
+    } catch (error) {
+      // Keep last-known banners on transient failures.
+      // Retry once after a short delay to handle WebView refresh/network blips.
+      if (!retry && !heroBannersRetryRef.current) {
+        heroBannersRetryRef.current = true
+        setTimeout(() => {
+          fetchHeroBanners({ retry: true })
+        }, 1500)
+      }
+    } finally {
+      setLoadingBanners(false)
+    }
+  }, [])
+
   // Fetch hero banners from API
   useEffect(() => {
-    const fetchHeroBanners = async () => {
-      try {
-        setLoadingBanners(true)
-        const response = await api.get('/hero-banners/public')
-        if (response.data.success && response.data.data.banners) {
-          const banners = response.data.data.banners
-          setHeroBannersData(banners)
-          // Extract image URLs for display
-          setHeroBannerImages(banners.map(b => b.imageUrl || b))
-        }
-      } catch (error) {
-        // Fallback to empty array if API fails
-        setHeroBannerImages([])
-        setHeroBannersData([])
-      } finally {
-        setLoadingBanners(false)
-      }
-    }
-
     fetchHeroBanners()
-  }, [])
+  }, [fetchHeroBanners])
 
   // Fetch real categories from backend API
   useEffect(() => {
@@ -541,43 +549,73 @@ export default function Home() {
     fetchAllCategories()
   }, [showAllCategoriesModal])
 
+  const fetchLandingConfig = useCallback(async ({ retry = false } = {}) => {
+    try {
+      setLoadingLandingConfig(true)
+      const response = await api.get('/hero-banners/landing/public')
+      if (response.data.success && response.data.data) {
+        const apiCategories = response.data.data.categories || []
+        const apiExploreMore = response.data.data.exploreMore || []
+
+        // Extra safety: only keep active items and ensure order ascending
+        setLandingCategories(
+          apiCategories
+            .filter((c) => c.isActive !== false)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        )
+        setLandingExploreMore(
+          apiExploreMore
+            .filter((e) => e.isActive !== false)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        )
+        setExploreMoreHeading(response.data.data.settings?.exploreMoreHeading || "Explore More")
+        setShowRecommendedSection(response.data.data.settings?.showRecommendedSection === true)
+        landingConfigRetryRef.current = false
+      }
+    } catch (error) {
+      // Keep last-known landing config on transient failures.
+      // Retry once after a short delay to handle WebView refresh/network blips.
+      if (!retry && !landingConfigRetryRef.current) {
+        landingConfigRetryRef.current = true
+        setTimeout(() => {
+          fetchLandingConfig({ retry: true })
+        }, 1500)
+      }
+    } finally {
+      setLoadingLandingConfig(false)
+    }
+  }, [])
+
   // Fetch landing page config (categories, explore more, settings)
   useEffect(() => {
-    const fetchLandingConfig = async () => {
-      try {
-        setLoadingLandingConfig(true)
-        const response = await api.get('/hero-banners/landing/public')
-        if (response.data.success && response.data.data) {
-          const apiCategories = response.data.data.categories || []
-          const apiExploreMore = response.data.data.exploreMore || []
+    fetchLandingConfig()
+  }, [fetchLandingConfig])
 
-          // Extra safety: only keep active items and ensure order ascending
-          setLandingCategories(
-            apiCategories
-              .filter((c) => c.isActive !== false)
-              .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-          )
-          setLandingExploreMore(
-            apiExploreMore
-              .filter((e) => e.isActive !== false)
-              .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-          )
-          setExploreMoreHeading(response.data.data.settings?.exploreMoreHeading || "Explore More")
-          setShowRecommendedSection(response.data.data.settings?.showRecommendedSection === true)
-        }
-      } catch (error) {
-        // Fallback to empty arrays and default heading
-        setLandingCategories([])
-        setLandingExploreMore([])
-        setExploreMoreHeading("Explore More")
-        setShowRecommendedSection(false)
-      } finally {
-        setLoadingLandingConfig(false)
+  // When WebView/app returns to foreground, refetch if we have no banners/config (common after in-app refresh).
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
+      if (!loadingBanners && heroBannerImages.length === 0) {
+        fetchHeroBanners()
+      }
+      if (!loadingLandingConfig && landingCategories.length === 0 && landingExploreMore.length === 0) {
+        fetchLandingConfig()
       }
     }
 
-    fetchLandingConfig()
-  }, [])
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [
+    fetchHeroBanners,
+    fetchLandingConfig,
+    heroBannerImages.length,
+    landingCategories.length,
+    landingExploreMore.length,
+    loadingBanners,
+    loadingLandingConfig
+  ])
 
   // Auto-cycle hero banner images
   useEffect(() => {
@@ -821,7 +859,6 @@ export default function Home() {
     try {
       setLoadingRestaurants(true)
       if (!zoneId) {
-        setRestaurantsData([])
         setLoadingRestaurants(false)
         return
       }
@@ -855,7 +892,6 @@ export default function Home() {
         }
       } catch (healthError) {
         // Backend connection error - handled silently, toast notifications shown via axios interceptor
-        setRestaurantsData([])
         setLoadingRestaurants(false)
         return
       }
@@ -1065,12 +1101,12 @@ export default function Home() {
 
         setRestaurantsData(transformedRestaurants)
       } else {
-        setRestaurantsData([])
+        // Keep last-known results on unexpected response shape; a transient failure shouldn't blank the UI.
       }
     } catch (error) {
       // Don't set hardcoded data here - let the useMemo fallback handle it
       // This way, if API succeeds later, it will show the real data
-      setRestaurantsData([])
+      // Keep last-known results on transient errors; next successful fetch will replace them.
     } finally {
       setLoadingRestaurants(false)
     }
@@ -1087,8 +1123,25 @@ export default function Home() {
 
   // Fetch restaurants when appliedFilters change
   useEffect(() => {
+    // In Android WebView "in-app refresh", zone can briefly be null while re-detecting.
+    // Avoid firing a fetch that would clear the list during that window; refetch once ready.
+    if (zoneLoading || loading) return
+    if (!zoneId) return
     fetchRestaurants(appliedFilters)
-  }, [appliedFilters, fetchRestaurants])
+  }, [appliedFilters, fetchRestaurants, zoneId, zoneLoading, loading])
+
+  // Android WebView "in-app refresh" can bring the app back to foreground without changing filters.
+  // UserLayout emits a single `app:refresh` event on foreground; refetch restaurants when ready.
+  useEffect(() => {
+    const handleAppRefresh = () => {
+      if (zoneLoading || loading) return
+      if (!zoneId) return
+      fetchRestaurants(appliedFilters)
+    }
+
+    window.addEventListener('app:refresh', handleAppRefresh)
+    return () => window.removeEventListener('app:refresh', handleAppRefresh)
+  }, [appliedFilters, fetchRestaurants, zoneId, zoneLoading, loading])
 
   // Warm image cache for first visible cards so menu images appear instantly on app open.
   useEffect(() => {
