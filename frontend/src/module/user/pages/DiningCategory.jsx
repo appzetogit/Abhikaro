@@ -9,7 +9,7 @@ import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useProfile } from "../context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
 import { restaurantAPI } from "@/lib/api"
-import { extractDistanceKm } from "@/lib/utils/distance"
+import { extractDistanceKm, distanceBetweenKm } from "@/lib/utils/distance"
 
 export default function DiningCategory() {
   const { category } = useParams()
@@ -144,13 +144,31 @@ export default function DiningCategory() {
     // Distance filtering
     if (activeFilters.has('distance-under-1km')) {
       filtered = filtered.filter(r => {
-        const km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        let km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        if (km == null) {
+          const userLat = location?.latitude
+          const userLng = location?.longitude
+          const restLat =
+            r?.location?.latitude ?? (Array.isArray(r?.location?.coordinates) ? r.location.coordinates[1] : null)
+          const restLng =
+            r?.location?.longitude ?? (Array.isArray(r?.location?.coordinates) ? r.location.coordinates[0] : null)
+          km = distanceBetweenKm(userLat, userLng, restLat, restLng)
+        }
         return km !== null && km <= 1.0
       })
     }
     if (activeFilters.has('distance-under-2km')) {
       filtered = filtered.filter(r => {
-        const km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        let km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        if (km == null) {
+          const userLat = location?.latitude
+          const userLng = location?.longitude
+          const restLat =
+            r?.location?.latitude ?? (Array.isArray(r?.location?.coordinates) ? r.location.coordinates[1] : null)
+          const restLng =
+            r?.location?.longitude ?? (Array.isArray(r?.location?.coordinates) ? r.location.coordinates[0] : null)
+          km = distanceBetweenKm(userLat, userLng, restLat, restLng)
+        }
         return km !== null && km <= 2.0
       })
     }
