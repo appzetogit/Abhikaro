@@ -3,7 +3,7 @@ import { useEffect, useState } from "react"
 import BottomNavigation from "./BottomNavigation"
 import { getUnreadDeliveryNotificationCount } from "../utils/deliveryNotifications"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
-import { DeliveryNotificationsProvider } from "../context/DeliveryNotificationsContext"
+import { DeliveryNotificationsProvider, useDeliveryNotificationsContext } from "../context/DeliveryNotificationsContext"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 
 export default function DeliveryLayout({
@@ -18,6 +18,9 @@ export default function DeliveryLayout({
   const [requestBadgeCount, setRequestBadgeCount] = useState(() =>
     getUnreadDeliveryNotificationCount()
   )
+
+  // Access delivery notification sound player from shared context (avoids duplicate sockets)
+  const { playNotificationSound } = useDeliveryNotificationsContext() || {}
 
   // FIXED: Save current route to sessionStorage on route change (for refresh persistence)
   useEffect(() => {
@@ -49,6 +52,13 @@ export default function DeliveryLayout({
 
   // Handle foreground push notifications
   useForegroundNotifications({
+    onReceive: ({ data }) => {
+      // Play sound for relevant delivery notifications
+      const type = data?.type
+      if (type === 'new_order' || type === 'order_ready') {
+        playNotificationSound()
+      }
+    },
     onNotificationClick: (data) => {
       // Navigate based on notification type
       if (data.type === 'new_order' || data.type === 'order_ready') {
