@@ -142,9 +142,17 @@ export default function UserLayout() {
 
   // Handle tab switching - restore session when tab becomes visible again
   useEffect(() => {
-    const handleVisibilityChange = async () => {
+    const emitAppRefresh = (source) => {
+      try {
+        window.dispatchEvent(new CustomEvent('app:refresh', { detail: { source } }))
+      } catch {
+        // ignore environments without CustomEvent support
+      }
+    }
+
+    const handleAppBecameActive = async (source) => {
       // When tab becomes visible again, check and restore session if needed
-      if (!document.hidden) {
+      if (document.hidden) return
         const { isModuleAuthenticated } = await import("@/lib/utils/auth")
         const { restoreUserSession } = await import("@/lib/utils/auth")
         
@@ -160,7 +168,7 @@ export default function UserLayout() {
           }
         }
 
-        // Android WebView "in-app refresh" / returning to foreground:
+        // Android WebView "in-app refresh" / returning to foreground / focus restore:
         // 1) refresh GPS + zone detection (best-effort, silent),
         // 2) emit an explicit app-level refresh signal for pages like Home to refetch.
         try {
@@ -170,18 +178,25 @@ export default function UserLayout() {
         } catch {
           // ignore
         }
-        try {
-          window.dispatchEvent(new CustomEvent('app:refresh', { detail: { source: 'visibilitychange' } }))
-        } catch {
-          // ignore environments without CustomEvent support
-        }
-      }
+        emitAppRefresh(source)
+    }
+
+    const handleVisibilityChange = () => handleAppBecameActive('visibilitychange')
+    const handleFocus = () => handleAppBecameActive('focus')
+    const handlePageShow = (e) => {
+      // `pageshow` fires on initial load and BFCache restores; treat both as refresh opportunities.
+      // When persisted=true, browser restored from back/forward cache.
+      handleAppBecameActive(e?.persisted ? 'pageshow:bfcache' : 'pageshow')
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('pageshow', handlePageShow)
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('pageshow', handlePageShow)
     }
   }, [])
 
