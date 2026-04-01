@@ -5,6 +5,7 @@ import { getUnreadDeliveryNotificationCount } from "../utils/deliveryNotificatio
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { DeliveryNotificationsProvider } from "../context/DeliveryNotificationsContext"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
+import alertSound from "@/assets/audio/alert.mp3"
 
 export default function DeliveryLayout({
   children,
@@ -59,8 +60,56 @@ export default function DeliveryLayout({
         }
       }
     },
-    showToasts: true
+    showToasts: true,
+    playSound: true
   });
+
+  // If the Service Worker receives a push while the app has an open window,
+  // it can postMessage to ask the UI to play alert.mp3 (best-effort).
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+
+    const audio = new Audio(alertSound);
+    audio.volume = 0.7;
+
+    let userInteracted = false;
+    const handleUserInteraction = () => {
+      userInteracted = true;
+      document.removeEventListener("click", handleUserInteraction);
+      document.removeEventListener("touchstart", handleUserInteraction);
+      document.removeEventListener("keydown", handleUserInteraction);
+    };
+    document.addEventListener("click", handleUserInteraction, { once: true });
+    document.addEventListener("touchstart", handleUserInteraction, { once: true });
+    document.addEventListener("keydown", handleUserInteraction, { once: true });
+
+    const handleMessage = (event) => {
+      const msg = event?.data;
+      if (!msg || msg.type !== "PLAY_ALERT_SOUND") return;
+      if (!userInteracted) return;
+
+      try {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      } catch {
+        // ignore
+      }
+    };
+
+    navigator.serviceWorker.addEventListener("message", handleMessage);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener("message", handleMessage);
+      document.removeEventListener("click", handleUserInteraction);
+      document.removeEventListener("touchstart", handleUserInteraction);
+      document.removeEventListener("keydown", handleUserInteraction);
+      try {
+        audio.pause();
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
 
   // Update badge count when location changes
   useEffect(() => {

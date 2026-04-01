@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { onForegroundMessage } from '../fcmService.js';
 import { toast } from 'sonner';
+import alertSound from '@/assets/audio/alert.mp3';
 
 /**
  * Hook to handle foreground push notifications
@@ -8,10 +9,13 @@ import { toast } from 'sonner';
  * @param {Object} options - Configuration options
  * @param {Function} options.onNotificationClick - Callback when notification is clicked
  * @param {boolean} options.showToasts - Whether to show toast notifications (default: true)
+ * @param {boolean} options.playSound - Whether to play alert sound on notification (default: false)
  */
 export function useForegroundNotifications(options = {}) {
-  const { onNotificationClick, showToasts = true } = options;
+  const { onNotificationClick, showToasts = true, playSound = false } = options;
   const unsubscribeRef = useRef(null);
+  const audioRef = useRef(null);
+  const userInteractedRef = useRef(false);
 
   useEffect(() => {
     let unsubscribe = null;
@@ -22,6 +26,22 @@ export function useForegroundNotifications(options = {}) {
           const title = payload.notification?.title || payload.data?.title || 'Notification';
           const body = payload.notification?.body || payload.data?.body || '';
           const data = payload.data || {};
+
+          // Play alert sound if enabled (best-effort; browsers require a prior user interaction)
+          if (playSound) {
+            try {
+              if (!audioRef.current) {
+                audioRef.current = new Audio(alertSound);
+                audioRef.current.volume = 0.7;
+              }
+              if (userInteractedRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play().catch(() => {});
+              }
+            } catch {
+              // ignore audio errors (autoplay policy, etc.)
+            }
+          }
 
           // Show toast notification if enabled
           if (showToasts) {
@@ -56,8 +76,38 @@ export function useForegroundNotifications(options = {}) {
       if (unsubscribeRef.current && typeof unsubscribeRef.current === 'function') {
         unsubscribeRef.current();
       }
+      try {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
+      } catch {
+        // ignore
+      }
     };
-  }, [onNotificationClick, showToasts]);
+  }, [onNotificationClick, showToasts, playSound]);
+
+  // Track first user interaction so audio playback is allowed by autoplay policies
+  useEffect(() => {
+    if (!playSound) return;
+
+    const handleUserInteraction = () => {
+      userInteractedRef.current = true;
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+
+    document.addEventListener('click', handleUserInteraction, { once: true });
+    document.addEventListener('touchstart', handleUserInteraction, { once: true });
+    document.addEventListener('keydown', handleUserInteraction, { once: true });
+
+    return () => {
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+  }, [playSound]);
 
   return { unsubscribe: unsubscribeRef.current };
 }

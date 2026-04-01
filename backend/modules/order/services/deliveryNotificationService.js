@@ -320,7 +320,12 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
       await sendToUser(deliveryPartnerId, 'delivery', {
         title: 'New Order Assigned',
         body: `Order #${order.orderId} has been assigned to you.`,
-      }, { type: 'order_assigned', orderId: order.orderId });
+      }, {
+        type: 'order_assigned',
+        orderId: order.orderId,
+        link: `/delivery/orders/${order.orderId}`,
+        channelId: 'delivery_new_order',
+      });
     } catch (fcmErr) {
       console.warn('FCM delivery notification:', fcmErr.message);
     }

@@ -113,9 +113,25 @@ async function setupBackgroundHandler() {
         badge: data?.badge || '/vite.svg',
         tag,
         data: { ...data, link },
+        // Best-effort: avoid default notification sound (support varies by browser/OS).
+        silent: true,
         requireInteraction: true,
         vibrate: [200, 100, 200],
       };
+
+      // If there is an open window client, ask it to play alert.mp3 (foreground-controlled audio).
+      // This won't work if the app is fully closed (no clients).
+      try {
+        self.clients
+          .matchAll({ type: 'window', includeUncontrolled: true })
+          .then((clientList) => {
+            clientList.forEach((client) => {
+              client.postMessage({ type: 'PLAY_ALERT_SOUND', data });
+            });
+          });
+      } catch {
+        // ignore
+      }
 
       return self.registration.showNotification(title, options);
     } catch (e) {

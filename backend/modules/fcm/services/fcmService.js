@@ -243,6 +243,9 @@ export async function sendNotification(tokens, notification, data = {}) {
       headers: { Urgency: 'high' },
       notification: {
         tag: dataWithTag.tag, // Use tag for web push deduplication
+        // Best-effort: prevent default notification sound (browser support varies).
+        // If the app is open, the frontend can play its own alert.mp3 instead.
+        silent: true,
         requireInteraction: true,
         vibrate: [200, 100, 200],
         ...(imageUrl && { image: imageUrl }) // Add image to webpush notification

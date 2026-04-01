@@ -1399,7 +1399,7 @@ export default function Home() {
           <div className="relative z-10">
             {/* Navbar - Location, Wallet, Cart */}
             <div className="pt-7 sm:pt-7 lg:pt-7">
-              <PageNavbar textColor="black" zIndex={20} mobileTranslateYClass="translate-y-[12px]" />
+              <PageNavbar textColor="white" zIndex={20} mobileTranslateYClass="translate-y-[12px]" />
             </div>
 
             {/* Search Bar and VEG MODE Container */}
@@ -1592,7 +1592,7 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <PageNavbar textColor="black" zIndex={20} mobileTranslateYClass="translate-y-[12px]" />
+          <PageNavbar textColor="white" zIndex={20} mobileTranslateYClass="translate-y-[12px]" />
         </motion.div>
 
         {/* Hero Section */}

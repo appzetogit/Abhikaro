@@ -935,7 +935,6 @@ export default function PageNavbar({
   }
 
   const textColorClass = textColor === "white" ? "text-white" : "text-black"
-  const iconFill = textColor === "white" ? "white" : "black"
   const ringColor = textColor === "white" ? "ring-white/30" : "ring-gray-800/30"
 
   const zIndexClass = zIndex === 50 ? "z-50" : "z-20"
@@ -992,7 +991,7 @@ export default function PageNavbar({
               title="Wallet"
             >
               <div className={`h-full w-full rounded-full bg-white/20 flex items-center justify-center ring-2 ${ringColor}`}>
-                <Wallet className="h-4 w-4 sm:h-5 sm:w-5 text-gray-800" strokeWidth={2} />
+                <Wallet className={`h-4 w-4 sm:h-5 sm:w-5 ${textColorClass}`} strokeWidth={2} />
               </div>
             </Button>
           </Link>
@@ -1006,7 +1005,7 @@ export default function PageNavbar({
               title="Cart"
             >
               <div className={`h-full w-full rounded-full bg-white/20 flex items-center justify-center ring-2 ${ringColor}`}>
-                <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5 text-gray-800" strokeWidth={2} />
+                <ShoppingCart className={`h-4 w-4 sm:h-5 sm:w-5 ${textColorClass}`} strokeWidth={2} />
               </div>
               {cartCount > 0 && (
                 <span className={`absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center ring-2 ${textColor === "white" ? "ring-white/50" : "ring-gray-800/30"}`}>

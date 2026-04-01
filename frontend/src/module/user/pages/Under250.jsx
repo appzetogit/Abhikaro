@@ -497,7 +497,7 @@ export default function Under250() {
 
         {/* Navbar */}
         <div className="relative z-20 pt-2 sm:pt-3 lg:pt-4">
-          <PageNavbar textColor="black" zIndex={20} showProfile={true} />
+          <PageNavbar textColor="white" zIndex={20} showProfile={true} />
         </div>
       </div>
 
