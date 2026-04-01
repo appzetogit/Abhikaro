@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useSharedLocation } from "@/lib/context/LocationContext"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
+import { extractDistanceKm } from "@/lib/utils/distance"
 import offerImage from "@/assets/offerimage.png"
 import closeappImage from "@/assets/closeapp.png"
 import api, { restaurantAPI, orderAPI } from "@/lib/api"
@@ -759,10 +760,18 @@ export default function Home() {
   // Mock points value - replace with actual points from context/store
   const userPoints = 99
 
-  // Simple filter toggle function
+  // Simple filter toggle function (with distance exclusivity)
   const toggleFilter = (filterId) => {
     setActiveFilters(prev => {
       const newSet = new Set(prev)
+
+      // Enforce mutual exclusivity between distance-under-1km and distance-under-2km
+      if (filterId === 'distance-under-1km') {
+        newSet.delete('distance-under-2km')
+      } else if (filterId === 'distance-under-2km') {
+        newSet.delete('distance-under-1km')
+      }
+
       if (newSet.has(filterId)) {
         newSet.delete(filterId)
       } else {
@@ -1200,14 +1209,14 @@ export default function Home() {
     }
     if (activeFilters.has('distance-under-1km')) {
       filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 1.0
+        const km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        return km !== null && km <= 1.0
       })
     }
     if (activeFilters.has('distance-under-2km')) {
       filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 2.0
+        const km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        return km !== null && km <= 2.0
       })
     }
     if (activeFilters.has('delivery-under-45')) {

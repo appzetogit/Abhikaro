@@ -9,6 +9,7 @@ import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useProfile } from "../context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
 import { restaurantAPI } from "@/lib/api"
+import { extractDistanceKm } from "@/lib/utils/distance"
 
 export default function DiningCategory() {
   const { category } = useParams()
@@ -111,6 +112,11 @@ export default function DiningCategory() {
   const toggleFilter = (filterId) => {
     setActiveFilters(prev => {
       const newSet = new Set(prev)
+      if (filterId === 'distance-under-1km') {
+        newSet.delete('distance-under-2km')
+      } else if (filterId === 'distance-under-2km') {
+        newSet.delete('distance-under-1km')
+      }
       if (newSet.has(filterId)) {
         newSet.delete(filterId)
       } else {
@@ -135,17 +141,17 @@ export default function DiningCategory() {
         return timeMatch && parseInt(timeMatch[1]) <= 45
       })
     }
-    // Distance filtering is using static "2.5 km" placeholder currently
+    // Distance filtering
     if (activeFilters.has('distance-under-1km')) {
       filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 1.0
+        const km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        return km !== null && km <= 1.0
       })
     }
     if (activeFilters.has('distance-under-2km')) {
       filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 2.0
+        const km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        return km !== null && km <= 2.0
       })
     }
     if (activeFilters.has('rating-35-plus')) {

@@ -7,11 +7,10 @@ import { toast } from 'sonner';
  * Shows toast notifications when app is open
  * @param {Object} options - Configuration options
  * @param {Function} options.onNotificationClick - Callback when notification is clicked
- * @param {Function} options.onReceive - Callback when notification is received in foreground
  * @param {boolean} options.showToasts - Whether to show toast notifications (default: true)
  */
 export function useForegroundNotifications(options = {}) {
-  const { onNotificationClick, onReceive, showToasts = true } = options;
+  const { onNotificationClick, showToasts = true } = options;
   const unsubscribeRef = useRef(null);
 
   useEffect(() => {
@@ -23,15 +22,6 @@ export function useForegroundNotifications(options = {}) {
           const title = payload.notification?.title || payload.data?.title || 'Notification';
           const body = payload.notification?.body || payload.data?.body || '';
           const data = payload.data || {};
-
-          // Invoke onReceive so callers can react (e.g., play a sound)
-          if (typeof onReceive === 'function') {
-            try {
-              onReceive({ title, body, data, raw: payload });
-            } catch (_) {
-              // ignore handler errors
-            }
-          }
 
           // Show toast notification if enabled
           if (showToasts) {
@@ -67,7 +57,7 @@ export function useForegroundNotifications(options = {}) {
         unsubscribeRef.current();
       }
     };
-  }, [onNotificationClick, onReceive, showToasts]);
+  }, [onNotificationClick, showToasts]);
 
   return { unsubscribe: unsubscribeRef.current };
 }

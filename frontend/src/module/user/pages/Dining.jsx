@@ -9,6 +9,7 @@ import { useLocationSelector } from "../components/UserLayout"
 import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useProfile } from "../context/ProfileContext"
 import { diningAPI } from "@/lib/api"
+import { extractDistanceKm } from "@/lib/utils/distance"
 import api from "@/lib/api"
 import PageNavbar from "../components/PageNavbar"
 import OptimizedImage from "@/components/OptimizedImage"
@@ -153,6 +154,11 @@ export default function Dining() {
   const toggleFilter = (filterId) => {
     setActiveFilters(prev => {
       const newSet = new Set(prev)
+      if (filterId === 'distance-under-1km') {
+        newSet.delete('distance-under-2km')
+      } else if (filterId === 'distance-under-2km') {
+        newSet.delete('distance-under-1km')
+      }
       if (newSet.has(filterId)) {
         newSet.delete(filterId)
       } else {
@@ -179,14 +185,14 @@ export default function Dining() {
     }
     if (activeFilters.has('distance-under-1km')) {
       filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 1.0
+        const km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        return km !== null && km <= 1.0
       })
     }
     if (activeFilters.has('distance-under-2km')) {
       filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 2.0
+        const km = extractDistanceKm({ distanceInKm: r.distanceInKm, distance: r.distance })
+        return km !== null && km <= 2.0
       })
     }
     if (activeFilters.has('rating-35-plus')) {

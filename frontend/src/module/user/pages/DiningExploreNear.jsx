@@ -10,6 +10,7 @@ import { useSharedLocation } from "@/lib/context/LocationContext"
 import { useProfile } from "../context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
 import { diningAPI } from "@/lib/api"
+import { extractDistanceKm } from "@/lib/utils/distance"
 // Using placeholder for near and top rated banner
 const nearAndTopRated = "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=200&fit=crop"
 
@@ -124,6 +125,11 @@ export default function DiningExploreNear() {
   const toggleFilter = (filterId) => {
     setActiveFilters(prev => {
       const newSet = new Set(prev)
+      if (filterId === 'distance-under-1km') {
+        newSet.delete('distance-under-2km')
+      } else if (filterId === 'distance-under-2km') {
+        newSet.delete('distance-under-1km')
+      }
       if (newSet.has(filterId)) {
         newSet.delete(filterId)
       } else {
@@ -153,15 +159,15 @@ export default function DiningExploreNear() {
     if (activeFilters.has('distance-under-1km')) {
       filtered = filtered.filter(r => {
         const { distance } = getDiningRestaurantDisplayFields(r)
-        const distMatch = String(distance || "").match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 1.0
+        const km = extractDistanceKm(String(distance || ""))
+        return km !== null && km <= 1.0
       })
     }
     if (activeFilters.has('distance-under-2km')) {
       filtered = filtered.filter(r => {
         const { distance } = getDiningRestaurantDisplayFields(r)
-        const distMatch = String(distance || "").match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 2.0
+        const km = extractDistanceKm(String(distance || ""))
+        return km !== null && km <= 2.0
       })
     }
     if (activeFilters.has('rating-35-plus')) {
