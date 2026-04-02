@@ -3,6 +3,7 @@ import {
   successResponse,
   errorResponse,
 } from "../../../shared/utils/response.js";
+import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
 import { createRestaurantFromOnboarding } from "./restaurantController.js";
 
 // Get current restaurant's onboarding data
