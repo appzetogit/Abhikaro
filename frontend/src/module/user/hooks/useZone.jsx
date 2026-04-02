@@ -40,8 +40,9 @@ export function useZone(location) {
 
   // Detect zone when location is available
   const detectZone = useCallback(async (lat, lng) => {
-    if (!lat || !lng || isRequestInProgress.current) {
-      if (!lat || !lng) {
+    const isMissingCoords = lat == null || lng == null || Number.isNaN(Number(lat)) || Number.isNaN(Number(lng))
+    if (isMissingCoords || isRequestInProgress.current) {
+      if (isMissingCoords) {
         setZoneStatus('OUT_OF_SERVICE')
         setZoneId(null)
         setZone(null)
@@ -84,7 +85,10 @@ export function useZone(location) {
         return
       }
       console.error('Error detecting zone:', err)
-      setError(err.response?.data?.message || err.message || 'Failed to detect zone')
+      const serverMessage = err.response?.data?.message
+      const status = err.response?.status
+      const httpHint = status ? `HTTP ${status}` : null
+      setError(serverMessage || (httpHint ? `${httpHint}: ${err.message || 'Failed to detect zone'}` : (err.message || 'Failed to detect zone')))
       setZoneStatus('OUT_OF_SERVICE')
       setZoneId(null)
       setZone(null)
@@ -107,6 +111,7 @@ export function useZone(location) {
   useEffect(() => {
     const lat = location?.latitude
     const lng = location?.longitude
+    const hasCoords = lat != null && lng != null && !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng))
 
     const hasPrevCoords =
       prevCoordsRef.current.latitude !== null &&
@@ -118,7 +123,7 @@ export function useZone(location) {
       lng || 0
     ) >= ZONE_REFRESH_DISTANCE_METERS
 
-    if (lat && lng) {
+    if (hasCoords) {
       // Only detect zone if coordinates changed significantly
       if (coordsChanged) {
         prevCoordsRef.current = { latitude: lat, longitude: lng }
@@ -144,7 +149,8 @@ export function useZone(location) {
   const refreshZone = useCallback(() => {
     const lat = location?.latitude
     const lng = location?.longitude
-    if (lat && lng) {
+    const hasCoords = lat != null && lng != null && !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng))
+    if (hasCoords) {
       detectZone(lat, lng)
     }
   }, [location?.latitude, location?.longitude, detectZone])

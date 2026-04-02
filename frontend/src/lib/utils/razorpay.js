@@ -69,6 +69,14 @@ export const initRazorpayPayment = async (options) => {
       name: options.name || 'Food Delivery',
       description: options.description || 'Order Payment',
       image: options.image || '/logo.png',
+      // Explicitly enable all commonly-used methods. Razorpay will hide methods not enabled on the account/device.
+      // This fixes cases where some environments (e.g., in-app webviews) don't show UPI by default.
+      method: options.method || {
+        upi: true,
+        card: true,
+        netbanking: true,
+        wallet: true,
+      },
       prefill: {
         name: options.prefill?.name || '',
         email: options.prefill?.email || '',

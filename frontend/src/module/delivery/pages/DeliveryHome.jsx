@@ -11003,9 +11003,11 @@ export default function DeliveryHome() {
 
           {/* Payment info: Online = amount paid, COD = collect from customer, Pay at Hotel = hotel collects */}
           {selectedRestaurant?.total != null && (() => {
-            const m = (selectedRestaurant.paymentMethod || "").toLowerCase()
-            const isCod = m === "cash" || m === "cod"
-            const isPayAtHotel = m === "pay_at_hotel"
+            const rawMethod =
+              selectedRestaurant?.paymentMethod ?? selectedRestaurant?.payment?.method ?? ""
+            const m = String(rawMethod).toLowerCase().trim()
+            const isCod = m === "cash" || m === "cod" || m === "cash on delivery"
+            const isPayAtHotel = m === "pay_at_hotel" || m === "pay at hotel"
             const total = Number(selectedRestaurant.total) || 0
 
             const containerClasses = isCod

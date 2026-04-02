@@ -367,10 +367,11 @@ export const detectUserZone = asyncHandler(async (req, res) => {
     const { lat, lng, latitude, longitude } = req.query;
     
     // Support both lat/lng and latitude/longitude
-    const userLat = parseFloat(lat || latitude);
-    const userLng = parseFloat(lng || longitude);
+    const userLat = parseFloat(lat ?? latitude);
+    const userLng = parseFloat(lng ?? longitude);
 
-    if (!userLat || !userLng || isNaN(userLat) || isNaN(userLng)) {
+    // NOTE: Do not use falsy checks here; 0 is a valid coordinate.
+    if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
       return errorResponse(res, 400, 'Latitude and longitude are required');
     }
 
