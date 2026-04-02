@@ -715,11 +715,10 @@ export default function ExploreMore() {
     { id: 2, label: "Dining Management", icon: Utensils, route: "/restaurant/dining" },
     { id: 3, label: "Dining Reservations", icon: Calendar, route: "/restaurant/reservations" },
     { id: 4, label: "Manage staff", icon: Users, route: "/restaurant/contact-details" },
+    { id: 5, label: "Zone Setup", icon: MapPin, route: "/restaurant/zone-setup" },
   ]
 
-  const settingsItems = [
-    { id: 4, label: "Zone Setup", icon: MapPin, route: "/restaurant/zone-setup" },
-  ]
+  const settingsItems = []
 
   const ordersItems = [
     { id: 1, label: "Order history", icon: FileText, route: "/restaurant/orders/all" },
@@ -752,7 +751,6 @@ export default function ExploreMore() {
   // All sections with their items
   const allSections = [
     { title: "Manage outlet", items: manageOutletItems, key: "manage-outlet" },
-    { title: "Settings", items: settingsItems, key: "settings" },
     { title: "Orders", items: ordersItems, key: "orders" },
     { title: "Help", items: helpItems, key: "help" },
     { title: "Accounting", items: accountingItems, key: "accounting" },

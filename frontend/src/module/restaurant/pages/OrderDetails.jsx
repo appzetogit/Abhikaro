@@ -334,19 +334,8 @@ export default function OrderDetails() {
     doc.setFont("helvetica", "normal")
     doc.text(`${orderData.date}, ${orderData.time}`, 50, yPosition)
     yPosition += 7
-
-    doc.setFont("helvetica", "bold")
-    doc.text("Status:", 15, yPosition)
-    doc.setFont("helvetica", "normal")
-    // Set color based on status
-    if (orderData.status === "REJECTED" || orderData.status === "CANCELLED") {
-      doc.setTextColor(220, 38, 38) // Red
-    } else if (orderData.status === "DELIVERED") {
-      doc.setTextColor(22, 163, 74) // Green
-    }
-    doc.text(orderData.status, 50, yPosition)
-    doc.setTextColor(0, 0, 0) // Reset to black
-    yPosition += 10
+    // Omit status per requirement
+    yPosition += 3
 
     // Customer Details Section
     doc.setLineWidth(0.5)

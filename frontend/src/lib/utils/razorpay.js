@@ -108,6 +108,43 @@ export const initRazorpayPayment = async (options) => {
       }
     };
 
+    // If caller hasn't provided a custom config, explicitly enable default blocks
+    // and set an order so all common methods are visible (esp. inside webviews).
+    if (options.config) {
+      // Respect caller override
+      razorpayOptions.config = options.config;
+    } else {
+      razorpayOptions.config = {
+        display: {
+          // Define blocks for major payment methods
+          blocks: {
+            'block.upi': {
+              name: 'UPI',
+              instruments: [{ method: 'upi' }]
+            },
+            'block.card': {
+              name: 'Cards',
+              instruments: [{ method: 'card' }]
+            },
+            'block.netbanking': {
+              name: 'Netbanking',
+              instruments: [{ method: 'netbanking' }]
+            },
+            'block.wallet': {
+              name: 'Wallet',
+              instruments: [{ method: 'wallet' }]
+            }
+          },
+          // Show UPI first by default, then Card, Netbanking, Wallet
+          sequence: ['block.upi', 'block.card', 'block.netbanking', 'block.wallet'],
+          // Also show Razorpay's default blocks to keep offers/banks visible
+          preferences: {
+            show_default_blocks: true
+          }
+        }
+      };
+    }
+
     const razorpay = new window.Razorpay(razorpayOptions);
     
     // Handle payment failures

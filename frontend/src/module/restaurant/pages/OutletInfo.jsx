@@ -36,7 +36,7 @@ export default function OutletInfo() {
   const [restaurantName, setRestaurantName] = useState("")
   const [cuisineTags, setCuisineTags] = useState("")
   const [address, setAddress] = useState("")
-  const [mainImage, setMainImage] = useState("https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&h=400&fit=crop")
+  const [mainImage, setMainImage] = useState("")
   const [thumbnailImage, setThumbnailImage] = useState("https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=200&h=200&fit=crop")
   const [coverImages, setCoverImages] = useState([]) // Array of cover images (separate from menu images)
   const [bannerFailed, setBannerFailed] = useState(false)
@@ -388,7 +388,7 @@ export default function OutletInfo() {
         setMainImage(updatedImages[0].url)
       } else if (updatedImages.length === 0) {
         // If no images left, set default
-        setMainImage("https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&h=400&fit=crop")
+        setMainImage("")
       }
 
       // Update backend - convert coverImages back to menuImages format for API

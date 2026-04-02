@@ -8446,21 +8446,11 @@ export default function DeliveryHome() {
           routePolylineRef.current = null;
         }
 
-        // Fit map bounds to show entire route - but preserve zoom if user has zoomed in
+        // Fit map bounds to show entire route only once per active order
         if (path.length > 1) {
           const bounds = new window.google.maps.LatLngBounds();
           path.forEach(point => bounds.extend(point));
-          // Add padding to bounds for better visibility
-          const currentZoomBeforeFit = map.getZoom();
-          map.fitBounds(bounds, { padding: 50 });
-          // Preserve zoom if user had zoomed in more than fitBounds would set
-          setTimeout(() => {
-            const newZoom = map.getZoom();
-            if (currentZoomBeforeFit > newZoom && currentZoomBeforeFit >= 18) {
-              map.setZoom(currentZoomBeforeFit);
-            }
-          }, 100);
-
+          fitRouteBoundsOnce(bounds);
         }
       }
     } else {

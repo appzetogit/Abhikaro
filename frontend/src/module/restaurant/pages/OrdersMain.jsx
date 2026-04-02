@@ -12,6 +12,7 @@ import { useRestaurantNotifications } from "../hooks/useRestaurantNotifications"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
+import { generateOrderReceiptPDF } from "../utils/printReceipt"
 
 const STORAGE_KEY = "restaurant_online_status"
 
@@ -20,7 +21,6 @@ const filterTabs = [
   { id: "preparing", label: "Preparing" },
   { id: "ready", label: "Ready" },
   { id: "out-for-delivery", label: "Out for delivery" },
-  { id: "scheduled", label: "Scheduled" },
   { id: "table-booking", label: "Table Booking" },
   { id: "completed", label: "Completed" },
   { id: "cancelled", label: "Cancelled" },
@@ -2545,6 +2545,17 @@ function OrderCard({
 }) {
   const isReady = String(status).toLowerCase() === "ready"
 
+  const handlePrint = async (e) => {
+    e?.stopPropagation?.()
+    const id = mongoId || orderId
+    if (!id) return
+    try {
+      await generateOrderReceiptPDF(id)
+    } catch (err) {
+      console.error("Failed to generate receipt:", err)
+    }
+  }
+
   return (
     <div className="w-full bg-white rounded-2xl p-4 mb-3 border border-gray-200 hover:border-gray-400 transition-colors relative">
       {/* Cancel button - only show for preparing orders */}
@@ -2561,6 +2572,15 @@ function OrderCard({
           <X className="w-4 h-4" />
         </button>
       )}
+      {/* Print receipt */}
+      <button
+        type="button"
+        onClick={handlePrint}
+        className="absolute top-18 right-10 p-2 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors z-10"
+        title="Print receipt"
+      >
+        <Printer className="w-6 h-6" />
+      </button>
       <div
         onClick={() =>
           onSelect?.({
