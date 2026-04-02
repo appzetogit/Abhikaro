@@ -76,7 +76,11 @@ export const initRazorpayPayment = async (options) => {
         card: true,
         netbanking: true,
         wallet: true,
+        emi: true,
+        paylater: true,
       },
+      // Keep in WebView (no redirection)
+      redirect: false,
       prefill: {
         name: options.prefill?.name || '',
         email: options.prefill?.email || '',
@@ -133,10 +137,18 @@ export const initRazorpayPayment = async (options) => {
             'block.wallet': {
               name: 'Wallet',
               instruments: [{ method: 'wallet' }]
+            },
+            'block.emi': {
+              name: 'EMI',
+              instruments: [{ method: 'emi' }]
+            },
+            'block.paylater': {
+              name: 'Pay Later',
+              instruments: [{ method: 'paylater' }]
             }
           },
           // Show UPI first by default, then Card, Netbanking, Wallet
-          sequence: ['block.upi', 'block.card', 'block.netbanking', 'block.wallet'],
+          sequence: ['block.upi', 'block.card', 'block.netbanking', 'block.wallet', 'block.emi', 'block.paylater'],
           // Also show Razorpay's default blocks to keep offers/banks visible
           preferences: {
             show_default_blocks: true
