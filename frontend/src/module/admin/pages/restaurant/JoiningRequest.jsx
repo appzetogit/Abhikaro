@@ -152,7 +152,7 @@ export default function JoiningRequest() {
         await adminAPI.approveRestaurant(request._id)
         
         // Refresh the list
-        await fetchRequests()
+        await fetchAllRequests()
         
         alert(`Successfully approved ${request.restaurantName}'s join request!`)
       } catch (err) {
@@ -181,7 +181,7 @@ export default function JoiningRequest() {
       await adminAPI.rejectRestaurant(selectedRequest._id, rejectionReason)
       
       // Refresh the list
-      await fetchRequests()
+      await fetchAllRequests()
       
       setShowRejectDialog(false)
       setSelectedRequest(null)
