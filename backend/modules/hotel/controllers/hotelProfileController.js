@@ -91,24 +91,30 @@ export const getHotelQRCode = asyncHandler(async (req, res) => {
       }
     } catch (e) {
       // Not JSON, assume it's already a URL
-      // Check if it contains localhost and needs to be updated
+      // In non-production, ensure the URL base matches current frontendUrl (local/dev)
       if (qrData && typeof qrData === 'string') {
-        // Check if URL contains localhost or 127.0.0.1
-        if (qrData.includes('localhost') || qrData.includes('127.0.0.1') || qrData.includes('localhost:5173')) {
-          // Extract hotel ID from existing URL
-          const hotelIdMatch = qrData.match(/\/hotel\/view\/([^/?]+)/);
-          if (hotelIdMatch) {
-            const hotelId = hotelIdMatch[1];
-            qrData = `${frontendUrl}/hotel/view/${hotelId}?hotelRef=${hotelId}`;
+        // Try to parse as URL and realign domain if mismatched in non-production
+        try {
+          const existing = new URL(qrData);
+          const current = new URL(frontendUrl);
+          const isProd = process.env.NODE_ENV === 'production';
+          if (!isProd && (existing.origin !== current.origin)) {
+            // Extract hotelId from path or query and rebuild with local base
+            const hotelIdMatch = existing.pathname.match(/\/hotel\/view\/([^/?]+)/);
+            const hotelRefParam = existing.searchParams.get('hotelRef');
+            const derivedHotelId = (hotelIdMatch && hotelIdMatch[1]) || hotelRefParam || (hotel.hotelId || hotel._id.toString());
+            qrData = `${current.origin}/hotel/view/${derivedHotelId}?hotelRef=${derivedHotelId}`;
             needsUpdate = true;
-          } else {
-            // Try to extract from hotelRef parameter
+          }
+        } catch {
+          // Fallback: if string contains a recognizable host mismatch pattern, rebuild
+          const isProd = process.env.NODE_ENV === 'production';
+          if (!isProd) {
+            const hotelIdMatch = qrData.match(/\/hotel\/view\/([^/?]+)/);
             const hotelRefMatch = qrData.match(/hotelRef=([^&]+)/);
-            if (hotelRefMatch) {
-              const hotelId = hotelRefMatch[1];
-              qrData = `${frontendUrl}/hotel/view/${hotelId}?hotelRef=${hotelId}`;
-              needsUpdate = true;
-            }
+            const derivedHotelId = (hotelIdMatch && hotelIdMatch[1]) || (hotelRefMatch && hotelRefMatch[1]) || (hotel.hotelId || hotel._id.toString());
+            qrData = `${frontendUrl}/hotel/view/${derivedHotelId}?hotelRef=${derivedHotelId}`;
+            needsUpdate = true;
           }
         }
       }
@@ -118,7 +124,10 @@ export const getHotelQRCode = asyncHandler(async (req, res) => {
     if (needsUpdate) {
       hotel.qrCode = qrData;
       await hotel.save();
-      console.log('✅ Updated QR code URL from localhost to production:', qrData);
+      console.log('✅ Realigned QR code URL to current environment base URL:', {
+        updatedUrl: qrData,
+        env: process.env.NODE_ENV,
+      });
     }
     
     return successResponse(res, 200, "QR code data fetched successfully", {

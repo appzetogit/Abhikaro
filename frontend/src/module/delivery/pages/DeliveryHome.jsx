@@ -3958,8 +3958,21 @@ export default function DeliveryHome() {
     });
   }
 
+  // Helper: determine if current order is Pay at Hotel
+  const isCurrentOrderPayAtHotel = () => {
+    const raw = selectedRestaurant?.paymentMethod ?? selectedRestaurant?.payment?.method
+    const m = raw != null ? String(raw).toLowerCase().trim() : ''
+    return m === 'pay_at_hotel' || m === 'pay at hotel'
+  }
+
   // Handle Order Delivered button swipe
   const handleOrderDeliveredTouchStart = (e) => {
+    // Block swipe until cash is confirmed for Pay at Hotel
+    if (isCurrentOrderPayAtHotel() && !hotelCashConfirmed) {
+      toast.error('Please confirm cash collected at hotel first')
+      setOrderDeliveredButtonProgress(0)
+      return
+    }
     orderDeliveredSwipeStartX.current = e.touches[0].clientX
     orderDeliveredSwipeStartY.current = e.touches[0].clientY
     orderDeliveredIsSwiping.current = false
@@ -3968,6 +3981,10 @@ export default function DeliveryHome() {
   }
 
   const handleOrderDeliveredTouchMove = (e) => {
+    // Block swipe until cash is confirmed for Pay at Hotel
+    if (isCurrentOrderPayAtHotel() && !hotelCashConfirmed) {
+      return
+    }
     const deltaX = e.touches[0].clientX - orderDeliveredSwipeStartX.current
     const deltaY = e.touches[0].clientY - orderDeliveredSwipeStartY.current
 
@@ -3989,6 +4006,11 @@ export default function DeliveryHome() {
   }
 
   const handleOrderDeliveredTouchEnd = (e) => {
+    // Block swipe until cash is confirmed for Pay at Hotel
+    if (isCurrentOrderPayAtHotel() && !hotelCashConfirmed) {
+      setOrderDeliveredButtonProgress(0)
+      return
+    }
     if (!orderDeliveredIsSwiping.current) {
       setOrderDeliveredButtonProgress(0)
       return
@@ -9898,29 +9920,7 @@ export default function DeliveryHome() {
                         return value > 0 ? value.toFixed(2) : '0.00';
                       })()}
                     </p>
-                    {/* Earnings Breakdown */}
-                    {(() => {
-                      const earnings = newOrder?.estimatedEarnings || selectedRestaurant?.estimatedEarnings || 0;
-                      if (typeof earnings === 'object' && earnings.breakdown) {
-                        return (
-                          <div className="bg-green-50 rounded-lg p-3 mb-2">
-                            <p className="text-green-800 text-xs font-medium mb-1">Earnings Breakdown:</p>
-                            <p className="text-green-700 text-xs">
-                              Base payout (Admin): ₹{earnings.basePayout?.toFixed(0) || '0'}
-                              {earnings.distanceCommission > 0 && (
-                                <> + Distance ({earnings.distance?.toFixed(1)} km × ₹{earnings.commissionPerKm?.toFixed(0)}/km) = ₹{earnings.distanceCommission?.toFixed(0)}</>
-                              )}
-                            </p>
-                            {earnings.distance <= earnings.minDistance && earnings.distanceCommission === 0 && (
-                              <p className="text-green-600 text-xs mt-1">
-                                Note: Distance {earnings.distance?.toFixed(1)} km ≤ {earnings.minDistance} km, per km commission not applicable
-                              </p>
-                            )}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
+                    {/* Earnings Breakdown hidden as per requirement */}
                     <p className="text-gray-400 text-xs">
                       Pickup: {newOrder?.pickupDistance || selectedRestaurant?.pickupDistance || '0 km'} | Drop: {newOrder?.deliveryDistance || selectedRestaurant?.dropDistance || '0 km'}
                     </p>
@@ -11094,7 +11094,16 @@ export default function DeliveryHome() {
           <div className="relative w-full">
             <motion.div
               ref={orderDeliveredButtonRef}
-              className="relative w-full bg-green-600 rounded-full overflow-hidden shadow-xl"
+              className={`relative w-full rounded-full overflow-hidden shadow-xl ${
+                ((() => {
+                  const raw = selectedRestaurant?.paymentMethod ?? selectedRestaurant?.payment?.method
+                  const m = raw != null ? String(raw).toLowerCase().trim() : ''
+                  const disabled = (m === 'pay_at_hotel' || m === 'pay at hotel') && !hotelCashConfirmed
+                  return disabled
+                })())
+                  ? 'bg-gray-300 cursor-not-allowed opacity-70'
+                  : 'bg-green-600'
+              }`}
               style={{ touchAction: 'pan-x' }} // Prevent vertical scrolling, allow horizontal pan
               onTouchStart={handleOrderDeliveredTouchStart}
               onTouchMove={handleOrderDeliveredTouchMove}

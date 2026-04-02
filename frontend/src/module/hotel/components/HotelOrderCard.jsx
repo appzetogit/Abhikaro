@@ -144,49 +144,7 @@ export default function HotelOrderCard({ order, onUpdate }) {
                     </div>
                 </div>
 
-                {/* Action Buttons - Show Cash Collected if Pay at Hotel / Cash and payment is pending */}
-                {(order.status?.toLowerCase() !== 'cancelled') && (
-                    <div className="flex flex-col gap-3 mt-4">
-                        {(['pay_at_hotel', 'cash'].includes(order.payment.method) && order.payment.status !== 'completed') && (
-                            <button
-                                onClick={async () => {
-                                    try {
-                                        setAccepting(true);
-                                        const response = await hotelAPI.collectPayment(order.orderId);
-                                        if (response.data.success) {
-                                            toast.success('Cash collected and payment marked as completed.');
-                                            onUpdate();
-                                        }
-                                    } catch (error) {
-                                        console.error('Error collecting payment:', error);
-                                        toast.error(error.response?.data?.message || 'Failed to collect payment');
-                                    } finally {
-                                        setAccepting(false);
-                                    }
-                                }}
-                                disabled={accepting}
-                                className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-300 text-white rounded-lg font-semibold transition-colors shadow-sm"
-                            >
-                                {accepting ? (
-                                    <div className="flex items-center gap-2 mx-auto">
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                        <span>Processing...</span>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div className="flex flex-col items-start leading-tight">
-                                            <span className="text-sm font-bold">Cash Collected</span>
-                                            <span className="text-xs opacity-90 font-normal">
-                                                ₹{order.pricing.total.toFixed(0)} received from guest
-                                            </span>
-                                        </div>
-                                        <CheckCircle className="h-5 w-5 ml-auto" />
-                                    </>
-                                )}
-                            </button>
-                        )}
-                    </div>
-                )}
+                {/* Action buttons removed - cash collection handled by delivery partner */}
 
                 {/* Cancellation Reason */}
                 {order.status === 'cancelled' && order.cancellationReason && (

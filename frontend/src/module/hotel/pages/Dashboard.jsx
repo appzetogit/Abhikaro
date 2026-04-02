@@ -283,7 +283,7 @@ export default function HotelDashboard() {
                   <CheckCircle size={16} className="text-orange-500" />
                 </div>
                 <p className="text-gray-500 text-[11px] font-medium">
-                  Total Cash Collected
+                  Total collected amount
                 </p>
                 <h3 className="text-lg font-bold text-gray-800 mt-1">
                   ₹{settlementSummary?.totalCashCollected || 0}

@@ -355,8 +355,8 @@ export default function Cart() {
       setIsHotelOrder(true);
       setHotelName(hotelNameStored || 'Hotel');
       setHasHotelReference(true);
-      // Auto-select pay_at_hotel for hotel orders
-      setSelectedPaymentMethod('pay_at_hotel');
+      // Default to online payment for hotel orders
+      setSelectedPaymentMethod('razorpay');
     }
   }, []);
 
@@ -1029,8 +1029,8 @@ export default function Cart() {
       return
     }
 
-    // Validate room number for pay_at_hotel
-    if (selectedPaymentMethod === 'pay_at_hotel') {
+  // Validate room number for hotel orders (regardless of payment method)
+  if (isHotelOrder) {
       if (!roomNumber || roomNumber.trim() === '') {
         toast.error('Please enter your room number');
         return;
@@ -1248,7 +1248,7 @@ export default function Cart() {
         // Hotel order fields
         hotelReference: isHotelOrder ? sessionStorage.getItem('hotelReference') : null,
         hotelName: isHotelOrder ? sessionStorage.getItem('hotelReferenceName') : null,
-        roomNumber: selectedPaymentMethod === 'pay_at_hotel' ? roomNumber : null
+        roomNumber: isHotelOrder ? roomNumber.trim() : null
       };
 
 
@@ -2225,8 +2225,8 @@ export default function Cart() {
                       {isHotelOrder ? (
                         // Show only Pay at Hotel and Razorpay for hotel orders
                         <>
-                          <option value="pay_at_hotel">💳 Pay at Hotel</option>
                           <option value="razorpay">💰 Online Payment</option>
+                          <option value="pay_at_hotel">💳 Pay at Hotel</option>
                         </>
                       ) : (
                         // Show online payment and wallet for regular orders (COD disabled)
@@ -2240,9 +2240,9 @@ export default function Cart() {
                     </select>
                   </div>
 
-                  {/* Room Number Field - Only for Pay at Hotel */}
-                  {selectedPaymentMethod === 'pay_at_hotel' && (
-                    <div className="mb-4 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-lg border-2 border-orange-200 dark:border-orange-700">
+                  {/* Room Number Field - Shown for all hotel orders */}
+                  {isHotelOrder && (
+                    <div className="mb-3 p-3 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-lg border-2 border-orange-200 dark:border-orange-700">
                       <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
                         🏨 Room Number <span className="text-red-500">*</span>
                       </label>
@@ -2251,7 +2251,7 @@ export default function Cart() {
                         value={roomNumber}
                         onChange={(e) => setRoomNumber(e.target.value)}
                         placeholder="Enter your room number (e.g., 101)"
-                        className="w-full px-4 py-3 border-2 border-orange-300 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent font-medium"
+                        className="w-full px-3 py-2 h-10 text-sm border-2 border-orange-300 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent font-medium"
                         required
                       />   
                       {isHotelOrder && hotelName && (

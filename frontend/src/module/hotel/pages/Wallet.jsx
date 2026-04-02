@@ -26,6 +26,7 @@ export default function HotelWallet() {
   const [withdrawDialogOpen, setWithdrawDialogOpen] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState("")
   const [creatingWithdrawal, setCreatingWithdrawal] = useState(false)
+  const [kycStatus, setKycStatus] = useState({ complete: true, missing: [] })
 
   const fetchWallet = async (isRefresh = false) => {
     try {
@@ -35,9 +36,10 @@ export default function HotelWallet() {
       setError("")
 
       // Fetch wallet + hotel request stats (for earnings like dashboard)
-      const [walletRes, statsRes] = await Promise.all([
+      const [walletRes, statsRes, profileRes] = await Promise.all([
         hotelAPI.getWallet(),
         hotelAPI.getRequestStats(),
+        hotelAPI.getProfile(),
       ])
 
       const walletData =
@@ -46,6 +48,23 @@ export default function HotelWallet() {
 
       const statsData = statsRes?.data?.data || statsRes?.data || null
       setStats(statsData)
+
+      // Compute KYC completeness from profile documents
+      try {
+        const hotel =
+          profileRes?.data?.data?.hotel || profileRes?.data?.hotel || null
+        const required = [
+          { key: "aadharCardFront", label: "Aadhar Card Front" },
+          { key: "aadharCardBack", label: "Aadhar Card Back" },
+          { key: "panCardFront", label: "PAN Card Front" },
+        ]
+        const missing = required
+          .filter((r) => !(hotel && hotel[r.key] && hotel[r.key].url))
+          .map((r) => r.label)
+        setKycStatus({ complete: missing.length === 0, missing })
+      } catch {
+        // ignore
+      }
     } catch (err) {
       console.error("Error fetching hotel wallet:", err)
       setWallet(null)
@@ -89,8 +108,11 @@ export default function HotelWallet() {
   // pendingPayout is currently not shown in UI; kept for potential future use
   const pendingPayout = wallet?.pendingPayout || 0
 
-  const withdrawAllowed = wallet?.withdrawAllowed ?? true
-  const withdrawMessage = wallet?.withdrawMessage || ""
+  const backendWithdrawAllowed = wallet?.withdrawAllowed ?? true
+  const withdrawAllowed = backendWithdrawAllowed && kycStatus.complete
+  const withdrawMessage = !kycStatus.complete
+    ? `Please complete KYC to enable withdrawals (${kycStatus.missing.join(", ")})`
+    : wallet?.withdrawMessage || ""
 
   const transactions = wallet?.transactions || []
 
@@ -146,7 +168,10 @@ export default function HotelWallet() {
               </div>
               <button
                 onClick={() => {
-                  if (!withdrawAllowed) return
+                  if (!withdrawAllowed) {
+                    navigate("/hotel/profile?kyc=open")
+                    return
+                  }
                   setWithdrawAmount("")
                   setWithdrawDialogOpen(true)
                 }}

@@ -2076,16 +2076,17 @@ export default function OrdersMain() {
                     </span>
                   </div>
 
-                  {/* Payment method: treat cash/cod (any case) as COD */}
+                  {/* Payment method: handle COD, Pay at Hotel, and Online */}
                   {(() => {
                     const raw = (popupOrder || newOrder)?.paymentMethod ?? (popupOrder || newOrder)?.payment?.method;
                     const m = raw != null ? String(raw).toLowerCase().trim() : '';
                     const isCod = m === 'cash' || m === 'cod';
+                    const isPayAtHotel = m === 'pay_at_hotel' || m === 'pay at hotel';
                     return (
                       <div className="mb-4 flex items-center justify-between py-2">
                         <span className="text-sm font-medium text-gray-700">Payment</span>
-                        <span className={`text-sm font-semibold ${isCod ? 'text-amber-600' : 'text-green-600'}`}>
-                          {isCod ? 'Cash on Delivery' : 'Online'}
+                        <span className={`text-sm font-semibold ${isCod || isPayAtHotel ? 'text-amber-600' : 'text-green-600'}`}>
+                          {isCod ? 'Cash on Delivery' : isPayAtHotel ? 'Pay at Hotel' : 'Online'}
                         </span>
                       </div>
                     );
@@ -2415,8 +2416,10 @@ export default function OrdersMain() {
                     const method = selectedOrder.paymentMethod ?? selectedOrder.payment?.method;
                     const m = method != null ? String(method).toLowerCase().trim() : '';
                     const isCod = m === 'cash' || m === 'cod';
+                    const isPayAtHotel = m === 'pay_at_hotel' || m === 'pay at hotel';
                     const status = (selectedOrder.paymentStatus || '').toLowerCase();
                     if (isCod) return 'Cash on delivery';
+                    if (isPayAtHotel) return 'Pay at Hotel';
                     if (status === 'completed') return 'Paid online';
                     if (status === 'failed') return 'Failed';
                     if (status === 'refunded') return 'Refunded';
@@ -2695,6 +2698,7 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const lastAutoResendAtRef = useRef(new Map()) // key -> timestamp
 
   // Manually mark an order as ready from the card action
   const handleMarkReady = async ({ orderId, mongoId }) => {
@@ -2722,6 +2726,7 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
     let isMounted = true
     let intervalId = null
     let countdownIntervalId = null
+    let autoResendIntervalId = null
 
     const fetchOrders = async () => {
       try {
@@ -2815,6 +2820,36 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
       }
     }, 15000) // Increased from 10000ms to 15000ms
 
+    // Auto-trigger resend every 30s for unassigned preparing orders
+    autoResendIntervalId = setInterval(async () => {
+      if (!isMounted || document.visibilityState !== 'visible') return
+      if (!Array.isArray(orders) || orders.length === 0) return
+
+      const now = Date.now()
+      // Only resend for "preparing/confirmed" orders that are not assigned
+      const targets = orders.filter(
+        (o) =>
+          !o.deliveryPartnerId &&
+          (String(o.status).toLowerCase() === 'preparing' ||
+            String(o.status).toLowerCase() === 'confirmed'),
+      )
+
+      for (const o of targets) {
+        const key = o.mongoId || o.orderId
+        if (!key) continue
+        const last = Number(lastAutoResendAtRef.current.get(key) || 0)
+        if (now - last < 30000) continue // per-order cooldown
+
+        try {
+          lastAutoResendAtRef.current.set(key, now)
+          await restaurantAPI.resendDeliveryNotification(key)
+        } catch (err) {
+          // Don't toast on auto; just allow retry next tick
+          lastAutoResendAtRef.current.delete(key)
+        }
+      }
+    }, 30000)
+
     // Pause polling when page becomes hidden, resume when visible
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && isMounted) {
@@ -2839,11 +2874,14 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
       if (intervalId) {
         clearInterval(intervalId)
       }
+      if (autoResendIntervalId) {
+        clearInterval(autoResendIntervalId)
+      }
       if (countdownIntervalId) {
         clearInterval(countdownIntervalId)
       }
     }
-  }, [fetchAllOrders]) // Include fetchAllOrders in dependencies
+  }, [fetchAllOrders, orders]) // Include orders so auto-resend sees latest list
 
   // Track which orders have been marked as ready to avoid duplicate API calls
   const markedReadyOrdersRef = useRef(new Set())
@@ -2996,6 +3034,7 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
 function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  const lastAutoResendAtRef = useRef(new Map()) // key -> timestamp
 
   // Resend delivery notification for ready orders that are still unassigned
   const handleResendForReady = ({ orderId, mongoId }) => {
@@ -3006,6 +3045,7 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
   useEffect(() => {
     let isMounted = true
     let intervalId = null
+    let autoResendIntervalId = null
 
     const fetchOrders = async () => {
       try {
@@ -3085,6 +3125,31 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
       }
     }, 10000)
 
+    // Auto-trigger resend every 30s for unassigned ready orders
+    autoResendIntervalId = setInterval(async () => {
+      if (!isMounted || document.visibilityState !== 'visible') return
+      if (!Array.isArray(orders) || orders.length === 0) return
+
+      const now = Date.now()
+      const targets = orders.filter(
+        (o) => !o.deliveryPartnerId && String(o.status).toLowerCase() === 'ready',
+      )
+
+      for (const o of targets) {
+        const key = o.mongoId || o.orderId
+        if (!key) continue
+        const last = Number(lastAutoResendAtRef.current.get(key) || 0)
+        if (now - last < 30000) continue
+
+        try {
+          lastAutoResendAtRef.current.set(key, now)
+          await restaurantAPI.resendDeliveryNotification(key)
+        } catch (err) {
+          lastAutoResendAtRef.current.delete(key)
+        }
+      }
+    }, 30000)
+
     return () => {
       isMounted = false
       window.removeEventListener('order_assigned', handleOrderAssigned)
@@ -3092,8 +3157,11 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
       if (intervalId) {
         clearInterval(intervalId)
       }
+      if (autoResendIntervalId) {
+        clearInterval(autoResendIntervalId)
+      }
     }
-  }, [fetchAllOrders]) // Include fetchAllOrders in dependencies
+  }, [fetchAllOrders, orders]) // Include orders so auto-resend sees latest list
 
   if (loading) {
     return (

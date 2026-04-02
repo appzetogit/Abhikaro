@@ -585,8 +585,8 @@ export const getSettlementSummary = async (req, res) => {
               $cond: [
                 {
                   $and: [
-                    { $eq: ["$cashCollected", true] },
-                    { $ne: ["$hotelCashSettled", true] }, // exclude orders where cash already settled
+                    // Count all Pay at Hotel/Cash orders not yet settled by delivery
+                    { $ne: ["$hotelCashSettled", true] },
                   ],
                 },
                 "$total",

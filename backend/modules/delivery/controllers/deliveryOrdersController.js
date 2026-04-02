@@ -2691,15 +2691,15 @@ export const markHotelCashSettled = asyncHandler(async (req, res) => {
       );
     }
 
-    // Only allow for pay_at_hotel / cash orders where hotel has already collected from guest
+    // Only allow for pay_at_hotel / cash orders
     const method = order.payment?.method;
     const isCashFlow = method === "pay_at_hotel" || method === "cash";
 
-    if (!isCashFlow || !order.cashCollected) {
+    if (!isCashFlow) {
       return errorResponse(
         res,
         400,
-        "Hotel cash can only be settled for Pay at Hotel / Cash orders after hotel has collected payment",
+        "Hotel cash can only be settled for Pay at Hotel / Cash orders",
       );
     }
 
@@ -2710,6 +2710,8 @@ export const markHotelCashSettled = asyncHandler(async (req, res) => {
       });
     }
 
+    // Mark cash collected and settled (delivery partner confirmed collection)
+    order.cashCollected = true;
     order.hotelCashSettled = true;
     await order.save();
 

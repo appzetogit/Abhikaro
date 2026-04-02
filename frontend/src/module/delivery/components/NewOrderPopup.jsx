@@ -246,18 +246,7 @@ export default function NewOrderPopup({
                   <p className="text-4xl font-bold text-gray-900 mb-2">
                     ₹{getEarnings()}
                   </p>
-                  {/* Earnings Breakdown */}
-                  {orderData?.estimatedEarnings && typeof orderData.estimatedEarnings === 'object' && orderData.estimatedEarnings.breakdown && (
-                    <div className="bg-green-50 rounded-lg p-3 mb-2">
-                      <p className="text-green-800 text-xs font-medium mb-1">Earnings Breakdown:</p>
-                      <p className="text-green-700 text-xs">
-                        Base payout (Admin): ₹{orderData.estimatedEarnings.basePayout?.toFixed(0) || '0'}
-                        {orderData.estimatedEarnings.distanceCommission > 0 && (
-                          <> + Distance ({orderData.estimatedEarnings.distance?.toFixed(1)} km × ₹{orderData.estimatedEarnings.commissionPerKm?.toFixed(0)}/km) = ₹{orderData.estimatedEarnings.distanceCommission?.toFixed(0)}</>
-                        )}
-                      </p>
-                    </div>
-                  )}
+                  {/* Earnings Breakdown hidden as per requirement */}
                   <p className="text-gray-400 text-xs">
                     Pickup: {orderData?.pickupDistance || orderData?.pickupDistance || '0 km'} | Drop: {orderData?.deliveryDistance || orderData?.dropDistance || '0 km'}
                   </p>

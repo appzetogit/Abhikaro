@@ -59,6 +59,24 @@ export default function HotelProfile() {
     })
   }, [])
 
+  // Auto-open KYC section when navigated with ?kyc=open
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const kyc = params.get('kyc')
+      if (kyc === 'open') {
+        setDocumentsExpanded(true)
+        // Smooth scroll to KYC section after expand
+        setTimeout(() => {
+          const el = document.getElementById('hotel-kyc-documents-section')
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 50)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
   useEffect(() => {
     if (!isModuleAuthenticated("hotel")) {
       navigate("/hotel", { replace: true })
@@ -846,7 +864,7 @@ export default function HotelProfile() {
         </div>
 
         {/* KYC Documents Section */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+        <div id="hotel-kyc-documents-section" className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <button
             onClick={() => setDocumentsExpanded(!documentsExpanded)}
             className="w-full flex items-center justify-between mb-4"
