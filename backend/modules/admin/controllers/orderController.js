@@ -3,6 +3,9 @@ import Payment from '../../payment/models/Payment.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import asyncHandler from '../../../shared/middleware/asyncHandler.js';
 import mongoose from 'mongoose';
+import Restaurant from '../../restaurant/models/Restaurant.js';
+import { findNearestDeliveryBoys } from '../../order/services/deliveryAssignmentService.js';
+import { notifyMultipleDeliveryBoys } from '../../order/services/deliveryNotificationService.js';
 
 /**
  * Get all orders for admin
@@ -2126,6 +2129,115 @@ export const assignOrderToDeliveryPartner = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error('Error assigning order to delivery partner:', error);
     return errorResponse(res, 500, error.message || 'Failed to assign order');
+  }
+});
+
+/**
+ * Resend delivery notification for unassigned order (admin)
+ * POST /api/admin/orders/:id/resend-delivery-notification
+ */
+export const resendDeliveryNotification = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Try to find order by MongoDB _id or orderId
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      order = await Order.findById(id);
+    }
+    if (!order) {
+      order = await Order.findOne({ orderId: id });
+    }
+
+    if (!order) {
+      return errorResponse(res, 404, 'Order not found');
+    }
+
+    // Check if order is in valid status (preparing or ready)
+    if (!['preparing', 'ready'].includes(order.status)) {
+      return errorResponse(
+        res,
+        400,
+        `Cannot resend notification. Order status must be 'preparing' or 'ready'. Current status: ${order.status}`,
+      );
+    }
+
+    // Do not resend if already assigned
+    if (order.deliveryPartnerId) {
+      return errorResponse(res, 400, 'Order already has a delivery partner assigned');
+    }
+
+    // Get restaurant location from restaurant doc
+    const restaurantId = order.restaurantId;
+    const restaurantDoc = await Restaurant.findById(restaurantId)
+      .select('location')
+      .lean();
+
+    if (!restaurantDoc || !restaurantDoc.location || !restaurantDoc.location.coordinates) {
+      return errorResponse(res, 400, 'Restaurant location not found. Please update restaurant location.');
+    }
+
+    const [restaurantLng, restaurantLat] = restaurantDoc.location.coordinates;
+
+    // Find nearest delivery boys (priority)
+    const priorityDeliveryBoys = (
+      await findNearestDeliveryBoys(
+        restaurantLat,
+        restaurantLng,
+        restaurantId,
+        20, // 20km radius for priority
+      )
+    ).slice(0, 10); // Top 10 nearest
+
+    // Fallback with larger radius
+    let deliveryBoysToNotify = priorityDeliveryBoys;
+    if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
+      deliveryBoysToNotify = (
+        await findNearestDeliveryBoys(
+          restaurantLat,
+          restaurantLng,
+          restaurantId,
+          50, // 50km radius
+        )
+      ).slice(0, 20); // Top 20 nearest
+    }
+
+    if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
+      return errorResponse(res, 404, 'No delivery partners available in your area');
+    }
+
+    // Populate order for notification payload
+    const populatedOrder = await Order.findById(order._id)
+      .populate('userId', 'name phone')
+      .populate('restaurantId', 'name location address phone ownerPhone')
+      .lean();
+
+    if (!populatedOrder) {
+      return errorResponse(res, 500, 'Failed to load order for notification');
+    }
+
+    const deliveryPartnerIds = deliveryBoysToNotify.map((db) => db.deliveryPartnerId);
+
+    // Update assignment info for tracking
+    await Order.findByIdAndUpdate(order._id, {
+      $set: {
+        'assignmentInfo.priorityDeliveryPartnerIds': deliveryPartnerIds,
+        'assignmentInfo.assignedBy': 'admin_manual_resend',
+        'assignmentInfo.assignedAt': new Date(),
+      },
+    });
+
+    await notifyMultipleDeliveryBoys(populatedOrder, deliveryPartnerIds, 'priority');
+
+    return successResponse(
+      res,
+      200,
+      `Notification sent to ${deliveryPartnerIds.length} delivery partners`,
+      { notifiedCount: deliveryPartnerIds.length },
+    );
+  } catch (error) {
+    console.error('Error resending delivery notification (admin):', error);
+    return errorResponse(res, 500, `Failed to resend notification: ${error.message}`);
   }
 });
 

@@ -27,6 +27,24 @@ export function useForegroundNotifications(options = {}) {
           const body = payload.notification?.body || payload.data?.body || '';
           const data = payload.data || {};
 
+          // Broadcast an in-app event so modules (delivery/restaurant/admin/etc) can react
+          // immediately (e.g., open an "accept order" popup) even when the notification
+          // only contains an orderId.
+          try {
+            window.dispatchEvent(
+              new CustomEvent('appForegroundNotification', {
+                detail: {
+                  title,
+                  body,
+                  data,
+                  raw: payload,
+                },
+              }),
+            );
+          } catch {
+            // ignore
+          }
+
           // Play alert sound if enabled (best-effort; browsers require a prior user interaction)
           if (playSound) {
             try {

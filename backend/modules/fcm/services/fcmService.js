@@ -258,22 +258,129 @@ export async function sendNotification(tokens, notification, data = {}) {
     if (imageUrl) {
       console.log(`🖼️ [FCM] Image URL included: ${imageUrl}`);
     }
-    const response = await admin.messaging().sendEachForMulticast(message);
+    // firebase-admin API differs by version:
+    // - Newer versions: messaging.sendEachForMulticast
+    // - Older versions: messaging.sendMulticast
+    //
+    // IMPORTANT: Some environments mis-route batch endpoints and return 404 on `/batch`.
+    // For reliability, if multicast fails, we fall back to sending per-token.
+    const messaging = admin.messaging();
+    const sendFn =
+      typeof messaging.sendEachForMulticast === 'function'
+        ? messaging.sendEachForMulticast.bind(messaging)
+        : (typeof messaging.sendMulticast === 'function'
+          ? messaging.sendMulticast.bind(messaging)
+          : null);
+
+    let response = null;
+    if (sendFn) {
+      try {
+        response = await sendFn(message);
+      } catch (multicastErr) {
+        const raw = multicastErr?.errorInfo?.message || multicastErr?.message || '';
+        const looksLikeBatch404 =
+          String(raw).includes('/batch') &&
+          (String(raw).includes('404') || String(raw).includes('Not Found'));
+
+        if (!looksLikeBatch404) {
+          throw multicastErr;
+        }
+
+        console.warn('⚠️ [FCM] Multicast failed with /batch 404; falling back to per-token send()');
+
+        // Per-token fallback (avoids batch endpoint entirely)
+        const baseMessage = { ...message };
+        delete baseMessage.tokens;
+
+        // small concurrency cap
+        const concurrency = 5;
+        let idx = 0;
+        let successCount = 0;
+        let failureCount = 0;
+        const invalidTokens = [];
+
+        async function worker() {
+          while (idx < tokenArray.length) {
+            const myIdx = idx++;
+            const token = tokenArray[myIdx];
+            try {
+              await messaging.send({ ...baseMessage, token });
+              successCount++;
+            } catch (err) {
+              failureCount++;
+              const code = err?.errorInfo?.code || err?.code;
+              const msg = err?.errorInfo?.message || err?.message;
+              console.error(`❌ [FCM] Token ${myIdx} failed:`, code, msg);
+              if (
+                code === 'messaging/invalid-registration-token' ||
+                code === 'messaging/registration-token-not-registered'
+              ) {
+                invalidTokens.push(token);
+              }
+            }
+          }
+        }
+
+        const workers = Array.from({ length: Math.min(concurrency, tokenArray.length) }, () => worker());
+        await Promise.all(workers);
+
+        // mimic multicast response shape used below
+        response = {
+          successCount,
+          failureCount,
+          responses: [], // not used when we already tracked invalidTokens
+          __invalidTokens: invalidTokens,
+        };
+      }
+    } else {
+      // No multicast available; send one by one
+      const baseMessage = { ...message };
+      delete baseMessage.tokens;
+      let successCount = 0;
+      let failureCount = 0;
+      const invalidTokens = [];
+      for (let i = 0; i < tokenArray.length; i++) {
+        const token = tokenArray[i];
+        try {
+          await messaging.send({ ...baseMessage, token });
+          successCount++;
+        } catch (err) {
+          failureCount++;
+          const code = err?.errorInfo?.code || err?.code;
+          const msg = err?.errorInfo?.message || err?.message;
+          console.error(`❌ [FCM] Token ${i} failed:`, code, msg);
+          if (
+            code === 'messaging/invalid-registration-token' ||
+            code === 'messaging/registration-token-not-registered'
+          ) {
+            invalidTokens.push(token);
+          }
+        }
+      }
+      response = {
+        successCount,
+        failureCount,
+        responses: [],
+        __invalidTokens: invalidTokens,
+      };
+    }
     
     console.log(`📊 [FCM] Send response: ${response.successCount} success, ${response.failureCount} failures`);
     
-    const invalidTokens = [];
-    response.responses.forEach((resp, idx) => {
-      if (!resp.success) {
-        console.error(`❌ [FCM] Token ${idx} failed:`, resp.error?.code, resp.error?.message);
-        if (
-          resp.error?.code === 'messaging/invalid-registration-token' ||
-          resp.error?.code === 'messaging/registration-token-not-registered'
-        ) {
-          invalidTokens.push(tokenArray[idx]);
+    const invalidTokens = Array.isArray(response.__invalidTokens) ? response.__invalidTokens : [];
+    if (invalidTokens.length === 0 && Array.isArray(response.responses)) {
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          console.error(`❌ [FCM] Token ${idx} failed:`, resp.error?.code, resp.error?.message);
+          if (
+            resp.error?.code === 'messaging/invalid-registration-token' ||
+            resp.error?.code === 'messaging/registration-token-not-registered'
+          ) {
+            invalidTokens.push(tokenArray[idx]);
+          }
         }
-      }
-    });
+      });
+    }
     
     if (invalidTokens.length > 0) {
       console.log(`🧹 [FCM] Removing ${invalidTokens.length} invalid token(s)`);

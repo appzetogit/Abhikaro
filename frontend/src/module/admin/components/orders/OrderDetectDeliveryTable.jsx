@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react"
-import { Eye, Printer, ArrowUpDown, Phone, User } from "lucide-react"
+import { Eye, Printer, ArrowUpDown, Phone, User, Loader2 } from "lucide-react"
 
 const getStatusColor = (status) => {
   const colors = {
@@ -14,7 +14,14 @@ const getStatusColor = (status) => {
   return colors[status] || "bg-slate-100 text-slate-700"
 }
 
-export default function OrderDetectDeliveryTable({ orders, visibleColumns, onViewOrder, onPrintOrder }) {
+export default function OrderDetectDeliveryTable({
+  orders,
+  visibleColumns,
+  onViewOrder,
+  onPrintOrder,
+  onResend,
+  resendLoadingByOrderId = {},
+}) {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
   const totalPages = Math.ceil(orders.length / itemsPerPage)
@@ -155,7 +162,23 @@ export default function OrderDetectDeliveryTable({ orders, visibleColumns, onVie
                         </div>
                       </div>
                     ) : (
-                      <span className="text-sm text-slate-400 italic">Not assigned</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-400 italic">Not assigned</span>
+                        {typeof onResend === "function" && (
+                          <button
+                            type="button"
+                            onClick={() => onResend(order)}
+                            disabled={Boolean(resendLoadingByOrderId?.[order.orderId])}
+                            className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold rounded-md border border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                            title="Resend delivery notification"
+                          >
+                            {Boolean(resendLoadingByOrderId?.[order.orderId]) && (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            )}
+                            Resend
+                          </button>
+                        )}
+                      </div>
                     )}
                   </td>
                 )}

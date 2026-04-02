@@ -4338,6 +4338,86 @@ export default function DeliveryHome() {
     }
   }, [newOrder, calculateTimeAway, riderLocation])
 
+  // Also show new order popup when a FOREGROUND FCM push arrives.
+  // In many setups the push contains only { type: 'new_order', orderId }, so we fetch details.
+  useEffect(() => {
+    const handleForegroundNotification = async (event) => {
+      const detail = event?.detail || {}
+      const data = detail.data || {}
+
+      // Only act inside delivery module screens
+      if (!location?.pathname?.startsWith?.("/delivery")) return
+
+      const type = (data.type || data.notificationType || "").toString().toLowerCase()
+      if (type !== "new_order") return
+
+      // If rider is offline, don't force open accept popup
+      if (!isOnlineRef.current) return
+
+      const orderId = data.orderId || data.id || data.orderMongoId
+      if (!orderId) return
+
+      try {
+        const res = await deliveryAPI.getOrderDetails(orderId)
+        const payload = res?.data?.data?.order || res?.data?.data || null
+        if (!payload) return
+
+        // Convert fetched order into the same shape used by the socket-based popup.
+        const restaurant = payload.restaurantId || payload.restaurant || {}
+        const restaurantLocation = restaurant.location || restaurant.restaurantLocation || {}
+
+        const restaurantAddress =
+          restaurant.address ||
+          restaurantLocation.address ||
+          restaurantLocation.formattedAddress ||
+          payload.restaurantAddress ||
+          "Restaurant address"
+
+        const pickupDistance = payload.pickupDistance || payload.assignmentInfo?.pickupDistance || "Calculating..."
+        const effectivePickupDistance =
+          pickupDistance && pickupDistance !== "0 km" ? pickupDistance : "Calculating..."
+
+        const restaurantData = {
+          id: payload._id || payload.orderMongoId || payload.orderId || orderId,
+          orderId: payload.orderId || payload._id || orderId,
+          name: payload.restaurantName || restaurant.name || restaurant.restaurantName,
+          address: restaurantAddress,
+          lat: restaurantLocation.latitude,
+          lng: restaurantLocation.longitude,
+          distance: effectivePickupDistance,
+          pickupDistance: effectivePickupDistance,
+          timeAway:
+            effectivePickupDistance !== "Calculating..."
+              ? calculateTimeAway(effectivePickupDistance)
+              : "Calculating...",
+          dropDistance: payload.deliveryDistance || "Calculating...",
+          estimatedEarnings: payload.estimatedEarnings || 0,
+          deliveryFee: payload.deliveryFee ?? 0,
+          amount: payload.deliveryFee ?? 0,
+          customerName: payload.customerName,
+          customerAddress: payload.customerLocation?.address || "Customer address",
+          customerLat: payload.customerLocation?.latitude,
+          customerLng: payload.customerLocation?.longitude,
+          items: payload.items || [],
+          total: payload.total || 0,
+        }
+
+        setSelectedRestaurant(restaurantData)
+        setShowNewOrderPopup(true)
+        setIsNewOrderPopupMinimized(false)
+        setNewOrderDragY(0)
+        setCountdownSeconds(300)
+      } catch (e) {
+        // ignore - toast is already shown by useForegroundNotifications if enabled
+      }
+    }
+
+    window.addEventListener("appForegroundNotification", handleForegroundNotification)
+    return () => {
+      window.removeEventListener("appForegroundNotification", handleForegroundNotification)
+    }
+  }, [calculateTimeAway, location?.pathname])
+
   // Recalculate distance when rider location becomes available
   useEffect(() => {
     if (!selectedRestaurant || !showNewOrderPopup) return
@@ -10857,13 +10937,13 @@ export default function DeliveryHome() {
                   window.location.href = mapsUrl;
 
                   // Fallback to web URL after a short delay (in case app is not installed)
-      setTimeout(() => {
-        const webUrl = `https://maps.google.com/?daddr=${customerLat},${customerLng}&directionsmode=bicycling`;
+                  setTimeout(() => {
+                    const webUrl = `https://maps.google.com/?daddr=${customerLat},${customerLng}&directionsmode=bicycling`;
         openExternalUrl(webUrl);
-      }, 500);
+                  }, 500);
                 } else {
                   // Web/Desktop: Use web URL with navigation
-      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
+                  mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
       openExternalUrl(mapsUrl);
                 }
 

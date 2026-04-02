@@ -1843,6 +1843,16 @@ export const adminAPI = {
     );
   },
 
+  // Resend delivery notification for unassigned order (admin)
+  resendDeliveryNotification: (orderId) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.ORDER_RESEND_DELIVERY_NOTIFICATION.replace(
+        ":id",
+        orderId,
+      ),
+    );
+  },
+
   // Get delivery partner wallet info
   getDeliveryPartnerWallet: (deliveryPartnerId) => {
     return apiClient.get(

@@ -12,6 +12,9 @@ export const useDeliveryNotifications = () => {
   // Step 1: All refs first (unconditional)
   const socketRef = useRef(null);
   const audioRef = useRef(null);
+  // NOTE: Do NOT add new hooks above existing state hooks lightly.
+  // HMR can surface "hook order changed" errors. For in-flight fetch dedupe, we store
+  // the Map on the existing `socketRef` object (no new hooks required).
   
   // Step 2: All state hooks (unconditional)
   const [newOrder, setNewOrder] = useState(null);
@@ -25,6 +28,88 @@ export const useDeliveryNotifications = () => {
   // Track orders that this delivery partner has explicitly rejected (to avoid re-notifying)
   const rejectedOrderIdsRef = useRef(new Set());
   
+  const fetchOrderDetailsForPopup = useCallback(async (orderId) => {
+    if (!orderId) return null;
+    const oid = orderId.toString();
+
+    // Dedup: if already fetching this order, reuse promise
+    const inFlightMap =
+      socketRef.__inFlightOrderFetchMap ||
+      (socketRef.__inFlightOrderFetchMap = new Map());
+
+    const existing = inFlightMap.get(oid);
+    if (existing) return existing;
+
+    const p = (async () => {
+      try {
+        const res = await deliveryAPI.getOrderDetails(oid);
+        const payload = res?.data?.data?.order || res?.data?.data || null;
+        if (!payload) return null;
+
+        // Normalize API order shape -> socket notification shape used by DeliveryHome mapper
+        const restaurant = payload.restaurantId || payload.restaurant || {};
+        const restaurantLoc = restaurant.location || payload.restaurantLocation || {};
+        const restCoords = restaurantLoc.coordinates;
+        const restLat = Array.isArray(restCoords) ? restCoords[1] : restaurantLoc.latitude;
+        const restLng = Array.isArray(restCoords) ? restCoords[0] : restaurantLoc.longitude;
+        const restaurantAddress =
+          restaurantLoc.formattedAddress ||
+          restaurantLoc.address ||
+          restaurant.address ||
+          payload.restaurantAddress ||
+          'Restaurant address';
+
+        const customerLoc = payload.address?.location || payload.customerLocation || {};
+        const custCoords = customerLoc.coordinates;
+        const custLat = Array.isArray(custCoords) ? custCoords[1] : customerLoc.latitude;
+        const custLng = Array.isArray(custCoords) ? custCoords[0] : customerLoc.longitude;
+        const customerAddress =
+          payload.address?.formattedAddress ||
+          payload.address?.address ||
+          customerLoc.address ||
+          'Customer address';
+
+        return {
+          orderId: payload.orderId || oid,
+          orderMongoId: payload._id?.toString?.() || payload.orderMongoId?.toString?.(),
+          restaurantId: payload.restaurantId?._id?.toString?.() || payload.restaurantId,
+          restaurantName: payload.restaurantName || restaurant.name || restaurant.restaurantName,
+          restaurantLocation: (restLat != null && restLng != null) ? {
+            latitude: restLat,
+            longitude: restLng,
+            address: restaurantAddress,
+            formattedAddress: restaurantAddress
+          } : null,
+          customerLocation: (custLat != null && custLng != null) ? {
+            latitude: custLat,
+            longitude: custLng,
+            address: customerAddress
+          } : null,
+          items: Array.isArray(payload.items) ? payload.items : [],
+          total: payload.pricing?.total ?? payload.total ?? 0,
+          deliveryFee: payload.pricing?.deliveryFee ?? payload.deliveryFee ?? 0,
+          customerName: payload.userId?.name || payload.customerName || 'Customer',
+          customerPhone: payload.userId?.phone || payload.customerPhone || '',
+          status: payload.status,
+          createdAt: payload.createdAt,
+          estimatedDeliveryTime: payload.estimatedDeliveryTime || 30,
+          note: payload.note || '',
+          pickupDistance: payload.pickupDistance || 'Calculating...',
+          deliveryDistance: payload.deliveryDistance || 'Calculating...',
+          estimatedEarnings: payload.estimatedEarnings || null,
+          assignmentInfo: payload.assignmentInfo || null,
+        };
+      } catch (e) {
+        return null;
+      } finally {
+        inFlightMap.delete(oid);
+      }
+    })();
+
+    inFlightMap.set(oid, p);
+    return p;
+  }, []);
+
   const playNotificationSound = useCallback(() => {
     try {
       // Get current selected sound preference from localStorage
@@ -122,11 +207,38 @@ export const useDeliveryNotifications = () => {
         if (response.data?.success && response.data.data) {
           const deliveryPartner = response.data.data.user || response.data.data.deliveryPartner;
           if (deliveryPartner) {
-            const id = deliveryPartner.id?.toString() || 
-                      deliveryPartner._id?.toString() || 
-                      deliveryPartner.deliveryId;
-            if (id) {
-              setDeliveryPartnerId(id);
+            const id =
+              deliveryPartner.id?.toString() ||
+              deliveryPartner._id?.toString() ||
+              null;
+
+            // Store alternate identifier for socket room join (legacy setups may use deliveryId)
+            const altDeliveryId = deliveryPartner.deliveryId?.toString?.() || null;
+            socketRef.__altDeliveryId = altDeliveryId;
+
+            // Fallback: if API response doesn't include _id/id (rare), decode JWT to get userId
+            let finalId = id;
+            if (!finalId) {
+              try {
+                const token =
+                  localStorage.getItem('delivery_accessToken') ||
+                  localStorage.getItem('accessToken');
+                if (token && token.includes('.')) {
+                  const payloadPart = token.split('.')[1];
+                  const json = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')));
+                  finalId = (json.userId || json.id || json.sub || null)?.toString?.() || null;
+                }
+              } catch {
+                // ignore decode issues
+              }
+            }
+
+            // Final fallback: use deliveryId only if we have absolutely nothing else
+            if (!finalId && altDeliveryId) {
+              finalId = altDeliveryId;
+            }
+            if (finalId) {
+              setDeliveryPartnerId(finalId);
             }
           }
         }
@@ -238,6 +350,11 @@ export const useDeliveryNotifications = () => {
       
       if (deliveryPartnerId) {
         socketRef.current.emit('join-delivery', deliveryPartnerId);
+        // Also join a legacy room variation if present (some backends/clients used deliveryId)
+        const alt = socketRef.__altDeliveryId;
+        if (alt && alt !== deliveryPartnerId) {
+          socketRef.current.emit('join-delivery', alt);
+        }
       }
     });
 
@@ -310,6 +427,63 @@ export const useDeliveryNotifications = () => {
     });
 
     socketRef.current.on('play_notification_sound', (data) => {
+      // Admin/manual resend flows sometimes emit only a "play sound" event.
+      // If payload includes order info / orderId, treat it as a new order notification
+      // so the UI can open the accept popup (DeliveryHome listens to `newOrder`).
+      try {
+        const orderId =
+          data?.orderId?.toString?.() ||
+          data?._id?.toString?.() ||
+          data?.orderMongoId?.toString?.() ||
+          data?.id?.toString?.();
+
+        if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
+          playNotificationSound();
+          return;
+        }
+
+        // If backend sends order details here, use them; otherwise fetch details by orderId
+        if (orderId) {
+          const hasUsefulPayload =
+            !!data?.restaurantLocation ||
+            !!data?.customerLocation ||
+            !!data?.restaurantName ||
+            !!data?.items;
+
+          if (hasUsefulPayload && typeof data === 'object') {
+            setNewOrder((prev) => {
+              const prevId =
+                prev?.orderId?.toString?.() ||
+                prev?._id?.toString?.() ||
+                prev?.orderMongoId?.toString?.();
+              if (prevId && prevId === orderId) return prev;
+              return data;
+            });
+          } else {
+            // Fetch order details and set a normalized payload so popup always has data.
+            (async () => {
+              const normalized = await fetchOrderDetailsForPopup(orderId);
+              if (!normalized) return;
+              const normalizedId =
+                normalized?.orderId?.toString?.() ||
+                normalized?._id?.toString?.() ||
+                normalized?.orderMongoId?.toString?.();
+              if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
+              setNewOrder((prev) => {
+                const prevId =
+                  prev?.orderId?.toString?.() ||
+                  prev?._id?.toString?.() ||
+                  prev?.orderMongoId?.toString?.();
+                if (prevId && prevId === orderId) return prev;
+                return normalized;
+              });
+            })();
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+
       playNotificationSound();
     });
 
@@ -332,7 +506,7 @@ export const useDeliveryNotifications = () => {
         socketRef.current = null;
       }
     };
-  }, [deliveryPartnerId, playNotificationSound]);
+  }, [deliveryPartnerId, fetchOrderDetailsForPopup, playNotificationSound]);
 
   // Helper functions
   const clearNewOrder = () => {

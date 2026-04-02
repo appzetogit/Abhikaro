@@ -142,8 +142,14 @@ export async function ensureFirebaseAdminApp() {
       return false;
     }
 
+    // Ensure projectId is explicitly set for Messaging.
+    // Some firebase-admin versions can mis-resolve endpoints when projectId is missing.
+    const projectId =
+      sa.project_id || sa.projectId || process.env.FIREBASE_PROJECT_ID || null;
+
     admin.initializeApp({
       credential: admin.credential.cert(sa),
+      ...(projectId ? { projectId } : {}),
     });
     console.log("✅ Firebase Admin: default app initialized");
     return true;

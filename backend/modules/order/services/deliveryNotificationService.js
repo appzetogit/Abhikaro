@@ -570,6 +570,28 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
           });
           notifiedCount++;
         }
+
+        // FCM fallback (reliable): resend flows often happen when sockets are flaky/offline.
+        // Send a minimal payload that frontend can use to open the accept popup by fetching order details.
+        try {
+          const { sendToUser } = await import('../../fcm/services/fcmService.js');
+          const oid = orderWithUser?.orderId || orderWithUser?._id?.toString?.();
+          if (oid) {
+            await sendToUser(deliveryPartnerId, 'delivery', {
+              title: 'New Order Available',
+              body: `Order #${oid} is available to accept.`,
+            }, {
+              type: 'new_order',
+              orderId: oid,
+              tag: oid, // used by frontend to dedupe foreground events
+              link: `/delivery/order/${oid}`,
+              channelId: 'delivery_new_order',
+              phase: phase,
+            });
+          }
+        } catch (fcmErr) {
+          console.warn('⚠️ FCM delivery notification (multiple) failed:', fcmErr.message);
+        }
       } catch (partnerError) {
         console.error(`❌ Error notifying delivery partner ${deliveryPartnerId}:`, partnerError);
       }

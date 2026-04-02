@@ -229,6 +229,7 @@ export default function OrderDetectDelivery() {
   const [orders, setOrders] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [resendLoadingByOrderId, setResendLoadingByOrderId] = useState({})
 
   // Fetch orders from backend
   useEffect(() => {
@@ -293,6 +294,36 @@ export default function OrderDetectDelivery() {
     "Order Detect Delivery",
     ["orderId", "userName", "userNumber", "restaurantName", "deliveryBoyName", "status"]
   )
+
+  const handleResend = async (order) => {
+    const orderId = order?.orderId
+    if (!orderId) {
+      toast.error("Order ID is missing")
+      return
+    }
+
+    if (resendLoadingByOrderId[orderId]) return
+
+    try {
+      setResendLoadingByOrderId((prev) => ({ ...prev, [orderId]: true }))
+      const response = await adminAPI.resendDeliveryNotification(orderId)
+      const notifiedCount =
+        response?.data?.data?.notifiedCount ??
+        response?.data?.notifiedCount ??
+        null
+
+      toast.success(
+        typeof notifiedCount === "number"
+          ? `Resent delivery notification to ${notifiedCount} partner(s)`
+          : "Resent delivery notification",
+      )
+    } catch (error) {
+      console.error("Error resending delivery notification:", error)
+      toast.error(error?.response?.data?.message || "Failed to resend delivery notification")
+    } finally {
+      setResendLoadingByOrderId((prev) => ({ ...prev, [orderId]: false }))
+    }
+  }
 
   // Statistics
   const stats = useMemo(() => {
@@ -422,6 +453,8 @@ export default function OrderDetectDelivery() {
         visibleColumns={visibleColumns}
         onViewOrder={handleViewOrder}
         onPrintOrder={handlePrintOrder}
+        onResend={handleResend}
+        resendLoadingByOrderId={resendLoadingByOrderId}
       />
     </div>
   )

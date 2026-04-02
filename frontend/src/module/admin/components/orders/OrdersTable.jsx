@@ -30,6 +30,7 @@ export default function OrdersTable({ orders, visibleColumns, onViewOrder, onPri
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 15
   const totalPages = Math.ceil(orders.length / itemsPerPage)
+  const [issueDialog, setIssueDialog] = useState({ open: false, order: null })
   
   // Reset to page 1 when orders change
   useEffect(() => {
@@ -298,18 +299,23 @@ export default function OrdersTable({ orders, visibleColumns, onViewOrder, onPri
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.orderStatus)}`}>
                           {order.orderStatus}
                         </span>
+                        {(order.orderStatus === "Cancelled by Restaurant" || order.orderStatus === "Cancelled by User") && order.cancellationReason && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setIssueDialog({ open: true, order })
+                            }}
+                            className="p-1 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                            title="View issue"
+                            aria-label="View issue"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        )}
                         <span className="text-xs text-slate-500">{order.deliveryType}</span>
                       </div>
-                      {order.cancellationReason && (
-                        <div className="text-xs text-red-600 mt-1">
-                          <span className="font-medium">
-                            {order.cancelledBy === 'user' ? 'Cancelled by User - ' : 
-                             order.cancelledBy === 'restaurant' ? 'Cancelled by Restaurant - ' : 
-                             'Reason: '}
-                          </span>
-                          {order.cancellationReason}
-                        </div>
-                      )}
+                      {/* Cancellation reason is shown via the eye icon dialog (keep table clean) */}
                     </div>
                   </td>
                 )}
@@ -391,6 +397,46 @@ export default function OrdersTable({ orders, visibleColumns, onViewOrder, onPri
           </tbody>
         </table>
       </div>
+
+      {/* Issue dialog: Cancelled by Restaurant */}
+      {issueDialog.open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setIssueDialog({ open: false, order: null })}
+        >
+          <div
+            className="w-full max-w-md rounded-xl bg-white shadow-xl border border-slate-200 p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  {issueDialog?.order?.orderStatus === "Cancelled by User"
+                    ? "Cancelled by User"
+                    : "Cancelled by Restaurant"}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Order: {issueDialog?.order?.orderId || issueDialog?.order?._id || "—"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIssueDialog({ open: false, order: null })}
+                className="px-2 py-1 text-xs font-semibold rounded-md border border-slate-200 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-3">
+              <p className="text-xs font-semibold text-slate-700 mb-1">Issue</p>
+              <p className="text-sm text-slate-900">
+                {issueDialog?.order?.cancellationReason || "No issue provided."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Pagination */}
       {totalPages > 1 && (

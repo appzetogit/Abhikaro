@@ -382,6 +382,8 @@ export const API_ENDPOINTS = {
     ORDERS_TRANSACTION_REPORT: "/admin/orders/transaction-report",
     ORDERS_RESTAURANT_REPORT: "/admin/orders/restaurant-report",
     ORDER_ASSIGN_DELIVERY_PARTNER: "/admin/orders/:id/assign-delivery-partner",
+    ORDER_RESEND_DELIVERY_NOTIFICATION:
+      "/admin/orders/:id/resend-delivery-notification",
     DELIVERY_PARTNER_WALLET: "/admin/delivery-partners/:id/wallet",
     CUSTOMER_WALLET_REPORT: "/admin/customer-wallet-report",
     WITHDRAWAL_REQUESTS: "/admin/withdrawal/requests",
