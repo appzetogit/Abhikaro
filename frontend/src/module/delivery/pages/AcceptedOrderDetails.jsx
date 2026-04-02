@@ -25,6 +25,7 @@ import {
 import { 
   getDeliveryOrderPaymentStatus 
 } from "../utils/deliveryWalletState"
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 
 export default function AcceptedOrderDetails() {
   const navigate = useNavigate()
@@ -208,7 +209,7 @@ export default function AcceptedOrderDetails() {
                 </button>
                 <button 
                   onClick={() => {
-                    window.open(`tel:+8801700000000`, '_self')
+                    window.location.href = `tel:+8801700000000`
                   }}
                   className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-green-500 flex items-center justify-center hover:bg-green-600 transition-colors flex-shrink-0"
                 >
@@ -217,7 +218,7 @@ export default function AcceptedOrderDetails() {
                 <button 
                   onClick={() => {
                     const address = encodeURIComponent(orderData.restaurant.address)
-                    window.open(`https://www.google.com/maps/search/?api=1&query=${address}`, '_blank')
+                    openExternalUrl(`https://www.google.com/maps/search/?api=1&query=${address}`)
                   }}
                   className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-300 flex items-center justify-center hover:bg-gray-400 transition-colors flex-shrink-0"
                 >
@@ -257,7 +258,7 @@ export default function AcceptedOrderDetails() {
                 </button>
                 <button 
                   onClick={() => {
-                    window.open(`tel:+8801700000000`, '_self')
+                    window.location.href = `tel:+8801700000000`
                   }}
                   className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-green-500 flex items-center justify-center hover:bg-green-600 transition-colors flex-shrink-0"
                 >
@@ -266,7 +267,7 @@ export default function AcceptedOrderDetails() {
                 <button 
                   onClick={() => {
                     const address = encodeURIComponent(orderData.restaurant.address)
-                    window.open(`https://www.google.com/maps/search/?api=1&query=${address}`, '_blank')
+                    openExternalUrl(`https://www.google.com/maps/search/?api=1&query=${address}`)
                   }}
                   className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-300 flex items-center justify-center hover:bg-gray-400 transition-colors flex-shrink-0"
                 >

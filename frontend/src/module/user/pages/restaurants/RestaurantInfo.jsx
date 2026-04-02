@@ -5,6 +5,7 @@ import { restaurantAPI, diningAPI } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import AnimatedPage from "../../components/AnimatedPage"
 import { toast } from "sonner"
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 
 const formatAddress = (loc) => {
   if (!loc) return "Address not available"
@@ -104,7 +105,7 @@ export default function RestaurantInfo() {
     const lat = restaurant?.location?.coordinates?.lat || restaurant?.location?.latitude
     const lng = restaurant?.location?.coordinates?.lng || restaurant?.location?.longitude
     const q = lat && lng ? `${lat},${lng}` : encodeURIComponent(address)
-    window.open(`https://www.google.com/maps/search/?api=1&query=${q}`, "_blank")
+    openExternalUrl(`https://www.google.com/maps/search/?api=1&query=${q}`)
   }
 
   const handleCall = () => {

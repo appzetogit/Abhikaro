@@ -4,6 +4,7 @@ import { motion } from "framer-motion"
 import { ArrowLeft, Headphones, ArrowRight, CheckCircle, Contact } from "lucide-react"
 import BottomPopup from "../components/BottomPopup"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 
 const STORAGE_KEY = "food_referrals"
 
@@ -74,7 +75,7 @@ export default function ReferAndEarn() {
     const companyName = await getCompanyNameAsync()
     const message = `Hey ${friendName}! Join ${companyName} as a delivery partner and earn together!`
     const whatsappUrl = `https://wa.me/${mobileNumber}?text=${encodeURIComponent(message)}`
-    window.open(whatsappUrl, '_blank')
+    openExternalUrl(whatsappUrl)
   }
 
   return (

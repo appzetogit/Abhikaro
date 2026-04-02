@@ -43,6 +43,7 @@ import { formatCurrency } from "../../restaurant/utils/currency"
 import { getAllDeliveryOrders } from "../utils/deliveryOrderStatus"
 import { getUnreadDeliveryNotificationCount } from "../utils/deliveryNotifications"
 import { deliveryAPI, restaurantAPI, uploadAPI } from "@/lib/api"
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 import { useDeliveryNotificationsContext } from "../context/DeliveryNotificationsContext"
 import { useFirebaseLocationUpdate } from "../hooks/useFirebaseLocationUpdate"
 import { getGoogleMapsApiKey } from "@/lib/utils/googleMapsApiKey"
@@ -3932,7 +3933,7 @@ export default function DeliveryHome() {
       // Fallback to web URL after a short delay (in case app is not installed)
       setTimeout(() => {
         const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
-        window.open(webUrl, '_blank');
+        openExternalUrl(webUrl);
       }, 500);
     } else if (isIOS) {
       // iOS: Use comgooglemaps:// scheme (opens Google Maps app)
@@ -3944,12 +3945,12 @@ export default function DeliveryHome() {
       // Fallback to web URL after a short delay (in case app is not installed)
       setTimeout(() => {
         const webUrl = `https://maps.google.com/?daddr=${customerLat},${customerLng}&directionsmode=bicycling`;
-        window.open(webUrl, '_blank');
+        openExternalUrl(webUrl);
       }, 500);
     } else {
       // Web/Desktop: Use web URL
       mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
-      window.open(mapsUrl, '_blank');
+      openExternalUrl(mapsUrl);
     }
 
     // Show success message
@@ -10388,7 +10389,7 @@ export default function DeliveryHome() {
                   // Fallback to web URL after a short delay (in case app is not installed)
                   setTimeout(() => {
                     const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${restaurantLat},${restaurantLng}&travelmode=bicycling`
-                    window.open(webUrl, '_blank')
+                    openExternalUrl(webUrl)
                   }, 500)
                 } else if (isIOS) {
                   // iOS: Use comgooglemaps:// scheme (opens Google Maps app)
@@ -10400,12 +10401,12 @@ export default function DeliveryHome() {
                   // Fallback to web URL after a short delay (in case app is not installed)
                   setTimeout(() => {
                     const webUrl = `https://maps.google.com/?daddr=${restaurantLat},${restaurantLng}&directionsmode=bicycling`
-                    window.open(webUrl, '_blank')
+                    openExternalUrl(webUrl)
                   }, 500)
                 } else {
                   // Web/Desktop: Use web URL with navigation
                   mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${restaurantLat},${restaurantLng}&travelmode=bicycling`
-                  window.open(mapsUrl, '_blank')
+                  openExternalUrl(mapsUrl)
                 }
 
                 // Show success message
@@ -10846,7 +10847,7 @@ export default function DeliveryHome() {
                   // Fallback to web URL after a short delay (in case app is not installed)
                   setTimeout(() => {
                     const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
-                    window.open(webUrl, '_blank');
+                    openExternalUrl(webUrl);
                   }, 500);
                 } else if (isIOS) {
                   // iOS: Use comgooglemaps:// scheme (opens Google Maps app)
@@ -10856,14 +10857,14 @@ export default function DeliveryHome() {
                   window.location.href = mapsUrl;
 
                   // Fallback to web URL after a short delay (in case app is not installed)
-                  setTimeout(() => {
-                    const webUrl = `https://maps.google.com/?daddr=${customerLat},${customerLng}&directionsmode=bicycling`;
-                    window.open(webUrl, '_blank');
-                  }, 500);
+      setTimeout(() => {
+        const webUrl = `https://maps.google.com/?daddr=${customerLat},${customerLng}&directionsmode=bicycling`;
+        openExternalUrl(webUrl);
+      }, 500);
                 } else {
                   // Web/Desktop: Use web URL with navigation
-                  mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
-                  window.open(mapsUrl, '_blank');
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
+      openExternalUrl(mapsUrl);
                 }
 
                 // Show success message

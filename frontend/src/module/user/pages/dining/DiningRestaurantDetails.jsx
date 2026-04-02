@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 
 export default function DiningRestaurantDetails() {
     const { diningType, slug } = useParams() // Get params from URL
@@ -428,7 +429,7 @@ export default function DiningRestaurantDetails() {
                         onClick={() => {
                             if (addressForMaps) {
                                 const encoded = encodeURIComponent(addressForMaps)
-                                window.open(`https://www.google.com/maps/search/?api=1&query=${encoded}`, "_blank")
+                                openExternalUrl(`https://www.google.com/maps/search/?api=1&query=${encoded}`)
                             }
                         }}
                         className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-[#2B9C64] hover:bg-[#2B9C64]/10"

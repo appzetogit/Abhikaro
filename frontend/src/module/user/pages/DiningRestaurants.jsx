@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { MapPin, ChevronDown, Search, Mic, Wallet, SlidersHorizontal, Star, Compass, X, ArrowDownUp, Timer, IndianRupee, UtensilsCrossed, BadgePercent, ShieldCheck, Clock, Bookmark, Check, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import AnimatedPage from "../components/AnimatedPage"
@@ -234,7 +235,7 @@ export default function DiningRestaurants() {
     const lat = location?.latitude || 22.7196
     const lng = location?.longitude || 75.8577
     const googleMapsUrl = `https://www.google.com/maps/search/restaurants+near+me/@${lat},${lng},15z`
-    window.open(googleMapsUrl, '_blank', 'fullscreen=yes')
+    openExternalUrl(googleMapsUrl)
   }
 
   return (

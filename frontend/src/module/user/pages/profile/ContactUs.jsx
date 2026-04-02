@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Loader2, Check, Instagram, Facebook } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 import AnimatedPage from "../../components/AnimatedPage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -168,7 +169,7 @@ export default function ContactUs() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => window.open("https://www.instagram.com/abhikaro_official", "_blank", "noopener,noreferrer")}
+                  onClick={() => openExternalUrl("https://www.instagram.com/abhikaro_official")}
                   className="w-full border-pink-300 text-pink-700 hover:bg-pink-50"
                 >
                   <Instagram className="h-4 w-4 mr-2" />
@@ -177,7 +178,7 @@ export default function ContactUs() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => window.open("https://www.facebook.com/61573547314622/", "_blank", "noopener,noreferrer")}
+                  onClick={() => openExternalUrl("https://www.facebook.com/61573547314622/")}
                   className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
                 >
                   <Facebook className="h-4 w-4 mr-2" />

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useOrders } from "../../context/OrdersContext"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
+import { isLikelyWebView } from "@/lib/utils/externalNavigation"
 
 export default function OrderInvoice() {
   const companyName = useCompanyName()
@@ -42,9 +43,21 @@ export default function OrderInvoice() {
   }
 
   const handlePrint = () => {
+    // In many in-app WebViews, `window.open` is blocked. Fallback to in-page print.
+    if (isLikelyWebView()) {
+      window.print()
+      return
+    }
+
     const printWindow = window.open('', '_blank')
     const printContent = invoiceRef.current.innerHTML
     
+    if (!printWindow) {
+      // Popup blocked → fallback
+      window.print()
+      return
+    }
+
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>

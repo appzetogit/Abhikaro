@@ -4,6 +4,7 @@ import Lenis from "lenis"
 import { ArrowLeft, ChevronDown } from "lucide-react"
 import BottomPopup from "@/module/delivery/components/BottomPopup"
 import { restaurantAPI, locationAPI } from "@/lib/api"
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 
 const ADDRESS_STORAGE_KEY = "restaurant_address"
 
@@ -130,7 +131,7 @@ export default function EditRestaurantAddress() {
     const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
     
     // Try to open in Google Maps app (mobile) or web
-    window.open(googleMapsUrl, "_blank")
+    openExternalUrl(googleMapsUrl)
   }
 
   // Handle Update button click

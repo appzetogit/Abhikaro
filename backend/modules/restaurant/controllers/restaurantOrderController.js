@@ -548,6 +548,92 @@ export const acceptOrder = asyncHandler(async (req, res) => {
             `📍 Restaurant location: ${restaurantLat}, ${restaurantLng}`,
           );
 
+          // --- Continuous resend loop (server-side) ---
+          // Requirement: after restaurant accepts, keep notifying delivery partners until someone accepts.
+          // This must work even if restaurant app is closed, so we schedule it in backend.
+          // Capped to avoid spamming / leaks.
+          const RESEND_LOOP_MS = 30 * 1000; // 30 seconds
+          const RESEND_MAX_ATTEMPTS = 10; // ~5 minutes total
+          // In-memory map to avoid multiple loops per order (per node process)
+          global.__deliveryResendLoops = global.__deliveryResendLoops || new Map();
+          const loopKey = String(order._id);
+
+          if (!global.__deliveryResendLoops.has(loopKey)) {
+            global.__deliveryResendLoops.set(loopKey, { attempts: 0, timer: null });
+
+            const tick = async () => {
+              const state = global.__deliveryResendLoops.get(loopKey);
+              if (!state) return;
+
+              // Stop if assigned / no longer eligible / exceeded attempts
+              const fresh = await Order.findById(order._id)
+                .select("deliveryPartnerId status")
+                .lean();
+              if (!fresh) {
+                global.__deliveryResendLoops.delete(loopKey);
+                return;
+              }
+              if (fresh.deliveryPartnerId) {
+                global.__deliveryResendLoops.delete(loopKey);
+                return;
+              }
+              const st = String(fresh.status || "").toLowerCase();
+              if (!["preparing", "ready"].includes(st)) {
+                global.__deliveryResendLoops.delete(loopKey);
+                return;
+              }
+              if (state.attempts >= RESEND_MAX_ATTEMPTS) {
+                global.__deliveryResendLoops.delete(loopKey);
+                return;
+              }
+
+              state.attempts += 1;
+              global.__deliveryResendLoops.set(loopKey, state);
+
+              // Find nearest delivery partners
+              const candidates = await findNearestDeliveryBoys(
+                restaurantLat,
+                restaurantLng,
+                restaurantId,
+                50, // km
+                20, // top N
+              );
+
+              if (!candidates || candidates.length === 0) return;
+
+              const populatedOrder = await Order.findById(order._id)
+                .populate("userId", "name phone")
+                .populate("restaurantId", "name address location phone ownerPhone")
+                .lean();
+              if (!populatedOrder) return;
+
+              const deliveryPartnerIds = candidates.map((db) => db.deliveryPartnerId);
+
+              // Save minimal debug info on order
+              await Order.findByIdAndUpdate(order._id, {
+                $set: {
+                  "assignmentInfo.lastResendAt": new Date(),
+                  "assignmentInfo.lastResendCount": deliveryPartnerIds.length,
+                  "assignmentInfo.resendAttempts": state.attempts,
+                  "assignmentInfo.assignedBy": "auto_resend_loop",
+                },
+              });
+
+              await notifyMultipleDeliveryBoys(
+                populatedOrder,
+                deliveryPartnerIds,
+                "auto_resend",
+              );
+            };
+
+            // Start immediately + repeat
+            tick().catch(() => {});
+            const timer = setInterval(() => {
+              tick().catch(() => {});
+            }, RESEND_LOOP_MS);
+            global.__deliveryResendLoops.set(loopKey, { attempts: 0, timer });
+          }
+
           // Reload order to ensure we have the latest version
           const freshOrder = await Order.findById(order._id);
           if (!freshOrder) {

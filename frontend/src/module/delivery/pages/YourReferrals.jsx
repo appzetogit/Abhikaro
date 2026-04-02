@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
 import { ArrowLeft, Headphones, ArrowRight, Phone } from "lucide-react"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
+import { openExternalUrl } from "@/lib/utils/externalNavigation"
 
 const STORAGE_KEY = "food_referrals"
 
@@ -60,7 +61,7 @@ export default function YourReferrals() {
     const companyName = await getCompanyNameAsync()
     const message = `Hey ${name}! Join ${companyName} as a delivery partner and earn together!`
     const whatsappUrl = `https://wa.me/${mobile}?text=${encodeURIComponent(message)}`
-    window.open(whatsappUrl, '_blank')
+    openExternalUrl(whatsappUrl)
   }
 
   const handleCall = (mobile) => {

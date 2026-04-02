@@ -611,7 +611,9 @@ export default function OrdersMain() {
   const [popupOrder, setPopupOrder] = useState(null) // Store order for popup (from Socket.IO or API)
   const [isMuted, setIsMuted] = useState(false)
   const [prepTime, setPrepTime] = useState(11)
-  const [countdown, setCountdown] = useState(240) // 4 minutes in seconds
+  const ACCEPT_WINDOW_SECONDS = 300 // 5 minutes
+  const acceptDeadlineMsRef = useRef(null)
+  const [countdown, setCountdown] = useState(ACCEPT_WINDOW_SECONDS)
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true)
   const [showRejectPopup, setShowRejectPopup] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
@@ -856,7 +858,9 @@ export default function OrdersMain() {
         shownOrdersRef.current.add(orderId)
         setPopupOrder(newOrder)
         setShowNewOrderPopup(true)
-        setCountdown(240) // Reset countdown to 4 minutes
+        // Timestamp-based countdown: starts from order createdAt and stays correct across app restarts
+        const createdAtMs = newOrder?.createdAt ? new Date(newOrder.createdAt).getTime() : Date.now()
+        acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
       }
     }
   }, [newOrder])
@@ -920,7 +924,8 @@ export default function OrdersMain() {
             shownOrdersRef.current.add(orderId)
             setPopupOrder(orderForPopup)
             setShowNewOrderPopup(true)
-            setCountdown(240)
+            const createdAtMs = orderForPopup?.createdAt ? new Date(orderForPopup.createdAt).getTime() : Date.now()
+            acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
           }
         }
       } catch (error) {
@@ -994,15 +999,26 @@ export default function OrdersMain() {
     return () => window.removeEventListener('order_status_update', handleOrderStatusUpdate)
   }, [popupOrder, newOrder, clearNewOrder])
 
-  // Countdown timer
+  // Countdown timer (timestamp-based, derived from createdAt)
   useEffect(() => {
-    if (showNewOrderPopup && countdown > 0) {
-      const timer = setInterval(() => {
-        setCountdown(prev => prev - 1)
-      }, 1000)
-      return () => clearInterval(timer)
+    if (!showNewOrderPopup) return
+
+    const compute = () => {
+      const deadline = acceptDeadlineMsRef.current
+      const now = Date.now()
+      if (!deadline) {
+        // Fallback: if deadline not set yet, assume full window from now
+        acceptDeadlineMsRef.current = now + (ACCEPT_WINDOW_SECONDS * 1000)
+      }
+      const d = acceptDeadlineMsRef.current
+      const remaining = Math.max(0, Math.ceil((d - now) / 1000))
+      setCountdown(remaining)
     }
-  }, [showNewOrderPopup, countdown])
+
+    compute() // update immediately on open
+    const timer = setInterval(compute, 1000)
+    return () => clearInterval(timer)
+  }, [showNewOrderPopup])
 
   // Format countdown time
   const formatTime = (seconds) => {
@@ -1070,7 +1086,10 @@ export default function OrdersMain() {
     setShowNewOrderPopup(false)
     setPopupOrder(null)
     clearNewOrder()
-    setCountdown(240)
+    acceptDeadlineMsRef.current = null
+    setCountdown(ACCEPT_WINDOW_SECONDS)
+    acceptDeadlineMsRef.current = null
+    setCountdown(ACCEPT_WINDOW_SECONDS)
     setPrepTime(11)
 
     // Note: PreparingOrders component will automatically refresh orders via its own useEffect
@@ -2128,7 +2147,7 @@ export default function OrdersMain() {
                         <motion.div
                           className="absolute inset-0 bg-blue-600"
                           initial={{ width: "100%" }}
-                          animate={{ width: `${(countdown / 240) * 100}%` }}
+                          animate={{ width: `${(countdown / ACCEPT_WINDOW_SECONDS) * 100}%` }}
                           transition={{ duration: 1, ease: "linear" }}
                         />
                         <span className="relative z-10">Accept ({formatTime(countdown)})</span>
