@@ -2024,6 +2024,18 @@ export const updateRestaurantStatus = asyncHandler(async (req, res) => {
     }
 
     restaurant.isActive = isActive;
+
+    // Keep approval metadata consistent:
+    // - Approved restaurants (shown in main list) are identified by approvedAt != null
+    // - Join requests are unapproved (approvedAt null) and inactive
+    // If an admin activates a restaurant via status toggle, ensure we stamp approval fields
+    // so it doesn't disappear from both lists (isActive=true + approvedAt=null).
+    if (isActive === true) {
+      if (!restaurant.approvedAt) restaurant.approvedAt = new Date();
+      if (!restaurant.approvedBy && req.user?._id) restaurant.approvedBy = req.user._id;
+      // If it was previously rejected, keep rejectionReason as-is unless you want to clear it.
+      // We intentionally do NOT clear rejectionReason here.
+    }
     await restaurant.save();
 
     // Invalidate user-side restaurant discovery caches so status changes reflect immediately

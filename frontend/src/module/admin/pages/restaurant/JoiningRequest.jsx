@@ -27,56 +27,56 @@ export default function JoiningRequest() {
     dateTo: ""
   })
 
-  // Fetch restaurant join requests
-  useEffect(() => {
-    fetchRequests()
-  }, [activeTab])
-
-  // Debounced search effect
+  // Fetch BOTH pending + rejected so tab counts are always accurate.
+  // This fixes the "DB total != pending+approved" confusion when some requests are rejected.
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchRequests()
-    }, 500) // Wait 500ms after user stops typing
+      fetchAllRequests()
+    }, 500) // debounce typing
 
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery])
 
-  const fetchRequests = async () => {
+  useEffect(() => {
+    // initial load (and when component mounts)
+    fetchAllRequests()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const fetchAllRequests = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const status = activeTab === "pending" ? "pending" : "rejected"
-      const response = await adminAPI.getRestaurantJoinRequests({
-        status,
+      const commonParams = {
         search: searchQuery || undefined,
         page: 1,
-        limit: 100
-      })
-
-      if (response.data && response.data.success && response.data.data) {
-        const requests = response.data.data.requests || []
-        if (activeTab === "pending") {
-          setPendingRequests(requests)
-        } else {
-          setRejectedRequests(requests)
-        }
-      } else {
-        if (activeTab === "pending") {
-          setPendingRequests([])
-        } else {
-          setRejectedRequests([])
-        }
+        limit: 100,
       }
+
+      const [pendingRes, rejectedRes] = await Promise.all([
+        adminAPI.getRestaurantJoinRequests({ ...commonParams, status: "pending" }),
+        adminAPI.getRestaurantJoinRequests({ ...commonParams, status: "rejected" }),
+      ])
+
+      const pending =
+        pendingRes?.data?.success && pendingRes?.data?.data
+          ? pendingRes.data.data.requests || []
+          : []
+
+      const rejected =
+        rejectedRes?.data?.success && rejectedRes?.data?.data
+          ? rejectedRes.data.data.requests || []
+          : []
+
+      setPendingRequests(pending)
+      setRejectedRequests(rejected)
     } catch (err) {
       console.error("Error fetching restaurant requests:", err)
       setError(err.message || "Failed to fetch restaurant requests")
-      if (activeTab === "pending") {
-        setPendingRequests([])
-      } else {
-        setRejectedRequests([])
-      }
+      setPendingRequests([])
+      setRejectedRequests([])
     } finally {
       setLoading(false)
     }
@@ -291,7 +291,7 @@ export default function JoiningRequest() {
                   : "border-transparent text-slate-600 hover:text-slate-900"
               }`}
             >
-              Pending Requests
+              Pending Requests ({pendingRequests.length})
             </button>
             <button
               onClick={() => setActiveTab("rejected")}
@@ -301,7 +301,7 @@ export default function JoiningRequest() {
                   : "border-transparent text-slate-600 hover:text-slate-900"
               }`}
             >
-              Rejected Request
+              Rejected Request ({rejectedRequests.length})
             </button>
           </div>
 

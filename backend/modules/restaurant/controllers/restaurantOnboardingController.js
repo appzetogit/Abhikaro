@@ -6,6 +6,11 @@ import {
 import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
 import { createRestaurantFromOnboarding } from "./restaurantController.js";
 
+const isDefaultPlaceholderName = (value) => {
+  if (!value || typeof value !== "string") return false;
+  return /^Restaurant\s+\d+$/i.test(value.trim());
+};
+
 // Get current restaurant's onboarding data
 export const getOnboarding = async (req, res) => {
   try {
@@ -198,22 +203,52 @@ export const upsertOnboarding = async (req, res) => {
         // Always update name if restaurantName is provided (even if it's the same)
         // This fixes cases where restaurant was created with default name like "Restaurant 6911"
         if (step1.restaurantName) {
-          updateData.name = step1.restaurantName;
+          const desired = String(step1.restaurantName).trim();
+          // Overwrite placeholders or empty names; otherwise still allow explicit update
+          if (!existingRestaurant?.name || isDefaultPlaceholderName(existingRestaurant?.name)) {
+            updateData.name = desired;
+          } else {
+            updateData.name = desired;
+          }
         }
         if (step1.ownerName) {
-          updateData.ownerName = step1.ownerName;
+          const desired = String(step1.ownerName).trim();
+          if (!existingRestaurant?.ownerName || isDefaultPlaceholderName(existingRestaurant?.ownerName)) {
+            updateData.ownerName = desired;
+          } else {
+            updateData.ownerName = desired;
+          }
         }
         if (step1.ownerEmail) {
-          updateData.ownerEmail = step1.ownerEmail;
+          updateData.ownerEmail = String(step1.ownerEmail).trim().toLowerCase();
         }
         if (step1.ownerPhone) {
-          updateData.ownerPhone = step1.ownerPhone;
+          updateData.ownerPhone =
+            normalizePhoneNumber(step1.ownerPhone) || step1.ownerPhone;
         }
         if (step1.primaryContactNumber) {
-          updateData.primaryContactNumber = step1.primaryContactNumber;
+          updateData.primaryContactNumber =
+            normalizePhoneNumber(step1.primaryContactNumber) ||
+            step1.primaryContactNumber;
         }
         if (step1.location) {
-          updateData.location = step1.location;
+          // IMPORTANT:
+          // Frontend may send a partial `geoLocation` (e.g. { type: 'Point' } with no coordinates).
+          // If we write that into top-level `location.geoLocation`, Mongo's 2dsphere index can throw
+          // "Can't extract geo keys" and the whole step1 sync fails (leaving placeholder name/ownerName).
+          const safeLocation = { ...(step1.location || {}) };
+          if (safeLocation.geoLocation) {
+            const coords = safeLocation.geoLocation.coordinates;
+            const validCoords =
+              Array.isArray(coords) &&
+              coords.length === 2 &&
+              typeof coords[0] === "number" &&
+              typeof coords[1] === "number";
+            if (!validCoords) {
+              delete safeLocation.geoLocation;
+            }
+          }
+          updateData.location = safeLocation;
         }
 
         if (Object.keys(updateData).length > 0) {
@@ -361,6 +396,15 @@ export const upsertOnboarding = async (req, res) => {
         }
         if (step4.offer !== undefined) {
           updateData.offer = step4.offer;
+        }
+
+        // IMPORTANT BUSINESS RULE:
+        // Completing signup/onboarding should create a PENDING admin approval request.
+        // Pending requests are defined as: approvedAt is null/undefined AND isActive is false.
+        // So if this restaurant is not yet approved, keep it inactive and not accepting orders.
+        if (!existingRestaurant?.approvedAt) {
+          updateData.isActive = false;
+          updateData.isAcceptingOrders = false;
         }
 
         if (Object.keys(updateData).length > 0) {

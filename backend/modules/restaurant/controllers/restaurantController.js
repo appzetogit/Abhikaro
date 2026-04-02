@@ -989,8 +989,12 @@ export const createRestaurantFromOnboarding = async (onboardingData, restaurantI
       if (step4.offer) existing.offer = step4.offer;
     }
     
-    existing.isActive = true; // Ensure it's active
-    existing.isAcceptingOrders = true; // Ensure it's accepting orders
+    // Do NOT auto-activate on onboarding completion.
+    // Restaurant should remain pending admin approval until approvedAt is set by admin.
+    if (!existing.approvedAt) {
+      existing.isActive = false;
+      existing.isAcceptingOrders = false;
+    }
     
     try {
       await existing.save();

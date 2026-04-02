@@ -480,7 +480,10 @@ export const verifyOTP = asyncHandler(async (req, res) => {
           restaurantData.password = password;
         }
 
-        restaurantData.ownerName = effectiveName;
+        // NOTE:
+        // For phone OTP flows we sometimes generate a temporary restaurant `name`
+        // (e.g. "Restaurant 6911") so login can proceed before onboarding.
+        // Do NOT set `ownerName` to this placeholder — ownerName should come from onboarding step1.
 
         // Set isActive to false - restaurant needs admin approval before becoming active
         // Auto-approve in development

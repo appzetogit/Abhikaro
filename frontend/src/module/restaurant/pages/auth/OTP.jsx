@@ -128,6 +128,7 @@ export default function RestaurantOTP() {
   }
 
   const handleVerify = async (otpValue = null) => {
+    if (isLoading) return
     const code = otpValue || otp.join("")
 
     if (code.length !== 6) {
@@ -415,7 +416,7 @@ export default function RestaurantOTP() {
                   setName(e.target.value)
                   if (nameError) setNameError("")
                 }}
-                placeholder="Enter your full name"
+                placeholder={authData?.method === "phone" ? "Enter your restaurant name" : "Enter your full name"}
                 className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${nameError
                   ? "border-red-500 focus:ring-red-500"
                   : "border-gray-300 focus:ring-blue-500"

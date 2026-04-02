@@ -872,8 +872,8 @@ export default function RestaurantOnboarding() {
             profileImageUrl: profileUpload,
             cuisines: step2.cuisines || [],
             deliveryTimings: {
-              openingTime: step2.openingTime || "",
-              closingTime: step2.closingTime || "",
+              openingTime: step2.openingTime?.trim() || "10:00",
+              closingTime: step2.closingTime?.trim() || "22:00",
             },
             openDays: step2.openDays || [],
           },
