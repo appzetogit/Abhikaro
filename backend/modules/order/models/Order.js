@@ -389,6 +389,12 @@ const orderSchema = new mongoose.Schema(
     assignmentInfo: {
       restaurantId: String,
       distance: Number, // Distance in km
+      // Monotonically increases whenever restaurant/admin triggers a manual resend
+      // Used by clients to treat the notification as "fresh" even if previously denied.
+      resendVersion: {
+        type: Number,
+        default: 0,
+      },
       assignedBy: {
         type: String,
         enum: [
@@ -397,14 +403,31 @@ const orderSchema = new mongoose.Schema(
           "nearest_distance",
           "manual",
           "manual_resend",
+          "admin_manual_resend",
           "nearest_available",
           "delivery_accept",
+          // Automated resend loop (restaurant/admin retry logic)
+          "auto_resend_loop",
+          "auto_resend",
         ],
       },
       zoneId: String,
       zoneName: String,
       deliveryPartnerId: String,
       assignedAt: Date,
+      // Delivery partners who were notified for priority/expanded acceptance flows
+      priorityDeliveryPartnerIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Delivery" }],
+      expandedDeliveryPartnerIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Delivery" }],
+      // Rejection history (delivery boy denies / declines the order)
+      rejections: [
+        {
+          deliveryPartnerId: { type: mongoose.Schema.Types.ObjectId, ref: "Delivery", required: true },
+          reason: { type: String, default: "" },
+          rejectedAt: { type: Date, default: Date.now },
+          // Snapshot of resendVersion when the deny happened (useful for analytics/debug)
+          resendVersionAtReject: { type: Number, default: 0 },
+        },
+      ],
     },
     deliveryState: {
       status: {

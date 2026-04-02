@@ -2225,6 +2225,9 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
         'assignmentInfo.assignedBy': 'admin_manual_resend',
         'assignmentInfo.assignedAt': new Date(),
       },
+      $inc: {
+        'assignmentInfo.resendVersion': 1,
+      },
     });
 
     await notifyMultipleDeliveryBoys(populatedOrder, deliveryPartnerIds, 'priority');

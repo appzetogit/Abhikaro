@@ -94,7 +94,10 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
             'assignmentInfo.priorityDeliveryPartnerIds': deliveryPartnerIds,
             'assignmentInfo.assignedBy': 'manual_resend',
             'assignmentInfo.assignedAt': new Date()
-          }
+          },
+          $inc: {
+            'assignmentInfo.resendVersion': 1
+          },
         });
 
         await notifyMultipleDeliveryBoys(populatedOrder, deliveryPartnerIds, 'priority');
@@ -122,7 +125,10 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
             'assignmentInfo.priorityDeliveryPartnerIds': priorityIds,
             'assignmentInfo.assignedBy': 'manual_resend',
             'assignmentInfo.assignedAt': new Date()
-          }
+          },
+          $inc: {
+            'assignmentInfo.resendVersion': 1
+          },
         });
 
         await notifyMultipleDeliveryBoys(populatedOrder, priorityIds, 'priority');

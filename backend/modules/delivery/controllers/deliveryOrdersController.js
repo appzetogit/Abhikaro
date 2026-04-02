@@ -270,6 +270,117 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Reject/Deny an unassigned order (Delivery Boy declines the order)
+ * PATCH /api/delivery/orders/:orderId/reject
+ * Body: { reason?: string }
+ */
+export const rejectOrder = asyncHandler(async (req, res) => {
+  try {
+    const delivery = req.delivery;
+    const { orderId } = req.params;
+    const { reason = "" } = req.body || {};
+
+    if (!orderId) {
+      return errorResponse(res, 400, "Invalid order ID");
+    }
+
+    // Find order by either MongoDB _id (ObjectId) or business orderId string
+    // Avoid CastError by only querying _id when param is a valid ObjectId.
+    const query = {};
+    if (mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24) {
+      query._id = orderId;
+    } else {
+      query.orderId = orderId;
+    }
+
+    const order = await Order.findOne(query);
+
+    if (!order) {
+      return errorResponse(res, 404, "Order not found");
+    }
+
+    // Only allow reject on preparing/ready and only if not assigned yet
+    if (!["preparing", "ready"].includes(order.status)) {
+      return errorResponse(
+        res,
+        400,
+        `Order cannot be rejected. Current status: ${order.status}`,
+      );
+    }
+
+    if (order.deliveryPartnerId) {
+      return errorResponse(res, 400, "Order is already assigned");
+    }
+
+    // Allow reject if this delivery partner was notified OR order is in a valid acceptance status
+    const assignmentInfo = order.assignmentInfo || {};
+    const priorityIds = assignmentInfo.priorityDeliveryPartnerIds || [];
+    const expandedIds = assignmentInfo.expandedDeliveryPartnerIds || [];
+    const currentDeliveryId = delivery?._id?.toString?.() || delivery?.id?.toString?.();
+
+    const normalizeId = (id) => {
+      if (!id) return null;
+      if (typeof id === "string") return id;
+      if (id.toString) return id.toString();
+      return String(id);
+    };
+
+    const normalizedCurrentId = normalizeId(currentDeliveryId);
+    const normalizedPriorityIds = priorityIds.map(normalizeId).filter(Boolean);
+    const normalizedExpandedIds = expandedIds.map(normalizeId).filter(Boolean);
+
+    const wasNotified =
+      (normalizedCurrentId &&
+        (normalizedPriorityIds.includes(normalizedCurrentId) ||
+          normalizedExpandedIds.includes(normalizedCurrentId))) ||
+      false;
+
+    if (!wasNotified) {
+      // Still allow reject if order is generally available; but we record it only if rider saw it.
+      // Returning 403 here can break UX if notification was delivered via fallback/broadcast.
+      console.warn(
+        `⚠️ Delivery partner ${normalizedCurrentId} rejecting order ${order.orderId} without being in notified list (allowed)`,
+      );
+    }
+
+    const resendVersion = Number(assignmentInfo.resendVersion || 0);
+
+    // Avoid duplicate rejection records for the same rider & same resendVersion
+    const existing = Array.isArray(assignmentInfo.rejections)
+      ? assignmentInfo.rejections.find((r) => {
+          const rid = normalizeId(r?.deliveryPartnerId);
+          return (
+            normalizedCurrentId &&
+            rid === normalizedCurrentId &&
+            Number(r?.resendVersionAtReject || 0) === resendVersion
+          );
+        })
+      : null;
+
+    if (!existing) {
+      const rejection = {
+        deliveryPartnerId: delivery._id,
+        reason: typeof reason === "string" ? reason : "",
+        rejectedAt: new Date(),
+        resendVersionAtReject: resendVersion,
+      };
+
+      await Order.findByIdAndUpdate(order._id, {
+        $push: { "assignmentInfo.rejections": rejection },
+      });
+    }
+
+    return successResponse(res, 200, "Order rejected successfully", {
+      orderId: order.orderId,
+      resendVersion,
+    });
+  } catch (error) {
+    logger.error(`Error rejecting order: ${error.message}`, { error: error.stack });
+    return errorResponse(res, 500, "Failed to reject order");
+  }
+});
+
+/**
  * Accept Order (Delivery Boy accepts the assigned order)
  * PATCH /api/delivery/orders/:orderId/accept
  */

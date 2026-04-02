@@ -211,7 +211,8 @@ const transformOrder = (order, index) => {
     // Earnings breakdown for this order (if provided by backend)
     earnings: order.earnings || null,
     // Keep original order data for detail view
-    originalOrder: order
+    originalOrder: order,
+    deniedCount: Array.isArray(order?.assignmentInfo?.rejections) ? order.assignmentInfo.rejections.length : 0,
   }
 }
 

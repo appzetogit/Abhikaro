@@ -188,6 +188,14 @@ export default function OrderDetectDeliveryTable({
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
                         {order.status}
                       </span>
+                      {order.deniedCount > 0 && (
+                        <span
+                          className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-semibold bg-red-50 text-red-700 border border-red-200"
+                          title={`${order.deniedCount} delivery partner(s) denied this order`}
+                        >
+                          Denied: {order.deniedCount}
+                        </span>
+                      )}
                     </div>
                   </td>
                 )}

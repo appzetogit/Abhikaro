@@ -1550,19 +1550,25 @@ export default function DeliveryHome() {
     setCountdownSeconds(300)
 
     // Mark this order as rejected on the client so we don't show it again
+    // AND notify backend so restaurant/admin can see deny + resend can override it later.
     try {
       const orderId =
         newOrder?.orderId?.toString?.() ||
         newOrder?._id?.toString?.() ||
         newOrder?.orderMongoId?.toString?.();
+
       if (orderId && typeof markOrderRejected === 'function') {
         markOrderRejected(orderId)
+      }
+
+      if (orderId) {
+        // Fire-and-forget: don't block UI close on network latency/errors.
+        deliveryAPI.rejectOrder(orderId, rejectReason || "")
+          .catch(() => { })
       }
     } catch (e) {
       // Ignore errors – worst case, order may reappear, but app won't crash
     }
-
-    // Here you would typically send the rejection to your backend
 
   }
 

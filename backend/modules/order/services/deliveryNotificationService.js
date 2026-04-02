@@ -174,6 +174,9 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
       orderMongoId: order._id.toString(),
       restaurantId: order.restaurantId,
       restaurantName: order.restaurantName,
+      resendVersion: Number(order.assignmentInfo?.resendVersion || 0),
+      assignedBy: order.assignmentInfo?.assignedBy || null,
+      isResend: ['manual_resend', 'admin_manual_resend'].includes(order.assignmentInfo?.assignedBy),
       restaurantLocation: restaurant?.location ? {
         latitude: restaurant.location.coordinates[1],
         longitude: restaurant.location.coordinates[0],
@@ -325,6 +328,9 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
         orderId: order.orderId,
         link: `/delivery/orders/${order.orderId}`,
         channelId: 'delivery_new_order',
+      resendVersion: Number(order.assignmentInfo?.resendVersion || 0),
+      assignedBy: order.assignmentInfo?.assignedBy || null,
+      isResend: ['manual_resend', 'admin_manual_resend'].includes(order.assignmentInfo?.assignedBy),
       });
     } catch (fcmErr) {
       console.warn('FCM delivery notification:', fcmErr.message);
@@ -487,6 +493,9 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
       mongoId: orderWithUser._id?.toString(),
       orderMongoId: orderWithUser._id?.toString(), // Also include orderMongoId for compatibility
       status: orderWithUser.status || 'preparing',
+      resendVersion: Number(orderWithUser.assignmentInfo?.resendVersion || 0),
+      assignedBy: orderWithUser.assignmentInfo?.assignedBy || null,
+      isResend: ['manual_resend', 'admin_manual_resend'].includes(orderWithUser.assignmentInfo?.assignedBy),
       restaurantName: orderWithUser.restaurantName || orderWithUser.restaurantId?.name,
       restaurantAddress: restaurantAddress,
       restaurantLocation: restaurantLocation ? {
@@ -587,6 +596,9 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
               link: `/delivery/order/${oid}`,
               channelId: 'delivery_new_order',
               phase: phase,
+              resendVersion: Number(orderWithUser.assignmentInfo?.resendVersion || 0),
+              assignedBy: orderWithUser.assignmentInfo?.assignedBy || null,
+              isResend: ['manual_resend', 'admin_manual_resend'].includes(orderWithUser.assignmentInfo?.assignedBy),
             });
           }
         } catch (fcmErr) {

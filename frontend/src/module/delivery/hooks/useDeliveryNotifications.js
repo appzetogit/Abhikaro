@@ -27,6 +27,39 @@ export const useDeliveryNotifications = () => {
   const userInteractedRef = useRef(false);
   // Track orders that this delivery partner has explicitly rejected (to avoid re-notifying)
   const rejectedOrderIdsRef = useRef(new Set());
+
+  const normalizeOrderId = useCallback((payload) => {
+    return (
+      payload?.orderId?.toString?.() ||
+      payload?._id?.toString?.() ||
+      payload?.orderMongoId?.toString?.() ||
+      payload?.mongoId?.toString?.() ||
+      null
+    );
+  }, []);
+
+  const isResendSignal = useCallback((payload) => {
+    if (!payload || typeof payload !== 'object') return false;
+    if (payload.isResend === true) return true;
+    const assignedBy =
+      payload.assignedBy ||
+      payload.assignmentInfo?.assignedBy ||
+      payload.fullOrder?.assignmentInfo?.assignedBy ||
+      null;
+    return assignedBy === 'manual_resend' || assignedBy === 'admin_manual_resend';
+  }, []);
+
+  const unmarkOrderRejected = useCallback((orderId) => {
+    if (!orderId) return;
+    const idStr = orderId.toString();
+    rejectedOrderIdsRef.current.delete(idStr);
+    try {
+      const arr = Array.from(rejectedOrderIdsRef.current);
+      localStorage.setItem('deliveryRejectedOrders', JSON.stringify(arr));
+    } catch (e) {
+      // ignore
+    }
+  }, []);
   
   const fetchOrderDetailsForPopup = useCallback(async (orderId) => {
     if (!orderId) return null;
@@ -74,6 +107,9 @@ export const useDeliveryNotifications = () => {
           orderMongoId: payload._id?.toString?.() || payload.orderMongoId?.toString?.(),
           restaurantId: payload.restaurantId?._id?.toString?.() || payload.restaurantId,
           restaurantName: payload.restaurantName || restaurant.name || restaurant.restaurantName,
+          resendVersion: payload.assignmentInfo?.resendVersion ?? payload.resendVersion ?? 0,
+          assignedBy: payload.assignmentInfo?.assignedBy ?? payload.assignedBy ?? null,
+          isResend: payload.isResend === true || ['manual_resend', 'admin_manual_resend'].includes(payload.assignmentInfo?.assignedBy),
           restaurantLocation: (restLat != null && restLng != null) ? {
             latitude: restLat,
             longitude: restLng,
@@ -397,10 +433,12 @@ export const useDeliveryNotifications = () => {
     });
 
     socketRef.current.on('new_order', (orderData) => {
-      const orderId =
-        orderData?.orderId?.toString?.() ||
-        orderData?._id?.toString?.() ||
-        orderData?.orderMongoId?.toString?.();
+      const orderId = normalizeOrderId(orderData);
+
+      // If it's a resend, allow it even if previously rejected
+      if (orderId && isResendSignal(orderData)) {
+        unmarkOrderRejected(orderId);
+      }
 
       if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
         return;
@@ -412,10 +450,12 @@ export const useDeliveryNotifications = () => {
 
     // Listen for priority-based order notifications (new_order_available)
     socketRef.current.on('new_order_available', (orderData) => {
-      const orderId =
-        orderData?.orderId?.toString?.() ||
-        orderData?._id?.toString?.() ||
-        orderData?.orderMongoId?.toString?.();
+      const orderId = normalizeOrderId(orderData);
+
+      // If it's a resend, allow it even if previously rejected
+      if (orderId && isResendSignal(orderData)) {
+        unmarkOrderRejected(orderId);
+      }
 
       if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
         return;
@@ -431,11 +471,12 @@ export const useDeliveryNotifications = () => {
       // If payload includes order info / orderId, treat it as a new order notification
       // so the UI can open the accept popup (DeliveryHome listens to `newOrder`).
       try {
-        const orderId =
-          data?.orderId?.toString?.() ||
-          data?._id?.toString?.() ||
-          data?.orderMongoId?.toString?.() ||
-          data?.id?.toString?.();
+        const orderId = normalizeOrderId(data) || data?.id?.toString?.();
+
+        // If it's a resend, allow it even if previously rejected
+        if (orderId && isResendSignal(data)) {
+          unmarkOrderRejected(orderId);
+        }
 
         if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
           playNotificationSound();
@@ -468,6 +509,10 @@ export const useDeliveryNotifications = () => {
                 normalized?.orderId?.toString?.() ||
                 normalized?._id?.toString?.() ||
                 normalized?.orderMongoId?.toString?.();
+              // If this is a resend, clear local rejection so popup can show again.
+              if (normalizedId && isResendSignal(normalized)) {
+                unmarkOrderRejected(normalizedId);
+              }
               if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
               setNewOrder((prev) => {
                 const prevId =
