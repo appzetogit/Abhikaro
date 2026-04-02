@@ -87,6 +87,8 @@ export const tieredUserRateLimit = async (req, res, next) => {
       path.startsWith('/location/reverse') ||
       path.startsWith('/order/calculate') ||
       path === '/order' ||
+      // Do not rate limit order detail GETs; they are frequently polled by clients (tracking/status)
+      (method === 'GET' && path.startsWith('/order/')) ||
       path === '/env/public' ||
       path === '/user/location' ||
       path.includes('/business-settings/public') ||
