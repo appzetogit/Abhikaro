@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { MapPin, ArrowLeft, Search } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { getGoogleMapsApiKey } from "@/lib/utils/googleMapsApiKey"
 import { Loader } from "@googlemaps/js-api-loader"
 import bikeLogo from "../../../../assets/bikelogo.png"
+import io from "socket.io-client"
+import { API_BASE_URL } from "@/lib/api/config"
 
 export default function AllZonesMap() {
   const navigate = useNavigate()
@@ -16,6 +18,10 @@ export default function AllZonesMap() {
   const deliveryBoyMarkersRef = useRef([])
   const rotatedIconCacheRef = useRef(new Map()) // Cache for rotated bike icons
   const hasFitBoundsRef = useRef(false) // Track if we've already auto-fit bounds
+  const deliveryIdToMarkerRef = useRef(new Map()) // deliveryId -> marker
+  const socketRef = useRef(null)
+  const lastPosRef = useRef(new Map()) // deliveryId -> {lat,lng,heading,ts}
+  const lastBearingRef = useRef(new Map()) // deliveryId -> {angle, ts}
   
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("")
   const [mapLoading, setMapLoading] = useState(true)
@@ -27,18 +33,139 @@ export default function AllZonesMap() {
   const autocompleteInputRef = useRef(null)
   const autocompleteRef = useRef(null)
 
+  // Helpers for stable live tracking
+  const normalizeLatLng = useCallback((rawLat, rawLng) => {
+    const lat = Number(rawLat)
+    const lng = Number(rawLng)
+    if (Number.isNaN(lat) || Number.isNaN(lng)) return null
+    const looksSwapped = (lat > 90 || lat < -90) && (lng >= -90 && lng <= 90)
+    const fLat = looksSwapped ? lng : lat
+    const fLng = looksSwapped ? lat : lng
+    if (fLat < -90 || fLat > 90 || fLng < -180 || fLng > 180) return null
+    return { lat: fLat, lng: fLng }
+  }, [])
+
+  const haversine = useCallback((lat1, lon1, lat2, lon2) => {
+    const R = 6371000
+    const toRad = (d) => (d * Math.PI) / 180
+    const dLat = toRad(lat2 - lat1)
+    const dLon = toRad(lon2 - lon1)
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  }, [])
+
+  const computeBearing = useCallback((from, to) => {
+    const toRad = (d) => (d * Math.PI) / 180
+    const toDeg = (r) => (r * 180) / Math.PI
+    const φ1 = toRad(from.lat), φ2 = toRad(to.lat)
+    const λ1 = toRad(from.lng), λ2 = toRad(to.lng)
+    const y = Math.sin(λ2 - λ1) * Math.cos(φ2)
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1)
+    let θ = toDeg(Math.atan2(y, x))
+    return (θ + 360) % 360
+  }, [])
+
+  const updateMarkerSmooth = useCallback((google, marker, next, deliveryId) => {
+    if (!marker || !next) return
+    const now = Date.now()
+    const last = lastPosRef.current.get(deliveryId)
+
+    // De-jitter: ignore repeats closer than 3m or older timestamps
+    if (last) {
+      const d = haversine(last.lat, last.lng, next.lat, next.lng)
+      if (d < 3 && (next.timestamp && last.timestamp && next.timestamp <= last.timestamp)) {
+        return
+      }
+    }
+
+    // Bearing smoothing and rate limit
+    let bearing = typeof next.heading === 'number' ? next.heading : NaN
+    if (Number.isNaN(bearing)) {
+      if (last) bearing = computeBearing(last, next)
+      else bearing = 0
+    }
+
+    const lastBearing = lastBearingRef.current.get(deliveryId) || { angle: 0, ts: 0 }
+    const dt = Math.max(1, (now - lastBearing.ts) / 1000)
+    const maxRate = 35 // deg/sec
+    let delta = ((bearing - lastBearing.angle + 540) % 360) - 180 // shortest path
+    const maxDelta = maxRate * dt
+    if (Math.abs(delta) > maxDelta) delta = Math.sign(delta) * maxDelta
+    const smoothed = (lastBearing.angle + delta + 360) % 360
+
+    // Use a simple arrow Symbol for cheap rotation
+    marker.setIcon({
+      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+      scale: 5,
+      strokeColor: "#2563eb",
+      fillColor: "#2563eb",
+      fillOpacity: 1,
+      rotation: smoothed,
+    })
+
+    marker.setPosition({ lat: next.lat, lng: next.lng })
+
+    lastBearingRef.current.set(deliveryId, { angle: smoothed, ts: now })
+    lastPosRef.current.set(deliveryId, { ...next, heading: smoothed, timestamp: next.timestamp || now })
+  }, [computeBearing, haversine])
+
   useEffect(() => {
     fetchZones()
     fetchRestaurants()
     fetchOnlineDeliveryBoys()
     loadGoogleMaps()
-    
-    // Refresh delivery boys location every 10 seconds
-    const interval = setInterval(() => {
-      fetchOnlineDeliveryBoys()
-    }, 10000)
-    
-    return () => clearInterval(interval)
+
+    // Socket connection for live delivery tracking (admin view)
+    const socketUrl = API_BASE_URL.replace("/api", "") + "/delivery"
+    socketRef.current = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 800,
+      reconnectionAttempts: 10,
+      timeout: 5000
+    })
+
+    socketRef.current.on("connect", () => {
+      // Join rooms for all known delivery partners so far
+      const ids = (deliveryBoys || []).map(b => (b._id || b.id || b.deliveryId || b.fullData?._id || b.fullData?.id)).filter(Boolean)
+      ids.forEach(id => socketRef.current.emit("join-delivery", id.toString()))
+    })
+
+    socketRef.current.on("location-update", (data) => {
+      const { deliveryId, lat, lng, heading, timestamp } = data || {}
+      if (!deliveryId) return
+      const norm = normalizeLatLng(lat, lng)
+      if (!norm) return
+      if (!mapInstanceRef.current || !window.google) return
+
+      let marker = deliveryIdToMarkerRef.current.get(deliveryId.toString())
+      if (!marker) {
+        marker = new window.google.maps.Marker({
+          position: norm,
+          map: mapInstanceRef.current,
+          zIndex: 1000
+        })
+        deliveryIdToMarkerRef.current.set(deliveryId.toString(), marker)
+      }
+
+      updateMarkerSmooth(window.google, marker, { ...norm, heading, timestamp }, deliveryId.toString())
+    })
+
+    // Refresh list periodically to catch new online riders and join rooms
+    const interval = setInterval(async () => {
+      await fetchOnlineDeliveryBoys()
+      if (socketRef.current && socketRef.current.connected) {
+        const ids = (deliveryBoys || []).map(b => (b._id || b.id || b.deliveryId || b.fullData?._id || b.fullData?.id)).filter(Boolean)
+        ids.forEach(id => socketRef.current.emit("join-delivery", id.toString()))
+      }
+    }, 15000)
+
+    return () => {
+      clearInterval(interval)
+      if (socketRef.current) {
+        try { socketRef.current.disconnect() } catch {}
+      }
+    }
   }, [])
 
   // Initialize Places Autocomplete when map is loaded
@@ -527,6 +654,7 @@ export default function AllZonesMap() {
         if (marker) marker.setMap(null)
       })
       deliveryBoyMarkersRef.current = []
+      deliveryIdToMarkerRef.current.clear()
       return
     }
 
@@ -653,6 +781,12 @@ export default function AllZonesMap() {
       })
 
       deliveryBoyMarkersRef.current.push(marker)
+
+      // Track for live updates and join delivery room
+      deliveryIdToMarkerRef.current.set(idString, marker)
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit("join-delivery", idString)
+      }
     }
   }
 
