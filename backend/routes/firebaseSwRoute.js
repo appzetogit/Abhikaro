@@ -34,39 +34,6 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Function to play notification sound using Web Audio API
-async function playNotificationSound() {
-    try {
-        const audioUrl = '/audio/alert.mp3';
-        console.log('🔊 [SW] Attempting to play notification sound:', audioUrl);
-        const response = await fetch(audioUrl);
-        if (!response.ok) {
-            console.warn('[SW] Could not fetch audio file:', response.status);
-            return;
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        const audioContext = new (self.AudioContext || self.webkitAudioContext)();
-        if (audioContext.state === 'suspended') {
-            await audioContext.resume();
-        }
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        source.start(0);
-        console.log('✅ [SW] Notification sound played successfully');
-        source.onended = () => {
-            try {
-                audioContext.close();
-            } catch (e) {
-                // Ignore errors during cleanup
-            }
-        };
-    } catch (error) {
-        console.warn('[SW] Could not play notification sound:', error);
-    }
-}
-
 // Handle background messages
 messaging.onBackgroundMessage((payload) => {
     console.log('[SW] Received background message:', payload);
@@ -74,37 +41,46 @@ messaging.onBackgroundMessage((payload) => {
     console.log('[SW] Has notification object:', !!payload.notification);
     console.log('[SW] Has data object:', !!payload.data);
 
-    // Play sound for new order notifications
-    const isNewOrder = payload.data?.type === 'new_order' || payload.data?.orderId;
-    if (isNewOrder) {
-        console.log('🔔 [SW] New order notification received - will play sound');
-        playNotificationSound();
-    }
+    const data = payload?.data || {};
+    // Audible ONLY for delivery new-order channel (Android Chrome will use default system notification sound).
+    // NOTE: Web push cannot reliably play a custom MP3 while phone is locked / app is closed.
+    const isDeliveryNewOrder = data?.channelId === 'delivery_new_order' && (data?.type === 'new_order' || !!data?.orderId);
 
     // Extract title and body from notification object or data
-    const title = payload.notification?.title || payload.data?.title || 'Abhikaro Update';
-    const body = payload.notification?.body || payload.data?.body || '';
-    const tag = payload.data?.tag || payload.data?.orderId || payload.data?.notificationId || 'admin_broadcast';
+    const title = payload.notification?.title || data?.title || 'Abhikaro Update';
+    const body = payload.notification?.body || data?.body || '';
+    const tag = data?.tag || data?.orderId || data?.notificationId || 'admin_broadcast';
 
     // Icon and Image needs to be absolute URLs for maximum compatibility
-    const icon = payload.notification?.icon || payload.data?.icon || '/vite.svg';
-    const image = payload.notification?.image || payload.data?.image || null;
-    const sound = payload.notification?.sound || payload.data?.sound || (isNewOrder ? '/audio/alert.mp3' : null);
+    const icon = payload.notification?.icon || data?.icon || '/vite.svg';
+    const image = payload.notification?.image || data?.image || null;
 
     const notificationOptions = {
         body: body,
         icon: icon,
         image: image,
-        data: payload.data || {},
+        data: data || {},
         tag: tag, // THIS IS KEY FOR DEDUPLICATION
         badge: '/vite.svg',
         requireInteraction: true,
-        vibrate: [200, 100, 200]
+        vibrate: [200, 100, 200],
+        // Make ONLY delivery new-order audible; keep all other notifications silent.
+        silent: !isDeliveryNewOrder
     };
 
-    // Add sound if available
-    if (sound) {
-        notificationOptions.sound = sound;
+    // If there is an open window client, ask it to play alert.mp3 (foreground-only; requires prior user interaction).
+    if (isDeliveryNewOrder) {
+        try {
+            self.clients
+                .matchAll({ type: 'window', includeUncontrolled: true })
+                .then((clientList) => {
+                    clientList.forEach((client) => {
+                        client.postMessage({ type: 'PLAY_ALERT_SOUND', data });
+                    });
+                });
+        } catch (e) {
+            // ignore
+        }
     }
 
     console.log('[SW] Displaying notification: ' + title + ' (Tag: ' + tag + ')');

@@ -113,24 +113,33 @@ async function setupBackgroundHandler() {
         badge: data?.badge || '/vite.svg',
         tag,
         data: { ...data, link },
-        // Best-effort: avoid default notification sound (support varies by browser/OS).
-        silent: true,
+        // Audible ONLY for delivery new-order channel; keep all other notifications silent.
+        // Android Chrome will use default system notification sound (custom MP3 is not reliable in background).
+        silent: !(
+          data?.channelId === 'delivery_new_order' &&
+          (data?.type === 'new_order' || !!data?.orderId)
+        ),
         requireInteraction: true,
         vibrate: [200, 100, 200],
       };
 
       // If there is an open window client, ask it to play alert.mp3 (foreground-controlled audio).
-      // This won't work if the app is fully closed (no clients).
-      try {
-        self.clients
-          .matchAll({ type: 'window', includeUncontrolled: true })
-          .then((clientList) => {
-            clientList.forEach((client) => {
-              client.postMessage({ type: 'PLAY_ALERT_SOUND', data });
+      // Only for delivery new-order; won't work if the app is fully closed (no clients).
+      const isDeliveryNewOrder =
+        data?.channelId === 'delivery_new_order' &&
+        (data?.type === 'new_order' || !!data?.orderId);
+      if (isDeliveryNewOrder) {
+        try {
+          self.clients
+            .matchAll({ type: 'window', includeUncontrolled: true })
+            .then((clientList) => {
+              clientList.forEach((client) => {
+                client.postMessage({ type: 'PLAY_ALERT_SOUND', data });
+              });
             });
-          });
-      } catch {
-        // ignore
+        } catch {
+          // ignore
+        }
       }
 
       return self.registration.showNotification(title, options);

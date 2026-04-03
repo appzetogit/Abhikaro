@@ -87,6 +87,11 @@ export const ADMIN_PERMISSIONS = [
     label: "Approve offline payments",
     group: "Orders",
   },
+  {
+    id: "orders.delete",
+    label: "Delete orders (bulk / permanent)",
+    group: "Orders",
+  },
 
   // Action level – hotels
   {

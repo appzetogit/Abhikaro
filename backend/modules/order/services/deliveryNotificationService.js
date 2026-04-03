@@ -324,9 +324,11 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
         title: 'New Order Assigned',
         body: `Order #${order.orderId} has been assigned to you.`,
       }, {
-        type: 'order_assigned',
+        // Standardize type for SW/clients (audible only for delivery_new_order channel)
+        type: 'new_order',
         orderId: order.orderId,
-        link: `/delivery/orders/${order.orderId}`,
+        tag: order.orderId,
+        link: `/delivery/order/${order.orderId}`,
         channelId: 'delivery_new_order',
       resendVersion: Number(order.assignmentInfo?.resendVersion || 0),
       assignedBy: order.assignmentInfo?.assignedBy || null,

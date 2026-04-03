@@ -1841,6 +1841,11 @@ export const adminAPI = {
     return apiClient.get(API_ENDPOINTS.ADMIN.ORDERS, { params });
   },
 
+  // Bulk delete orders (admin)
+  bulkDeleteOrders: (orderIds = []) => {
+    return apiClient.post(API_ENDPOINTS.ADMIN.ORDERS_BULK_DELETE, { orderIds });
+  },
+
   // Assign order to delivery partner manually
   assignOrderToDeliveryPartner: (orderId, deliveryPartnerId) => {
     return apiClient.post(

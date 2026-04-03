@@ -820,10 +820,7 @@ export default function ExploreMore() {
                 whileHover={{ scale: 1.02, y: -1 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
-                  if (item.id === 5) {
-                    // Schedule off card
-                    handleScheduleOffClick()
-                  } else if (item.route) {
+                  if (item.route) {
                     navigate(item.route)
                   }
                 }}
@@ -1039,11 +1036,7 @@ export default function ExploreMore() {
                                 <button
                                   key={item.id}
                                   onClick={() => {
-                                    if (item.id === 5) {
-                                      handleScheduleOffClick()
-                                    } else if (item.route) {
-                                      navigate(item.route)
-                                    }
+                                    if (item.route) navigate(item.route)
                                     setSearchOpen(false)
                                     setSearchQuery("")
                                   }}

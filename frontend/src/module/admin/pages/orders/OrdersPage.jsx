@@ -32,6 +32,8 @@ export default function OrdersPage({ statusKey = "all" }) {
   const [orders, setOrders] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
+  const [selectedOrderIds, setSelectedOrderIds] = useState([])
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const [processingRefund, setProcessingRefund] = useState(null)
   const [refundModalOpen, setRefundModalOpen] = useState(false)
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState(null)
@@ -71,6 +73,11 @@ export default function OrdersPage({ statusKey = "all" }) {
   useEffect(() => {
     fetchOrders()
   }, [statusKey, refreshTrigger])
+
+  // Clear selection when list changes (status/search/filters refresh)
+  useEffect(() => {
+    setSelectedOrderIds([])
+  }, [statusKey, refreshTrigger, orders.length])
 
   // Handle refund button click - show modal for wallet payments, confirm dialog for others
   const handleRefund = (order) => {
@@ -248,6 +255,54 @@ export default function OrdersPage({ statusKey = "all" }) {
     resetColumns,
   } = useOrdersManagement(orders, statusKey, config.title)
 
+  const getOrderKey = (order) => order?.id || order?._id || order?.orderId
+
+  const allFilteredKeys = useMemo(() => {
+    return (filteredOrders || []).map(getOrderKey).filter(Boolean)
+  }, [filteredOrders])
+
+  const toggleSelectOrder = (order) => {
+    const key = getOrderKey(order)
+    if (!key) return
+    setSelectedOrderIds((prev) =>
+      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
+    )
+  }
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedOrderIds((prev) => {
+      const allSelected = allFilteredKeys.length > 0 && allFilteredKeys.every((k) => prev.includes(k))
+      return allSelected ? [] : Array.from(new Set([...prev, ...allFilteredKeys]))
+    })
+  }
+
+  const clearSelection = () => setSelectedOrderIds([])
+
+  const handleBulkDelete = async () => {
+    if (selectedOrderIds.length === 0) return
+    const ok = confirm(
+      `Delete ${selectedOrderIds.length} selected order(s)?\n\nThis will permanently delete orders from the database.`,
+    )
+    if (!ok) return
+
+    try {
+      setBulkDeleting(true)
+      const res = await adminAPI.bulkDeleteOrders(selectedOrderIds)
+      if (res?.data?.success) {
+        toast.success(`Deleted ${res.data?.data?.deletedOrders || 0} order(s)`)
+        clearSelection()
+        setRefreshTrigger((t) => t + 1)
+      } else {
+        toast.error(res?.data?.message || "Failed to delete orders")
+      }
+    } catch (e) {
+      console.error("Bulk delete failed:", e)
+      toast.error(e?.response?.data?.message || "Failed to delete orders")
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="p-4 lg:p-6 bg-slate-50 min-h-screen w-full max-w-full overflow-x-hidden flex items-center justify-center">
@@ -271,6 +326,32 @@ export default function OrdersPage({ statusKey = "all" }) {
         onExport={handleExport}
         onSettingsClick={() => setIsSettingsOpen(true)}
       />
+
+      {selectedOrderIds.length > 0 && (
+        <div className="mt-3 mb-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="text-sm text-slate-700">
+            <span className="font-semibold">{selectedOrderIds.length}</span> selected
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="px-3 py-2 text-sm font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              disabled={bulkDeleting}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="px-3 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? "Deleting..." : "Delete Selected"}
+            </button>
+          </div>
+        </div>
+      )}
       <FilterPanel
         isOpen={isFilterOpen}
         onClose={() => setIsFilterOpen(false)}
@@ -306,6 +387,9 @@ export default function OrdersPage({ statusKey = "all" }) {
         onViewOrder={handleViewOrder}
         onPrintOrder={handlePrintOrder}
         onRefund={handleRefund}
+        selectedOrderIds={selectedOrderIds}
+        onToggleSelectOrder={toggleSelectOrder}
+        onToggleSelectAllOrders={toggleSelectAllFiltered}
       />
     </div>
   )

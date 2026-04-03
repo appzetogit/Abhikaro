@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Eye, Printer, ArrowUpDown, Loader2 } from "lucide-react"
 
 const getStatusColor = (orderStatus) => {
@@ -26,11 +26,21 @@ const getPaymentStatusColor = (paymentStatus) => {
   return "text-slate-600"
 }
 
-export default function OrdersTable({ orders, visibleColumns, onViewOrder, onPrintOrder, onRefund }) {
+export default function OrdersTable({ 
+  orders, 
+  visibleColumns, 
+  onViewOrder, 
+  onPrintOrder, 
+  onRefund,
+  selectedOrderIds = [],
+  onToggleSelectOrder,
+  onToggleSelectAllOrders,
+}) {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 15
   const totalPages = Math.ceil(orders.length / itemsPerPage)
   const [issueDialog, setIssueDialog] = useState({ open: false, order: null })
+  const selectAllRef = useRef(null)
   
   // Reset to page 1 when orders change
   useEffect(() => {
@@ -42,6 +52,17 @@ export default function OrdersTable({ orders, visibleColumns, onViewOrder, onPri
     const end = start + itemsPerPage
     return orders.slice(start, end)
   }, [orders, currentPage])
+
+  const getOrderKey = (order) => order?.id || order?._id || order?.orderId
+  const allKeys = useMemo(() => orders.map(getOrderKey).filter(Boolean), [orders])
+  const allSelected = allKeys.length > 0 && allKeys.every((k) => selectedOrderIds.includes(k))
+  const someSelected = allKeys.some((k) => selectedOrderIds.includes(k))
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = !allSelected && someSelected
+    }
+  }, [allSelected, someSelected])
 
   const formatRestaurantName = (name) => {
     if (name === "Cafe Monarch") return "Café Monarch"
@@ -70,6 +91,16 @@ export default function OrdersTable({ orders, visibleColumns, onViewOrder, onPri
         <table className="w-full min-w-full">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
+              <th className="px-4 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider w-[52px]">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => onToggleSelectAllOrders?.()}
+                  className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  aria-label="Select all orders"
+                />
+              </th>
               {visibleColumns.si && (
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   <div className="flex items-center gap-2">
@@ -163,6 +194,15 @@ export default function OrdersTable({ orders, visibleColumns, onViewOrder, onPri
                 key={order.orderId} 
                 className="hover:bg-slate-50 transition-colors"
               >
+                <td className="px-4 py-4 whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={selectedOrderIds.includes(getOrderKey(order))}
+                    onChange={() => onToggleSelectOrder?.(order)}
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    aria-label={`Select order ${order.orderId || ""}`}
+                  />
+                </td>
                 {visibleColumns.si && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * itemsPerPage + index + 1}</span>

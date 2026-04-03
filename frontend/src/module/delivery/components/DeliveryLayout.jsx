@@ -86,6 +86,11 @@ export default function DeliveryLayout({
     const handleMessage = (event) => {
       const msg = event?.data;
       if (!msg || msg.type !== "PLAY_ALERT_SOUND") return;
+      const data = msg?.data || {};
+      const isDeliveryNewOrder =
+        data?.channelId === "delivery_new_order" &&
+        (data?.type === "new_order" || !!data?.orderId);
+      if (!isDeliveryNewOrder) return;
       if (!userInteracted) return;
 
       try {

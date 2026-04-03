@@ -376,6 +376,7 @@ export const API_ENDPOINTS = {
     SAFETY_EMERGENCY_CREATE: "/safety-emergency",
     ENV_VARIABLES: "/admin/env-variables",
     ORDERS: "/admin/orders",
+    ORDERS_BULK_DELETE: "/admin/orders/bulk-delete",
     ORDERS_APPROVE_OFFLINE_PAYMENT:
       "/admin/orders/:orderId/approve-offline-payment",
     ORDERS_SEARCHING_DELIVERYMAN: "/admin/orders/searching-deliveryman",

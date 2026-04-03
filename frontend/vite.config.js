@@ -30,10 +30,11 @@ const firebaseConfig = ${JSON.stringify(firebaseConfig, null, 2)};
 const hasFirebaseConfig = ${JSON.stringify(hasFirebaseConfig)};
 
 function buildNotificationOptions(payload = {}) {
-  const isNewOrder = payload.data?.type === "new_order" || payload.data?.orderId;
+  const isDeliveryNewOrder =
+    payload.data?.channelId === "delivery_new_order" &&
+    (payload.data?.type === "new_order" || !!payload.data?.orderId);
   const icon = payload.notification?.icon || payload.data?.icon || "/vite.svg";
   const image = payload.notification?.image || payload.data?.image || undefined;
-  const sound = payload.notification?.sound || payload.data?.sound || (isNewOrder ? "/audio/alert.mp3" : undefined);
 
   return {
     body: payload.notification?.body || payload.data?.body || "",
@@ -44,12 +45,32 @@ function buildNotificationOptions(payload = {}) {
     badge: "/vite.svg",
     requireInteraction: true,
     vibrate: [200, 100, 200],
-    ...(sound ? { sound } : {}),
+    // Audible ONLY for delivery new-order channel; keep all other notifications silent.
+    // Android Chrome uses default system notification sound (custom MP3 is not reliable in background).
+    silent: !isDeliveryNewOrder,
   };
 }
 
 async function showNotificationFromPayload(payload = {}) {
   const title = payload.notification?.title || payload.data?.title || "Abhikaro Update";
+  const isDeliveryNewOrder =
+    payload.data?.channelId === "delivery_new_order" &&
+    (payload.data?.type === "new_order" || !!payload.data?.orderId);
+
+  // If there is an open window client, ask it to play alert.mp3 (foreground-only; requires prior user interaction).
+  if (isDeliveryNewOrder) {
+    try {
+      const clientList = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      clientList.forEach((client) => {
+        client.postMessage({ type: "PLAY_ALERT_SOUND", data: payload.data || {} });
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
   await self.registration.showNotification(title, buildNotificationOptions(payload));
 }
 

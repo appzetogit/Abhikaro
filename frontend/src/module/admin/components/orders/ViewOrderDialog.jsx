@@ -40,9 +40,28 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
   const [approvingPayment, setApprovingPayment] = useState(false)
   if (!order) return null
 
+  // Backend should provide a consistent orderStatus, but guard against legacy/inconsistent data:
+  // if cancellation fields are present, never show Delivered/other non-cancelled statuses in the UI.
+  const isEffectivelyCancelled =
+    order.status === "cancelled" ||
+    order.orderStatus === "Canceled" ||
+    order.orderStatus === "Cancelled by Restaurant" ||
+    order.orderStatus === "Cancelled by User" ||
+    !!order.cancelledAt ||
+    !!order.cancelledBy ||
+    !!order.cancellationReason
+
+  const effectiveOrderStatus = isEffectivelyCancelled
+    ? (order.cancelledBy === "restaurant"
+        ? "Cancelled by Restaurant"
+        : order.cancelledBy === "user"
+        ? "Cancelled by User"
+        : "Canceled")
+    : order.orderStatus
+
   const isOfflinePayment = order.paymentType === "Cash on Delivery" || order.payment?.method === "cash" || order.payment?.method === "cod"
   const paymentPending = order.paymentStatus === "Pending" || order.paymentStatus === "Unpaid" || order.paymentCollectionStatus === "Not Collected"
-  const showMarkAsPaid = isOfflinePayment && paymentPending && order.orderStatus !== "Canceled" && order.orderStatus !== "Cancelled by Restaurant" && order.orderStatus !== "Cancelled by User"
+  const showMarkAsPaid = isOfflinePayment && paymentPending && !isEffectivelyCancelled
 
   const handleMarkAsPaid = async () => {
     if (!order?.id && !order?.orderId) return
@@ -174,8 +193,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
               {order.orderStatus && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Order Status</p>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.orderStatus)}`}>
-                    {order.orderStatus}
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(effectiveOrderStatus)}`}>
+                    {effectiveOrderStatus}
                   </span>
                   {order.cancellationReason && (
                     <p className="text-xs text-red-600 mt-1">

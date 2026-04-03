@@ -291,9 +291,17 @@ export const getOrders = asyncHandler(async (req, res) => {
       const paymentStatusDisplay = paymentStatusMap[effectivePaymentStatus] || 'Pending';
 
       // Map order status for display
+      // IMPORTANT: Treat cancellation fields as source-of-truth.
+      // Legacy/edge-case data can have status='delivered' but also cancelledAt/cancelledBy/cancellationReason set.
+      const isEffectivelyCancelled =
+        order.status === 'cancelled' ||
+        !!order.cancelledAt ||
+        !!order.cancelledBy ||
+        !!order.cancellationReason;
+
       // Check if cancelled and determine who cancelled it
       let orderStatusDisplay;
-      if (order.status === 'cancelled') {
+      if (isEffectivelyCancelled) {
         // Check cancelledBy field to determine who cancelled
         if (order.cancelledBy === 'restaurant') {
           orderStatusDisplay = 'Cancelled by Restaurant';
@@ -548,6 +556,85 @@ export const getOrderById = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error('Error fetching order:', error);
     return errorResponse(res, 500, 'Failed to fetch order');
+  }
+});
+
+/**
+ * Bulk delete orders (admin)
+ * POST /api/admin/orders/bulk-delete
+ * Body: { orderIds: string[] }
+ *
+ * Notes:
+ * - Accepts either MongoDB _id strings (24 chars) or orderId strings.
+ * - Deletes Order documents and Payment documents linked via orderId (ObjectId).
+ */
+export const bulkDeleteOrders = asyncHandler(async (req, res) => {
+  try {
+    const { orderIds } = req.body || {};
+
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return errorResponse(res, 400, "orderIds must be a non-empty array");
+    }
+
+    if (orderIds.length > 200) {
+      return errorResponse(res, 400, "Cannot delete more than 200 orders at once");
+    }
+
+    const uniqueIds = Array.from(
+      new Set(orderIds.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())),
+    );
+
+    const objectIds = [];
+    const orderIdStrings = [];
+    uniqueIds.forEach((id) => {
+      if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+        objectIds.push(new mongoose.Types.ObjectId(id));
+      } else {
+        orderIdStrings.push(id);
+      }
+    });
+
+    // Find matching orders
+    const orders = await Order.find({
+      $or: [
+        ...(objectIds.length ? [{ _id: { $in: objectIds } }] : []),
+        ...(orderIdStrings.length ? [{ orderId: { $in: orderIdStrings } }] : []),
+      ],
+    })
+      .select("_id orderId status")
+      .lean();
+
+    const foundMongoIds = orders.map((o) => o._id);
+    const foundOrderIds = new Set(orders.map((o) => o.orderId).filter(Boolean));
+
+    // Determine not found ids (best-effort)
+    const notFound = uniqueIds.filter((id) => {
+      if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+        return !foundMongoIds.some((x) => x.toString() === id);
+      }
+      return !foundOrderIds.has(id);
+    });
+
+    // Delete payments first (linked by orderId:ObjectId in Payment collection)
+    let deletedPayments = 0;
+    if (foundMongoIds.length) {
+      const paymentDeleteRes = await Payment.deleteMany({ orderId: { $in: foundMongoIds } });
+      deletedPayments = paymentDeleteRes?.deletedCount || 0;
+    }
+
+    const orderDeleteRes = await Order.deleteMany({ _id: { $in: foundMongoIds } });
+    const deletedOrders = orderDeleteRes?.deletedCount || 0;
+
+    return successResponse(res, 200, "Orders deleted successfully", {
+      requested: uniqueIds.length,
+      matched: orders.length,
+      deletedOrders,
+      deletedPayments,
+      notFound,
+    });
+  } catch (error) {
+    console.error("Error bulk deleting orders:", error);
+    return errorResponse(res, 500, error.message || "Failed to bulk delete orders");
   }
 });
 
