@@ -689,6 +689,35 @@ io.on('connection', (socket) => {
       // Send to specific order room
       io.to(`order:${data.orderId}`).emit(`location-receive-${data.orderId}`, locationData);
 
+      // Also broadcast to the "other" order identifier room (Mongo _id <-> ORD-xxx)
+      // so user tracking stays in sync with delivery app even if they use different IDs.
+      (async () => {
+        try {
+          const { default: Order } = await import('./modules/order/models/Order.js');
+          let order = null;
+          if (mongoose.Types.ObjectId.isValid(String(data.orderId)) && String(data.orderId).length === 24) {
+            order = await Order.findById(data.orderId).select('_id orderId').lean();
+          } else {
+            order = await Order.findOne({ orderId: String(data.orderId) }).select('_id orderId').lean();
+          }
+          if (!order) return;
+
+          const altIds = new Set([
+            order?._id?.toString(),
+            order?.orderId?.toString(),
+          ].filter(Boolean));
+          // Emit to all IDs (including original) to guarantee room coverage
+          altIds.forEach((id) => {
+            io.to(`order:${id}`).emit(`location-receive-${id}`, {
+              ...locationData,
+              orderId: id,
+            });
+          });
+        } catch (e) {
+          console.error('Error broadcasting alt order id location:', e?.message || e);
+        }
+      })();
+
       if (isDev) {
         console.log(`📍 Location broadcasted to order room ${data.orderId}:`, {
           lat: locationData.lat,
@@ -710,7 +739,20 @@ io.on('connection', (socket) => {
   // Customer joins order tracking room
   socket.on('join-order-tracking', async (orderId) => {
     if (orderId) {
+      // Always join both mongo _id and string orderId rooms (ID-agnostic)
       socket.join(`order:${orderId}`);
+      try {
+        const { default: Order } = await import('./modules/order/models/Order.js');
+        const order = (mongoose.Types.ObjectId.isValid(String(orderId)) && String(orderId).length === 24)
+          ? await Order.findById(orderId).select('_id orderId').lean()
+          : await Order.findOne({ orderId: String(orderId) }).select('_id orderId').lean();
+
+        if (order?._id) socket.join(`order:${order._id.toString()}`);
+        if (order?.orderId) socket.join(`order:${order.orderId.toString()}`);
+      } catch (e) {
+        console.error('Error resolving order rooms for join-order-tracking:', e?.message || e);
+      }
+
       console.log(`Customer joined order tracking: ${orderId}`);
 
       // Send current location immediately when customer joins
@@ -718,7 +760,9 @@ io.on('connection', (socket) => {
         // Dynamic import to avoid circular dependencies
         const { default: Order } = await import('./modules/order/models/Order.js');
 
-        const order = await Order.findById(orderId)
+        const order = (mongoose.Types.ObjectId.isValid(String(orderId)) && String(orderId).length === 24)
+          ? await Order.findById(orderId)
+          : await Order.findOne({ orderId: String(orderId) })
           .populate({
             path: 'deliveryPartnerId',
             select: 'availability',
@@ -741,6 +785,18 @@ io.on('connection', (socket) => {
           // Send current location immediately
           socket.emit(`current-location-${orderId}`, locationData);
           console.log(`📍 Sent current location to customer for order ${orderId}`);
+
+          // Also emit to the alternate id channel so whichever id the client listens to gets it.
+          const altIds = new Set([
+            order?._id?.toString(),
+            order?.orderId?.toString(),
+          ].filter(Boolean));
+          altIds.forEach((id) => {
+            socket.emit(`current-location-${id}`, {
+              ...locationData,
+              orderId: id,
+            });
+          });
         }
       } catch (error) {
         console.error('Error sending current location:', error.message);
@@ -756,7 +812,9 @@ io.on('connection', (socket) => {
       // Dynamic import to avoid circular dependencies
       const { default: Order } = await import('./modules/order/models/Order.js');
 
-      const order = await Order.findById(orderId)
+      const order = (mongoose.Types.ObjectId.isValid(String(orderId)) && String(orderId).length === 24)
+        ? await Order.findById(orderId)
+        : await Order.findOne({ orderId: String(orderId) })
         .populate({
           path: 'deliveryPartnerId',
           select: 'availability'
@@ -776,6 +834,18 @@ io.on('connection', (socket) => {
         // Send current location immediately
         socket.emit(`current-location-${orderId}`, locationData);
         console.log(`📍 Sent requested location for order ${orderId}`);
+
+        // Also emit to the alternate id channel for robustness
+        const altIds = new Set([
+          order?._id?.toString(),
+          order?.orderId?.toString(),
+        ].filter(Boolean));
+        altIds.forEach((id) => {
+          socket.emit(`current-location-${id}`, {
+            ...locationData,
+            orderId: id,
+          });
+        });
       }
     } catch (error) {
       console.error('Error fetching current location:', error.message);
@@ -784,17 +854,31 @@ io.on('connection', (socket) => {
 
   // Chat functionality
   // Join chat room for an order
-  socket.on('join-chat', (orderId) => {
+  socket.on('join-chat', async (orderId) => {
     if (orderId) {
       // Join with string orderId (could be MongoDB _id or custom orderId string)
       socket.join(`order:${orderId}`);
       console.log(`✅ User/Delivery joined chat room: order:${orderId}`);
       
-      // Also try to join with ObjectId format if it's a valid ObjectId
-      if (mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24) {
-        const objectIdStr = new mongoose.Types.ObjectId(orderId).toString();
-        socket.join(`order:${objectIdStr}`);
-        console.log(`✅ Also joined ObjectId room: order:${objectIdStr}`);
+      // Resolve and join both canonical rooms (mongo _id + orderId string)
+      try {
+        const { default: Order } = await import('./modules/order/models/Order.js');
+        const order = (mongoose.Types.ObjectId.isValid(String(orderId)) && String(orderId).length === 24)
+          ? await Order.findById(orderId).select('_id orderId').lean()
+          : await Order.findOne({ orderId: String(orderId) }).select('_id orderId').lean();
+
+        if (order?._id) {
+          const mongoId = order._id.toString();
+          socket.join(`order:${mongoId}`);
+          console.log(`✅ Also joined chat mongo room: order:${mongoId}`);
+        }
+        if (order?.orderId) {
+          const strId = order.orderId.toString();
+          socket.join(`order:${strId}`);
+          console.log(`✅ Also joined chat string room: order:${strId}`);
+        }
+      } catch (e) {
+        console.error('Error resolving order rooms for join-chat:', e?.message || e);
       }
     }
   });

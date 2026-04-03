@@ -2466,7 +2466,7 @@ export default function OrdersMain() {
 }
 
 // Resend Notification Button Component
-function ResendNotificationButton({ orderId, mongoId, onSuccess }) {
+function ResendNotificationButton({ orderId, mongoId }) {
   const [loading, setLoading] = useState(false);
 
   const handleResend = async (e) => {
@@ -2480,13 +2480,9 @@ function ResendNotificationButton({ orderId, mongoId, onSuccess }) {
 
       if (response.data?.success) {
         toast.success(`Notification sent to ${response.data.data?.notifiedCount || 0} delivery partners`);
-        // Refresh orders if onSuccess callback is provided
-        if (onSuccess) {
-          // Trigger a refresh by calling onSuccess with a special flag
-          setTimeout(() => {
-            window.location.reload(); // Simple refresh for now
-          }, 1000);
-        }
+        // Trigger a lightweight refresh for lists (without a full page reload, which resets the active tab)
+        // Existing order lists already listen to these events to refetch.
+        window.dispatchEvent(new Event('order_assigned'));
       } else {
         toast.error(response.data?.message || 'Failed to send notification');
       }
@@ -2673,7 +2669,7 @@ function OrderCard({
                     {deliveryPartnerId ? 'Assigned' : 'Not Assigned'}
                   </span>
                   {!deliveryPartnerId && (
-                    <ResendNotificationButton orderId={orderId} mongoId={mongoId} onSuccess={onSelect} />
+                    <ResendNotificationButton orderId={orderId} mongoId={mongoId} />
                   )}
                   {onMarkReady && (
                     <button

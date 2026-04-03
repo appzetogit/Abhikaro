@@ -204,23 +204,42 @@ export async function sendNotification(tokens, notification, data = {}) {
     notificationObj.image = imageUrl;
   }
 
-  // Build Android-specific config with image
+  // Build Android-specific config with image + channel/sound (for native apps).
+  // NOTE: For Android custom sound, the app must create a notification channel with the same channelId
+  // and a raw sound resource (e.g. res/raw/alert.mp3). FCM can reference that channel/sound.
   const androidConfig = {
     priority: 'high',
   };
   
-  // Add image to Android notification if available
-  if (imageUrl) {
-    androidConfig.notification = {
-      imageUrl: imageUrl,
-    };
+  // Ensure android.notification exists if we need to set channel/sound/image
+  const androidNotification = {};
+
+  // Map channelId from data payload (recommended for app-side routing)
+  if (dataWithTag.channelId) {
+    androidNotification.channelId = String(dataWithTag.channelId);
   }
 
-  // Build iOS/APNS config with image
+  // Sound: For Android, use raw resource name WITHOUT extension (e.g. "alert" for res/raw/alert.mp3)
+  if (dataWithTag.sound) {
+    androidNotification.sound = String(dataWithTag.sound);
+  }
+
+  // Add image to Android notification if available
+  if (imageUrl) {
+    androidNotification.imageUrl = imageUrl;
+  }
+
+  if (Object.keys(androidNotification).length > 0) {
+    androidConfig.notification = androidNotification;
+  }
+
+  // Build iOS/APNS config with sound/image
+  // iOS sound should be a bundled sound file name or "default"; we keep default unless overridden.
+  const apnsSound = dataWithTag.sound ? String(dataWithTag.sound) : 'default';
   const apnsConfig = {
     payload: { 
       aps: { 
-        sound: 'default',
+        sound: apnsSound,
         ...(imageUrl && { 'mutable-content': 1 }) // Enable mutable content for image
       } 
     },

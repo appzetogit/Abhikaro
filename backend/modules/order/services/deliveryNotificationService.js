@@ -330,6 +330,8 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
         tag: order.orderId,
         link: `/delivery/order/${order.orderId}`,
         channelId: 'delivery_new_order',
+        // For native Android: raw resource name (res/raw/alert.mp3) => "alert"
+        sound: 'alert',
       resendVersion: Number(order.assignmentInfo?.resendVersion || 0),
       assignedBy: order.assignmentInfo?.assignedBy || null,
       isResend: ['manual_resend', 'admin_manual_resend'].includes(order.assignmentInfo?.assignedBy),
@@ -597,6 +599,8 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
               tag: oid, // used by frontend to dedupe foreground events
               link: `/delivery/order/${oid}`,
               channelId: 'delivery_new_order',
+              // For native Android: raw resource name (res/raw/alert.mp3) => "alert"
+              sound: 'alert',
               phase: phase,
               resendVersion: Number(orderWithUser.assignmentInfo?.resendVersion || 0),
               assignedBy: orderWithUser.assignmentInfo?.assignedBy || null,

@@ -18,6 +18,8 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const [mongoOrderId, setMongoOrderId] = useState(null);
+  const [stringOrderId, setStringOrderId] = useState(null);
 
   // Get socket URL from API base URL
   const socketUrl = API_BASE_URL.replace("/api", "");
@@ -56,6 +58,12 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
         const response = await chatAPI.getMessages(orderId);
         if (response.data?.success) {
           setMessages(response.data.data.messages || []);
+          if (response.data.data?.orderId) {
+            setMongoOrderId(response.data.data.orderId);
+          }
+          if (response.data.data?.orderIdString) {
+            setStringOrderId(response.data.data.orderIdString);
+          }
         }
       } catch (error) {
         // Error fetching messages
@@ -86,6 +94,12 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
       // Socket connected for chat
       // Join order chat room (try both ObjectId and string orderId)
       socket.emit("join-chat", orderId);
+      if (mongoOrderId && mongoOrderId !== orderId) {
+        socket.emit("join-chat", mongoOrderId);
+      }
+      if (stringOrderId && stringOrderId !== orderId) {
+        socket.emit("join-chat", stringOrderId);
+      }
       // Also join order tracking room
       socket.emit("join-order-tracking", orderId);
       // Join delivery room for notifications
@@ -101,42 +115,41 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
 
     // Listen for new messages
     socket.on("new-message", (data) => {
-      if (data.message) {
-        // Check if message belongs to this order (handle both ObjectId and string)
-        const messageOrderId = data.orderId?.toString();
-        const currentOrderId = orderId?.toString();
-        
-        // More flexible matching - check if orderIds match in any way
-        const orderIdMatches = 
-          messageOrderId === currentOrderId || 
-          data.orderId === orderId ||
-          data.orderId?.toString() === currentOrderId ||
-          messageOrderId === orderId ||
-          (messageOrderId && currentOrderId && (
-            messageOrderId.includes(currentOrderId) ||
-            currentOrderId.includes(messageOrderId)
-          ));
-        
-        if (orderIdMatches) {
-          // Check if message is not already in the list
-          setMessages((prev) => {
-            const exists = prev.some(msg => 
-              msg._id?.toString() === data.message._id?.toString() ||
-              (msg.isOptimistic && msg.message === data.message.message && 
-               msg.senderId?.toString() === data.message.senderId?.toString())
-            );
-            if (!exists) {
-              // Remove any optimistic message with same content
-              const filtered = prev.filter(msg => 
-                !(msg.isOptimistic && msg.message === data.message.message)
-              );
-              return [...filtered, data.message];
-            }
-            return prev;
-          });
-          scrollToBottom();
+      if (!data?.message) return;
+
+      // Normalize multiple identifiers
+      const msgOrderId = (data.orderId || data.message?.orderId)?.toString?.() || String(data.orderId || '');
+      const curId = orderId?.toString?.() || String(orderId || '');
+      const mongoIdStr = mongoOrderId?.toString?.() || String(mongoOrderId || '');
+      const strId = stringOrderId?.toString?.() || String(stringOrderId || '');
+
+      // Accept if any id matches or if this delivery is the intended receiver
+      const deliveryId = currentUserId || localStorage.getItem("delivery_id") || localStorage.getItem("deliveryId");
+      const isReceiver = deliveryId && data.message?.receiverType === "delivery" &&
+        data.message?.receiverId?.toString?.() === deliveryId.toString();
+
+      const matches =
+        (msgOrderId && curId && msgOrderId === curId) ||
+        (msgOrderId && mongoIdStr && msgOrderId === mongoIdStr) ||
+        (msgOrderId && strId && msgOrderId === strId);
+
+      if (!(matches || isReceiver)) return;
+
+      setMessages((prev) => {
+        const exists = prev.some(msg =>
+          msg._id?.toString() === data.message._id?.toString() ||
+          (msg.isOptimistic && msg.message === data.message.message &&
+            msg.senderId?.toString() === data.message.senderId?.toString())
+        );
+        if (!exists) {
+          const filtered = prev.filter(msg =>
+            !(msg.isOptimistic && msg.message === data.message.message)
+          );
+          return [...filtered, data.message];
         }
-      }
+        return prev;
+      });
+      scrollToBottom();
     });
 
     return () => {
@@ -144,7 +157,7 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
         socket.disconnect();
       }
     };
-  }, [orderId, socketUrl]);
+  }, [orderId, socketUrl, mongoOrderId, stringOrderId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {

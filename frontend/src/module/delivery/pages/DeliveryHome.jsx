@@ -700,6 +700,18 @@ export default function DeliveryHome() {
   const pickupRouteTimeRef = useRef(0) // Time to pickup in seconds
   const deliveryRouteDistanceRef = useRef(0) // Distance to delivery in meters
   const deliveryRouteTimeRef = useRef(0) // Time to delivery in seconds
+
+  const formatDistanceMeters = useCallback((meters) => {
+    if (meters == null) return null
+    const m = Number(meters) || 0
+    return m >= 1000 ? `${(m / 1000).toFixed(1)} kms` : `${m.toFixed(0)} m`
+  }, [])
+
+  const formatDurationSecs = useCallback((secs) => {
+    if (secs == null) return null
+    const s = Number(secs) || 0
+    return s >= 60 ? `${Math.round(s / 60)} mins` : `${s} secs`
+  }, [])
   const orderDeliveredSwipeStartX = useRef(0)
   const orderDeliveredSwipeStartY = useRef(0)
   const orderDeliveredIsSwiping = useRef(false)
@@ -1051,7 +1063,15 @@ export default function DeliveryHome() {
 
         // Build selectedRestaurant object purely from backend data
         const restaurant = order.restaurantId || {}
-        const addressObj = restaurant.address || order.address || {}
+        // IMPORTANT: Do NOT use `order.address` here (that's the CUSTOMER address).
+        // For pickup card, we must show RESTAURANT address only.
+        const addressObj =
+          restaurant.address ||
+          restaurant.location?.formattedAddress ||
+          restaurant.location?.address ||
+          order.restaurantAddress ||
+          order.restaurantLocation?.address ||
+          {}
 
         const restaurantName =
           order.restaurantName ||
@@ -1063,7 +1083,7 @@ export default function DeliveryHome() {
         const restaurantAddress =
           (typeof addressObj === 'string' && addressObj) ||
           addressObj.formattedAddress ||
-          [addressObj.street, addressObj.city, addressObj.state]
+          [addressObj.street, addressObj.area, addressObj.city, addressObj.state, addressObj.zipCode || addressObj.pincode]
             .filter(Boolean)
             .join(', ') ||
           selectedRestaurant?.address ||
@@ -1104,6 +1124,9 @@ export default function DeliveryHome() {
               ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim()
               : '') ||
             selectedRestaurant?.customerAddress,
+          // Add customer coordinates for delivery-phase routing (restaurant -> customer)
+          customerLat: order.address?.location?.coordinates?.[1] ?? selectedRestaurant?.customerLat ?? null,
+          customerLng: order.address?.location?.coordinates?.[0] ?? selectedRestaurant?.customerLng ?? null,
           items: order.items || [],
           total: order.pricing?.total || 0,
           paymentMethod: (() => {
@@ -1115,6 +1138,54 @@ export default function DeliveryHome() {
           orderStatus: order.status || 'preparing',
           deliveryState,
           deliveryPhase
+        }
+
+        // If coords are missing after refresh, fetch restaurant details directly (order.restaurantId is often a string)
+        if (
+          (!restoredRestaurant.lat || !restoredRestaurant.lng) &&
+          order.restaurantId
+        ) {
+          try {
+            const restaurantIdString =
+              typeof order.restaurantId === 'string'
+                ? order.restaurantId
+                : (order.restaurantId?._id || order.restaurantId?.id || null)
+
+            if (restaurantIdString) {
+              const restaurantResponse = await restaurantAPI.getRestaurantById(restaurantIdString)
+              const r =
+                restaurantResponse?.data?.data?.restaurant ||
+                restaurantResponse?.data?.restaurant ||
+                restaurantResponse?.data?.data ||
+                null
+
+              const coords = r?.location?.coordinates
+              if (Array.isArray(coords) && coords.length >= 2) {
+                restoredRestaurant.lng = coords[0]
+                restoredRestaurant.lat = coords[1]
+              }
+
+              // Best-effort fill address/phone if missing
+              if (
+                (!restoredRestaurant.address ||
+                  restoredRestaurant.address === 'Restaurant address' ||
+                  restoredRestaurant.address === 'Restaurant Address') &&
+                (r?.address || r?.location?.formattedAddress)
+              ) {
+                restoredRestaurant.address =
+                  r.address || r.location?.formattedAddress || restoredRestaurant.address
+              }
+              if (!restoredRestaurant.phone) {
+                restoredRestaurant.phone =
+                  r?.phone || r?.ownerPhone || r?.primaryContactNumber || restoredRestaurant.phone
+              }
+              if (!restoredRestaurant.ownerPhone) {
+                restoredRestaurant.ownerPhone = r?.ownerPhone || restoredRestaurant.ownerPhone
+              }
+            }
+          } catch (e) {
+            console.warn('⚠️ Failed to fetch restaurant details for coordinates after refresh:', e?.message)
+          }
         }
 
         setSelectedRestaurant(restoredRestaurant)
@@ -2477,6 +2548,12 @@ export default function DeliveryHome() {
                   if (totalSoFar > 0) {
                     setTripDistance(totalSoFar);
                     setTripTime(pickupDuration + deliveryRouteTimeRef.current);
+                    // Persist pretty strings for UI fallback after refresh
+                    setSelectedRestaurant(prev => (prev ? {
+                      ...prev,
+                      tripDistance: formatDistanceMeters(totalSoFar),
+                      tripTime: formatDurationSecs(pickupDuration + deliveryRouteTimeRef.current),
+                    } : prev))
                   }
 
                   // Store directions result for rendering on main map
@@ -3780,6 +3857,12 @@ export default function DeliveryHome() {
                     const totalTime = pickupRouteTimeRef.current + deliveryDuration;
                     setTripDistance(totalDistance);
                     setTripTime(totalTime);
+                    // Persist pretty strings for UI fallback after refresh
+                    setSelectedRestaurant(prev => (prev ? {
+                      ...prev,
+                      tripDistance: formatDistanceMeters(totalDistance),
+                      tripTime: formatDurationSecs(totalTime),
+                    } : prev))
 
                     setDirectionsResponse(directionsResult)
                     directionsResponseRef.current = directionsResult
@@ -6023,6 +6106,23 @@ export default function DeliveryHome() {
         } else {
 
         }
+
+        // Also restore polyline from Firebase after refresh (active_orders/<orderId>.polyline)
+        // This allows the route to re-appear without re-running Directions API.
+        if (trackingData?.polyline && !directionsResponseRef.current) {
+          const encoded = String(trackingData.polyline || '').trim()
+          if (encoded) {
+            const fakeDirectionsResult = {
+              routes: [
+                {
+                  overview_polyline: { points: encoded },
+                },
+              ],
+            }
+            setDirectionsResponse(fakeDirectionsResult)
+            directionsResponseRef.current = fakeDirectionsResult
+          }
+        }
       } catch (error) {
 
       }
@@ -6923,6 +7023,122 @@ export default function DeliveryHome() {
       }
     }
   }, [selectedRestaurant, riderLocation, updateLiveTrackingPolyline]);
+
+  // Refresh-safe: after page reload, restore pickup route (rider -> restaurant) so polyline reappears.
+  // Note: Firebase `active_orders/<id>.polyline` is typically restaurant->customer, not rider->restaurant.
+  useEffect(() => {
+    if (!selectedRestaurant) return
+
+    const phase =
+      selectedRestaurant?.deliveryState?.currentPhase ||
+      selectedRestaurant?.deliveryPhase ||
+      ''
+
+    const isInPickupPhase =
+      phase === 'en_route_to_pickup' ||
+      phase === 'at_pickup'
+
+    if (!isInPickupPhase) return
+
+    const currentRiderLocation = riderLocation || lastLocationRef.current
+    if (!currentRiderLocation || currentRiderLocation.length !== 2) return
+
+    const restLat = Number(selectedRestaurant.lat)
+    const restLng = Number(selectedRestaurant.lng)
+    if (Number.isNaN(restLat) || Number.isNaN(restLng)) return
+
+    // If already have a directions response (e.g. from accept flow), nothing to do.
+    if (directionsResponseRef.current) return
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const result = await calculateRouteWithDirectionsAPI(
+          currentRiderLocation,
+          { lat: restLat, lng: restLng }
+        )
+
+        if (cancelled || !result) return
+
+        setDirectionsResponse(result)
+        directionsResponseRef.current = result
+
+        // Draw immediately if map is ready; otherwise existing effects will handle it.
+        updateLiveTrackingPolyline(result, currentRiderLocation)
+      } catch (e) {
+        // Silent: fallback polyline render will be attempted elsewhere (OSRM / straight-line).
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedRestaurant, riderLocation, calculateRouteWithDirectionsAPI, updateLiveTrackingPolyline])
+
+  // Refresh-safe: after page reload, restore delivery route (rider -> customer) so polyline reappears.
+  useEffect(() => {
+    if (!selectedRestaurant) return
+
+    const phase =
+      selectedRestaurant?.deliveryState?.currentPhase ||
+      selectedRestaurant?.deliveryPhase ||
+      ''
+
+    const isInDeliveryPhase =
+      phase === 'en_route_to_delivery' ||
+      phase === 'at_delivery' ||
+      String(selectedRestaurant?.orderStatus || '').toLowerCase() === 'out_for_delivery'
+
+    if (!isInDeliveryPhase) return
+
+    const currentRiderLocation = riderLocation || lastLocationRef.current
+    if (!currentRiderLocation || currentRiderLocation.length !== 2) return
+
+    const custLat = Number(selectedRestaurant.customerLat)
+    const custLng = Number(selectedRestaurant.customerLng)
+    const hasCustomerCoords = !Number.isNaN(custLat) && !Number.isNaN(custLng)
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        // Priority 1: If we have customer coords, compute route rider->customer.
+        if (hasCustomerCoords && !directionsResponseRef.current) {
+          const result = await calculateRouteWithDirectionsAPI(
+            currentRiderLocation,
+            { lat: custLat, lng: custLng }
+          )
+          if (!cancelled && result) {
+            setDirectionsResponse(result)
+            directionsResponseRef.current = result
+            updateLiveTrackingPolyline(result, currentRiderLocation)
+            return
+          }
+        }
+
+        // Priority 2: Use Firebase encoded polyline (restaurant->customer) as fallback.
+        if (!directionsResponseRef.current) {
+          const { getOrderTrackingFromFirebase } = await import('@/lib/firebaseRealtime.js')
+          const orderId = selectedRestaurant.id || selectedRestaurant.orderId
+          const tracking = orderId ? await getOrderTrackingFromFirebase(orderId) : null
+          const encoded = String(tracking?.polyline || '').trim()
+          if (!cancelled && encoded) {
+            const fakeDirectionsResult = { routes: [{ overview_polyline: { points: encoded } }] }
+            setDirectionsResponse(fakeDirectionsResult)
+            directionsResponseRef.current = fakeDirectionsResult
+            updateLiveTrackingPolyline(fakeDirectionsResult, currentRiderLocation)
+          }
+        }
+      } catch {
+        // silent
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedRestaurant, riderLocation, calculateRouteWithDirectionsAPI, updateLiveTrackingPolyline])
 
   // Clear any default/mock routes on mount if there's no active order
   useEffect(() => {
@@ -7900,11 +8116,17 @@ export default function DeliveryHome() {
     // Always refresh trip distance/time from refs when popup shows so display is correct
     if (totalDistance > 0) {
       setTripDistance(totalDistance);
-
+      setSelectedRestaurant(prev => (prev ? {
+        ...prev,
+        tripDistance: formatDistanceMeters(totalDistance),
+      } : prev))
     }
     if (totalTime > 0) {
       setTripTime(totalTime);
-
+      setSelectedRestaurant(prev => (prev ? {
+        ...prev,
+        tripTime: formatDurationSecs(totalTime),
+      } : prev))
     }
 
   }, [showOrderDeliveredAnimation, tripDistance, tripTime])
@@ -8892,6 +9114,22 @@ export default function DeliveryHome() {
         const nearbyZones = response.data.data.zones
         setZones(nearbyZones)
         drawZonesOnMap(nearbyZones)
+
+        // Cache last-known zones so refresh can instantly re-draw even if API is slow/unavailable.
+        try {
+          const [riderLat, riderLng] = riderLocation
+          window.localStorage.setItem(
+            'delivery_nearby_zones_cache',
+            JSON.stringify({
+              ts: Date.now(),
+              riderLat,
+              riderLng,
+              zones: nearbyZones,
+            }),
+          )
+        } catch {
+          // ignore storage errors
+        }
       }
     } catch (error) {
       // Suppress network errors - backend might be down or endpoint not available
@@ -8957,6 +9195,33 @@ export default function DeliveryHome() {
       // InfoWindow removed - no popup on zone click
     })
   }
+
+  // Restore zones from cache on refresh (best-effort), then fetch fresh zones.
+  useEffect(() => {
+    if (!window.google || !window.deliveryMapInstance) return
+    if (!riderLocation || riderLocation.length !== 2) return
+
+    try {
+      const raw = window.localStorage.getItem('delivery_nearby_zones_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const cachedZones = Array.isArray(parsed?.zones) ? parsed.zones : null
+        if (cachedZones && cachedZones.length > 0) {
+          setZones(cachedZones)
+          drawZonesOnMap(cachedZones)
+        }
+      }
+    } catch {
+      // ignore cache errors
+    }
+
+    // Always attempt a fresh fetch shortly after (in case cache is stale)
+    const t = setTimeout(() => {
+      fetchAndDrawNearbyZones()
+    }, 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [riderLocation?.[0], riderLocation?.[1], mapLoading])
 
   // Fetch zones when map is ready and location changes
   useEffect(() => {
@@ -10140,7 +10405,7 @@ export default function DeliveryHome() {
               className="fixed top-4 right-4 z-[115]"
             >
               <button
-                onClick={handleRejectConfirm}
+                onClick={handleRejectClick}
                 className="  bg-black border-2 border-white text-white text-bold px-5 p-2 rounded-full font-semibold text-sm hover:bg-red-50 transition-colors shadow-2xl"
               >
                 Deny
@@ -10730,7 +10995,8 @@ export default function DeliveryHome() {
       {/* Chat overlay - full screen over current view, no route change */}
       <AnimatePresence>
         {showChatOverlay && (() => {
-          const orderIdForChat = selectedRestaurant?.id || selectedRestaurant?.orderId || selectedRestaurant?._id;
+          // Prefer real order identifiers. Avoid using generic `id` which may be restaurant id.
+          const orderIdForChat = selectedRestaurant?._id || selectedRestaurant?.orderId || selectedRestaurant?.id;
           if (!orderIdForChat) return null;
           return (
             <motion.div

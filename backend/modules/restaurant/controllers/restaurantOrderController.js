@@ -26,6 +26,16 @@ import RestaurantWallet from "../models/RestaurantWallet.js";
 import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
 import mongoose from "mongoose";
 
+// Dynamic import to avoid circular dependency; used for customer realtime updates
+let getIO = null;
+async function getIOInstance() {
+  if (!getIO) {
+    const serverModule = await import("../../../server.js");
+    getIO = serverModule.getIO;
+  }
+  return getIO ? getIO() : null;
+}
+
 /**
  * Get all orders for restaurant
  * GET /api/restaurant/orders
@@ -1443,6 +1453,35 @@ export const markOrderReady = asyncHandler(async (req, res) => {
       await notifyRestaurantOrderUpdate(order._id.toString(), "ready");
     } catch (notifError) {
       console.error("Error sending restaurant notification:", notifError);
+    }
+
+    // Realtime notify CUSTOMER UI so it can update instantly (e.g. hide "Cancel order")
+    try {
+      const io = await getIOInstance();
+      if (io) {
+        const payload = {
+          orderId: populatedOrder?.orderId || order.orderId,
+          orderMongoId: order._id.toString(),
+          status: "ready",
+          title: "Order update",
+          message: "Your order is ready",
+          updatedAt: new Date(),
+        };
+
+        // Customers may join tracking room using either Mongo _id or custom orderId.
+        // Emit to both to ensure delivery tracking + order tracking pages receive the update.
+        const roomIds = [
+          order._id.toString(),
+          populatedOrder?.orderId,
+          order.orderId,
+        ].filter(Boolean);
+
+        [...new Set(roomIds)].forEach((rid) => {
+          io.to(`order:${rid}`).emit("order_status_update", payload);
+        });
+      }
+    } catch (e) {
+      console.warn("⚠️ Customer realtime notification failed:", e?.message);
     }
 
     // IMPORTANT: Do NOT auto-assign (set deliveryPartnerId) when restaurant marks "ready".

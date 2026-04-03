@@ -216,6 +216,19 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
   const customerCoords = getCustomerCoords();
   const userLiveCoords = getUserLiveCoords();
 
+  const deliveryPartnerName =
+    order?.deliveryPartner?.name ||
+    order?.deliveryPartnerId?.name ||
+    order?.deliveryPartnerName ||
+    "";
+
+  const hasAcceptedByDelivery =
+    String(order?.deliveryState?.status || "").toLowerCase() === "accepted" ||
+    ["en_route_to_pickup", "at_pickup", "en_route_to_delivery", "at_delivery"].includes(
+      String(order?.deliveryState?.currentPhase || "").toLowerCase(),
+    ) ||
+    String(order?.status || "").toLowerCase() === "out_for_delivery";
+
   // Delivery boy data
   const deliveryBoyData = order?.deliveryPartner ? {
     name: order.deliveryPartner.name || 'Delivery Partner',
@@ -240,8 +253,22 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
+      {/* Delivery partner banner (replaces generic high-demand style banner) */}
+      {hasAcceptedByDelivery && (
+        <div className="absolute top-3 left-3 right-3 z-20">
+          <div className="bg-black/65 text-white text-xs sm:text-sm px-3 py-2 rounded-xl backdrop-blur-sm shadow">
+            <span className="font-semibold">
+              {deliveryPartnerName ? `${deliveryPartnerName}` : "Your delivery partner"}
+            </span>
+            {" "}will deliver your order after a quick delivery on the way
+          </div>
+        </div>
+      )}
+
       <DeliveryTrackingMap
         orderId={orderId}
+        // Join both possible socket rooms/event ids (Mongo _id and custom orderId) so live tracking works after refresh
+        trackingRoomIds={[orderId, order?._id, order?.orderId].filter(Boolean)}
         restaurantCoords={restaurantCoords}
         customerCoords={customerCoords}
         userLiveCoords={userLiveCoords}
@@ -834,6 +861,11 @@ export default function OrderTracking() {
 
       console.log('📢 Order status notification received:', { message, status });
 
+      // Keep local order object in sync so UI reacts immediately (e.g. hide cancel once READY)
+      if (status) {
+        setOrder((prev) => (prev ? { ...prev, status } : prev));
+      }
+
       // Update order status in UI
       if (status === 'out_for_delivery') {
         setOrderStatus('on_way');
@@ -865,6 +897,13 @@ export default function OrderTracking() {
     };
   }, [])
 
+  const canCancelOrder = (() => {
+    const s = String(order?.status || '').toLowerCase().trim()
+    // Business rule: once restaurant marks READY (or beyond), customer cannot cancel.
+    // Allow cancel only until PREPARING.
+    return s === 'pending' || s === 'confirmed' || s === 'preparing'
+  })()
+
   const handleCancelOrder = () => {
     // Check if order can be cancelled (only Razorpay orders that aren't delivered/cancelled)
     if (!order) return;
@@ -877,6 +916,11 @@ export default function OrderTracking() {
     if (order.status === 'delivered') {
       toast.error('Cannot cancel a delivered order');
       return;
+    }
+
+    if (!canCancelOrder) {
+      toast.error('You can no longer cancel this order')
+      return
     }
 
     // Allow cancellation for all payment methods (Razorpay, COD, Wallet)
@@ -1605,19 +1649,21 @@ export default function OrderTracking() {
         </motion.div>
 
         {/* Help Section */}
-        <motion.div
-          className="bg-white rounded-xl shadow-sm overflow-hidden"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-        >
-          <SectionItem
-            icon={CircleSlash}
-            title="Cancel order"
-            subtitle=""
-            onClick={handleCancelOrder}
-          />
-        </motion.div>
+        {canCancelOrder && (
+          <motion.div
+            className="bg-white rounded-xl shadow-sm overflow-hidden"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+          >
+            <SectionItem
+              icon={CircleSlash}
+              title="Cancel order"
+              subtitle=""
+              onClick={handleCancelOrder}
+            />
+          </motion.div>
+        )}
 
       </div>
 
