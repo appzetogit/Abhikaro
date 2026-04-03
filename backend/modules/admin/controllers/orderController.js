@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import { findNearestDeliveryBoys } from '../../order/services/deliveryAssignmentService.js';
 import { notifyMultipleDeliveryBoys } from '../../order/services/deliveryNotificationService.js';
+import { notifyRestaurantNewOrder } from '../../order/services/restaurantNotificationService.js';
 
 /**
  * Get all orders for admin
@@ -2328,6 +2329,74 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error('Error resending delivery notification (admin):', error);
     return errorResponse(res, 500, `Failed to resend notification: ${error.message}`);
+  }
+});
+
+/**
+ * Reassign a restaurant-cancelled order back to the restaurant
+ * POST /api/admin/orders/:id/reassign-restaurant
+ */
+export const reassignOrderToRestaurant = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find order by _id or orderId
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      order = await Order.findById(id);
+    }
+    if (!order) {
+      order = await Order.findOne({ orderId: id });
+    }
+
+    if (!order) {
+      return errorResponse(res, 404, 'Order not found');
+    }
+
+    // Only allow reassign if cancelled by restaurant
+    const isRestaurantCancelled =
+      order.status === 'cancelled' &&
+      (order.cancelledBy === 'restaurant' ||
+        /order not accepted within time limit|restaurant did not respond|rejected by restaurant|restaurant cancelled/i.test(
+          order.cancellationReason || ''
+        ));
+
+    if (!isRestaurantCancelled) {
+      return errorResponse(
+        res,
+        400,
+        'Order is not cancelled by restaurant or not eligible for reassignment'
+      );
+    }
+
+    // Restore status so restaurant sees it as a fresh order
+    order.status = 'confirmed';
+    order.cancelledAt = null;
+    order.cancellationReason = null;
+    order.cancelledBy = null;
+
+    // Bump resend version and mark who triggered it
+    if (!order.assignmentInfo) order.assignmentInfo = {};
+    order.assignmentInfo.assignedBy = 'admin_manual_resend';
+    order.assignmentInfo.assignedAt = new Date();
+    order.assignmentInfo.resendVersion = (order.assignmentInfo.resendVersion || 0) + 1;
+
+    await order.save();
+
+    // Notify restaurant via sockets + FCM
+    const restaurantId =
+      order.restaurantId?._id?.toString?.() || order.restaurantId?.toString?.() || order.restaurantId;
+    await notifyRestaurantNewOrder(order, restaurantId, order.payment?.method);
+
+    return successResponse(res, 200, 'Order reassigned to restaurant and notification sent', {
+      orderId: order.orderId,
+      restaurantId,
+      status: order.status,
+      resendVersion: order.assignmentInfo.resendVersion
+    });
+  } catch (error) {
+    console.error('Error reassigning order to restaurant:', error);
+    return errorResponse(res, 500, error.message || 'Failed to reassign order to restaurant');
   }
 });
 

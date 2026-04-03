@@ -1864,6 +1864,13 @@ export const adminAPI = {
     );
   },
 
+  // Reassign a restaurant-cancelled order back to the restaurant
+  reassignOrderToRestaurant: (orderId) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.ORDER_REASSIGN_RESTAURANT.replace(":id", orderId)
+    );
+  },
+
   // Get delivery partner wallet info
   getDeliveryPartnerWallet: (deliveryPartnerId) => {
     return apiClient.get(

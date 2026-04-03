@@ -38,6 +38,7 @@ const getPaymentStatusColor = (paymentStatus) => {
 
 export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPaymentApproved }) {
   const [approvingPayment, setApprovingPayment] = useState(false)
+  const [reassigning, setReassigning] = useState(false)
   if (!order) return null
 
   // Backend should provide a consistent orderStatus, but guard against legacy/inconsistent data:
@@ -62,6 +63,33 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
   const isOfflinePayment = order.paymentType === "Cash on Delivery" || order.payment?.method === "cash" || order.payment?.method === "cod"
   const paymentPending = order.paymentStatus === "Pending" || order.paymentStatus === "Unpaid" || order.paymentCollectionStatus === "Not Collected"
   const showMarkAsPaid = isOfflinePayment && paymentPending && !isEffectivelyCancelled
+
+  const canReassignToRestaurant =
+    isEffectivelyCancelled &&
+    (order.cancelledBy === "restaurant" ||
+      /order not accepted within time limit|restaurant did not respond|rejected by restaurant|restaurant cancelled/i.test(
+        order.cancellationReason || ""
+      ))
+
+  const handleReassignToRestaurant = async () => {
+    if (!order?.id && !order?.orderId) return
+    try {
+      setReassigning(true)
+      const orderIdToUse = order.id || order._id || order.orderId
+      const resp = await adminAPI.reassignOrderToRestaurant(orderIdToUse)
+      if (resp?.data?.success) {
+        toast.success("Order reassigned to restaurant and notification sent")
+        onOpenChange(false)
+      } else {
+        toast.error(resp?.data?.message || "Failed to reassign order")
+      }
+    } catch (err) {
+      console.error("Error reassigning to restaurant:", err)
+      toast.error(err?.response?.data?.message || "Failed to reassign order")
+    } finally {
+      setReassigning(false)
+    }
+  }
 
   const handleMarkAsPaid = async () => {
     if (!order?.id && !order?.orderId) return
@@ -204,6 +232,19 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
                          'Cancellation '}Reason:
                       </span> {order.cancellationReason}
                     </p>
+                  )}
+                  {canReassignToRestaurant && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={handleReassignToRestaurant}
+                        disabled={reassigning}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60"
+                      >
+                        {reassigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                        {reassigning ? "Reassigning..." : "Reassign to Restaurant"}
+                      </button>
+                    </div>
                   )}
                   {order.cancelledAt && (
                     <p className="text-xs text-slate-500 mt-1">

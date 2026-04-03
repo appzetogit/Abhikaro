@@ -464,8 +464,18 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
       throw new Error('Refund already processed or initiated for this order');
     }
 
-    const refundAmount = settlement.cancellationDetails?.refundAmount || 0;
-    
+    // Prefer full refund for admin-triggered online refunds.
+    // If a partial amount was calculated earlier, upgrade to full order total.
+    let refundAmount = settlement.cancellationDetails?.refundAmount || 0;
+    const orderTotal = order.pricing?.total || settlement.userPayment?.total || 0;
+    if (orderTotal > 0 && refundAmount < orderTotal) {
+      refundAmount = orderTotal;
+      // Persist the upgraded amount for audit consistency
+      settlement.cancellationDetails = settlement.cancellationDetails || {};
+      settlement.cancellationDetails.refundAmount = refundAmount;
+      await settlement.save();
+    }
+
     if (refundAmount <= 0) {
       throw new Error('No refund amount calculated for this order');
     }
