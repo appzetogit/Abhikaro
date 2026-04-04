@@ -40,7 +40,12 @@ export async function generateOrderReceiptPDF(orderIdOrMongoId) {
       hour12: true,
     }),
     restaurant: restaurantName,
-    address: order.address?.street || order.address?.city || "",
+    // Prefer formattedAddress for header display; fallback to composed street/city/state/zip
+    address:
+      order.address?.formattedAddress ||
+      [order.address?.street, order.address?.city, order.address?.state, order.address?.zipCode || order.address?.pincode || order.address?.postalCode]
+        .filter(Boolean)
+        .join(", "),
     additionalAddress:
       order.address?.additionalDetails || order.address?.additionalAddress || "",
     customer: {
@@ -179,14 +184,25 @@ export async function generateOrderReceiptPDF(orderIdOrMongoId) {
   doc.setFont("helvetica", "normal");
   y += 6;
 
-  const parts = [];
-  if (orderData.additionalAddress) parts.push(orderData.additionalAddress);
-  if (orderData.fullAddress.street) parts.push(orderData.fullAddress.street);
-  if (orderData.fullAddress.city) parts.push(orderData.fullAddress.city);
-  if (orderData.fullAddress.state) parts.push(orderData.fullAddress.state);
-  if (orderData.fullAddress.zipCode) parts.push(orderData.fullAddress.zipCode);
-  const fullAddress =
-    parts.length > 0 ? parts.join(", ") : orderData.customer.location || "N/A";
+  // Prefer formattedAddress for the delivery address section, prefix with additionalAddress if provided
+  let fullAddress = "";
+  if (orderData.fullAddress.formattedAddress) {
+    fullAddress = [
+      orderData.additionalAddress || null,
+      orderData.fullAddress.formattedAddress,
+    ]
+      .filter(Boolean)
+      .join(", ");
+  } else {
+    const parts = [];
+    if (orderData.additionalAddress) parts.push(orderData.additionalAddress);
+    if (orderData.fullAddress.street) parts.push(orderData.fullAddress.street);
+    if (orderData.fullAddress.city) parts.push(orderData.fullAddress.city);
+    if (orderData.fullAddress.state) parts.push(orderData.fullAddress.state);
+    if (orderData.fullAddress.zipCode) parts.push(orderData.fullAddress.zipCode);
+    fullAddress =
+      parts.length > 0 ? parts.join(", ") : orderData.customer.location || "N/A";
+  }
   const addrLines = doc.splitTextToSize(fullAddress, pageWidth - 50);
   doc.text(addrLines, 50, y);
   y += addrLines.length * 6 + 4;

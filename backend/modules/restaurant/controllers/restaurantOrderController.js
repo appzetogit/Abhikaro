@@ -304,8 +304,24 @@ export const getRestaurantOrderById = asyncHandler(async (req, res) => {
     const restaurant = req.restaurant;
     const { id } = req.params;
 
-    const restaurantId =
-      restaurant._id?.toString() || restaurant.restaurantId || restaurant.id;
+    // Prepare restaurantId variations to handle String/ObjectId mismatches
+    const restaurantIdVariations = [];
+    const ridMongo = restaurant._id?.toString?.();
+    const ridBusiness = restaurant.restaurantId?.toString?.();
+    const ridGeneric = restaurant.id?.toString?.();
+    if (ridMongo) restaurantIdVariations.push(ridMongo);
+    if (ridBusiness && !restaurantIdVariations.includes(ridBusiness))
+      restaurantIdVariations.push(ridBusiness);
+    if (ridGeneric && !restaurantIdVariations.includes(ridGeneric))
+      restaurantIdVariations.push(ridGeneric);
+    // Also add normalized ObjectId form of each candidate when valid
+    for (const cand of [...restaurantIdVariations]) {
+      if (mongoose.Types.ObjectId.isValid(cand) && String(cand).length === 24) {
+        const norm = new mongoose.Types.ObjectId(cand).toString();
+        if (!restaurantIdVariations.includes(norm))
+          restaurantIdVariations.push(norm);
+      }
+    }
 
     // Try to find order by MongoDB _id or orderId (custom order ID)
     let order = null;
@@ -314,7 +330,7 @@ export const getRestaurantOrderById = asyncHandler(async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
       order = await Order.findOne({
         _id: id,
-        restaurantId,
+        restaurantId: { $in: restaurantIdVariations },
       })
         .populate("userId", "name email phone")
         .lean();
@@ -324,7 +340,7 @@ export const getRestaurantOrderById = asyncHandler(async (req, res) => {
     if (!order) {
       order = await Order.findOne({
         orderId: id,
-        restaurantId,
+        restaurantId: { $in: restaurantIdVariations },
       })
         .populate("userId", "name email phone")
         .lean();
@@ -1361,8 +1377,34 @@ export const markOrderReady = asyncHandler(async (req, res) => {
     const restaurant = req.restaurant;
     const { id } = req.params;
 
-    const restaurantId =
-      restaurant._id?.toString() || restaurant.restaurantId || restaurant.id;
+    // Build robust list of possible restaurantId representations (Order.restaurantId is String)
+    const restaurantIdCandidates = [];
+    const mongoIdStr = restaurant?._id?.toString?.();
+    const businessIdStr = restaurant?.restaurantId?.toString?.();
+    const genericIdStr = restaurant?.id?.toString?.();
+    if (mongoIdStr) restaurantIdCandidates.push(mongoIdStr);
+    if (businessIdStr && !restaurantIdCandidates.includes(businessIdStr)) {
+      restaurantIdCandidates.push(businessIdStr);
+    }
+    if (genericIdStr && !restaurantIdCandidates.includes(genericIdStr)) {
+      restaurantIdCandidates.push(genericIdStr);
+    }
+
+    const restaurantIdString = restaurantIdCandidates[0];
+
+    // Expand with ObjectId string variations if applicable
+    const restaurantIdVariations = [...restaurantIdCandidates];
+    if (restaurantIdString && mongoose.Types.ObjectId.isValid(restaurantIdString)) {
+      try {
+        const objectId = new mongoose.Types.ObjectId(restaurantIdString);
+        const objectIdStr = objectId.toString();
+        if (!restaurantIdVariations.includes(objectIdStr)) {
+          restaurantIdVariations.push(objectIdStr);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
 
     // Try to find order by MongoDB _id or orderId (custom order ID)
     let order = null;
@@ -1371,7 +1413,7 @@ export const markOrderReady = asyncHandler(async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
       order = await Order.findOne({
         _id: id,
-        restaurantId,
+        restaurantId: { $in: restaurantIdVariations },
       });
     }
 
@@ -1379,7 +1421,7 @@ export const markOrderReady = asyncHandler(async (req, res) => {
     if (!order) {
       order = await Order.findOne({
         orderId: id,
-        restaurantId,
+        restaurantId: { $in: restaurantIdVariations },
       });
     }
 

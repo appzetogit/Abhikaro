@@ -851,43 +851,72 @@ export default function OrdersMain() {
 
   // Show new order popup when real order notification arrives from Socket.IO
   useEffect(() => {
-    if (newOrder) {
+    if (!newOrder) return
+    ;(async () => {
       console.log('📦 New order received via Socket.IO:', newOrder)
       const orderId = newOrder.orderId || newOrder.orderMongoId
-      if (orderId && !shownOrdersRef.current.has(orderId)) {
-        shownOrdersRef.current.add(orderId)
-        // Normalize/ensure customerAddress object so UI shows full + additional address (online orders often miss this)
-        const normalizedAddress =
-          newOrder.customerAddress ||
-          newOrder.address || {
-            formattedAddress: newOrder?.address?.formattedAddress || '',
-            street: newOrder?.address?.street || '',
-            city: newOrder?.address?.city || '',
-            state: newOrder?.address?.state || '',
-            zipCode:
-              newOrder?.address?.zipCode ||
-              newOrder?.address?.pincode ||
-              newOrder?.address?.postalCode ||
-              '',
-            additionalDetails:
-              newOrder?.address?.additionalDetails ||
-              newOrder?.address?.additionalAddress ||
-              newOrder?.address?.landmark ||
-              '',
-          }
+      if (!orderId || shownOrdersRef.current.has(orderId)) return
+      shownOrdersRef.current.add(orderId)
 
-        const normalizedOrder = {
-          ...newOrder,
-          customerAddress: normalizedAddress,
+      // Build initial normalized address
+      let normalizedAddress =
+        newOrder.customerAddress ||
+        newOrder.address || {
+          formattedAddress: newOrder?.address?.formattedAddress || '',
+          street: newOrder?.address?.street || '',
+          city: newOrder?.address?.city || '',
+          state: newOrder?.address?.state || '',
+          zipCode:
+            newOrder?.address?.zipCode ||
+            newOrder?.address?.pincode ||
+            newOrder?.address?.postalCode ||
+            '',
+          additionalDetails:
+            newOrder?.address?.additionalDetails ||
+            newOrder?.address?.additionalAddress ||
+            newOrder?.additionalAddress ||
+            newOrder?.address?.landmark ||
+            '',
         }
 
-        setPopupOrder(normalizedOrder)
-        setShowNewOrderPopup(true)
-        // Timestamp-based countdown: starts from order createdAt and stays correct across app restarts
-        const createdAtMs = normalizedOrder?.createdAt ? new Date(normalizedOrder.createdAt).getTime() : Date.now()
-        acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
+      // If the address looks incomplete (no formatted or too short), fetch full order BEFORE opening popup
+      const looksIncomplete =
+        !normalizedAddress ||
+        typeof normalizedAddress === 'string' ||
+        // Always fetch if formattedAddress is missing (street/city only is not sufficient for delivery prints)
+        !normalizedAddress.formattedAddress ||
+        // Or formattedAddress exists but is suspiciously short
+        (normalizedAddress.formattedAddress && normalizedAddress.formattedAddress.length < 40)
+      if (looksIncomplete) {
+        try {
+          const resp = await restaurantAPI.getOrderById(orderId)
+          const o = resp?.data?.data?.order
+          if (o?.address) {
+            const a = o.address
+            normalizedAddress = {
+              formattedAddress: a.formattedAddress || a.address || '',
+              street: a.street || '',
+              city: a.city || '',
+              state: a.state || '',
+              zipCode: a.zipCode || a.pincode || a.postalCode || '',
+              additionalDetails: a.additionalDetails || a.additionalAddress || newOrder?.additionalAddress || a.landmark || ''
+            }
+          }
+        } catch (err) {
+          // ignore fetch error - fall back to whatever we have
+        }
       }
-    }
+
+      const normalizedOrder = {
+        ...newOrder,
+        customerAddress: normalizedAddress,
+      }
+
+      setPopupOrder(normalizedOrder)
+      setShowNewOrderPopup(true)
+      const createdAtMs = normalizedOrder?.createdAt ? new Date(normalizedOrder.createdAt).getTime() : Date.now()
+      acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
+    })()
   }, [newOrder])
 
   // Track popup state with ref to avoid stale closures
@@ -909,11 +938,17 @@ export default function OrdersMain() {
     const orderId = current?.orderId || current?.orderMongoId
     if (!orderId) return
     const addr = current?.customerAddress || current?.address
+    const hasExtra =
+      (addr && (addr.additionalDetails || addr.additionalAddress || addr.landmark || addr.area)) ||
+      current?.additionalAddress ||
+      current?.address?.additionalAddress ||
+      current?.address?.additionalDetails
     // If address is a string or lacks formattedAddress/extra details, fetch full order
     const needsEnrichment =
       !addr ||
       typeof addr === 'string' ||
-      (!addr.formattedAddress && (!addr.street || !addr.city))
+      (!addr.formattedAddress && (!addr.street || !addr.city)) ||
+      !hasExtra
     if (!needsEnrichment) return
 
     let cancelled = false
@@ -929,7 +964,7 @@ export default function OrdersMain() {
             city: a.city || '',
             state: a.state || '',
             zipCode: a.zipCode || a.pincode || a.postalCode || '',
-            additionalDetails: a.additionalDetails || a.additionalAddress || a.landmark || ''
+            additionalDetails: a.additionalDetails || a.additionalAddress || o?.additionalAddress || a.landmark || a.area || ''
           }
           setPopupOrder(prev => ({
             ...(prev || current),
@@ -1473,9 +1508,18 @@ export default function OrdersMain() {
           addressParts.push(orderToPrintData.customerAddress.zipCode || orderToPrintData.customerAddress.pincode || orderToPrintData.customerAddress.postalCode)
         }
         
-        const fullAddressText = addressParts.length > 0 
-          ? addressParts.join(', ')
-          : (orderToPrintData.customerAddress.formattedAddress || 'Address not available')
+        // Prefer formattedAddress if available; prefix with additional address when present
+        let fullAddressText = ''
+        const formatted = orderToPrintData.customerAddress.formattedAddress
+        if (formatted && formatted.trim().length > 0) {
+          fullAddressText = additionalAddress
+            ? `${additionalAddress}, ${formatted}`
+            : formatted
+        } else {
+          fullAddressText = addressParts.length > 0 
+            ? addressParts.join(', ')
+            : 'Address not available'
+        }
         
         console.log('📍 Full address for PDF:', {
           additionalAddress,
@@ -2029,12 +2073,9 @@ export default function OrdersMain() {
 
                 {/* Content */}
                 <div className="px-4 py-4 max-h-[60vh] overflow-y-auto">
-                  {/* Customer info */}
+                  {/* Order meta (time only - item title hidden by request) */}
                   <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-gray-900">
-                      {(popupOrder || newOrder)?.items?.[0]?.name || 'New Order'}
-                    </h4>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500">
                       {(popupOrder || newOrder)?.createdAt
                         ? new Date((popupOrder || newOrder).createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
                         : 'Just now'}
@@ -2097,36 +2138,62 @@ export default function OrdersMain() {
                   </div>
 
                   {/* Delivery Address */}
-                  {(popupOrder || newOrder)?.customerAddress && (
+                  {(popupOrder || newOrder)?.customerAddress || (popupOrder || newOrder)?.address ? (
                     <div className="mb-4">
                       <p className="text-xs font-medium text-gray-700 mb-1">
                         Delivery address
                       </p>
-                      <p className="text-xs text-gray-600 leading-snug whitespace-pre-line">
-                        {(() => {
-                          const addr = (popupOrder || newOrder).customerAddress
-                          if (typeof addr === 'string') return addr
+                      {(() => {
+                        const po = popupOrder || newOrder
+                        const ca = po.customerAddress
+                        const ra = po.address
+                        // Prefer customerAddress object; but if it's missing/short, use root address
+                        const pick = (obj) => {
+                          if (!obj) return null
+                          if (typeof obj === 'string') return { formattedAddress: obj }
+                          return obj
+                        }
+                        const addr = pick(ca) || pick(ra) || {}
+                        // If both exist, prefer the one with a formattedAddress or longer built line
+                        const formatted =
+                          addr.formattedAddress ||
+                          ra?.formattedAddress ||
+                          ca?.formattedAddress ||
+                          ''
 
-                          // Prefer formattedAddress and then show additional details (flat no., landmark) BELOW it
-                          const extra = addr.additionalDetails || addr.additionalAddress || addr.landmark || addr.area
+                        const built = [
+                          addr.street || ra?.street || ca?.street,
+                          addr.city || ra?.city || ca?.city,
+                          addr.state || ra?.state || ca?.state,
+                          addr.pincode || addr.postalCode || addr.zipCode || ra?.pincode || ra?.postalCode || ra?.zipCode
+                        ].filter(Boolean).join(', ')
 
-                          if (addr.formattedAddress) {
-                            return `${addr.formattedAddress}${extra ? `\n${extra}` : ''}`
-                          }
+                        const main = (formatted && formatted.length > built.length) ? formatted : built
+                        const extra =
+                          addr.additionalDetails ||
+                          addr.additionalAddress ||
+                          ra?.additionalDetails ||
+                          ra?.additionalAddress ||
+                          po?.additionalAddress ||
+                          addr.landmark || addr.area || ''
 
-                          const partsMain = [
-                            addr.street,
-                            addr.city,
-                            addr.state,
-                            addr.pincode || addr.postalCode || addr.zipCode,
-                          ].filter(Boolean)
-
-                          const mainLine = partsMain.join(', ')
-                          return `${mainLine}${extra ? `\n${extra}` : ''}`
-                        })()}
-                      </p>
+                        if (!main) {
+                          return <p className="text-xs text-gray-600 leading-snug whitespace-pre-line">Address not available</p>
+                        }
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-xs text-gray-600 leading-snug whitespace-pre-line">{main || 'Address not available'}</p>
+                            {extra ? (
+                              <p className="text-xs text-gray-700 leading-snug">
+                                <span className="font-medium text-gray-700">Additional address: </span>
+                                <span className="text-gray-700">{extra}</span>
+                              </p>
+                            ) : null}
+                          </div>
+                        )
+                      })()}
                     </div>
-                  )}
+                  ) : null}
 
                   {/* Customer note */}
                   {((popupOrder || newOrder)?.note) && (
@@ -2136,15 +2203,31 @@ export default function OrdersMain() {
                     </div>
                   )}
 
-                  {/* Cutlery: show Send cutlery or Don't send cutlery */}
-                  <div className="mb-4 flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                    <svg className="w-5 h-5 text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    <span className="text-sm text-gray-700">
-                      {(popupOrder || newOrder)?.sendCutlery !== false ? "Send cutlery" : "Don't send cutlery"}
-                    </span>
-                  </div>
+                  {/* Additional address summary (replaces cutlery row) */}
+                  {(() => {
+                    const po = popupOrder || newOrder
+                    const ca = po?.customerAddress || {}
+                    const ra = po?.address || {}
+                    const extra =
+                      ca?.additionalDetails ||
+                      ca?.additionalAddress ||
+                      ra?.additionalDetails ||
+                      ra?.additionalAddress ||
+                      po?.additionalAddress ||
+                      ca?.landmark || ca?.area || ''
+                    if (!extra) return null
+                    return (
+                      <div className="mb-4 flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
+                        <svg className="w-5 h-5 text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 12.414M6 10a4 4 0 108 0 4 4 0 00-8 0z" />
+                        </svg>
+                        <div className="text-sm text-gray-700">
+                          <span className="font-medium text-gray-700">Additional address: </span>
+                          <span>{extra}</span>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Total bill */}
                   <div className="mb-4 flex items-center justify-between py-3 border-y border-gray-200">

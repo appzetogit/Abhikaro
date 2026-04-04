@@ -317,7 +317,9 @@ export const getOrders = asyncHandler(async (req, res) => {
       } else {
         const statusMap = {
           'pending': 'Pending',
-          'confirmed': 'Accepted',
+          // 'confirmed' means payment verified, NOT restaurant acceptance.
+          // Show as 'Pending' until restaurant actually accepts and moves to 'preparing'.
+          'confirmed': 'Pending',
           'preparing': 'Processing',
           'ready': 'Ready',
           'out_for_delivery': 'Food On The Way',
@@ -2364,17 +2366,39 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
       return errorResponse(res, 400, 'Order already has a delivery partner assigned');
     }
 
-    // Get restaurant location from restaurant doc
+    // Get restaurant location from restaurant doc or fall back to order.restaurantLocation
     const restaurantId = order.restaurantId;
-    const restaurantDoc = await Restaurant.findById(restaurantId)
-      .select('location')
-      .lean();
+    let restaurantDoc = null;
+    if (mongoose.Types.ObjectId.isValid(restaurantId)) {
+      restaurantDoc = await Restaurant.findById(restaurantId).select('location').lean();
+    }
+    if (!restaurantDoc) {
+      restaurantDoc = await Restaurant.findOne({
+        $or: [{ restaurantId: restaurantId }, { _id: restaurantId }],
+      })
+        .select('location')
+        .lean();
+    }
 
-    if (!restaurantDoc || !restaurantDoc.location || !restaurantDoc.location.coordinates) {
+    // Build effective location
+    const fallbackRestaurantLocation =
+      order.restaurantLocation && (order.restaurantLocation.latitude || order.restaurantLocation.longitude)
+        ? {
+            type: 'Point',
+            coordinates: [
+              Number(order.restaurantLocation.longitude) || 0,
+              Number(order.restaurantLocation.latitude) || 0,
+            ],
+          }
+        : null;
+    const effectiveRestaurantLocation =
+      restaurantDoc?.location?.coordinates?.length ? restaurantDoc.location : fallbackRestaurantLocation;
+
+    if (!effectiveRestaurantLocation || !effectiveRestaurantLocation.coordinates) {
       return errorResponse(res, 400, 'Restaurant location not found. Please update restaurant location.');
     }
 
-    const [restaurantLng, restaurantLat] = restaurantDoc.location.coordinates;
+    const [restaurantLng, restaurantLat] = effectiveRestaurantLocation.coordinates;
 
     // Find nearest delivery boys (priority)
     const priorityDeliveryBoys = (

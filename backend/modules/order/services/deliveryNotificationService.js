@@ -142,13 +142,41 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
       }).lean();
     }
 
+    // Build an effective restaurant location/address with robust fallbacks
+    const fallbackRestaurantLocation =
+      order.restaurantLocation && (order.restaurantLocation.latitude || order.restaurantLocation.longitude)
+        ? {
+            type: "Point",
+            coordinates: [
+              Number(order.restaurantLocation.longitude) || 0,
+              Number(order.restaurantLocation.latitude) || 0,
+            ],
+            formattedAddress:
+              order.restaurantLocation.formattedAddress ||
+              order.restaurantLocation.address ||
+              null,
+            address:
+              order.restaurantLocation.formattedAddress ||
+              order.restaurantLocation.address ||
+              null,
+          }
+        : null;
+    const effectiveRestaurantLocation =
+      restaurant?.location?.coordinates?.length ? restaurant.location : fallbackRestaurantLocation;
+    const effectiveRestaurantAddress =
+      restaurant?.location?.formattedAddress ||
+      restaurant?.address ||
+      fallbackRestaurantLocation?.formattedAddress ||
+      fallbackRestaurantLocation?.address ||
+      "Restaurant address";
+
     // Calculate distances
     let pickupDistance = null;
     let deliveryDistance = null;
     
-    if (deliveryPartner.availability?.currentLocation?.coordinates && restaurant?.location?.coordinates) {
+    if (deliveryPartner.availability?.currentLocation?.coordinates && effectiveRestaurantLocation?.coordinates) {
       const [deliveryLng, deliveryLat] = deliveryPartner.availability.currentLocation.coordinates;
-      const [restaurantLng, restaurantLat] = restaurant.location.coordinates;
+      const [restaurantLng, restaurantLat] = effectiveRestaurantLocation.coordinates;
       const [customerLng, customerLat] = order.address.location.coordinates;
 
       // Calculate pickup distance (delivery boy to restaurant)
@@ -177,11 +205,14 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
       resendVersion: Number(order.assignmentInfo?.resendVersion || 0),
       assignedBy: order.assignmentInfo?.assignedBy || null,
       isResend: ['manual_resend', 'admin_manual_resend'].includes(order.assignmentInfo?.assignedBy),
-      restaurantLocation: restaurant?.location ? {
-        latitude: restaurant.location.coordinates[1],
-        longitude: restaurant.location.coordinates[0],
-        address: restaurant.location.formattedAddress || restaurant.address || 'Restaurant address'
-      } : null,
+      restaurantAddress: effectiveRestaurantAddress,
+      restaurantLocation: effectiveRestaurantLocation
+        ? {
+            latitude: effectiveRestaurantLocation.coordinates[1],
+            longitude: effectiveRestaurantLocation.coordinates[0],
+            address: effectiveRestaurantAddress,
+          }
+        : null,
       customerLocation: {
         latitude: order.address.location.coordinates[1],
         longitude: order.address.location.coordinates[0],
