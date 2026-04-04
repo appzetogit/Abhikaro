@@ -256,7 +256,55 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
         /* ignore */
       }
     }
-    const orderWithPayment = { ...order, paymentMethod };
+    // Build effective restaurant location/address for clients that expect scalar fields
+    let effectiveRestaurantCoords = null;
+    let effectiveRestaurantAddress = null;
+
+    // Prefer order.restaurantLocation if present
+    if (order.restaurantLocation) {
+      // Support multiple shapes:
+      // 1) { coordinates: [lng,lat] }
+      // 2) { location: { coordinates: [lng,lat] } }
+      // 3) { latitude, longitude }
+      if (Array.isArray(order.restaurantLocation?.coordinates) && order.restaurantLocation.coordinates.length === 2) {
+        effectiveRestaurantCoords = order.restaurantLocation.coordinates;
+      } else if (Array.isArray(order.restaurantLocation?.location?.coordinates) && order.restaurantLocation.location.coordinates.length === 2) {
+        effectiveRestaurantCoords = order.restaurantLocation.location.coordinates;
+      } else if (order.restaurantLocation.latitude != null && order.restaurantLocation.longitude != null) {
+        effectiveRestaurantCoords = [Number(order.restaurantLocation.longitude), Number(order.restaurantLocation.latitude)];
+      }
+      effectiveRestaurantAddress =
+        order.restaurantLocation.formattedAddress || order.restaurantLocation.address || null;
+    }
+
+    // Fallback to populated restaurant document
+    if (!effectiveRestaurantCoords && order.restaurantId && typeof order.restaurantId === "object") {
+      const rest = order.restaurantId;
+      const coords =
+        rest.location?.geoLocation?.coordinates?.length
+          ? rest.location.geoLocation.coordinates
+          : rest.location?.coordinates;
+      if (coords && coords.length === 2) {
+        effectiveRestaurantCoords = coords;
+        effectiveRestaurantAddress =
+          rest.location?.formattedAddress || rest.address || null;
+      }
+    }
+
+    // Delivery/customer coords
+    const deliveryCoords = Array.isArray(order.address?.location?.coordinates)
+      ? order.address.location.coordinates
+      : null;
+
+    const orderWithPayment = {
+      ...order,
+      paymentMethod,
+      restaurantAddress: effectiveRestaurantAddress || null,
+      restaurantLat: effectiveRestaurantCoords ? effectiveRestaurantCoords[1] : null,
+      restaurantLng: effectiveRestaurantCoords ? effectiveRestaurantCoords[0] : null,
+      deliveryLat: deliveryCoords ? deliveryCoords[1] : null,
+      deliveryLng: deliveryCoords ? deliveryCoords[0] : null,
+    };
 
     return successResponse(res, 200, "Order details retrieved successfully", {
       order: orderWithPayment,

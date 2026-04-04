@@ -456,6 +456,8 @@ export const API_ENDPOINTS = {
     ZONE_STATUS: "/admin/zones/:id/status",
     // Orders admin helpers
     ORDER_REASSIGN_RESTAURANT: "/admin/orders/:id/reassign-restaurant",
+    ORDER_RESEND_RESTAURANT_NOTIFICATION:
+      "/admin/orders/:id/resend-restaurant-notification",
   },
   // Order endpoints
   ORDER: {

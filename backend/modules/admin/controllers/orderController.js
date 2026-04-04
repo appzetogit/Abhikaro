@@ -2466,6 +2466,88 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Backfill restaurantLocation for online (razorpay) orders created in the last N days
+ * POST /api/admin/orders/backfill-restaurant-location?days=7
+ */
+export const backfillRestaurantLocation = asyncHandler(async (req, res) => {
+  try {
+    const days = Math.max(1, parseInt(req.query.days || "7", 10));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // Find candidate orders
+    const candidates = await Order.find({
+      "payment.method": "razorpay",
+      createdAt: { $gte: since },
+      $or: [{ restaurantLocation: null }, { restaurantLocation: { $exists: false } }],
+    })
+      .select("_id restaurantId restaurantLocation createdAt")
+      .lean();
+
+    if (!candidates || candidates.length === 0) {
+      return successResponse(res, 200, "No orders need backfill", { updated: 0 });
+    }
+
+    let updatedCount = 0;
+
+    for (const ord of candidates) {
+      // Resolve restaurant by either _id or business restaurantId
+      let restaurantDoc = null;
+      const rid = ord.restaurantId;
+      try {
+        if (mongoose.Types.ObjectId.isValid(rid)) {
+          restaurantDoc = await Restaurant.findById(rid)
+            .select("location address")
+            .lean();
+        }
+        if (!restaurantDoc) {
+          restaurantDoc = await Restaurant.findOne({
+            $or: [{ restaurantId: rid }, { _id: rid }],
+          })
+            .select("location address")
+            .lean();
+        }
+      } catch (e) {
+        // continue to next
+      }
+
+      const coords =
+        restaurantDoc?.location?.geoLocation?.coordinates?.length
+          ? restaurantDoc.location.geoLocation.coordinates
+          : restaurantDoc?.location?.coordinates;
+
+      if (!coords || coords.length !== 2) {
+        continue;
+      }
+
+      const resolvedRestaurantLocation = {
+        type: "Point",
+        coordinates: coords,
+        formattedAddress:
+          restaurantDoc.location?.formattedAddress || restaurantDoc.address || null,
+        address: restaurantDoc.location?.address || restaurantDoc.address || null,
+      };
+
+      const upd = await Order.updateOne(
+        { _id: ord._id },
+        { $set: { restaurantLocation: resolvedRestaurantLocation } },
+      );
+
+      if (upd.modifiedCount > 0) {
+        updatedCount += 1;
+      }
+    }
+
+    return successResponse(res, 200, "Backfill completed", {
+      updated: updatedCount,
+      scanned: candidates.length,
+      since,
+    });
+  } catch (error) {
+    console.error("Error backfilling restaurantLocation:", error);
+    return errorResponse(res, 500, "Failed to backfill restaurant location");
+  }
+});
+/**
  * Reassign a restaurant-cancelled order back to the restaurant
  * POST /api/admin/orders/:id/reassign-restaurant
  */

@@ -1870,6 +1870,16 @@ export const adminAPI = {
     );
   },
 
+  // Resend restaurant new_order notification (admin)
+  resendRestaurantNotification: (orderId) => {
+    return apiClient.post(
+      API_ENDPOINTS.ADMIN.ORDER_RESEND_RESTAURANT_NOTIFICATION.replace(
+        ":id",
+        orderId,
+      ),
+    );
+  },
+
   // Reassign a restaurant-cancelled order back to the restaurant
   reassignOrderToRestaurant: (orderId) => {
     return apiClient.post(

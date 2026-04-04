@@ -162,15 +162,84 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
 
         const payload = fresh.payload || {};
 
-        // Minimal, safe order creation that matches existing schema
+        // Resolve restaurant location/address for rider pickup
+        let resolvedRestaurantLocation = null;
+        try {
+          // Prefer location saved in payload (if frontend provided)
+          const pLoc = payload.restaurantLocation;
+          if (pLoc && (pLoc.latitude || pLoc.longitude || pLoc?.location?.coordinates?.length)) {
+            const lat =
+              Number(pLoc.latitude) ||
+              Number(pLoc?.location?.coordinates?.[1]) ||
+              null;
+            const lng =
+              Number(pLoc.longitude) ||
+              Number(pLoc?.location?.coordinates?.[0]) ||
+              null;
+            if (lat != null && lng != null) {
+              resolvedRestaurantLocation = {
+                latitude: lat,
+                longitude: lng,
+                location: {
+                  type: 'Point',
+                  coordinates: [lng, lat],
+                },
+                formattedAddress: pLoc.formattedAddress || pLoc.address || null,
+                address: pLoc.formattedAddress || pLoc.address || null,
+              };
+            }
+          } else if (payload.restaurantId) {
+            // Fallback: fetch Restaurant doc
+            const { default: Restaurant } = await import('../restaurant/models/Restaurant.js');
+            let restaurantDoc = null;
+            if (mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
+              restaurantDoc = await Restaurant.findById(payload.restaurantId).select('location address').lean();
+            }
+            if (!restaurantDoc) {
+              restaurantDoc = await Restaurant.findOne({
+                $or: [{ restaurantId: payload.restaurantId }, { _id: payload.restaurantId }],
+              }).select('location address').lean();
+            }
+            const coords =
+              restaurantDoc?.location?.geoLocation?.coordinates?.length
+                ? restaurantDoc.location.geoLocation.coordinates
+                : restaurantDoc?.location?.coordinates;
+            if (coords && coords.length === 2) {
+              const [lng, lat] = coords;
+              resolvedRestaurantLocation = {
+                latitude: Number(lat),
+                longitude: Number(lng),
+                location: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
+                formattedAddress:
+                  restaurantDoc.location?.formattedAddress || restaurantDoc.address || null,
+                address: restaurantDoc.location?.address || restaurantDoc.address || null,
+              };
+            }
+          }
+        } catch (e) {
+          logger.warn('Could not resolve restaurant location during verify:', e?.message || e);
+        }
+
+        // Merge additionalAddress into address.additionalDetails for consistency
+        const baseAddress = payload.address || {};
+        const resolvedAddress = {
+          ...baseAddress,
+          additionalDetails:
+            payload.additionalAddress ||
+            baseAddress.additionalDetails ||
+            baseAddress.additionalAddress ||
+            null,
+        };
+
+        // Minimal, safe order creation that matches existing schema, with pickup location
         const orderDoc = new Order({
           orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           userId: fresh.userId,
           restaurantId: payload.restaurantId,
           restaurantName: payload.restaurantName,
           items: payload.items,
-          address: payload.address,
-          restaurantLocation: null,
+          address: resolvedAddress,
+          restaurantLocation: resolvedRestaurantLocation,
           pricing: payload.pricing,
           deliveryFleet: payload.deliveryFleet || 'standard',
           note: payload.note || '',
@@ -221,6 +290,14 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
         const placedOrder = await Order.findById(updated.orderId);
         if (placedOrder) {
           await notifyUserOrderPlaced(placedOrder);
+          if (process.env.NODE_ENV !== 'production') {
+            logger.info('Order created via verify with restaurantLocation:', {
+              orderId: placedOrder.orderId,
+              hasRestaurantLocation: !!placedOrder.restaurantLocation,
+              coords: placedOrder.restaurantLocation?.coordinates,
+              formattedAddress: placedOrder.restaurantLocation?.formattedAddress
+            });
+          }
         }
       } catch (e) {
         logger.warn('User push notify failed (non-blocking):', e?.message || e);
@@ -346,14 +423,78 @@ router.post('/razorpay/webhook', express.raw({ type: '*/*' }), async (req, res) 
 
           const payload = fresh.payload || {};
 
+          // Resolve restaurant location/address
+          let resolvedRestaurantLocation = null;
+          try {
+            const pLoc = payload.restaurantLocation;
+            if (pLoc && (pLoc.latitude || pLoc.longitude || pLoc?.location?.coordinates?.length)) {
+              const lat =
+                Number(pLoc.latitude) ||
+                Number(pLoc?.location?.coordinates?.[1]) ||
+                null;
+              const lng =
+                Number(pLoc.longitude) ||
+                Number(pLoc?.location?.coordinates?.[0]) ||
+                null;
+              if (lat != null && lng != null) {
+                resolvedRestaurantLocation = {
+                  latitude: lat,
+                  longitude: lng,
+                  location: { type: 'Point', coordinates: [lng, lat] },
+                  formattedAddress: pLoc.formattedAddress || pLoc.address || null,
+                  address: pLoc.formattedAddress || pLoc.address || null,
+                };
+              }
+            } else if (payload.restaurantId) {
+              const { default: Restaurant } = await import('../restaurant/models/Restaurant.js');
+              let restaurantDoc = null;
+              if (mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
+                restaurantDoc = await Restaurant.findById(payload.restaurantId).select('location address').lean();
+              }
+              if (!restaurantDoc) {
+                restaurantDoc = await Restaurant.findOne({
+                  $or: [{ restaurantId: payload.restaurantId }, { _id: payload.restaurantId }],
+                }).select('location address').lean();
+              }
+              const coords =
+                restaurantDoc?.location?.geoLocation?.coordinates?.length
+                  ? restaurantDoc.location.geoLocation.coordinates
+                  : restaurantDoc?.location?.coordinates;
+              if (coords && coords.length === 2) {
+                const [lng, lat] = coords;
+                resolvedRestaurantLocation = {
+                  latitude: Number(lat),
+                  longitude: Number(lng),
+                  location: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
+                  formattedAddress:
+                    restaurantDoc.location?.formattedAddress || restaurantDoc.address || null,
+                  address: restaurantDoc.location?.address || restaurantDoc.address || null,
+                };
+              }
+            }
+          } catch (e) {
+            logger.warn('Could not resolve restaurant location during webhook:', e?.message || e);
+          }
+
+          // Merge additionalAddress into address.additionalDetails
+          const baseAddress = payload.address || {};
+          const resolvedAddress = {
+            ...baseAddress,
+            additionalDetails:
+              payload.additionalAddress ||
+              baseAddress.additionalDetails ||
+              baseAddress.additionalAddress ||
+              null,
+          };
+
           const orderDoc = new Order({
             orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: fresh.userId,
             restaurantId: payload.restaurantId,
             restaurantName: payload.restaurantName,
             items: payload.items,
-            address: payload.address,
-            restaurantLocation: null,
+            address: resolvedAddress,
+            restaurantLocation: resolvedRestaurantLocation,
             pricing: payload.pricing,
             deliveryFleet: payload.deliveryFleet || 'standard',
             note: payload.note || '',
@@ -523,14 +664,78 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
 
         const payload = fresh.payload || {};
 
+        // Resolve restaurant location/address
+        let resolvedRestaurantLocation = null;
+        try {
+          const pLoc = payload.restaurantLocation;
+          if (pLoc && (pLoc.latitude || pLoc.longitude || pLoc?.location?.coordinates?.length)) {
+            const lat =
+              Number(pLoc.latitude) ||
+              Number(pLoc?.location?.coordinates?.[1]) ||
+              null;
+            const lng =
+              Number(pLoc.longitude) ||
+              Number(pLoc?.location?.coordinates?.[0]) ||
+              null;
+            if (lat != null && lng != null) {
+              resolvedRestaurantLocation = {
+                latitude: lat,
+                longitude: lng,
+                location: { type: 'Point', coordinates: [lng, lat] },
+                formattedAddress: pLoc.formattedAddress || pLoc.address || null,
+                address: pLoc.formattedAddress || pLoc.address || null,
+              };
+            }
+          } else if (payload.restaurantId) {
+            const { default: Restaurant } = await import('../restaurant/models/Restaurant.js');
+            let restaurantDoc = null;
+            if (mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
+              restaurantDoc = await Restaurant.findById(payload.restaurantId).select('location address').lean();
+            }
+            if (!restaurantDoc) {
+              restaurantDoc = await Restaurant.findOne({
+                $or: [{ restaurantId: payload.restaurantId }, { _id: payload.restaurantId }],
+              }).select('location address').lean();
+            }
+            const coords =
+              restaurantDoc?.location?.geoLocation?.coordinates?.length
+                ? restaurantDoc.location.geoLocation.coordinates
+                : restaurantDoc?.location?.coordinates;
+            if (coords && coords.length === 2) {
+              const [lng, lat] = coords;
+              resolvedRestaurantLocation = {
+                latitude: Number(lat),
+                longitude: Number(lng),
+                location: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
+                formattedAddress:
+                  restaurantDoc.location?.formattedAddress || restaurantDoc.address || null,
+                address: restaurantDoc.location?.address || restaurantDoc.address || null,
+              };
+            }
+          }
+        } catch (e) {
+          logger.warn('Could not resolve restaurant location during reconcile:', e?.message || e);
+        }
+
+        // Merge additionalAddress into address.additionalDetails
+        const baseAddress = payload.address || {};
+        const resolvedAddress = {
+          ...baseAddress,
+          additionalDetails:
+            payload.additionalAddress ||
+            baseAddress.additionalDetails ||
+            baseAddress.additionalAddress ||
+            null,
+        };
+
         const orderDoc = new Order({
           orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           userId: fresh.userId,
           restaurantId: payload.restaurantId,
           restaurantName: payload.restaurantName,
           items: payload.items,
-          address: payload.address,
-          restaurantLocation: null,
+          address: resolvedAddress,
+          restaurantLocation: resolvedRestaurantLocation,
           pricing: payload.pricing,
           deliveryFleet: payload.deliveryFleet || 'standard',
           note: payload.note || '',
@@ -563,6 +768,14 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
           const restaurantId = orderDoc.restaurantId?.toString() || orderDoc.restaurantId;
           if (restaurantId) {
             await notifyRestaurantNewOrder(orderDoc, restaurantId);
+          }
+          if (process.env.NODE_ENV !== 'production') {
+            logger.info('Order created via reconcile with restaurantLocation:', {
+              orderId: orderDoc.orderId,
+              hasRestaurantLocation: !!orderDoc.restaurantLocation,
+              coords: orderDoc.restaurantLocation?.coordinates,
+              formattedAddress: orderDoc.restaurantLocation?.formattedAddress
+            });
           }
         } catch (e) {
           logger.error('Failed to notify restaurant during reconcile:', e?.message || e);

@@ -213,11 +213,17 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
             address: effectiveRestaurantAddress,
           }
         : null,
+      // Include explicit scalar coordinates for rider clients that expect them
+      restaurantLat: effectiveRestaurantLocation?.coordinates?.[1] ?? null,
+      restaurantLng: effectiveRestaurantLocation?.coordinates?.[0] ?? null,
       customerLocation: {
         latitude: order.address.location.coordinates[1],
         longitude: order.address.location.coordinates[0],
         address: order.address.formattedAddress || `${order.address.street}, ${order.address.city}` || 'Customer address'
       },
+      // Also provide delivery coordinates explicitly
+      deliveryLat: order.address.location.coordinates?.[1] ?? null,
+      deliveryLng: order.address.location.coordinates?.[0] ?? null,
       items: order.items.map(item => ({
         name: item.name,
         quantity: item.quantity,

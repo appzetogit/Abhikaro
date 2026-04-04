@@ -258,6 +258,7 @@ import {
   reassignOrderToRestaurant,
   resendRestaurantNotification,
   getDeliveryPartnerWallet,
+  backfillRestaurantLocation,
 } from "../controllers/orderController.js";
 import {
   getAllReviews,
@@ -752,6 +753,12 @@ router.get(
   "/orders/restaurant-report",
   requirePermissions("menu.reports"),
   getRestaurantReport,
+);
+// Maintenance: Backfill restaurantLocation for recent online orders
+router.post(
+  "/orders/backfill-restaurant-location",
+  requirePermissions("orders.edit"),
+  backfillRestaurantLocation,
 );
 
 // Order Refund - MUST be before /orders/:id to avoid route conflicts

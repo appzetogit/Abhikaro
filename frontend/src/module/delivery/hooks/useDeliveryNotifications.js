@@ -444,8 +444,31 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
-      setNewOrder(orderData);
-      playNotificationSound();
+      // If payload is minimal (no coords/address), enrich via API before setting
+      const hasUsefulPayload =
+        !!orderData?.restaurantLocation ||
+        !!orderData?.customerLocation ||
+        !!orderData?.restaurantLat ||
+        !!orderData?.restaurantLng ||
+        !!orderData?.restaurantAddress ||
+        !!orderData?.deliveryDistance;
+
+      if (orderId && !hasUsefulPayload) {
+        (async () => {
+          const normalized = await fetchOrderDetailsForPopup(orderId);
+          if (!normalized) return;
+          const normalizedId =
+            normalized?.orderId?.toString?.() ||
+            normalized?._id?.toString?.() ||
+            normalized?.orderMongoId?.toString?.();
+          if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
+          setNewOrder(normalized);
+          playNotificationSound();
+        })();
+      } else {
+        setNewOrder(orderData);
+        playNotificationSound();
+      }
     });
 
     // Listen for priority-based order notifications (new_order_available)
@@ -461,9 +484,31 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
-      // Treat it the same as new_order for now - delivery boy can accept it
-      setNewOrder(orderData);
-      playNotificationSound();
+      const hasUsefulPayload =
+        !!orderData?.restaurantLocation ||
+        !!orderData?.customerLocation ||
+        !!orderData?.restaurantLat ||
+        !!orderData?.restaurantLng ||
+        !!orderData?.restaurantAddress ||
+        !!orderData?.deliveryDistance;
+
+      if (orderId && !hasUsefulPayload) {
+        (async () => {
+          const normalized = await fetchOrderDetailsForPopup(orderId);
+          if (!normalized) return;
+          const normalizedId =
+            normalized?.orderId?.toString?.() ||
+            normalized?._id?.toString?.() ||
+            normalized?.orderMongoId?.toString?.();
+          if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
+          setNewOrder(normalized);
+          playNotificationSound();
+        })();
+      } else {
+        // Treat it the same as new_order for now - delivery boy can accept it
+        setNewOrder(orderData);
+        playNotificationSound();
+      }
     });
 
     socketRef.current.on('play_notification_sound', (data) => {

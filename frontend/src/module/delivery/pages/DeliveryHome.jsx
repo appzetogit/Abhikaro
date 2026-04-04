@@ -4420,27 +4420,108 @@ export default function DeliveryHome() {
         pickupDistance = 'Calculating...';
       }
 
+      // Try to pull restaurant location from multiple possible paths in payload
+      const payloadRestaurant =
+        newOrder.restaurant ||
+        newOrder.restaurantId ||
+        (newOrder.fullOrder && (newOrder.fullOrder.restaurant || newOrder.fullOrder.restaurantId)) ||
+        {}
+      const payloadLocation =
+        payloadRestaurant?.location ||
+        newOrder.restaurantLocation ||
+        (newOrder.fullOrder && (newOrder.fullOrder.restaurantLocation || newOrder.fullOrder.restaurant?.location || newOrder.fullOrder.restaurantId?.location)) ||
+        {}
+
+      let payloadLat = undefined
+      let payloadLng = undefined
+      if (Array.isArray(payloadLocation.coordinates) && payloadLocation.coordinates.length >= 2) {
+        payloadLng = Number(payloadLocation.coordinates[0])
+        payloadLat = Number(payloadLocation.coordinates[1])
+      } else {
+        if (payloadLocation.latitude != null) payloadLat = Number(payloadLocation.latitude)
+        if (payloadLocation.longitude != null) payloadLng = Number(payloadLocation.longitude)
+      }
+
+      let mappedAddress = restaurantAddress
+      if (!mappedAddress) {
+        mappedAddress =
+          payloadRestaurant?.address ||
+          payloadLocation?.formattedAddress ||
+          payloadLocation?.address ||
+          'Restaurant address'
+      }
+
+      // If this is a resend for the same order, preserve any known lat/lng/address
+      if (selectedRestaurant && selectedRestaurant.orderId === newOrder.orderId) {
+        if ((payloadLat == null || isNaN(payloadLat)) && selectedRestaurant.lat) {
+          payloadLat = selectedRestaurant.lat
+        }
+        if ((payloadLng == null || isNaN(payloadLng)) && selectedRestaurant.lng) {
+          payloadLng = selectedRestaurant.lng
+        }
+        if ((!mappedAddress || mappedAddress === 'Restaurant address') && selectedRestaurant.address) {
+          mappedAddress = selectedRestaurant.address
+        }
+        try {
+          console.log('[DeliveryHome][NewOrderPopup] preserving known coords/address for resend:', {
+            preservedLat: selectedRestaurant.lat,
+            preservedLng: selectedRestaurant.lng,
+            preservedAddress: selectedRestaurant.address
+          })
+        } catch (_) {}
+      }
+
+      // Compute initial drop distance if coords available immediately
+      let initialDropDistance = newOrder.deliveryDistance || newOrder.dropDistance || null
+      if (!initialDropDistance && payloadLat != null && !isNaN(payloadLat) && payloadLng != null && !isNaN(payloadLng)) {
+        const custLatNow = newOrder.customerLocation?.latitude ?? newOrder.deliveryLat
+        const custLngNow = newOrder.customerLocation?.longitude ?? newOrder.deliveryLng
+        if (custLatNow != null && custLngNow != null && !isNaN(Number(custLatNow)) && !isNaN(Number(custLngNow))) {
+          try {
+            const metersNow = calculateDistance(Number(payloadLat), Number(payloadLng), Number(custLatNow), Number(custLngNow))
+            const kmNow = metersNow / 1000
+            initialDropDistance = `${kmNow.toFixed(2)} km`
+            console.log('[DeliveryHome][DropDistance][Initial] computed from payload coords:', initialDropDistance)
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
       const restaurantData = {
         id: newOrder.orderMongoId || newOrder.orderId,
         orderId: newOrder.orderId,
         name: newOrder.restaurantName,
-        address: restaurantAddress,
-        lat: newOrder.restaurantLocation?.latitude,
-        lng: newOrder.restaurantLocation?.longitude,
+        address: mappedAddress,
+        lat: payloadLat,
+        lng: payloadLng,
         distance: pickupDistance,
         timeAway: pickupDistance !== 'Calculating...' ? calculateTimeAway(pickupDistance) : 'Calculating...',
-        dropDistance: newOrder.deliveryDistance || 'Calculating...',
+        dropDistance: initialDropDistance ||
+          (newOrder.assignmentInfo?.routeToDelivery?.distance
+            ? `${Number(newOrder.assignmentInfo.routeToDelivery.distance).toFixed(2)} km`
+            : 'Calculating...'),
         pickupDistance: pickupDistance,
         estimatedEarnings: effectiveEarnings,
         deliveryFee,
         amount: earnedValue > 0 ? earnedValue : (deliveryFee > 0 ? deliveryFee : 0),
         customerName: newOrder.customerName,
-        customerAddress: newOrder.customerLocation?.address || 'Customer address',
-        customerLat: newOrder.customerLocation?.latitude,
-        customerLng: newOrder.customerLocation?.longitude,
+        customerAddress: newOrder.customerLocation?.address || newOrder.deliveryAddress || 'Customer address',
+        customerLat: newOrder.customerLocation?.latitude ?? newOrder.deliveryLat,
+        customerLng: newOrder.customerLocation?.longitude ?? newOrder.deliveryLng,
         items: newOrder.items || [],
         total: newOrder.total || 0
       }
+
+      // Debug: new order popup mapped payload
+      try {
+        console.log('[DeliveryHome][NewOrderPopup] incoming newOrder payload:', newOrder)
+        console.log('[DeliveryHome][NewOrderPopup] mapped restaurantData:', {
+          ...restaurantData,
+          // avoid logging big arrays fully
+          items: Array.isArray(restaurantData.items) ? restaurantData.items.length : 0
+        })
+      } catch (_) {}
 
       setSelectedRestaurant(restaurantData)
       setShowNewOrderPopup(true)
@@ -4512,6 +4593,15 @@ export default function DeliveryHome() {
           total: payload.total || 0,
         }
 
+        // Debug: foreground notification mapped payload
+        try {
+          console.log('[DeliveryHome][ForegroundNotification] fetched order payload:', payload)
+          console.log('[DeliveryHome][ForegroundNotification] mapped restaurantData:', {
+            ...restaurantData,
+            items: Array.isArray(restaurantData.items) ? restaurantData.items.length : 0
+          })
+        } catch (_) {}
+
         setSelectedRestaurant(restaurantData)
         setShowNewOrderPopup(true)
         setIsNewOrderPopupMinimized(false)
@@ -4567,10 +4657,14 @@ export default function DeliveryHome() {
   // Fetch restaurant address if missing when selectedRestaurant is set
   useEffect(() => {
     if (!selectedRestaurant?.orderId && !selectedRestaurant?.id) return
-    if (!selectedRestaurant?.address ||
+    if (
+      !selectedRestaurant?.address ||
       selectedRestaurant.address === 'Restaurant address' ||
-      selectedRestaurant.address === 'Restaurant Address') {
-      // Address is missing, fetch order details to get restaurant address
+      selectedRestaurant.address === 'Restaurant Address' ||
+      !selectedRestaurant?.lat ||
+      !selectedRestaurant?.lng
+    ) {
+      // Address or coordinates are missing, fetch order details to get restaurant data
       const orderId = selectedRestaurant.orderId || selectedRestaurant.id
 
       const fetchAddress = async () => {
@@ -4589,12 +4683,114 @@ export default function DeliveryHome() {
               restaurantAddress = order.restaurantId.location.address
             }
 
-            if (restaurantAddress && restaurantAddress !== 'Restaurant address' && restaurantAddress !== 'Restaurant Address') {
+            // Extract restaurant coordinates with multiple fallbacks
+            let restaurantLat = null
+            let restaurantLng = null
+            const restLoc = order.restaurantId?.location || order.restaurantLocation || order.restaurant?.location
+
+            if (restLoc?.coordinates && Array.isArray(restLoc.coordinates) && restLoc.coordinates.length >= 2) {
+              // GeoJSON [lng, lat]
+              restaurantLng = Number(restLoc.coordinates[0])
+              restaurantLat = Number(restLoc.coordinates[1])
+            } else {
+              // Legacy fields
+              if (restLoc?.latitude != null) restaurantLat = Number(restLoc.latitude)
+              if (restLoc?.longitude != null) restaurantLng = Number(restLoc.longitude)
+            }
+
+            const updates = {}
+            if (
+              restaurantAddress &&
+              restaurantAddress !== 'Restaurant address' &&
+              restaurantAddress !== 'Restaurant Address'
+            ) {
+              // Update when address is missing OR placeholder
+              if (
+                !selectedRestaurant?.address ||
+                selectedRestaurant.address === 'Restaurant address' ||
+                selectedRestaurant.address === 'Restaurant Address'
+              ) {
+                updates.address = restaurantAddress
+              }
+            }
+            if (!isNaN(restaurantLat) && !isNaN(restaurantLng) && restaurantLat && restaurantLng) {
+              updates.lat = restaurantLat
+              updates.lng = restaurantLng
+            }
+
+            // Debug: address/coords backfill
+            try {
+              console.log('[DeliveryHome][Backfill] orderId:', orderId, 'address:', restaurantAddress, 'lat:', restaurantLat, 'lng:', restaurantLng)
+              if (!updates.lat || !updates.lng) {
+                console.warn('[DeliveryHome][Backfill] Missing coordinates in order details response. Raw location:', restLoc)
+              }
+            } catch (_) {}
+
+            if (Object.keys(updates).length > 0) {
               setSelectedRestaurant(prev => ({
                 ...prev,
-                address: restaurantAddress
+                ...updates
               }))
 
+            } else {
+              // If still missing coords/address, try fetching restaurant by ID
+              try {
+                const restaurantIdRaw = order.restaurantId
+                const restaurantId =
+                  typeof restaurantIdRaw === 'string'
+                    ? restaurantIdRaw
+                    : (restaurantIdRaw?._id || restaurantIdRaw?.id || restaurantIdRaw?.toString?.() || null)
+
+                if (restaurantId) {
+                  const restRes = await restaurantAPI.getRestaurantById(restaurantId)
+                  const restData = restRes?.data?.data?.restaurant || restRes?.data?.data
+
+                  if (restData) {
+                    let fetchedLat = null
+                    let fetchedLng = null
+                    const rloc = restData.location || {}
+
+                    if (Array.isArray(rloc.coordinates) && rloc.coordinates.length >= 2) {
+                      fetchedLng = Number(rloc.coordinates[0])
+                      fetchedLat = Number(rloc.coordinates[1])
+                    } else {
+                      if (rloc.latitude != null) fetchedLat = Number(rloc.latitude)
+                      if (rloc.longitude != null) fetchedLng = Number(rloc.longitude)
+                    }
+
+                    const upd2 = {}
+                    if (
+                      !selectedRestaurant?.address ||
+                      selectedRestaurant.address === 'Restaurant address' ||
+                      selectedRestaurant.address === 'Restaurant Address'
+                    ) {
+                      const fa =
+                        rloc.formattedAddress ||
+                        rloc.address ||
+                        restData.address ||
+                        null
+                      if (fa) upd2.address = fa
+                    }
+                    if (!isNaN(fetchedLat) && !isNaN(fetchedLng) && fetchedLat && fetchedLng) {
+                      upd2.lat = fetchedLat
+                      upd2.lng = fetchedLng
+                    }
+
+                    console.log('[DeliveryHome][Backfill->RestaurantAPI] restaurantId:', restaurantId, 'updates:', upd2)
+
+                    if (Object.keys(upd2).length > 0) {
+                      setSelectedRestaurant(prev => ({
+                        ...prev,
+                        ...upd2
+                      }))
+                    } else {
+                      console.warn('[DeliveryHome][Backfill->RestaurantAPI] No usable address/coords in restaurant response', restData?.location)
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('[DeliveryHome][Backfill->RestaurantAPI] Failed to fetch restaurant by id', e)
+              }
             }
           }
         } catch (error) {
@@ -4605,6 +4801,45 @@ export default function DeliveryHome() {
       fetchAddress()
     }
   }, [selectedRestaurant?.orderId, selectedRestaurant?.id, selectedRestaurant?.address])
+
+  // Compute drop distance (restaurant -> customer) when coords are available
+  useEffect(() => {
+    if (!selectedRestaurant) return
+    const hasCoords =
+      selectedRestaurant.lat && selectedRestaurant.lng &&
+      selectedRestaurant.customerLat && selectedRestaurant.customerLng
+
+    const needsDrop =
+      !selectedRestaurant.dropDistance ||
+      selectedRestaurant.dropDistance === '0 km' ||
+      selectedRestaurant.dropDistance === 'Calculating...'
+
+    if (hasCoords && needsDrop) {
+      try {
+        console.log('[DeliveryHome][DropDistance] inputs:', {
+          rlat: selectedRestaurant.lat,
+          rlng: selectedRestaurant.lng,
+          clat: selectedRestaurant.customerLat,
+          clng: selectedRestaurant.customerLng
+        })
+        const meters = calculateDistance(
+          Number(selectedRestaurant.lat),
+          Number(selectedRestaurant.lng),
+          Number(selectedRestaurant.customerLat),
+          Number(selectedRestaurant.customerLng)
+        )
+        const km = meters / 1000
+        const label = `${km.toFixed(2)} km`
+        setSelectedRestaurant(prev => ({
+          ...prev,
+          dropDistance: label
+        }))
+        console.log('[DeliveryHome][DropDistance] computed:', label)
+      } catch (e) {
+        console.warn('[DeliveryHome][DropDistance] failed to compute', e)
+      }
+    }
+  }, [selectedRestaurant?.lat, selectedRestaurant?.lng, selectedRestaurant?.customerLat, selectedRestaurant?.customerLng])
 
   // Handle online toggle - check for booked gigs
   const handleToggleOnline = () => {
@@ -10334,7 +10569,19 @@ export default function DeliveryHome() {
                     </p>
                     {/* Earnings Breakdown hidden as per requirement */}
                     <p className="text-gray-400 text-xs">
-                      Pickup: {newOrder?.pickupDistance || selectedRestaurant?.pickupDistance || '0 km'} | Drop: {newOrder?.deliveryDistance || selectedRestaurant?.dropDistance || '0 km'}
+                      {(() => {
+                        const pickup =
+                          selectedRestaurant?.pickupDistance && selectedRestaurant.pickupDistance !== '0 km'
+                            ? selectedRestaurant.pickupDistance
+                            : (newOrder?.pickupDistance || '0 km')
+                        // Prefer computed dropDistance when available and not placeholder
+                        const computedDrop = selectedRestaurant?.dropDistance
+                        const drop =
+                          computedDrop && computedDrop !== '0 km' && computedDrop !== 'Calculating...'
+                            ? computedDrop
+                            : (newOrder?.deliveryDistance || 'Calculating...')
+                        return `Pickup: ${pickup} | Drop: ${drop}`
+                      })()}
                     </p>
                   </div>
 
@@ -10375,7 +10622,17 @@ export default function DeliveryHome() {
                       })()}
                     </div>
                     <p className="text-sm text-gray-600 mb-3 leading-relaxed">
-                      {selectedRestaurant?.address || newOrder?.restaurantLocation?.address || 'Address'}
+                      {(() => {
+                        const addr = selectedRestaurant?.address
+                        if (addr && addr !== 'Restaurant Address' && addr !== 'Restaurant address') return addr
+                        // Fallbacks from newOrder payload paths
+                        const fromPayload =
+                          newOrder?.restaurantAddress ||
+                          newOrder?.restaurantLocation?.formattedAddress ||
+                          newOrder?.restaurantLocation?.address ||
+                          null
+                        return fromPayload || 'Address will be updated...'
+                      })()}
                     </p>
 
                     <div className="flex items-center gap-1.5 text-gray-500 text-sm mb-2">
@@ -10402,6 +10659,32 @@ export default function DeliveryHome() {
                               ? `${newOrder.pickupDistance} away`
                               : 'Calculating...'))}
                       </span>
+                    </div>
+
+                    {/* Restaurant coordinates + map link */}
+                    <div className="mt-2 text-xs text-gray-500">
+                      {selectedRestaurant?.lat && selectedRestaurant?.lng ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>
+                            Restaurant location: {Number(selectedRestaurant.lat).toFixed(5)}, {Number(selectedRestaurant.lng).toFixed(5)}
+                          </span>
+                          <a
+                            className="text-green-600 font-medium underline"
+                            href={`https://maps.google.com/?q=${selectedRestaurant.lat},${selectedRestaurant.lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View on map
+                          </a>
+                        </div>
+                      ) : (
+                        <span>Restaurant location: Calculating…</span>
+                      )}
+                    </div>
+
+                    {/* Drop distance */}
+                    <div className="mt-1 text-xs text-gray-500">
+                      Drop: {selectedRestaurant?.dropDistance || 'Calculating...'}
                     </div>
                   </div>
 
