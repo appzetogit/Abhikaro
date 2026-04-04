@@ -102,7 +102,15 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
       estimatedDeliveryTime: order.estimatedDeliveryTime || 30,
       note: order.note || '',
       sendCutlery: order.sendCutlery,
-      paymentMethod: resolvedPaymentMethod
+      paymentMethod: resolvedPaymentMethod,
+      // Enrich payload so frontend can immediately show Hotel (Online) for QR-origin orders
+      paymentStatus: order.payment?.status || null,
+      orderType: order.orderType || null,
+      hotelReference: order.hotelReference || null,
+      hotelId: order.hotelId || null,
+      hotelName: order.hotelName || null,
+      roomNumber: order.roomNumber || null,
+      qrReferenceId: order.qrReferenceId || null
     };
     console.log('📢 Restaurant notification payload paymentMethod:', orderNotification.paymentMethod, { override: paymentMethodOverride, orderPaymentMethod: order.payment?.method });
 

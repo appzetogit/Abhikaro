@@ -916,6 +916,30 @@ export default function OrdersMain() {
       setShowNewOrderPopup(true)
       const createdAtMs = normalizedOrder?.createdAt ? new Date(normalizedOrder.createdAt).getTime() : Date.now()
       acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
+
+      // Always fetch the full order once to merge reliable payment + hotel QR indicators
+      try {
+        const respFull = await restaurantAPI.getOrderById(orderId)
+        const full = respFull?.data?.data?.order
+        if (full) {
+          setPopupOrder(prev => ({
+            ...(prev || normalizedOrder),
+            // Keep earlier normalized address if present
+            customerAddress: (prev?.customerAddress || normalizedOrder.customerAddress),
+            // Merge payment + hotel origin flags
+            payment: full.payment || prev?.payment,
+            paymentStatus: full.payment?.status || prev?.paymentStatus,
+            paymentMethod: full.payment?.method || prev?.paymentMethod,
+            orderType: full.orderType || prev?.orderType,
+            hotelReference: full.hotelReference ?? prev?.hotelReference,
+            hotelId: full.hotelId ?? prev?.hotelId,
+            qrReferenceId: full.qrReferenceId ?? prev?.qrReferenceId,
+            hotelName: full.hotelName ?? prev?.hotelName,
+          }))
+        }
+      } catch (_) {
+        // ignore failure; UI will still work with socket payload
+      }
     })()
   }, [newOrder])
 
@@ -956,19 +980,40 @@ export default function OrdersMain() {
       try {
         const resp = await restaurantAPI.getOrderById(orderId)
         const o = resp?.data?.data?.order
-        if (!cancelled && o?.address) {
-          const a = o.address
-          const normalized = {
-            formattedAddress: a.formattedAddress || a.address || '',
-            street: a.street || '',
-            city: a.city || '',
-            state: a.state || '',
-            zipCode: a.zipCode || a.pincode || a.postalCode || '',
-            additionalDetails: a.additionalDetails || a.additionalAddress || o?.additionalAddress || a.landmark || a.area || ''
+        if (!cancelled && o) {
+          // Normalize address if present
+          let normalized = (current?.customerAddress || current?.address) || null
+          if (o.address) {
+            const a = o.address
+            normalized = {
+              formattedAddress: a.formattedAddress || a.address || '',
+              street: a.street || '',
+              city: a.city || '',
+              state: a.state || '',
+              zipCode: a.zipCode || a.pincode || a.postalCode || '',
+              additionalDetails:
+                a.additionalDetails ||
+                a.additionalAddress ||
+                o?.additionalAddress ||
+                a.landmark ||
+                a.area ||
+                ''
+            }
           }
+          // Merge back important fields from full order to ensure payment/hotel flags exist
           setPopupOrder(prev => ({
             ...(prev || current),
-            customerAddress: normalized
+            customerAddress: normalized || (prev?.customerAddress || prev?.address),
+            // Payment fields
+            payment: o.payment || prev?.payment,
+            paymentStatus: o.payment?.status || prev?.paymentStatus,
+            paymentMethod: o.payment?.method || prev?.paymentMethod,
+            // Hotel/QR origin indicators
+            orderType: o.orderType || prev?.orderType,
+            hotelReference: o.hotelReference ?? prev?.hotelReference,
+            hotelId: o.hotelId ?? prev?.hotelId,
+            qrReferenceId: o.qrReferenceId ?? prev?.qrReferenceId,
+            hotelName: o.hotelName ?? prev?.hotelName
           }))
         }
       } catch (_) {
@@ -2242,17 +2287,67 @@ export default function OrdersMain() {
                     </span>
                   </div>
 
-                  {/* Payment method: handle COD, Pay at Hotel, and Online */}
+                  {/* Payment method: handle COD, Pay at Hotel, Online, and Hotel QR Online */}
                   {(() => {
                     const raw = (popupOrder || newOrder)?.paymentMethod ?? (popupOrder || newOrder)?.payment?.method;
                     const m = raw != null ? String(raw).toLowerCase().trim() : '';
                     const isCod = m === 'cash' || m === 'cod';
                     const isPayAtHotel = m === 'pay_at_hotel' || m === 'pay at hotel';
+                    const paymentStatus = String((popupOrder || newOrder)?.paymentStatus || (popupOrder || newOrder)?.payment?.status || '').toLowerCase();
+                    const po = (popupOrder || newOrder) || {};
+                    const orderTypeStr = (po?.orderType ?? '').toString().trim().toLowerCase();
+                    const isQrType = orderTypeStr === 'qr' || orderTypeStr.includes('qr') || orderTypeStr === 'hotel';
+                    const isHotelOrigin =
+                      isQrType ||
+                      Boolean(
+                        po?.hotelReference ||
+                        po?.hotelId ||
+                        po?.qrReferenceId ||
+                        po?.hotelName ||
+                        po?.roomNumber ||
+                        po?.hotel?.id ||
+                        po?.hotel?.name
+                      );
+                    // Debug log inputs and computed label
+                    let computedLabel = 'Online';
+                    if (isCod) computedLabel = 'Cash on Delivery';
+                    else if (isPayAtHotel) computedLabel = 'Pay at Hotel';
+                    else if (isHotelOrigin) {
+                      if (paymentStatus === 'processing') computedLabel = 'On Hotel (Online - Processing)';
+                      else if (paymentStatus === 'failed') computedLabel = 'Failed';
+                      else if (paymentStatus === 'refunded') computedLabel = 'Refunded';
+                      else computedLabel = 'On Hotel (Online)';
+                    }
+                    try {
+                      // eslint-disable-next-line no-console
+                      console.log('[PaymentLabel][Popup]', {
+                        orderId: po?.orderId || po?.orderMongoId,
+                        paymentMethod: raw,
+                        normalizedMethod: m,
+                        paymentStatus,
+                        orderType: po?.orderType,
+                        hotelReference: po?.hotelReference,
+                        hotelId: po?.hotelId,
+                        hotelName: po?.hotelName,
+                        roomNumber: po?.roomNumber,
+                        qrReferenceId: po?.qrReferenceId,
+                        isCod,
+                        isPayAtHotel,
+                        isHotelOrigin,
+                        computedLabel
+                      });
+                    } catch {}
                     return (
                       <div className="mb-4 flex items-center justify-between py-2">
                         <span className="text-sm font-medium text-gray-700">Payment</span>
-                        <span className={`text-sm font-semibold ${isCod || isPayAtHotel ? 'text-amber-600' : 'text-green-600'}`}>
-                          {isCod ? 'Cash on Delivery' : isPayAtHotel ? 'Pay at Hotel' : 'Online'}
+                        <span className={`text-sm font-semibold ${
+                          isCod || isPayAtHotel
+                            ? 'text-amber-600'
+                            : isHotelOrigin
+                              ? 'text-green-700'
+                              : 'text-green-600'
+                        }`}>
+                          {computedLabel}
                         </span>
                       </div>
                     );
@@ -2583,9 +2678,60 @@ export default function OrdersMain() {
                     const m = method != null ? String(method).toLowerCase().trim() : '';
                     const isCod = m === 'cash' || m === 'cod';
                     const isPayAtHotel = m === 'pay_at_hotel' || m === 'pay at hotel';
+                    // Identify QR/hotel-originated orders (covered by multiple possible fields)
+                    const so = selectedOrder || {};
+                    const orderTypeStr2 = (so.orderType ?? '').toString().trim().toLowerCase();
+                    const isQrType2 = orderTypeStr2 === 'qr' || orderTypeStr2.includes('qr') || orderTypeStr2 === 'hotel';
+                    const isHotelOrigin =
+                      isQrType2 ||
+                      Boolean(
+                        so.hotelReference ||
+                        so.hotelId ||
+                        so.qrReferenceId ||
+                        so.hotelName ||
+                        so.roomNumber ||
+                        so.hotel?.id ||
+                        so.hotel?.name
+                      );
                     const status = (selectedOrder.paymentStatus || '').toLowerCase();
                     if (isCod) return 'Cash on delivery';
                     if (isPayAtHotel) return 'Pay at Hotel';
+                    // For QR orders using online gateway, always show explicit Hotel context
+                    if (isHotelOrigin) {
+                      if (status === 'processing') {
+                        // eslint-disable-next-line no-console
+                        console.log('[PaymentLabel][BottomSheet] processing', { orderId: selectedOrder?.orderId, status });
+                        return 'On Hotel (Online - Processing)';
+                      }
+                      if (status === 'failed') {
+                        // eslint-disable-next-line no-console
+                        console.log('[PaymentLabel][BottomSheet] failed', { orderId: selectedOrder?.orderId, status });
+                        return 'Failed';
+                      }
+                      if (status === 'refunded') {
+                        // eslint-disable-next-line no-console
+                        console.log('[PaymentLabel][BottomSheet] refunded', { orderId: selectedOrder?.orderId, status });
+                        return 'Refunded';
+                      }
+                      // Default (including completed or missing): Hotel (Online)
+                      // eslint-disable-next-line no-console
+                      console.log('[PaymentLabel][BottomSheet] default Hotel Online', {
+                        orderId: selectedOrder?.orderId,
+                        method,
+                        normalizedMethod: m,
+                        paymentStatus: status,
+                        orderType: selectedOrder?.orderType,
+                        hotelReference: selectedOrder?.hotelReference,
+                        hotelId: selectedOrder?.hotelId,
+                        hotelName: selectedOrder?.hotelName,
+                        roomNumber: selectedOrder?.roomNumber,
+                        qrReferenceId: selectedOrder?.qrReferenceId,
+                        isCod,
+                        isPayAtHotel,
+                        isHotelOrigin: true
+                      });
+                      return 'On Hotel (Online)';
+                    }
                     if (status === 'completed') return 'Paid online';
                     if (status === 'failed') return 'Failed';
                     if (status === 'refunded') return 'Refunded';

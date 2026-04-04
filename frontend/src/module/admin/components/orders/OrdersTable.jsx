@@ -286,7 +286,7 @@ export default function OrdersTable({
                         } else if (isPayAtHotelRazorpay) {
                           paymentTypeDisplay = 'Pay at Hotel (Razorpay)';
                         } else if (isPayAtHotelMethod) {
-                          paymentTypeDisplay = 'Pay at Hotel';
+                          paymentTypeDisplay = 'Pay at Hotel (Cash)';
                         } else {
                           paymentTypeDisplay = 'Online';
                         }
@@ -297,20 +297,22 @@ export default function OrdersTable({
                         paymentTypeDisplay = 'Wallet';
                       } else if (isPayAtHotelRazorpay && paymentTypeDisplay !== 'Pay at Hotel (Razorpay)') {
                         paymentTypeDisplay = 'Pay at Hotel (Razorpay)';
-                      } else if (isPayAtHotelMethod && !isPayAtHotelRazorpay && paymentTypeDisplay !== 'Pay at Hotel') {
-                        paymentTypeDisplay = 'Pay at Hotel';
+                      } else if (isPayAtHotelMethod && !isPayAtHotelRazorpay && !paymentTypeDisplay?.toLowerCase?.().startsWith('pay at hotel')) {
+                        // Default to explicit Cash label when backend didn't provide a specific one
+                        paymentTypeDisplay = 'Pay at Hotel (Cash)';
                       }
                       
                       const isCod = paymentTypeDisplay === 'Cash on Delivery';
                       const isWallet = paymentTypeDisplay === 'Wallet';
-                      const isPayAtHotel = paymentTypeDisplay === 'Pay at Hotel';
+                      const isPayAtHotel = paymentTypeDisplay === 'Pay at Hotel' || paymentTypeDisplay === 'Pay at Hotel (Cash)';
                       const isPayAtHotelRazor = paymentTypeDisplay === 'Pay at Hotel (Razorpay)';
+                      const isHotelOnline = paymentTypeDisplay === 'Hotel (Online)';
                       
                       return (
                         <span className={`text-sm font-medium ${
                           isCod ? 'text-amber-600' : 
                           isWallet ? 'text-purple-600' : 
-                          (isPayAtHotel || isPayAtHotelRazor) ? 'text-orange-600' :
+                          (isPayAtHotel || isPayAtHotelRazor || isHotelOnline) ? 'text-orange-600' :
                           'text-emerald-600'
                         }`}>
                           {paymentTypeDisplay}
@@ -322,8 +324,18 @@ export default function OrdersTable({
                 {(visibleColumns.paymentCollectionStatus !== false) && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
-                      const isCod = order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
-                      const status = order.paymentCollectionStatus ?? (isCod ? 'Not Collected' : 'Collected')
+                      const method = (order.payment?.method || '').toLowerCase();
+                      const isCod = order.paymentType === 'Cash on Delivery' || method === 'cash' || method === 'cod';
+                      const isPayAtHotel = order.paymentType === 'Pay at Hotel' || method === 'pay_at_hotel';
+                      const paymentCompleted = order.payment?.status === 'completed';
+                      const cashCollected = order.cashCollected === true;
+
+                      // Prefer backend-provided status; otherwise compute conservatively
+                      const status = order.paymentCollectionStatus ?? (
+                        (isCod || isPayAtHotel)
+                          ? ((paymentCompleted || cashCollected) ? 'Collected' : 'Not Collected')
+                          : (paymentCompleted ? 'Collected' : 'Not Collected')
+                      );
                       return (
                         <span className={`text-sm font-medium ${status === 'Collected' ? 'text-emerald-600' : 'text-amber-600'}`}>
                           {status}

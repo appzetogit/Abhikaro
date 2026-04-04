@@ -2888,6 +2888,12 @@ export const markHotelCashSettled = asyncHandler(async (req, res) => {
     // Mark cash collected and settled (delivery partner confirmed collection)
     order.cashCollected = true;
     order.hotelCashSettled = true;
+    // Also mark payment as completed so admin shows Paid instead of Pending
+    try {
+      if (order.payment && order.payment.method === 'pay_at_hotel') {
+        order.payment.status = 'completed';
+      }
+    } catch (_) {}
     await order.save();
 
     // Also add this amount to delivery boy's cashInHand so his pocket view matches

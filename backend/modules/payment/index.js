@@ -245,6 +245,13 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
           note: payload.note || '',
           sendCutlery: payload.sendCutlery !== false,
           status: 'confirmed',
+          // Preserve hotel/QR metadata for orders placed via hotel QR flow
+          hotelReference: payload.hotelReference || null,
+          hotelId: (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null,
+          qrReferenceId: payload.qrReferenceId || null,
+          hotelName: payload.hotelName || null,
+          orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
+          roomNumber: payload.roomNumber || null,
           payment: {
             method: 'razorpay',
             status: 'completed',
@@ -500,6 +507,13 @@ router.post('/razorpay/webhook', express.raw({ type: '*/*' }), async (req, res) 
             note: payload.note || '',
             sendCutlery: payload.sendCutlery !== false,
             status: 'confirmed',
+          // Preserve hotel/QR metadata for webhook-driven creation
+          hotelReference: payload.hotelReference || null,
+          hotelId: (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null,
+          qrReferenceId: payload.qrReferenceId || null,
+          hotelName: payload.hotelName || null,
+          orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
+          roomNumber: payload.roomNumber || null,
             payment: {
               method: 'razorpay',
               status: 'completed',
@@ -741,6 +755,13 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
           note: payload.note || '',
           sendCutlery: payload.sendCutlery !== false,
           status: 'confirmed',
+          // Preserve hotel/QR metadata for reconcile-driven creation
+          hotelReference: payload.hotelReference || null,
+          hotelId: (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null,
+          qrReferenceId: payload.qrReferenceId || null,
+          hotelName: payload.hotelName || null,
+          orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
+          roomNumber: payload.roomNumber || null,
           payment: {
             method: 'razorpay',
             status: 'completed',

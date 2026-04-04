@@ -222,6 +222,24 @@ export const useRestaurantNotifications = () => {
 
     // Listen for new order notifications
     socketRef.current.on('new_order', (orderData) => {
+      try {
+        // Debug log to inspect payload used by popup
+        // Includes hotel/QR flags and payment data if provided by backend
+        // eslint-disable-next-line no-console
+        console.log('[RestaurantSocket] new_order payload →', {
+          orderId: orderData?.orderId,
+          orderMongoId: orderData?.orderMongoId,
+          paymentMethod: orderData?.paymentMethod,
+          paymentStatus: orderData?.paymentStatus,
+          orderType: orderData?.orderType,
+          hotelReference: orderData?.hotelReference,
+          hotelId: orderData?.hotelId,
+          hotelName: orderData?.hotelName,
+          roomNumber: orderData?.roomNumber,
+          qrReferenceId: orderData?.qrReferenceId,
+        });
+      } catch (_) {}
+
       setNewOrder(orderData);
       
       // Trigger UI refresh

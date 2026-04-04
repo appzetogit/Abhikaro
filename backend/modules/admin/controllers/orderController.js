@@ -461,18 +461,32 @@ export const getOrders = asyncHandler(async (req, res) => {
             if (order.payment?.razorpayOrderId || order.payment?.razorpayPaymentId) {
               return 'Pay at Hotel (Razorpay)';
             }
-            return 'Pay at Hotel';
+            // Explicitly label as Cash when no Razorpay IDs are present
+            return 'Pay at Hotel (Cash)';
           }
 
+          // For online gateway payments, distinguish QR/hotel-origin orders
+          const isHotelOrigin =
+            (typeof order.orderType === 'string' && order.orderType.toUpperCase() === 'QR') ||
+            Boolean(order.hotelReference || order.hotelId || order.qrReferenceId || order.hotelName || order.roomNumber);
+          if (isHotelOrigin) {
+            return 'Hotel (Online)';
+          }
           return 'Online';
         })(),
-        paymentCollectionStatus: (
-          order.payment?.method === 'cash' ||
-          order.payment?.method === 'cod' ||
-          order.payment?.method === 'pay_at_hotel'
-        )
-          ? (order.status === 'delivered' ? 'Collected' : 'Not Collected')
-          : 'Collected',
+        paymentCollectionStatus: (() => {
+          const method = order.payment?.method;
+          const paymentCompleted = order.payment?.status === 'completed';
+          const cashCollected = order.cashCollected === true;
+
+          // For cash-like methods, only mark as collected when explicitly completed/collected
+          if (method === 'cash' || method === 'cod' || method === 'pay_at_hotel') {
+            return (paymentCompleted || cashCollected) ? 'Collected' : 'Not Collected';
+          }
+
+          // For online/wallet, consider collected only when gateway reports completed
+          return paymentCompleted ? 'Collected' : 'Not Collected';
+        })(),
         orderStatus: orderStatusDisplay,
         status: order.status, // Backend status
         deliveryType: deliveryType,

@@ -7397,6 +7397,22 @@ export default function DeliveryHome() {
 
     if (!isInDeliveryPhase) return
 
+    // When we enter a delivery phase, ensure any pickup (rider->restaurant) route is cleared
+    // so we can compute a fresh route to the customer's location.
+    try {
+      if (directionsResponseRef.current) {
+        directionsResponseRef.current = null
+      }
+      if (routePolylineRef.current) {
+        routePolylineRef.current.setMap(null)
+        routePolylineRef.current = null
+      }
+      if (liveTrackingPolylineRef.current) {
+        liveTrackingPolylineRef.current.setMap(null)
+        liveTrackingPolylineRef.current = null
+      }
+    } catch {}
+
     const currentRiderLocation = riderLocation || lastLocationRef.current
     if (!currentRiderLocation || currentRiderLocation.length !== 2) return
 

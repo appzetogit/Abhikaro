@@ -673,6 +673,8 @@ export default function OrderTracking() {
           const transformedOrder = {
             id: apiOrder.orderId || apiOrder._id,
             restaurant: apiOrder.restaurantName || 'Restaurant',
+            hotelName: apiOrder.hotelName || null,
+            hotelReference: apiOrder.hotelReference || null,
             restaurantId: restaurantIdValue, // This is a STRING ID, not populated object
             userId: apiOrder.userId || null, // Include user data for phone number
             userName: apiOrder.userName || apiOrder.userId?.name || apiOrder.userId?.fullName || '',
@@ -1338,8 +1340,8 @@ export default function OrderTracking() {
         )}
       </AnimatePresence>
 
-      {/* Green Header - Hidden for hotel orders to provide a clean QR experience */}
-      {!isHotelOrder && (
+      {/* Green Header */}
+      {true && (
         <motion.div
           className={`${currentStatus.color} text-white sticky top-0 z-40`}
           initial={{ opacity: 0 }}
@@ -1611,8 +1613,12 @@ export default function OrderTracking() {
               <span className="text-2xl">🍔</span>
             </div>
             <div className="flex-1">
-              <p className="font-semibold text-gray-900">{order.restaurant}</p>
-              <p className="text-sm text-gray-500">{order.address?.city || 'Local Area'}</p>
+              <p className="font-semibold text-gray-900">
+                {isHotelOrder ? (order.hotelName || 'Hotel') : order.restaurant}
+              </p>
+              <p className="text-sm text-gray-500">
+                {isHotelOrder ? 'Ordered via Hotel' : (order.address?.city || 'Local Area')}
+              </p>
             </div>
             <motion.button
               onClick={handleCallRestaurant}
