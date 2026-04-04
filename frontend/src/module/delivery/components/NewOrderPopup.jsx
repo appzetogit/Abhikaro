@@ -17,6 +17,10 @@ export default function NewOrderPopup({
   const [dragY, setDragY] = useState(0)
   const [acceptButtonProgress, setAcceptButtonProgress] = useState(0)
   const [isAnimatingToComplete, setIsAnimatingToComplete] = useState(false)
+  const [localPickupDistance, setLocalPickupDistance] = useState(null)
+  const [localTimeAway, setLocalTimeAway] = useState(null)
+  const [retrying, setRetrying] = useState(false)
+  const retriedRef = useRef(false)
   const popupRef = useRef(null)
   const acceptButtonRef = useRef(null)
   const touchStartY = useRef(0)
@@ -31,6 +35,87 @@ export default function NewOrderPopup({
     const minutes = Math.round(km * 2) // Rough estimate: 2 minutes per km
     return `${minutes} mins`
   }
+
+  // Haversine distance in meters
+  const haversineMeters = (lat1, lng1, lat2, lng2) => {
+    const toRad = (d) => (d * Math.PI) / 180
+    const R = 6371000
+    const dLat = toRad(lat2 - lat1)
+    const dLng = toRad(lng2 - lng1)
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
+  const recalcPickup = async () => {
+    if (!orderData?.orderId && !orderData?.id) return
+    setRetrying(true)
+    try {
+      // Ensure we have restaurant coords
+      let restLat = orderData?.lat
+      let restLng = orderData?.lng
+
+      if ((restLat == null || restLng == null) && deliveryAPI?.getOrderDetails) {
+        try {
+          const resp = await deliveryAPI.getOrderDetails(orderData.orderId || orderData.id)
+          const o = resp?.data?.data?.order || resp?.data?.data
+          const coords = o?.restaurantId?.location?.coordinates
+          if (Array.isArray(coords) && coords.length >= 2) {
+            restLng = coords[0]
+            restLat = coords[1]
+          }
+        } catch (_) {
+          // ignore
+        }
+      }
+
+      if (restLat == null || restLng == null) return
+
+      // Get current device location (best-effort)
+      const position = await new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('No geolocation'))
+          return
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(pos),
+          (err) => reject(err),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        )
+      }).catch(() => null)
+
+      const currLat = position?.coords?.latitude
+      const currLng = position?.coords?.longitude
+      if (currLat == null || currLng == null) return
+
+      const meters = haversineMeters(currLat, currLng, restLat, restLng)
+      const km = meters / 1000
+      const dist = `${km.toFixed(2)} km`
+      setLocalPickupDistance(dist)
+      setLocalTimeAway(calculateTimeAway(dist))
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  // Auto-retry once after 5s if values are still calculating
+  useEffect(() => {
+    const needsCalc =
+      (!orderData?.pickupDistance || orderData.pickupDistance === 'Calculating...') &&
+      (!orderData?.distance || orderData.distance === 'Calculating...') &&
+      (!orderData?.timeAway || orderData.timeAway === 'Calculating...')
+    if (!retriedRef.current && needsCalc) {
+      const t = setTimeout(() => {
+        retriedRef.current = true
+        recalcPickup()
+      }, 5000)
+      return () => clearTimeout(t)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderData?.orderId])
 
   // Handle popup drag
   const handleTouchStart = (e) => {
@@ -278,23 +363,45 @@ export default function NewOrderPopup({
                   <div className="flex items-center gap-1.5 text-gray-500 text-sm mb-2">
                     <Clock className="w-4 h-4" />
                     <span>
-                      {orderData?.timeAway && orderData.timeAway !== 'Calculating...'
-                        ? `${orderData.timeAway} away`
-                        : (orderData?.pickupDistance && orderData.pickupDistance !== '0 km' && orderData.pickupDistance !== 'Calculating...'
-                          ? `${calculateTimeAway(orderData.pickupDistance)} away`
-                          : 'Calculating...')}
+                      {localTimeAway
+                        ? `${localTimeAway} away`
+                        : (orderData?.timeAway && orderData.timeAway !== 'Calculating...'
+                          ? `${orderData.timeAway} away`
+                          : (orderData?.pickupDistance && orderData.pickupDistance !== '0 km' && orderData.pickupDistance !== 'Calculating...'
+                            ? `${calculateTimeAway(orderData.pickupDistance)} away`
+                            : 'Calculating...'))}
                     </span>
+                    {(orderData?.timeAway === 'Calculating...' || !orderData?.timeAway) && (
+                      <button
+                        onClick={recalcPickup}
+                        className="ml-2 text-xs underline text-emerald-600 disabled:text-gray-400"
+                        disabled={retrying}
+                      >
+                        {retrying ? 'Retrying...' : 'Retry'}
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5 text-gray-500 text-sm">
                     <MapPin className="w-4 h-4" />
                     <span>
-                      {orderData?.distance && orderData.distance !== '0 km' && orderData.distance !== 'Calculating...'
-                        ? `${orderData.distance} away`
-                        : (orderData?.pickupDistance && orderData.pickupDistance !== '0 km' && orderData.pickupDistance !== 'Calculating...'
-                          ? `${orderData.pickupDistance} away`
-                          : 'Calculating...')}
+                      {localPickupDistance
+                        ? `${localPickupDistance} away`
+                        : (orderData?.distance && orderData.distance !== '0 km' && orderData.distance !== 'Calculating...'
+                          ? `${orderData.distance} away`
+                          : (orderData?.pickupDistance && orderData.pickupDistance !== '0 km' && orderData.pickupDistance !== 'Calculating...'
+                            ? `${orderData.pickupDistance} away`
+                            : 'Calculating...'))}
                     </span>
+                    {(!orderData?.distance || orderData.distance === 'Calculating...') && (
+                      <button
+                        onClick={recalcPickup}
+                        className="ml-2 text-xs underline text-emerald-600 disabled:text-gray-400"
+                        disabled={retrying}
+                      >
+                        {retrying ? 'Retrying...' : 'Retry'}
+                      </button>
+                    )}
                   </div>
                 </div>
 

@@ -195,7 +195,8 @@ export default function OrdersPage({ statusKey = "all" }) {
       if (error.response) {
         // Server responded with error
         if (error.response.status === 404) {
-          errorMessage = `Order not found (ID: ${orderIdToUse}). Please check if the order exists.`
+          // Prefer backend-provided message (e.g., "Settlement not found for this order")
+          errorMessage = error.response.data?.message || `Order not found (ID: ${orderIdToUse}). Please check if the order exists.`
         } else if (error.response.status === 400) {
           errorMessage = error.response.data?.message || "Invalid request. Please check the refund amount."
         } else if (error.response.status === 500) {

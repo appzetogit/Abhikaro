@@ -39,6 +39,7 @@ const getPaymentStatusColor = (paymentStatus) => {
 export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPaymentApproved }) {
   const [approvingPayment, setApprovingPayment] = useState(false)
   const [reassigning, setReassigning] = useState(false)
+  const [resending, setResending] = useState(false)
   if (!order) return null
 
   // Backend should provide a consistent orderStatus, but guard against legacy/inconsistent data:
@@ -88,6 +89,25 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
       toast.error(err?.response?.data?.message || "Failed to reassign order")
     } finally {
       setReassigning(false)
+    }
+  }
+
+  const handleResendToRestaurant = async () => {
+    if (!order?.id && !order?.orderId) return
+    try {
+      setResending(true)
+      const orderIdToUse = order.id || order._id || order.orderId
+      const resp = await adminAPI.resendRestaurantNotification(orderIdToUse)
+      if (resp?.data?.success) {
+        toast.success("Notification sent to restaurant")
+      } else {
+        toast.error(resp?.data?.message || "Failed to send notification")
+      }
+    } catch (err) {
+      console.error("Error resending to restaurant:", err)
+      toast.error(err?.response?.data?.message || "Failed to send notification")
+    } finally {
+      setResending(false)
     }
   }
 
@@ -243,6 +263,19 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
                       >
                         {reassigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                         {reassigning ? "Reassigning..." : "Reassign to Restaurant"}
+                      </button>
+                    </div>
+                  )}
+                  {!isEffectivelyCancelled && ['pending','confirmed','preparing'].includes((order.status||'').toLowerCase?.() || order.status) && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={handleResendToRestaurant}
+                        disabled={resending}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        {resending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                        {resending ? "Sending..." : "Resend to Restaurant"}
                       </button>
                     </div>
                   )}

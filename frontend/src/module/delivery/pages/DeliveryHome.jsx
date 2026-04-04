@@ -4329,7 +4329,9 @@ export default function DeliveryHome() {
 
   // Show new order popup when order is received from Socket.IO
   useEffect(() => {
-    if (newOrder) {
+    if (!newOrder) return
+
+    ;(async () => {
       const orderId = newOrder.orderMongoId || newOrder.orderId;
 
       // Check if this order has already been accepted
@@ -4373,10 +4375,29 @@ export default function DeliveryHome() {
         pickupDistance = d > 100 ? `${(d / 1000).toFixed(2)} km` : `${d.toFixed(2)} km`;
       }
       if (!pickupDistance || pickupDistance === '0 km') {
+        // Ensure restaurant coordinates (fallback fetch when missing - typical for online orders)
+        let restaurantLat = newOrder.restaurantLocation?.latitude;
+        let restaurantLng = newOrder.restaurantLocation?.longitude;
+
+        if ((restaurantLat == null || restaurantLng == null) && newOrder.restaurantId && typeof newOrder.restaurantId === 'string') {
+          try {
+            const r = await restaurantAPI.getRestaurantById(newOrder.restaurantId);
+            const rest = r?.data?.data?.restaurant || r?.data?.data;
+            const coords = rest?.location?.coordinates;
+            if (Array.isArray(coords) && coords.length >= 2) {
+              restaurantLng = coords[0];
+              restaurantLat = coords[1];
+            }
+            if (!restaurantAddress || restaurantAddress === 'Restaurant address' || restaurantAddress === 'Restaurant Address') {
+              restaurantAddress = rest?.location?.formattedAddress || rest?.address || restaurantAddress;
+            }
+          } catch (_) {
+            // ignore
+          }
+        }
+
         // Try to calculate from driver's current location to restaurant
         const currentLocation = riderLocation || lastLocationRef.current;
-        const restaurantLat = newOrder.restaurantLocation?.latitude;
-        const restaurantLng = newOrder.restaurantLocation?.longitude;
 
         if (currentLocation && currentLocation.length === 2 &&
           restaurantLat && restaurantLng &&
@@ -4424,7 +4445,7 @@ export default function DeliveryHome() {
       setSelectedRestaurant(restaurantData)
       setShowNewOrderPopup(true)
       setCountdownSeconds(300) // Reset countdown to 5 minutes
-    }
+    })()
   }, [newOrder, calculateTimeAway, riderLocation])
 
   // Also show new order popup when a FOREGROUND FCM push arrives.
@@ -4817,9 +4838,15 @@ export default function DeliveryHome() {
           }
 
           // Transform order data to match selectedRestaurant format
-          // Fetch restaurant address with proper priority
+          // Fetch restaurant address with robust priority and fallbacks
           let restaurantAddress = 'Restaurant address';
-          if (firstOrder.restaurantId?.address) {
+          if (firstOrder.restaurantLocation?.address) {
+            restaurantAddress = firstOrder.restaurantLocation.address;
+          } else if (firstOrder.restaurantLocation?.formattedAddress) {
+            restaurantAddress = firstOrder.restaurantLocation.formattedAddress;
+          } else if (firstOrder.restaurantAddress) {
+            restaurantAddress = firstOrder.restaurantAddress;
+          } else if (firstOrder.restaurantId?.address) {
             restaurantAddress = firstOrder.restaurantId.address;
           } else if (firstOrder.restaurantId?.location?.formattedAddress) {
             restaurantAddress = firstOrder.restaurantId.location.formattedAddress;
@@ -4841,8 +4868,10 @@ export default function DeliveryHome() {
           } else {
             // Try to calculate from driver's current location to restaurant
             const currentLocation = riderLocation || lastLocationRef.current;
-            const restaurantLat = firstOrder.restaurantId?.location?.coordinates?.[1];
-            const restaurantLng = firstOrder.restaurantId?.location?.coordinates?.[0];
+            const rlCoords = firstOrder.restaurantLocation?.coordinates;
+            const ridCoords = firstOrder.restaurantId?.location?.coordinates;
+            const restaurantLat = rlCoords?.[1] ?? ridCoords?.[1];
+            const restaurantLng = rlCoords?.[0] ?? ridCoords?.[0];
 
             if (currentLocation && currentLocation.length === 2 &&
               restaurantLat && restaurantLng &&
@@ -4865,20 +4894,57 @@ export default function DeliveryHome() {
             pickupDistance = 'Calculating...';
           }
 
+          // Prepare restaurant lat/lng with fallback fetch if missing
+          let restLat = (firstOrder.restaurantLocation?.coordinates?.[1] ?? firstOrder.restaurantId?.location?.coordinates?.[1]) ?? null
+          let restLng = (firstOrder.restaurantLocation?.coordinates?.[0] ?? firstOrder.restaurantId?.location?.coordinates?.[0]) ?? null
+
+          if ((restLat == null || restLng == null) && firstOrder.restaurantId && typeof firstOrder.restaurantId === 'string') {
+            // Try to fetch full restaurant details by ID (common with online payments)
+            try {
+              const r = await restaurantAPI.getRestaurantById(firstOrder.restaurantId)
+              if (r?.data?.success) {
+                const rest = r.data.data.restaurant || r.data.data
+                const coords = rest?.location?.coordinates
+                if (Array.isArray(coords) && coords.length >= 2) {
+                  restLng = coords[0]
+                  restLat = coords[1]
+                }
+                if (!restaurantAddress || restaurantAddress === 'Restaurant address' || restaurantAddress === 'Restaurant Address') {
+                  restaurantAddress =
+                    rest?.location?.formattedAddress ||
+                    rest?.address ||
+                    restaurantAddress
+                }
+              }
+            } catch (_) {
+              // ignore fetch failure; UI will keep calculating until next effect resolves
+            }
+          }
+
+          // Recompute pickupDistance if we obtained coords via fallback
+          if ((pickupDistance === 'Calculating...' || !pickupDistance) && restLat != null && restLng != null) {
+            const curr = riderLocation || lastLocationRef.current
+            if (curr && curr.length === 2) {
+              const meters = calculateDistance(curr[0], curr[1], restLat, restLng)
+              const km = meters / 1000
+              pickupDistance = `${km.toFixed(2)} km`
+            }
+          }
+
           const restaurantData = {
             id: firstOrder._id?.toString() || firstOrder.orderId,
             orderId: firstOrder.orderId,
-            name: firstOrder.restaurantId?.name || 'Restaurant',
+            name: firstOrder.restaurantId?.name || firstOrder.restaurantName || 'Restaurant',
             address: restaurantAddress,
-            lat: firstOrder.restaurantId?.location?.coordinates?.[1],
-            lng: firstOrder.restaurantId?.location?.coordinates?.[0],
+            lat: restLat,
+            lng: restLng,
             distance: pickupDistance,
             timeAway: pickupDistance !== 'Calculating...' ? calculateTimeAway(pickupDistance) : 'Calculating...',
             dropDistance: firstOrder.address?.location?.coordinates
               ? 'Calculating...'
               : '0 km',
             pickupDistance: pickupDistance,
-            estimatedEarnings: firstOrder.pricing?.deliveryFee || 0,
+            estimatedEarnings: (firstOrder.estimatedEarnings?.totalEarning ?? firstOrder.pricing?.deliveryFee ?? 0),
             customerName: firstOrder.userId?.name || 'Customer',
             customerAddress: firstOrder.address?.formattedAddress ||
               (firstOrder.address?.street
@@ -4888,7 +4954,11 @@ export default function DeliveryHome() {
             customerLng: firstOrder.address?.location?.coordinates?.[0],
             items: firstOrder.items || [],
             total: firstOrder.pricing?.total || 0,
-            payment: firstOrder.payment?.method || 'COD',
+            paymentMethod: (() => {
+              const method = firstOrder.paymentMethod ?? firstOrder.payment?.method ?? 'razorpay';
+              return (String(method).toLowerCase() === 'cod' || String(method).toLowerCase() === 'cash') ? 'cash' : method;
+            })(),
+            payment: firstOrder.payment?.method || 'COD', // keep legacy field for backward compatibility
             amount: firstOrder.pricing?.total || 0
           }
 
@@ -10305,7 +10375,7 @@ export default function DeliveryHome() {
                       })()}
                     </div>
                     <p className="text-sm text-gray-600 mb-3 leading-relaxed">
-                      {newOrder?.restaurantLocation?.address || selectedRestaurant?.address || 'Address'}
+                      {selectedRestaurant?.address || newOrder?.restaurantLocation?.address || 'Address'}
                     </p>
 
                     <div className="flex items-center gap-1.5 text-gray-500 text-sm mb-2">
@@ -10313,9 +10383,11 @@ export default function DeliveryHome() {
                       <span>
                         {selectedRestaurant?.timeAway && selectedRestaurant.timeAway !== 'Calculating...'
                           ? `${selectedRestaurant.timeAway} away`
-                          : (newOrder?.pickupDistance && newOrder.pickupDistance !== '0 km' && newOrder.pickupDistance !== 'Calculating...'
-                            ? `${calculateTimeAway(newOrder.pickupDistance)} away`
-                            : 'Calculating...')}
+                          : (selectedRestaurant?.pickupDistance && selectedRestaurant.pickupDistance !== '0 km' && selectedRestaurant.pickupDistance !== 'Calculating...'
+                            ? `${calculateTimeAway(selectedRestaurant.pickupDistance)} away`
+                            : (newOrder?.pickupDistance && newOrder.pickupDistance !== '0 km' && newOrder.pickupDistance !== 'Calculating...'
+                              ? `${calculateTimeAway(newOrder.pickupDistance)} away`
+                              : 'Calculating...'))}
                       </span>
                     </div>
 
@@ -10324,9 +10396,11 @@ export default function DeliveryHome() {
                       <span>
                         {selectedRestaurant?.distance && selectedRestaurant.distance !== '0 km' && selectedRestaurant.distance !== 'Calculating...'
                           ? `${selectedRestaurant.distance} away`
-                          : (newOrder?.pickupDistance && newOrder.pickupDistance !== '0 km' && newOrder.pickupDistance !== 'Calculating...'
-                            ? `${newOrder.pickupDistance} away`
-                            : 'Calculating...')}
+                          : (selectedRestaurant?.pickupDistance && selectedRestaurant.pickupDistance !== '0 km' && selectedRestaurant.pickupDistance !== 'Calculating...'
+                            ? `${selectedRestaurant.pickupDistance} away`
+                            : (newOrder?.pickupDistance && newOrder.pickupDistance !== '0 km' && newOrder.pickupDistance !== 'Calculating...'
+                              ? `${newOrder.pickupDistance} away`
+                              : 'Calculating...'))}
                       </span>
                     </div>
                   </div>

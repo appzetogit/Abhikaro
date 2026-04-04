@@ -626,6 +626,43 @@ app.use('/api/dining', diningRoutes);
 app.use('/api/admin/dining', diningAdminRoutes);
 app.use('/api/metrics', metricsRoutes);
 
+// Diagnostics: list socket rooms for a restaurant (dev only)
+if ((process.env.NODE_ENV || 'development') !== 'production') {
+  app.get('/api/restaurant/socket-rooms/:restaurantId', async (req, res) => {
+    try {
+      const restaurantId = req.params.restaurantId;
+      const normalized = restaurantId?.toString() || restaurantId;
+      const variations = [
+        `restaurant:${normalized}`,
+        ...(mongoose.Types.ObjectId.isValid(normalized)
+          ? [`restaurant:${new mongoose.Types.ObjectId(normalized).toString()}`]
+          : [])
+      ];
+
+      const result = [];
+      const namespaces = [
+        { ns: '/restaurant', io: io.of('/restaurant') },
+        { ns: '/', io: io.of('/') },
+      ];
+
+      for (const { ns, io: nsp } of namespaces) {
+        for (const room of variations) {
+          try {
+            const sockets = await nsp.in(room).fetchSockets();
+            result.push({ ns, room, sockets: sockets.length });
+          } catch (e) {
+            result.push({ ns, room, error: e?.message || 'fetch error' });
+          }
+        }
+      }
+
+      res.json({ success: true, restaurantId: normalized, rooms: result });
+    } catch (e) {
+      res.status(500).json({ success: false, message: e?.message || 'error' });
+    }
+  });
+}
+
 // 404 handler - but skip Socket.IO paths
 app.use((req, res, next) => {
   // Skip Socket.IO paths - Socket.IO handles its own routing
@@ -995,6 +1032,24 @@ function initializeScheduledTasks() {
     console.log('✅ Auto-reject order scheduler initialized (runs every 30 seconds)');
   }).catch((error) => {
     console.error('❌ Failed to initialize auto-reject service:', error);
+  });
+
+  // Expire stale payment intents (runs every minute)
+  import('./modules/payment/services/intentExpiryService.js').then(({ expireStalePaymentIntents }) => {
+    cron.schedule('* * * * *', async () => {
+      try {
+        const result = await expireStalePaymentIntents();
+        if (result.processed > 0) {
+          console.log(`[Payment Intent Expiry Cron] ${result.message}`);
+        }
+      } catch (error) {
+        console.error('[Payment Intent Expiry Cron] Error:', error);
+      }
+    });
+
+    console.log('✅ Payment intent expiry scheduler initialized (runs every minute)');
+  }).catch((error) => {
+    console.error('❌ Failed to initialize payment intent expiry service:', error);
   });
 }
 

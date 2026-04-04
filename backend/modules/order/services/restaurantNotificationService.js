@@ -49,12 +49,12 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
       restaurant = await Restaurant.findById(restaurantId).lean();
     }
     if (!restaurant) {
-      restaurant = await Restaurant.findOne({
-        $or: [
-          { restaurantId: restaurantId },
-          { _id: restaurantId }
-        ]
-      }).lean();
+      // Build safe query conditions without forcing an ObjectId cast for string business ids
+      const orConditions = [{ restaurantId: restaurantId }];
+      if (mongoose.Types.ObjectId.isValid(restaurantId)) {
+        orConditions.push({ _id: restaurantId });
+      }
+      restaurant = await Restaurant.findOne({ $or: orConditions }).lean();
     }
     
     // Validate restaurant name matches order
@@ -77,6 +77,9 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
     }
 
     // Prepare order notification data
+    // Use reassignment time as the popup start when available so the accept timer restarts on reassign
+    const createdAtForPopup = order.assignmentInfo?.assignedAt || order.createdAt;
+
     const orderNotification = {
       orderId: order.orderId,
       orderMongoId: order._id.toString(),
@@ -95,7 +98,7 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
         location: order.address.location
       },
       status: order.status,
-      createdAt: order.createdAt,
+      createdAt: createdAtForPopup,
       estimatedDeliveryTime: order.estimatedDeliveryTime || 30,
       note: order.note || '',
       sendCutlery: order.sendCutlery,
@@ -109,18 +112,35 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
       try {
         // Get restaurant namespace
         const restaurantNamespace = io.of('/restaurant');
+        const rootNamespace = io.of('/');
 
         // Normalize restaurantId to string (handle both ObjectId and string)
         const normalizedRestaurantId = restaurantId?.toString() || restaurantId;
 
-        // Try multiple room formats to ensure we find the restaurant
-        const roomVariations = [
-          `restaurant:${normalizedRestaurantId}`,
-          `restaurant:${restaurantId}`,
-          ...(mongoose.Types.ObjectId.isValid(normalizedRestaurantId)
-            ? [`restaurant:${new mongoose.Types.ObjectId(normalizedRestaurantId).toString()}`]
-            : [])
-        ];
+        // Try multiple room formats to ensure we find the restaurant.
+        // Include both the business restaurantId string and the MongoDB _id if resolvable.
+        const roomVariations = [];
+        const pushUnique = (room) => {
+          if (room && !roomVariations.includes(room)) roomVariations.push(room);
+        };
+
+        // From provided/normalized id
+        pushUnique(`restaurant:${normalizedRestaurantId}`);
+        pushUnique(`restaurant:${restaurantId}`);
+
+        // If provided id looks like an ObjectId, include normalized object id variant
+        if (mongoose.Types.ObjectId.isValid(normalizedRestaurantId)) {
+          pushUnique(`restaurant:${new mongoose.Types.ObjectId(normalizedRestaurantId).toString()}`);
+        }
+
+        // If we could load restaurant doc, include both doc._id and doc.restaurantId variants
+        if (restaurant?._id) {
+          const rid = restaurant._id.toString();
+          pushUnique(`restaurant:${rid}`);
+        }
+        if (restaurant?.restaurantId) {
+          pushUnique(`restaurant:${restaurant.restaurantId.toString()}`);
+        }
 
         // Get all connected sockets in the restaurant room
         for (const room of roomVariations) {
@@ -137,6 +157,7 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
         console.log(`📢 CRITICAL: Attempting to notify restaurant about new order:`);
         console.log(`📢 Order ID: ${order.orderId}`);
         console.log(`📢 Socket Status: ${socketsInRoom.length} socket(s) in room ${primaryRoom}`);
+        console.log(`📢 Rooms considered: ${roomVariations.join(', ')}`);
 
         // CRITICAL: Only emit to the specific restaurant room - NEVER broadcast to all restaurants
         if (socketsInRoom.length > 0) {
@@ -149,6 +170,15 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
               message: `New order received: ${order.orderId}`
             });
             console.log(`📤 Sent notification to room: ${room}`);
+
+            // Also emit on root namespace to cover clients connected to default namespace
+            rootNamespace.to(room).emit('new_order', orderNotification);
+            rootNamespace.to(room).emit('play_notification_sound', {
+              type: 'new_order',
+              orderId: order.orderId,
+              message: `New order received: ${order.orderId}`
+            });
+            console.log(`📤 [root] Sent notification to room: ${room}`);
           });
           console.log(`✅ Notified restaurant ${normalizedRestaurantId} about new order ${order.orderId} (${socketsInRoom.length} socket(s) connected)`);
         } else {
@@ -161,6 +191,15 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
               message: `New order received: ${order.orderId}`
             });
             console.log(`📤 Emitted to room ${room} (delayed logic)`);
+
+            // Mirror emission on root namespace as best-effort
+            rootNamespace.to(room).emit('new_order', orderNotification);
+            rootNamespace.to(room).emit('play_notification_sound', {
+              type: 'new_order',
+              orderId: order.orderId,
+              message: `New order received: ${order.orderId}`
+            });
+            console.log(`📤 [root] Emitted to room ${room} (delayed logic)`);
           });
         }
       } catch (ioError) {

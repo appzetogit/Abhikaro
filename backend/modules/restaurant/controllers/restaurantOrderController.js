@@ -45,20 +45,24 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
     const restaurant = req.restaurant;
     const { status, page = 1, limit = 50 } = req.query;
 
-    // Get restaurant ID - normalize to string (Order.restaurantId is String type)
-    const restaurantIdString =
-      restaurant._id?.toString() ||
-      restaurant.restaurantId?.toString() ||
-      restaurant.id?.toString();
+    // Collect possible restaurant identifiers used in orders (Order.restaurantId is String type)
+    const idCandidates = [];
+    const mongoIdStr = restaurant._id?.toString?.();
+    const businessIdStr = restaurant.restaurantId?.toString?.();
+    const genericIdStr = restaurant.id?.toString?.();
+    if (mongoIdStr) idCandidates.push(mongoIdStr);
+    if (businessIdStr && !idCandidates.includes(businessIdStr)) idCandidates.push(businessIdStr);
+    if (genericIdStr && !idCandidates.includes(genericIdStr)) idCandidates.push(genericIdStr);
+
+    const restaurantIdString = idCandidates[0];
 
     if (!restaurantIdString) {
       console.error("❌ No restaurant ID found:", restaurant);
       return errorResponse(res, 500, "Restaurant ID not found");
     }
 
-    // Query orders by restaurantId (stored as String in Order model)
-    // Try multiple restaurantId formats to handle different storage formats
-    const restaurantIdVariations = [restaurantIdString];
+    // Query orders by restaurantId (stored as String in Order model). Try multiple formats.
+    const restaurantIdVariations = [...idCandidates];
 
     // Also add ObjectId string format if valid (both directions)
     if (mongoose.Types.ObjectId.isValid(restaurantIdString)) {
@@ -81,8 +85,10 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
       }
     }
 
-    // Also try direct match without ObjectId conversion
-    restaurantIdVariations.push(restaurantIdString);
+    // Also try direct match without ObjectId conversion (ensure unique)
+    if (!restaurantIdVariations.includes(restaurantIdString)) {
+      restaurantIdVariations.push(restaurantIdString);
+    }
 
     // Build query - search for orders with any matching restaurantId variation
     // Use $in for multiple variations and also try direct match as fallback
@@ -112,7 +118,7 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     console.log("🔍 Fetching orders for restaurant:", {
-      restaurantId: restaurantIdString,
+      restaurantIdPrimary: restaurantIdString,
       restaurant_id: restaurant._id?.toString(),
       restaurant_restaurantId: restaurant.restaurantId,
       restaurantIdVariations: restaurantIdVariations,
@@ -371,8 +377,21 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { preparationTime } = req.body;
 
-    const restaurantId =
-      restaurant._id?.toString() || restaurant.restaurantId || restaurant.id;
+    // Prepare restaurantId variations to match both Mongo _id and business restaurantId
+    const restaurantIdVariations = [];
+    const ridMongo = restaurant._id?.toString?.();
+    const ridBusiness = restaurant.restaurantId?.toString?.();
+    const ridGeneric = restaurant.id?.toString?.();
+    if (ridMongo) restaurantIdVariations.push(ridMongo);
+    if (ridBusiness && !restaurantIdVariations.includes(ridBusiness)) restaurantIdVariations.push(ridBusiness);
+    if (ridGeneric && !restaurantIdVariations.includes(ridGeneric)) restaurantIdVariations.push(ridGeneric);
+    // Also add normalized ObjectId form of each candidate when valid
+    for (const cand of [...restaurantIdVariations]) {
+      if (mongoose.Types.ObjectId.isValid(cand) && String(cand).length === 24) {
+        const norm = new mongoose.Types.ObjectId(cand).toString();
+        if (!restaurantIdVariations.includes(norm)) restaurantIdVariations.push(norm);
+      }
+    }
 
     // Try to find order by MongoDB _id or orderId (custom order ID)
     let order = null;
@@ -381,7 +400,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
       order = await Order.findOne({
         _id: id,
-        restaurantId,
+        restaurantId: { $in: restaurantIdVariations },
       });
     }
 
@@ -389,7 +408,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     if (!order) {
       order = await Order.findOne({
         orderId: id,
-        restaurantId,
+        restaurantId: { $in: restaurantIdVariations },
       });
     }
 

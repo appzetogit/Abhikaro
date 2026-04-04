@@ -10,6 +10,7 @@
     "test": "node scripts/smoke-test.js",
     "test:fcm": "node scripts/test-fcm.js",
     "test:delivery": "node scripts/test-delivery-order-flow.js",
+    "test:payments": "node scripts/tests/payment-verify-integration.js",
     "fix:order-review-popup": "node scripts/fixOrderReviewPopup.js"
   },
   "keywords": [
@@ -55,6 +56,8 @@
     "winston": "^3.11.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "mongodb-memory-server": "^10.1.4",
+    "supertest": "^6.3.4"
   }
 }

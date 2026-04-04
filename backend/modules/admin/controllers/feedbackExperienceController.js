@@ -70,10 +70,32 @@ export const createFeedbackExperience = asyncHandler(async (req, res) => {
       userPhone = authenticatedEntity.ownerPhone;
     }
 
+    // Resolve restaurant ObjectId safely (avoid CastError when a business id like 'REST-...' is passed)
+    let restaurantObjectId = null;
+    if (finalRestaurantId) {
+      if (mongoose.Types.ObjectId.isValid(finalRestaurantId)) {
+        restaurantObjectId = finalRestaurantId;
+      } else {
+        try {
+          const restaurantDoc = await Restaurant.findOne({
+            $or: [{ restaurantId: finalRestaurantId }],
+          })
+            .select('_id')
+            .lean();
+          if (restaurantDoc?._id) {
+            restaurantObjectId = restaurantDoc._id.toString();
+          }
+        } catch (e) {
+          // Swallow lookup errors; treat as no restaurant linkage
+          restaurantObjectId = null;
+        }
+      }
+    }
+
     // Create feedback experience
     const feedbackExperience = await FeedbackExperience.create({
       userId,
-      restaurantId: finalRestaurantId,
+      restaurantId: restaurantObjectId,
       userName,
       userEmail,
       userPhone,
@@ -86,7 +108,7 @@ export const createFeedbackExperience = asyncHandler(async (req, res) => {
     // also persist it into Order.review so restaurant rating becomes consistent.
     if (
       finalModule === 'user' &&
-      finalRestaurantId &&
+      restaurantObjectId &&
       (metadata?.orderMongoId || metadata?.orderId)
     ) {
       try {
@@ -114,11 +136,9 @@ export const createFeedbackExperience = asyncHandler(async (req, res) => {
 
           // Ensure we update the correct restaurant order when we can resolve
           // either Mongo _id or custom restaurantId identity.
-          if (finalRestaurantId) {
+          if (restaurantObjectId) {
             const restaurantLookupOr = [{ restaurantId: finalRestaurantId }];
-            if (mongoose.Types.ObjectId.isValid(finalRestaurantId)) {
-              restaurantLookupOr.push({ _id: finalRestaurantId });
-            }
+            restaurantLookupOr.push({ _id: restaurantObjectId });
 
             const restaurantDoc = await Restaurant.findOne({
               $or: restaurantLookupOr

@@ -1924,6 +1924,47 @@ export const processRefund = asyncHandler(async (req, res) => {
     const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
     let settlement = await OrderSettlement.findOne({ orderId: order._id });
 
+    // Resolve restaurantId to a proper ObjectId for OrderSettlement
+    let restaurantIdForSettlement = order.restaurantId;
+    try {
+      // If it's already a valid ObjectId (string of length 24) keep it
+      const asString =
+        typeof order.restaurantId === 'string'
+          ? order.restaurantId
+          : order.restaurantId?.toString?.();
+      if (!asString || !mongoose.Types.ObjectId.isValid(asString) || asString.length !== 24) {
+        // Find by business keys when legacy string like "REST-xxxx" is stored on Order
+        const restaurantDoc = await Restaurant.findOne({
+          $or: [
+            // If somehow _id string was stored, this will match too
+            ...(asString && mongoose.Types.ObjectId.isValid(asString) && asString.length === 24
+              ? [{ _id: asString }]
+              : []),
+            { restaurantId: asString },
+            { slug: asString },
+          ],
+        })
+          .select('_id')
+          .lean();
+        restaurantIdForSettlement = restaurantDoc?._id || restaurantIdForSettlement;
+      }
+    } catch (resolveErr) {
+      console.warn('[processRefund] Failed to resolve restaurantId to ObjectId:', resolveErr?.message);
+    }
+
+    // If still not a valid ObjectId, block with a clear error instead of throwing a cast error
+    const restaurantIdForSettlementStr =
+      typeof restaurantIdForSettlement === 'string'
+        ? restaurantIdForSettlement
+        : restaurantIdForSettlement?.toString?.();
+    if (!restaurantIdForSettlementStr || !mongoose.Types.ObjectId.isValid(restaurantIdForSettlementStr) || restaurantIdForSettlementStr.length !== 24) {
+      return errorResponse(
+        res,
+        500,
+        `OrderSettlement validation failed: restaurantId cannot be resolved for order ${order.orderId}. Please ensure restaurant exists and is linked properly.`,
+      );
+    }
+
     // For wallet payments, if settlement doesn't exist, create a proper one with all required fields
     if (!settlement && paymentMethod === 'wallet') {
       console.log('📝 [processRefund] Settlement not found for wallet order, creating settlement with order data...');
@@ -1944,7 +1985,7 @@ export const processRefund = asyncHandler(async (req, res) => {
         orderId: order._id,
         orderNumber: order.orderId,
         userId: order.userId?._id || order.userId,
-        restaurantId: order.restaurantId,
+        restaurantId: restaurantIdForSettlementStr,
         restaurantName: order.restaurantName || 'Unknown Restaurant',
         userPayment: {
           subtotal: subtotal,
@@ -1993,8 +2034,76 @@ export const processRefund = asyncHandler(async (req, res) => {
       await settlement.save();
       console.log('✅ [processRefund] Settlement created for wallet refund');
     } else if (!settlement) {
-      // For non-wallet payments, settlement is required
-      return errorResponse(res, 404, 'Settlement not found for this order');
+      // For non-wallet payments, create a minimal settlement from order data to allow refund processing
+      console.log('📝 [processRefund] Settlement not found for online payment, creating settlement with order data...');
+      const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
+
+      const pricing = order.pricing || {};
+      const subtotal = pricing.subtotal || 0;
+      const deliveryFee = pricing.deliveryFee || 0;
+      const platformFee = pricing.platformFee || 0;
+      const tax = pricing.tax || 0;
+      const total = pricing.total || 0;
+
+      // Derive simplified earnings; detailed commission math is not critical for enabling refund
+      const foodPrice = subtotal;
+      const commission = 0;
+      const netEarning = foodPrice;
+
+      settlement = new OrderSettlement({
+        orderId: order._id,
+        orderNumber: order.orderId,
+        userId: order.userId?._id || order.userId,
+        restaurantId: restaurantIdForSettlementStr,
+        restaurantName: order.restaurantName || 'Unknown Restaurant',
+        userPayment: {
+          subtotal: subtotal,
+          discount: pricing.discount || 0,
+          deliveryFee: deliveryFee,
+          platformFee: platformFee,
+          gst: tax,
+          packagingFee: 0,
+          total: total
+        },
+        restaurantEarning: {
+          foodPrice: foodPrice,
+          commission: commission,
+          commissionPercentage: 0,
+          netEarning: netEarning,
+          status: 'cancelled'
+        },
+        deliveryPartnerEarning: {
+          basePayout: 0,
+          distance: 0,
+          commissionPerKm: 0,
+          distanceCommission: 0,
+          surgeMultiplier: 1,
+          surgeAmount: 0,
+          totalEarning: 0,
+          status: 'cancelled'
+        },
+        adminEarning: {
+          commission: commission,
+          platformFee: platformFee,
+          deliveryFee: deliveryFee,
+          gst: tax,
+          deliveryMargin: 0,
+          totalEarning: platformFee + deliveryFee + tax,
+          status: 'cancelled'
+        },
+        escrowStatus: 'refunded',
+        escrowAmount: total,
+        settlementStatus: 'cancelled',
+        cancellationDetails: {
+          cancelled: true,
+          cancelledAt: order.updatedAt || new Date(),
+          // Default to full refund for admin-triggered online refunds when no prior calc exists
+          refundAmount: total,
+          refundStatus: 'pending'
+        }
+      });
+      await settlement.save();
+      console.log('✅ [processRefund] Settlement created for online refund');
     }
 
     // Check if refund already processed
@@ -2397,6 +2506,44 @@ export const reassignOrderToRestaurant = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error('Error reassigning order to restaurant:', error);
     return errorResponse(res, 500, error.message || 'Failed to reassign order to restaurant');
+  }
+});
+
+/**
+ * Resend restaurant new_order notification without changing order status
+ * POST /api/admin/orders/:id/resend-restaurant-notification
+ */
+export const resendRestaurantNotification = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Find order by _id or orderId
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      order = await Order.findById(id);
+    }
+    if (!order) {
+      order = await Order.findOne({ orderId: id });
+    }
+    if (!order) {
+      return errorResponse(res, 404, 'Order not found');
+    }
+
+    // Only allow for active states that restaurant should see
+    if (!['pending', 'confirmed', 'preparing'].includes(order.status)) {
+      return errorResponse(res, 400, `Order status ${order.status} not eligible for resend`);
+    }
+
+    const restaurantId =
+      order.restaurantId?._id?.toString?.() || order.restaurantId?.toString?.() || order.restaurantId;
+    await notifyRestaurantNewOrder(order, restaurantId, order.payment?.method);
+
+    return successResponse(res, 200, 'Restaurant notification resent', {
+      orderId: order.orderId,
+      restaurantId
+    });
+  } catch (error) {
+    console.error('Error resending restaurant notification:', error);
+    return errorResponse(res, 500, error.message || 'Failed to resend restaurant notification');
   }
 });
 

@@ -11,7 +11,7 @@ import { useCart } from "../../context/CartContext"
 import { useProfile } from "../../context/ProfileContext"
 import { useOrders } from "../../context/OrdersContext"
 import { useSharedLocation } from "@/lib/context/LocationContext"
-import { orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS } from "@/lib/api"
+import { orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS, paymentAPI } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
 import { initRazorpayPayment } from "@/lib/utils/razorpay"
 import { toast } from "sonner"
@@ -1259,7 +1259,122 @@ export default function Cart() {
         return
       }
 
-      // Create order in backend
+      // Online payment via intent flow (do NOT create order yet)
+      if (selectedPaymentMethod === "razorpay" || !selectedPaymentMethod) {
+        const intentResp = await paymentAPI.createIntent(orderPayload)
+        const { intentId, razorpay } = intentResp.data.data
+
+        if (!razorpay || !razorpay.orderId || !razorpay.key) {
+          throw new Error("Failed to initialize payment")
+        }
+
+        // Get user info for Razorpay prefill (use edited contact values if provided)
+        const userInfo = userProfile || {}
+        const userEmail = userInfo.email || ""
+        const userName = String(contactName || userInfo.name || userInfo.fullName || "").trim()
+        const userPhone = normalizePhone10(contactPhone || userInfo.phone || defaultAddress?.phone || "")
+        const formattedPhone = normalizePhone10(userPhone)
+        const companyName = await getCompanyNameAsync()
+
+        await initRazorpayPayment({
+          key: razorpay.key,
+          amount: razorpay.amount,
+          currency: razorpay.currency || 'INR',
+          order_id: razorpay.orderId,
+          name: companyName,
+          description: `Order Payment - ₹${(razorpay.amount / 100).toFixed(2)}`,
+          prefill: { name: userName, email: userEmail, contact: formattedPhone },
+          notes: {
+            userId: userInfo.id || "",
+            restaurantId: restaurantId || "unknown"
+          },
+          handler: async (response) => {
+            try {
+              // Server-side verify; backend will create Order
+              const verify = await paymentAPI.verify({
+                intentId,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature
+              })
+
+              if (verify?.data?.success && verify?.data?.data?.orderId) {
+                const createdOrderId = verify.data.data.orderId
+                // Success UI and cleanups
+                toast.success("Payment successful. Order placed!")
+                setPlacedOrderId(createdOrderId)
+                setShowOrderSuccess(true)
+                window.dispatchEvent(new Event('orderStatusUpdated'))
+                clearCart()
+                setIsPlacingOrder(false)
+                return
+              }
+
+              // Try reconcile once if verify didn't return order id
+              try {
+                const recon = await paymentAPI.reconcile({
+                  intentId,
+                  razorpay_payment_id: response.razorpay_payment_id
+                })
+                if (recon?.data?.success && recon?.data?.data?.orderId) {
+                  const oid = recon.data.data.orderId
+                  toast.success("Payment successful. Order placed!")
+                  setPlacedOrderId(oid)
+                  setShowOrderSuccess(true)
+                  window.dispatchEvent(new Event('orderStatusUpdated'))
+                  clearCart()
+                  setIsPlacingOrder(false)
+                  return
+                }
+              } catch (_) {
+                // fall through to polling
+              }
+
+              // Poll as fallback if server responded without order id
+              const started = Date.now()
+              const poll = async () => {
+                const st = await paymentAPI.getStatus(intentId)
+                const s = st?.data?.data?.status
+                const oid = st?.data?.data?.orderId
+                if (s === 'succeeded' && oid) {
+                  toast.success("Order placed!")
+                  setPlacedOrderId(oid)
+                  setShowOrderSuccess(true)
+                  window.dispatchEvent(new Event('orderStatusUpdated'))
+                  clearCart()
+                  setIsPlacingOrder(false)
+                } else if (s === 'failed') {
+                  alert("Payment failed. Please try again.")
+                  setIsPlacingOrder(false)
+                } else if (Date.now() - started < 90000) {
+                  setTimeout(poll, 2000)
+                } else {
+                  alert("Payment processing. Please check Orders after a minute.")
+                  setIsPlacingOrder(false)
+                }
+              }
+              await poll()
+            } catch (err) {
+              const msg = err?.response?.data?.message || err?.message || "Payment verification failed."
+              alert(msg)
+              setIsPlacingOrder(false)
+            }
+          },
+          onError: (error) => {
+            if (error?.code !== 'PAYMENT_CANCELLED' && error?.message !== 'PAYMENT_CANCELLED') {
+              const errorMessage = error?.description || error?.message || "Payment failed. Please try again."
+              alert(errorMessage)
+            }
+            setIsPlacingOrder(false)
+          },
+          onClose: () => {
+            setIsPlacingOrder(false)
+          }
+        })
+        return
+      }
+
+      // Create order in backend (non-online flows)
       const orderResponse = await orderAPI.createOrder(orderPayload)
 
       const { order, razorpay } = orderResponse.data.data

@@ -256,6 +256,7 @@ import {
   assignOrderToDeliveryPartner,
   resendDeliveryNotification,
   reassignOrderToRestaurant,
+  resendRestaurantNotification,
   getDeliveryPartnerWallet,
 } from "../controllers/orderController.js";
 import {
@@ -864,6 +865,11 @@ router.post(
   "/orders/:id/reassign-restaurant",
   requirePermissions("orders.assign_delivery"),
   reassignOrderToRestaurant,
+);
+router.post(
+  "/orders/:id/resend-restaurant-notification",
+  requirePermissions("orders.assign_delivery"),
+  resendRestaurantNotification,
 );
 router.get("/delivery-partners/:id/wallet", getDeliveryPartnerWallet);
 

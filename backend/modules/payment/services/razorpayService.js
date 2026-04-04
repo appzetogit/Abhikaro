@@ -2,6 +2,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import winston from 'winston';
 import { getRazorpayCredentials } from '../../../shared/utils/envService.js';
+import { getEnvVar } from '../../../shared/utils/envService.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -176,6 +177,43 @@ const verifyPayment = async (razorpayOrderId, razorpayPaymentId, razorpaySignatu
 };
 
 /**
+ * Verify Razorpay webhook signature
+ * @param {Buffer|string} rawBody - Raw request body as Buffer or string
+ * @param {string} headerSignature - Value of 'x-razorpay-signature' header
+ * @returns {Promise<boolean>} True if signature is valid
+ */
+const verifyWebhookSignature = async (rawBody, headerSignature) => {
+  try {
+    const webhookSecretEnv = await getEnvVar('RAZORPAY_WEBHOOK_SECRET');
+    const secret =
+      webhookSecretEnv ||
+      process.env.RAZORPAY_WEBHOOK_SECRET ||
+      process.env.RAZORPAY_WEBHOOK_SIGNING_SECRET ||
+      '';
+
+    if (!secret) {
+      logger.error('Razorpay webhook secret not configured');
+      return false;
+    }
+
+    const payload = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody), 'utf8');
+    const generatedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex');
+
+    const valid = generatedSignature === headerSignature;
+    if (!valid) {
+      logger.warn('Invalid Razorpay webhook signature');
+    }
+    return valid;
+  } catch (error) {
+    logger.error(`Error verifying webhook signature: ${error.message}`);
+    return false;
+  }
+};
+
+/**
  * Fetch payment details from Razorpay
  * @param {String} paymentId - Razorpay payment ID
  * @returns {Promise<Object>} Payment details
@@ -191,6 +229,35 @@ const fetchPayment = async (paymentId) => {
     return payment;
   } catch (error) {
     logger.error(`Error fetching Razorpay payment: ${error.message}`);
+    throw error;
+  }
+};
+
+/**
+ * Capture an authorized Razorpay payment
+ * @param {String} paymentId - Razorpay payment ID
+ * @param {Number} amount - Amount in paise to capture
+ * @returns {Promise<Object>} Captured payment details
+ */
+const capturePayment = async (paymentId, amount) => {
+  const razorpay = await getRazorpayInstance();
+  if (!razorpay) {
+    throw new Error('Razorpay is not initialized');
+  }
+  try {
+    const captured = await razorpay.payments.capture(paymentId, amount);
+    logger.info(`Payment captured: ${captured.id}`, {
+      paymentId: captured.id,
+      amount: captured.amount,
+      status: captured.status
+    });
+    return captured;
+  } catch (error) {
+    logger.error(`Error capturing Razorpay payment: ${error.message}`, {
+      paymentId,
+      amount,
+      error: error?.error || error?.description || error
+    });
     throw error;
   }
 };
@@ -236,7 +303,9 @@ export {
   getRazorpayInstance,
   createOrder,
   verifyPayment,
+  verifyWebhookSignature,
   fetchPayment,
+  capturePayment,
   createRefund
 };
 

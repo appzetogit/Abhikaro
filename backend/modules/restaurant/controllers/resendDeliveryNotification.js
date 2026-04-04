@@ -15,9 +15,20 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
     const restaurant = req.restaurant;
     const { id } = req.params;
 
-    const restaurantId = restaurant._id?.toString() ||
-      restaurant.restaurantId ||
-      restaurant.id;
+    // Build restaurant id variations to support both Mongo _id and business restaurantId
+    const restaurantIdCandidates = [];
+    const ridMongo = restaurant._id?.toString?.();
+    const ridBusiness = restaurant.restaurantId?.toString?.();
+    const ridGeneric = restaurant.id?.toString?.();
+    if (ridMongo) restaurantIdCandidates.push(ridMongo);
+    if (ridBusiness && !restaurantIdCandidates.includes(ridBusiness)) restaurantIdCandidates.push(ridBusiness);
+    if (ridGeneric && !restaurantIdCandidates.includes(ridGeneric)) restaurantIdCandidates.push(ridGeneric);
+    for (const cand of [...restaurantIdCandidates]) {
+      if (mongoose.Types.ObjectId.isValid(cand) && String(cand).length === 24) {
+        const norm = new mongoose.Types.ObjectId(cand).toString();
+        if (!restaurantIdCandidates.includes(norm)) restaurantIdCandidates.push(norm);
+      }
+    }
 
     // Try to find order by MongoDB _id or orderId
     let order = null;
@@ -25,14 +36,14 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
       order = await Order.findOne({
         _id: id,
-        restaurantId
+        restaurantId: { $in: restaurantIdCandidates }
       });
     }
 
     if (!order) {
       order = await Order.findOne({
         orderId: id,
-        restaurantId
+        restaurantId: { $in: restaurantIdCandidates }
       });
     }
 
@@ -41,14 +52,22 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
     }
 
     // Check if order is in valid status (preparing or ready)
-    if (!['preparing', 'ready'].includes(order.status)) {
+    if (!['preparing', 'ready', 'confirmed'].includes(order.status)) {
       return errorResponse(res, 400, `Cannot resend notification. Order status must be 'preparing' or 'ready'. Current status: ${order.status}`);
     }
 
     // Get restaurant location
-    const restaurantDoc = await Restaurant.findById(restaurantId)
-      .select('location')
-      .lean();
+    // Fetch restaurant document using either _id or restaurantId
+    let restaurantDoc = null;
+    if (mongoose.Types.ObjectId.isValid(ridMongo || '')) {
+      restaurantDoc = await Restaurant.findById(ridMongo).select('location').lean();
+    }
+    if (!restaurantDoc) {
+      const orConditions = [];
+      if (ridBusiness) orConditions.push({ restaurantId: ridBusiness });
+      if (ridMongo && mongoose.Types.ObjectId.isValid(ridMongo)) orConditions.push({ _id: ridMongo });
+      restaurantDoc = await Restaurant.findOne({ $or: orConditions }).select('location').lean();
+    }
 
     if (!restaurantDoc || !restaurantDoc.location || !restaurantDoc.location.coordinates) {
       return errorResponse(res, 400, 'Restaurant location not found. Please update restaurant location.');
@@ -60,7 +79,7 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
     const priorityDeliveryBoys = await findNearestDeliveryBoys(
       restaurantLat,
       restaurantLng,
-      restaurantId,
+      ridBusiness || ridMongo || ridGeneric,
       20, // 20km radius for priority
       10  // Top 10 nearest
     );
@@ -70,7 +89,7 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
       const allDeliveryBoys = await findNearestDeliveryBoys(
         restaurantLat,
         restaurantLng,
-        restaurantId,
+      ridBusiness || ridMongo || ridGeneric,
         50, // 50km radius
         20  // Top 20 nearest
       );

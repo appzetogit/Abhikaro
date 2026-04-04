@@ -604,6 +604,12 @@ export const restaurantAPI = {
       ),
     );
   },
+  // Resend restaurant new_order notification (admin)
+  resendRestaurantNotification: (id) => {
+    return apiClient.post(
+      `/admin/orders/${encodeURIComponent(id)}/resend-restaurant-notification`,
+    );
+  },
 
   // Get wallet
   getWallet: () => {
@@ -2475,6 +2481,26 @@ export const orderAPI = {
       },
     );
   },
+};
+
+// Payment intents (online payments)
+export const paymentAPI = {
+  // Create Razorpay order and intent
+  createIntent: (payload) => {
+    return apiClient.post('/payment/razorpay/order', payload);
+  },
+  // Verify payment on server, create order
+  verify: (data) => {
+    return apiClient.post('/payment/razorpay/verify', data);
+  },
+  // Reconcile intent by confirming with Razorpay and creating order if missing
+  reconcile: (data) => {
+    return apiClient.post('/payment/razorpay/reconcile', data);
+  },
+  // Poll status
+  getStatus: (intentId) => {
+    return apiClient.get(`/payment/status/${encodeURIComponent(intentId)}`);
+  }
 };
 
 // Export dining API helper functions

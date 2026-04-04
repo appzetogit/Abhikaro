@@ -120,9 +120,11 @@ export default function RestaurantReport() {
     if (rating === 0) {
       return "★0"
     }
-    const fullStars = Math.floor(rating)
-    const hasHalfStar = rating % 1 !== 0
-    return "★".repeat(fullStars) + (hasHalfStar ? "½" : "") + "☆".repeat(5 - Math.ceil(rating)) + ` (${reviews})`
+    const normalized = Math.min(Math.max(Number(rating) || 0, 0), 5)
+    const fullStars = Math.floor(normalized)
+    const hasHalfStar = normalized % 1 !== 0
+    const emptyStars = Math.max(0, 5 - Math.ceil(normalized))
+    return "★".repeat(fullStars) + (hasHalfStar ? "½" : "") + "☆".repeat(emptyStars) + ` (${reviews})`
   }
 
   if (loading) {

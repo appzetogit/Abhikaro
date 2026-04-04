@@ -700,7 +700,23 @@ export const acceptOrder = asyncHandler(async (req, res) => {
         const restaurantId = order.restaurantId?._id || order.restaurantId;
         console.log(`🔍 Fetching restaurant with ID: ${restaurantId}`);
 
-        const restaurant = await Restaurant.findById(restaurantId);
+        // Support both Mongo _id and business restaurantId string
+        let restaurant = null;
+        if (restaurantId && mongoose.Types.ObjectId.isValid(String(restaurantId))) {
+          restaurant = await Restaurant.findById(restaurantId);
+        }
+        if (!restaurant) {
+          const orConds = [];
+          if (restaurantId) {
+            orConds.push({ restaurantId: String(restaurantId) });
+            if (mongoose.Types.ObjectId.isValid(String(restaurantId))) {
+              orConds.push({ _id: new mongoose.Types.ObjectId(String(restaurantId)) });
+            }
+          }
+          if (orConds.length > 0) {
+            restaurant = await Restaurant.findOne({ $or: orConds });
+          }
+        }
         if (
           restaurant &&
           restaurant.location &&

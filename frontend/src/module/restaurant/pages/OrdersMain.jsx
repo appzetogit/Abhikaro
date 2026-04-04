@@ -856,10 +856,35 @@ export default function OrdersMain() {
       const orderId = newOrder.orderId || newOrder.orderMongoId
       if (orderId && !shownOrdersRef.current.has(orderId)) {
         shownOrdersRef.current.add(orderId)
-        setPopupOrder(newOrder)
+        // Normalize/ensure customerAddress object so UI shows full + additional address (online orders often miss this)
+        const normalizedAddress =
+          newOrder.customerAddress ||
+          newOrder.address || {
+            formattedAddress: newOrder?.address?.formattedAddress || '',
+            street: newOrder?.address?.street || '',
+            city: newOrder?.address?.city || '',
+            state: newOrder?.address?.state || '',
+            zipCode:
+              newOrder?.address?.zipCode ||
+              newOrder?.address?.pincode ||
+              newOrder?.address?.postalCode ||
+              '',
+            additionalDetails:
+              newOrder?.address?.additionalDetails ||
+              newOrder?.address?.additionalAddress ||
+              newOrder?.address?.landmark ||
+              '',
+          }
+
+        const normalizedOrder = {
+          ...newOrder,
+          customerAddress: normalizedAddress,
+        }
+
+        setPopupOrder(normalizedOrder)
         setShowNewOrderPopup(true)
         // Timestamp-based countdown: starts from order createdAt and stays correct across app restarts
-        const createdAtMs = newOrder?.createdAt ? new Date(newOrder.createdAt).getTime() : Date.now()
+        const createdAtMs = normalizedOrder?.createdAt ? new Date(normalizedOrder.createdAt).getTime() : Date.now()
         acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
       }
     }
@@ -876,6 +901,48 @@ export default function OrdersMain() {
   useEffect(() => {
     newOrderRef.current = newOrder
   }, [newOrder])
+
+  // Enrich popup order address for online orders (ensure formattedAddress + additional details)
+  useEffect(() => {
+    if (!showNewOrderPopup) return
+    const current = popupOrder || newOrder
+    const orderId = current?.orderId || current?.orderMongoId
+    if (!orderId) return
+    const addr = current?.customerAddress || current?.address
+    // If address is a string or lacks formattedAddress/extra details, fetch full order
+    const needsEnrichment =
+      !addr ||
+      typeof addr === 'string' ||
+      (!addr.formattedAddress && (!addr.street || !addr.city))
+    if (!needsEnrichment) return
+
+    let cancelled = false
+    const enrich = async () => {
+      try {
+        const resp = await restaurantAPI.getOrderById(orderId)
+        const o = resp?.data?.data?.order
+        if (!cancelled && o?.address) {
+          const a = o.address
+          const normalized = {
+            formattedAddress: a.formattedAddress || a.address || '',
+            street: a.street || '',
+            city: a.city || '',
+            state: a.state || '',
+            zipCode: a.zipCode || a.pincode || a.postalCode || '',
+            additionalDetails: a.additionalDetails || a.additionalAddress || a.landmark || ''
+          }
+          setPopupOrder(prev => ({
+            ...(prev || current),
+            customerAddress: normalized
+          }))
+        }
+      } catch (_) {
+        // ignore
+      }
+    }
+    enrich()
+    return () => { cancelled = true }
+  }, [showNewOrderPopup, popupOrder, newOrder])
 
   // Check for confirmed orders that haven't been shown in popup yet (fallback if Socket.IO fails)
   useEffect(() => {
@@ -2040,25 +2107,22 @@ export default function OrdersMain() {
                           const addr = (popupOrder || newOrder).customerAddress
                           if (typeof addr === 'string') return addr
 
-                          // Prefer formattedAddress if available, but always include additionalDetails (flat no., landmark, etc.)
-                          const extra = addr.additionalDetails || addr.landmark || addr.area
+                          // Prefer formattedAddress and then show additional details (flat no., landmark) BELOW it
+                          const extra = addr.additionalDetails || addr.additionalAddress || addr.landmark || addr.area
 
                           if (addr.formattedAddress) {
-                            if (extra) {
-                              return `${extra}\n${addr.formattedAddress}`
-                            }
-                            return addr.formattedAddress
+                            return `${addr.formattedAddress}${extra ? `\n${extra}` : ''}`
                           }
 
-                          const parts = [
-                            extra,
+                          const partsMain = [
                             addr.street,
                             addr.city,
                             addr.state,
                             addr.pincode || addr.postalCode || addr.zipCode,
                           ].filter(Boolean)
 
-                          return parts.join(', ')
+                          const mainLine = partsMain.join(', ')
+                          return `${mainLine}${extra ? `\n${extra}` : ''}`
                         })()}
                       </p>
                     </div>

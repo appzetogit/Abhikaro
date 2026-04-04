@@ -259,6 +259,11 @@ const orderSchema = new mongoose.Schema(
       transactionId: {
         type: String,
       },
+      // Link back to payment intent when applicable
+      paymentIntentId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "PaymentIntent"
+      }
     },
     status: {
       type: String,
