@@ -2,6 +2,78 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { restaurantAPI } from "@/lib/api";
 
+function getApiErrorMessage(err) {
+  return (
+    err?.response?.data?.message ||
+    err?.response?.data?.error ||
+    err?.message ||
+    "Something went wrong"
+  );
+}
+
+/**
+ * Save a jsPDF document in a way that's more reliable on mobile/Safari.
+ * - First tries `doc.save()` (normal download)
+ * - Falls back to Blob + objectURL + `<a download>`
+ * - Finally falls back to opening the PDF in a new tab (if download is blocked)
+ */
+export function savePdfWithFallback(doc, fileName = "document.pdf") {
+  if (!doc) throw new Error("Missing PDF document");
+
+  try {
+    doc.save(fileName);
+    return { method: "save" };
+  } catch (e) {
+    // continue to fallbacks
+    console.warn("doc.save failed, using blob fallback:", e);
+  }
+
+  let url = null;
+  try {
+    const blob = doc.output("blob");
+    url = URL.createObjectURL(blob);
+
+    // Try a programmatic download first
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // If the browser blocks download, opening in a new tab often works (esp. iOS Safari)
+    setTimeout(() => {
+      try {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } catch {
+        // ignore
+      }
+    }, 50);
+
+    // cleanup
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    }, 30_000);
+
+    return { method: "blob" };
+  } catch (err) {
+    if (url) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    }
+    throw new Error(`Failed to download receipt: ${getApiErrorMessage(err)}`);
+  }
+}
+
 /**
  * Generate and download an order receipt PDF for a given order id (string or Mongo _id).
  * Includes: order id, customer name, restaurant name, date, time, full address
@@ -13,8 +85,13 @@ export async function generateOrderReceiptPDF(orderIdOrMongoId) {
   }
 
   // Fetch full order details
-  const response = await restaurantAPI.getOrderById(orderIdOrMongoId);
-  const order = response?.data?.data?.order;
+  let order = null;
+  try {
+    const response = await restaurantAPI.getOrderById(orderIdOrMongoId);
+    order = response?.data?.data?.order;
+  } catch (err) {
+    throw new Error(getApiErrorMessage(err));
+  }
   if (!order) {
     throw new Error("Order not found");
   }
@@ -298,7 +375,7 @@ export async function generateOrderReceiptPDF(orderIdOrMongoId) {
 
   // Save
   const fileName = `Order_Receipt_${orderData.id}.pdf`;
-  doc.save(fileName);
+  savePdfWithFallback(doc, fileName);
 }
 
 export default generateOrderReceiptPDF;

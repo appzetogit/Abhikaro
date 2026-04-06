@@ -2798,6 +2798,12 @@ function OrderCard({
       await generateOrderReceiptPDF(id)
     } catch (err) {
       console.error("Failed to generate receipt:", err)
+      const message =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to download receipt"
+      toast.error(message)
     }
   }
 

@@ -13,6 +13,7 @@ import {
   clearRouteCache
 } from '../services/locationProcessingService.js';
 import Order from '../../order/models/Order.js';
+import mongoose from 'mongoose';
 
 /**
  * Receive GPS update from delivery app
@@ -83,28 +84,53 @@ export const receiveLocationUpdate = asyncHandler(async (req, res) => {
     // Broadcast via WebSocket (handled by socket.io in server.js)
     const io = req.app.get('io');
     if (io) {
-      io.to(`order-${orderId}`).emit(`location-update-${orderId}`, {
+      const locationPayload = {
+        orderId: orderId,
         lat: processedLocation.lat,
         lng: processedLocation.lng,
         bearing: processedLocation.bearing,
+        heading: processedLocation.bearing, // alias for frontend
         speed: processedLocation.speed,
         progress: processedLocation.progress,
         distanceCovered: processedLocation.distanceCovered,
         remainingDistance: processedLocation.remainingDistance,
         timestamp: processedLocation.timestamp,
         snapped: processedLocation.snapped,
-        onRoute: processedLocation.onRoute
+        onRoute: processedLocation.onRoute,
+      };
+
+      // Canonical socket contract (frontend expects these)
+      // Rooms: order:<id> where <id> can be Mongo _id or string orderId
+      const ids = new Set([
+        orderId?.toString?.() || String(orderId),
+        order?._id?.toString?.(),
+        order?.orderId?.toString?.(),
+      ].filter(Boolean));
+
+      ids.forEach((id) => {
+        io.to(`order:${id}`).emit(`location-receive-${id}`, {
+          ...locationPayload,
+          orderId: id,
+        });
+        // Legacy compatibility: older clients listened to these
+        io.to(`order-${id}`).emit(`location-update-${id}`, {
+          ...locationPayload,
+          orderId: id,
+        });
       });
-      
-      // Also broadcast to customer
-      io.to(`user-${order.userId}`).emit(`location-update-${orderId}`, {
-        lat: processedLocation.lat,
-        lng: processedLocation.lng,
-        bearing: processedLocation.bearing,
-        speed: processedLocation.speed,
-        progress: processedLocation.progress,
-        timestamp: processedLocation.timestamp
-      });
+
+      // Also broadcast to user room (if used anywhere)
+      if (order?.userId) {
+        const uid = order.userId.toString();
+        io.to(`user:${uid}`).emit('location-update', {
+          ...locationPayload,
+          userId: uid,
+        });
+        io.to(`user-${uid}`).emit('location-update', {
+          ...locationPayload,
+          userId: uid,
+        });
+      }
     }
     
     return successResponse(res, 200, 'Location updated successfully', {
@@ -171,11 +197,25 @@ export const initializeRoute = asyncHandler(async (req, res) => {
     // Broadcast route to connected clients
     const io = req.app.get('io');
     if (io) {
-      io.to(`order-${orderId}`).emit(`route-initialized-${orderId}`, {
+      const routePayload = {
         polyline: route.polyline,
         points: route.points,
         totalDistance: route.totalDistance,
-        duration: route.duration
+        duration: route.duration,
+      };
+
+      // Emit to both canonical rooms and legacy rooms
+      const ids = new Set([String(orderId)]);
+      // Resolve mongo _id if orderId is string id
+      try {
+        const found = await Order.findOne({ orderId: orderId }).select('_id orderId').lean();
+        if (found?._id) ids.add(found._id.toString());
+        if (found?.orderId) ids.add(found.orderId.toString());
+      } catch {}
+
+      ids.forEach((id) => {
+        io.to(`order:${id}`).emit(`route-initialized-${id}`, routePayload);
+        io.to(`order-${id}`).emit(`route-initialized-${id}`, routePayload);
       });
     }
     

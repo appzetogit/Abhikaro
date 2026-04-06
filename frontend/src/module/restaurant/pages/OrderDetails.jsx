@@ -5,6 +5,7 @@ import Lenis from "lenis"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { restaurantAPI } from "@/lib/api"
+import { savePdfWithFallback } from "../utils/printReceipt"
 import {
   ArrowLeft,
   Printer,
@@ -563,7 +564,7 @@ export default function OrderDetails() {
     // Save the PDF
     const fileName = `Order_Receipt_${orderData.id}.pdf`
     console.log('💾 Saving PDF:', fileName)
-    doc.save(fileName)
+    savePdfWithFallback(doc, fileName)
     
     // Show success message
     console.log('✅ PDF saved successfully')
@@ -573,7 +574,12 @@ export default function OrderDetails() {
     } catch (error) {
       console.error("❌ Error generating PDF:", error)
       console.error("Error details:", error.message, error.stack)
-      setToastMessage(`Failed: ${error.message || "Unknown error"}`)
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Unknown error"
+      setToastMessage(`Failed: ${message}`)
       setShowToast(true)  
       setTimeout(() => setShowToast(false), 3000)
     } finally {

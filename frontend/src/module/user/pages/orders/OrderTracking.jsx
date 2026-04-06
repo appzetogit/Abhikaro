@@ -939,7 +939,54 @@ export default function OrderTracking() {
 
     setIsCancelling(true);
     try {
-      const response = await orderAPI.cancelOrder(orderId, cancellationReason.trim());
+      const reason = cancellationReason.trim()
+
+      const uniq = (arr) => Array.from(new Set(arr.filter(Boolean).map(String)))
+      const isLikelyWrongIdError = (err) => {
+        const status = err?.response?.status
+        return status === 403 || status === 404
+      }
+
+      // First attempt: use best local id guess (prefer Mongo _id if present)
+      const preferredId =
+        order?._id ||
+        order?.id ||
+        order?.orderId ||
+        orderId
+
+      let response = null
+      let cancelledUsingId = String(preferredId || orderId)
+
+      try {
+        response = await orderAPI.cancelOrder(cancelledUsingId, reason)
+      } catch (err) {
+        // One retry on likely id mismatch (403/404): refetch once, then retry with an alternate id
+        if (isLikelyWrongIdError(err)) {
+          const detailsRes = await orderAPI.getOrderDetails(orderId)
+          const apiOrder = detailsRes?.data?.data?.order
+
+          const candidateIds = uniq([
+            apiOrder?._id,
+            apiOrder?.id,
+            apiOrder?.orderId,
+            order?._id,
+            order?.id,
+            order?.orderId,
+            orderId,
+          ])
+
+          const altId = candidateIds.find((x) => x !== String(cancelledUsingId))
+          if (altId) {
+            cancelledUsingId = String(altId)
+            response = await orderAPI.cancelOrder(cancelledUsingId, reason)
+          } else {
+            throw err
+          }
+        } else {
+          throw err
+        }
+      }
+
       if (response.data?.success) {
         const paymentMethod = order?.payment?.method || order?.paymentMethod;
         const successMessage = response.data?.message ||
@@ -950,13 +997,20 @@ export default function OrderTracking() {
         setShowCancelDialog(false);
         setCancellationReason("");
         // Refresh order data
-        const orderResponse = await orderAPI.getOrderDetails(orderId);
-        if (orderResponse.data?.success && orderResponse.data.data?.order) {
-          const apiOrder = orderResponse.data.data.order;
-          setOrder(apiOrder);
-          // Update orderStatus to cancelled
-          if (apiOrder.status === 'cancelled') {
-            setOrderStatus('cancelled');
+        try {
+          const orderResponse = await orderAPI.getOrderDetails(cancelledUsingId || orderId);
+          if (orderResponse.data?.success && orderResponse.data.data?.order) {
+            const apiOrder = orderResponse.data.data.order;
+            setOrder(apiOrder);
+            if (apiOrder.status === 'cancelled') setOrderStatus('cancelled');
+          }
+        } catch {
+          // Fallback to route param id in case backend only serves one id flavor
+          const orderResponse = await orderAPI.getOrderDetails(orderId);
+          if (orderResponse.data?.success && orderResponse.data.data?.order) {
+            const apiOrder = orderResponse.data.data.order;
+            setOrder(apiOrder);
+            if (apiOrder.status === 'cancelled') setOrderStatus('cancelled');
           }
         }
       } else {

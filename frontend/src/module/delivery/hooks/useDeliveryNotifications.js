@@ -579,7 +579,8 @@ export const useDeliveryNotifications = () => {
 
     socketRef.current.on('order_ready', (orderData) => {
       setOrderReady(orderData);
-      playNotificationSound();
+      // Intentionally do NOT play sound for "order_ready".
+      // Keep push notification / UI state updates only.
     });
 
     // FIXED: Listen for wallet update events to refresh wallet state immediately
