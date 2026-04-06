@@ -146,7 +146,7 @@ export const useDeliveryNotifications = () => {
     return p;
   }, []);
 
-  const playNotificationSound = useCallback(() => {
+  const playNotificationSound = useCallback((dedupeKey = null) => {
     try {
       // Get current selected sound preference from localStorage
       const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone';
@@ -463,11 +463,11 @@ export const useDeliveryNotifications = () => {
             normalized?.orderMongoId?.toString?.();
           if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
           setNewOrder(normalized);
-          playNotificationSound();
+          // Sound is handled by DeliveryHome popup loop (plays while popup is open).
         })();
       } else {
         setNewOrder(orderData);
-        playNotificationSound();
+        // Sound is handled by DeliveryHome popup loop (plays while popup is open).
       }
     });
 
@@ -502,12 +502,12 @@ export const useDeliveryNotifications = () => {
             normalized?.orderMongoId?.toString?.();
           if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
           setNewOrder(normalized);
-          playNotificationSound();
+          // Sound is handled by DeliveryHome popup loop (plays while popup is open).
         })();
       } else {
         // Treat it the same as new_order for now - delivery boy can accept it
         setNewOrder(orderData);
-        playNotificationSound();
+        // Sound is handled by DeliveryHome popup loop (plays while popup is open).
       }
     });
 
@@ -517,6 +517,13 @@ export const useDeliveryNotifications = () => {
       // so the UI can open the accept popup (DeliveryHome listens to `newOrder`).
       try {
         const orderId = normalizeOrderId(data) || data?.id?.toString?.();
+        const type = (data?.type || '').toString();
+
+        // Strict allowlist: sound should only play for delivery "new order" style events
+        const allowedTypes = new Set(['new_order', 'new_order_available']);
+        if (type && !allowedTypes.has(type)) {
+          return;
+        }
 
         // If it's a resend, allow it even if previously rejected
         if (orderId && isResendSignal(data)) {
@@ -524,9 +531,19 @@ export const useDeliveryNotifications = () => {
         }
 
         if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
-          playNotificationSound();
+          // Do not re-notify for rejected orders
           return;
         }
+
+        // IMPORTANT:
+        // Some resend flows emit ONLY this event (no `new_order` / `new_order_available`).
+        // DeliveryHome plays looping audio only when its popup opens, which depends on `newOrder`
+        // changing. If we dedupe same-order state, resend becomes silent.
+        // So we (a) force a state bump and (b) trigger a one-shot sound attempt here.
+        const eventTs = Date.now();
+        // eslint-disable-next-line no-console
+        console.log('[DeliverySocket] play_notification_sound → ring', { orderId, type, isResend: isResendSignal(data) });
+        playNotificationSound(`${orderId || 'order'}:${eventTs}`);
 
         // If backend sends order details here, use them; otherwise fetch details by orderId
         if (orderId) {
@@ -537,14 +554,8 @@ export const useDeliveryNotifications = () => {
             !!data?.items;
 
           if (hasUsefulPayload && typeof data === 'object') {
-            setNewOrder((prev) => {
-              const prevId =
-                prev?.orderId?.toString?.() ||
-                prev?._id?.toString?.() ||
-                prev?.orderMongoId?.toString?.();
-              if (prevId && prevId === orderId) return prev;
-              return data;
-            });
+            // Force update even if orderId matches (resend needs to re-open popup + audio)
+            setNewOrder({ ...data, _clientEventTs: eventTs });
           } else {
             // Fetch order details and set a normalized payload so popup always has data.
             (async () => {
@@ -559,22 +570,14 @@ export const useDeliveryNotifications = () => {
                 unmarkOrderRejected(normalizedId);
               }
               if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
-              setNewOrder((prev) => {
-                const prevId =
-                  prev?.orderId?.toString?.() ||
-                  prev?._id?.toString?.() ||
-                  prev?.orderMongoId?.toString?.();
-                if (prevId && prevId === orderId) return prev;
-                return normalized;
-              });
+              // Force update even if orderId matches (resend needs to re-open popup + audio)
+              setNewOrder({ ...normalized, _clientEventTs: eventTs });
             })();
           }
         }
       } catch (e) {
         // ignore
       }
-
-      playNotificationSound();
     });
 
     socketRef.current.on('order_ready', (orderData) => {

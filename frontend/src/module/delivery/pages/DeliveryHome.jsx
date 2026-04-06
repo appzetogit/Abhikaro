@@ -1467,6 +1467,19 @@ export default function DeliveryHome() {
             }
             // Auto-close when countdown reaches 0
             setShowNewOrderPopup(false)
+            // CRITICAL: Clear stale socket notification payload so resend (same orderId)
+            // can re-open popup + sound reliably.
+            try {
+              if (typeof clearNewOrder === 'function') {
+                clearNewOrder()
+              }
+            } catch (_) { }
+            // Also clear popup-specific mapped state
+            try {
+              setSelectedRestaurant(null)
+              setIsNewOrderPopupMinimized(false)
+              setNewOrderDragY(0)
+            } catch (_) { }
             return 0
           }
           return prev - 1
@@ -1489,7 +1502,8 @@ export default function DeliveryHome() {
     }
   }, [showNewOrderPopup, countdownSeconds])
 
-  // Play audio when New Order popup appears (only for real orders from Socket.IO)
+  // Play audio while New Order popup is open (loops until popup closes / countdown ends)
+  // NOTE: Sound gating (only real order events) is handled by socket->popup flow.
   useEffect(() => {
     if (showNewOrderPopup && (newOrder || selectedRestaurant)) {
       // Stop any existing audio first
@@ -1499,46 +1513,27 @@ export default function DeliveryHome() {
         alertAudioRef.current = null
       }
 
-      // Play alert sound when popup appears
       const playAudio = async () => {
         try {
-          // Check localStorage preference
-          const currentPreference = localStorage.getItem('delivery_alert_sound') || 'zomato_tone'
-
           const audio = await playAlertSound()
           if (audio) {
             alertAudioRef.current = audio
 
-            // Verify audio is actually playing and ensure it loops
-            audio.addEventListener('playing', () => {
-
-            })
-
-            // Manually restart if loop doesn't work
-            audio.addEventListener('ended', () => {
-
-              if (showNewOrderPopup && alertAudioRef.current === audio) {
-                audio.currentTime = 0
-                audio.play().catch(err => {
-
-                })
-              }
-            })
-
-            audio.addEventListener('error', (e) => {
-
-            })
-
-            // Double-check loop is enabled
+            // Ensure loop is enabled
             if (!audio.loop) {
               audio.loop = true
-
             }
-          } else {
 
+            // Manually restart if loop doesn't work in some browsers
+            audio.addEventListener('ended', () => {
+              if (showNewOrderPopup && alertAudioRef.current === audio) {
+                audio.currentTime = 0
+                audio.play().catch(() => { })
+              }
+            })
           }
-        } catch (error) {
-
+        } catch (_) {
+          // ignore
         }
       }
 
@@ -1558,7 +1553,7 @@ export default function DeliveryHome() {
         alertAudioRef.current = null
       }
     }
-  }, [showNewOrderPopup, selectedRestaurant])
+  }, [showNewOrderPopup, selectedRestaurant, newOrder])
 
   // Reset countdown when popup closes
   useEffect(() => {
@@ -2642,6 +2637,17 @@ export default function DeliveryHome() {
 
             // Close popup and show route on main map (not full-screen directions map)
             setShowNewOrderPopup(false);
+            // Persist accepted order so other screens (and refresh) can immediately show it
+            try {
+              const active = restaurantInfo || null
+              if (active) {
+                localStorage.setItem('activeOrder', JSON.stringify(active))
+                setActiveOrder(active)
+                window.dispatchEvent(new CustomEvent('activeOrderUpdated'))
+              }
+            } catch (_) {
+              // ignore storage errors
+            }
             // CRITICAL: Clear newOrder notification immediately to prevent duplicate notifications
             const acceptedOrderId = restaurantInfo.id || restaurantInfo.orderId || newOrder?.orderMongoId || newOrder?.orderId;
             if (acceptedOrderId) {
@@ -2649,6 +2655,11 @@ export default function DeliveryHome() {
 
             }
             clearNewOrder();
+
+            // IMPORTANT:
+            // Do NOT navigate away on accept. The home screen is responsible for showing the
+            // "Reached Pickup" bottom popup for the active order (see `setShowreachedPickupPopup(true)`),
+            // and navigating here prevents that popup from appearing.
 
             // CRITICAL: Ensure map is visible after accepting order (fix blue screen issue)
             // Set showHomeSections to false FIRST to ensure map container is rendered
@@ -4568,6 +4579,13 @@ export default function DeliveryHome() {
         const effectivePickupDistance =
           pickupDistance && pickupDistance !== "0 km" ? pickupDistance : "Calculating..."
 
+        // Calculate earnings: backend can send a number or an object { totalEarning, basePayout, ... }
+        const earningsObj = payload.estimatedEarnings || 0
+        const earningsValue =
+          typeof earningsObj === "object"
+            ? Number(earningsObj.totalEarning || 0)
+            : Number(earningsObj || 0)
+
         const restaurantData = {
           id: payload._id || payload.orderMongoId || payload.orderId || orderId,
           orderId: payload.orderId || payload._id || orderId,
@@ -4582,9 +4600,10 @@ export default function DeliveryHome() {
               ? calculateTimeAway(effectivePickupDistance)
               : "Calculating...",
           dropDistance: payload.deliveryDistance || "Calculating...",
-          estimatedEarnings: payload.estimatedEarnings || 0,
+          estimatedEarnings: earningsObj,
           deliveryFee: payload.deliveryFee ?? 0,
-          amount: payload.deliveryFee ?? 0,
+          // IMPORTANT: amount shown in UI should represent rider earnings, not customer delivery fee
+          amount: earningsValue > 0 ? earningsValue : 0,
           customerName: payload.customerName,
           customerAddress: payload.customerLocation?.address || "Customer address",
           customerLat: payload.customerLocation?.latitude,
@@ -10590,13 +10609,7 @@ export default function DeliveryHome() {
                           selectedRestaurant?.pickupDistance && selectedRestaurant.pickupDistance !== '0 km'
                             ? selectedRestaurant.pickupDistance
                             : (newOrder?.pickupDistance || '0 km')
-                        // Prefer computed dropDistance when available and not placeholder
-                        const computedDrop = selectedRestaurant?.dropDistance
-                        const drop =
-                          computedDrop && computedDrop !== '0 km' && computedDrop !== 'Calculating...'
-                            ? computedDrop
-                            : (newOrder?.deliveryDistance || 'Calculating...')
-                        return `Pickup: ${pickup} | Drop: ${drop}`
+                        return `Pickup: ${pickup}`
                       })()}
                     </p>
                   </div>
@@ -10677,31 +10690,7 @@ export default function DeliveryHome() {
                       </span>
                     </div>
 
-                    {/* Restaurant coordinates + map link */}
-                    <div className="mt-2 text-xs text-gray-500">
-                      {selectedRestaurant?.lat && selectedRestaurant?.lng ? (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span>
-                            Restaurant location: {Number(selectedRestaurant.lat).toFixed(5)}, {Number(selectedRestaurant.lng).toFixed(5)}
-                          </span>
-                          <a
-                            className="text-green-600 font-medium underline"
-                            href={`https://maps.google.com/?q=${selectedRestaurant.lat},${selectedRestaurant.lng}`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            View on map
-                          </a>
-                        </div>
-                      ) : (
-                        <span>Restaurant location: Calculating…</span>
-                      )}
-                    </div>
-
-                    {/* Drop distance */}
-                    <div className="mt-1 text-xs text-gray-500">
-                      Drop: {selectedRestaurant?.dropDistance || 'Calculating...'}
-                    </div>
+                    {/* Restaurant coordinates/map link + drop distance intentionally hidden for delivery popup */}
                   </div>
 
                   {/* Accept Order Button with Swipe */}
@@ -12025,7 +12014,8 @@ export default function DeliveryHome() {
                     return orderEarnings.toFixed(2);
                   }
                   // Handle estimatedEarnings - can be number or object
-                  const earnings = selectedRestaurant?.amount || selectedRestaurant?.estimatedEarnings || 0;
+                  const earnings =
+                    selectedRestaurant?.estimatedEarnings ?? selectedRestaurant?.amount ?? 0;
                   if (typeof earnings === 'object' && earnings.totalEarning) {
                     return earnings.totalEarning.toFixed(2);
                   }
@@ -12088,7 +12078,8 @@ export default function DeliveryHome() {
                         return orderEarnings.toFixed(2);
                       }
                       // Handle estimatedEarnings - can be number or object
-                      const earnings = selectedRestaurant?.amount || selectedRestaurant?.estimatedEarnings || 0;
+                      const earnings =
+                        selectedRestaurant?.estimatedEarnings ?? selectedRestaurant?.amount ?? 0;
                       if (typeof earnings === 'object' && earnings.totalEarning) {
                         return earnings.totalEarning.toFixed(2);
                       }

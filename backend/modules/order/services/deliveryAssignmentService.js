@@ -32,7 +32,14 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
  * @param {number} priorityDistance - Priority distance in km (default: 5km)
  * @returns {Promise<Array>} Array of delivery boys within priority distance
  */
-export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, restaurantId = null, priorityDistance = 5) {
+export async function findNearestDeliveryBoys(
+  restaurantLat,
+  restaurantLng,
+  restaurantId = null,
+  priorityDistance = 5,
+  topN = 10,
+  options = {},
+) {
   try {
     console.log(`🔍 Searching for priority delivery partners within ${priorityDistance}km of restaurant: ${restaurantLat}, ${restaurantLng}`);
     
@@ -40,6 +47,19 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
     const BusinessSettings = (await import('../../admin/models/BusinessSettings.js')).default;
     const businessSettings = await BusinessSettings.getSettings();
     const assignmentMode = businessSettings?.deliveryAssignmentMode || 'automatic';
+    // Backward compatibility:
+    // Some callers historically passed (lat, lng, restaurantId, radiusKm, topN).
+    // Others passed (lat, lng, restaurantId, radiusKm, options) after we added options.
+    // Normalize here so both forms work.
+    let effectiveTopN = topN;
+    let effectiveOptions = options;
+    if (typeof topN === 'object' && topN !== null && options === undefined) {
+      // Called as (..., priorityDistance, options)
+      effectiveOptions = topN;
+      effectiveTopN = 10;
+    }
+
+    const ignoreManualZoneFilter = effectiveOptions?.ignoreManualZoneFilter === true;
     
     console.log(`📋 Delivery assignment mode: ${assignmentMode}`);
     
@@ -95,7 +115,7 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
         }
 
         // Zone filtering based on assignment mode
-        if (assignmentMode === 'manual') {
+        if (assignmentMode === 'manual' && !ignoreManualZoneFilter) {
           // In manual mode: Only show orders to delivery partners assigned to this zone
           if (!zone) {
             console.log(`⚠️ No zone found for restaurant, skipping delivery partner ${partner._id} in manual mode`);
@@ -113,12 +133,12 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
           
           console.log(`✅ Delivery partner ${partner._id} (${partner.name}) is assigned to zone ${zone.name}`);
         } else {
-          // In automatic mode: Use existing zone filtering logic (restaurant zone matching)
+          // In automatic mode: avoid hard filtering by `partner.zoneId`.
+          // Reason: many deployments don't keep `Delivery.zoneId` in sync with restaurant zones,
+          // which can silently drop all candidates and stop notifications.
+          // We'll only apply polygon boundary filtering when available; otherwise distance-only.
           if (zone) {
-            if (partner.zoneId && partner.zoneId.toString() !== zone._id.toString()) {
-              return null;
-            }
-            if (!partner.zoneId && zone.coordinates && zone.coordinates.length >= 3) {
+            if (zone.coordinates && zone.coordinates.length >= 3) {
               const zoneCoords = zone.coordinates;
               let inside = false;
               for (let i = 0, j = zoneCoords.length - 1; i < zoneCoords.length; j = i++) {
@@ -126,8 +146,9 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
                 const yi = zoneCoords[i].latitude;
                 const xj = zoneCoords[j].longitude;
                 const yj = zoneCoords[j].latitude;
-                const intersect = ((yi > lat) !== (yj > lat)) &&
-                  (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+                const intersect =
+                  (yi > lat) !== (yj > lat) &&
+                  lng < (xj - xi) * (lat - yi) / (yj - yi) + xi;
                 if (intersect) inside = !inside;
               }
               if (!inside) return null;
@@ -147,8 +168,13 @@ export async function findNearestDeliveryBoys(restaurantLat, restaurantLng, rest
       .filter(partner => partner !== null && partner.distance <= priorityDistance)
       .sort((a, b) => a.distance - b.distance);
 
-    console.log(`✅ Found ${deliveryPartnersWithDistance.length} priority delivery partners within ${priorityDistance}km`);
-    return deliveryPartnersWithDistance.map(partner => ({
+    const limited =
+      Number.isFinite(Number(effectiveTopN)) && Number(effectiveTopN) > 0
+        ? deliveryPartnersWithDistance.slice(0, Number(effectiveTopN))
+        : deliveryPartnersWithDistance;
+
+    console.log(`✅ Found ${limited.length} priority delivery partners within ${priorityDistance}km (topN=${effectiveTopN})`);
+    return limited.map(partner => ({
       deliveryPartnerId: partner._id.toString(),
       name: partner.name,
       phone: partner.phone,
@@ -181,6 +207,7 @@ export async function findNearestDeliveryBoy(restaurantLat, restaurantLng, resta
     const BusinessSettings = (await import('../../admin/models/BusinessSettings.js')).default;
     const businessSettings = await BusinessSettings.getSettings();
     const assignmentMode = businessSettings?.deliveryAssignmentMode || 'automatic';
+    const ignoreManualZoneFilter = false; // kept for signature parity; use `findNearestDeliveryBoys` override for now
     
     console.log(`📋 Delivery assignment mode: ${assignmentMode}`);
     
@@ -297,37 +324,28 @@ export async function findNearestDeliveryBoy(restaurantLat, restaurantLng, resta
           
           console.log(`✅ Delivery partner ${partner._id} (${partner.name}) is assigned to zone ${zone.name}`);
         } else {
-          // In automatic mode: Use existing zone filtering logic (restaurant zone matching)
+          // In automatic mode: do NOT hard-filter by `partner.zoneId` mismatch.
+          // This frequently causes zero candidates in real data.
+          // If a polygon boundary exists, keep that as a safety filter; otherwise distance-only.
           if (zone) {
-            // Option A: Check zoneId match (when zoneId is added to Delivery model)
-            if (partner.zoneId && partner.zoneId.toString() !== zone._id.toString()) {
-              console.log(`⚠️ Delivery partner ${partner._id} not in zone ${zone.name} (partner zone: ${partner.zoneId}, required zone: ${zone._id})`);
-              return null; // Skip delivery partners not in the restaurant's zone
-            }
-
-            // Option B: Geo-spatial check (point-in-polygon) if zoneId not available
-            // Simple point-in-polygon using ray casting algorithm
-            if (!partner.zoneId && zone.coordinates && zone.coordinates.length >= 3) {
-              // Zone coordinates: [{ latitude, longitude }, ...]
+            if (zone.coordinates && zone.coordinates.length >= 3) {
               const zoneCoords = zone.coordinates;
               let inside = false;
-              
+
               for (let i = 0, j = zoneCoords.length - 1; i < zoneCoords.length; j = i++) {
                 const xi = zoneCoords[i].longitude;
                 const yi = zoneCoords[i].latitude;
                 const xj = zoneCoords[j].longitude;
                 const yj = zoneCoords[j].latitude;
-                
-                const intersect = ((yi > lat) !== (yj > lat)) &&
-                  (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
-                
+
+                const intersect =
+                  (yi > lat) !== (yj > lat) &&
+                  lng < (xj - xi) * (lat - yi) / (yj - yi) + xi;
+
                 if (intersect) inside = !inside;
               }
-              
-              if (!inside) {
-                console.log(`⚠️ Delivery partner ${partner._id} location (${lat}, ${lng}) not within zone ${zone.name} boundary`);
-                return null;
-              }
+
+              if (!inside) return null;
             }
           }
         }

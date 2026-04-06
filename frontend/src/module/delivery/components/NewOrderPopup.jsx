@@ -333,7 +333,7 @@ export default function NewOrderPopup({
                   </p>
                   {/* Earnings Breakdown hidden as per requirement */}
                   <p className="text-gray-400 text-xs">
-                    Pickup: {orderData?.pickupDistance || orderData?.pickupDistance || '0 km'} | Drop: {orderData?.deliveryDistance || orderData?.dropDistance || '0 km'}
+                    Pickup: {orderData?.pickupDistance || orderData?.pickupDistance || '0 km'}
                   </p>
                 </div>
 

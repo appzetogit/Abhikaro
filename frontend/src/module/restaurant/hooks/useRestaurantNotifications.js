@@ -17,6 +17,8 @@ export const useRestaurantNotifications = () => {
   const [restaurantId, setRestaurantId] = useState(null);
   const lastConnectErrorLogRef = useRef(0);
   const CONNECT_ERROR_LOG_THROTTLE_MS = 10000;
+  // Dedupe sound so it never plays twice for the same order/event burst
+  const lastSoundRef = useRef({ orderId: null, ts: 0 });
 
   // Get restaurant ID from API
   useEffect(() => {
@@ -220,6 +222,20 @@ export const useRestaurantNotifications = () => {
       }
     });
 
+    // Initialize + preload notification sound ASAP so the first socket event can play instantly
+    // (If `new_order` arrives before we create Audio, the first sound can be missed.)
+    if (!audioRef.current) {
+      try {
+        audioRef.current = new Audio(alertSound);
+        audioRef.current.volume = 0.7;
+        audioRef.current.preload = 'auto';
+        // Fire-and-forget preload
+        audioRef.current.load?.();
+      } catch (_) {
+        // ignore
+      }
+    }
+
     // Listen for new order notifications
     socketRef.current.on('new_order', (orderData) => {
       try {
@@ -246,13 +262,13 @@ export const useRestaurantNotifications = () => {
       window.dispatchEvent(new CustomEvent('new_order_received', { detail: orderData }));
 
       // Play notification sound
-      playNotificationSound();
+      playNotificationSound(orderData);
     });
 
-    // Listen for sound notification event
-    socketRef.current.on('play_notification_sound', (data) => {
-      playNotificationSound();
-    });
+    // IMPORTANT:
+    // Backend also emits a generic 'play_notification_sound' alongside 'new_order'.
+    // If we listen to it here, sound will double-play. For restaurant, 'new_order' is the
+    // single source of truth for when sound is allowed to play.
 
     // Listen for order status updates
     socketRef.current.on('order_status_update', (data) => {
@@ -302,9 +318,17 @@ export const useRestaurantNotifications = () => {
       }));
     });
 
-    // Load notification sound
-    audioRef.current = new Audio(alertSound);
-    audioRef.current.volume = 0.7;
+    // Audio is initialized above; keep this section for backward compatibility if init failed.
+    if (!audioRef.current) {
+      try {
+        audioRef.current = new Audio(alertSound);
+        audioRef.current.volume = 0.7;
+        audioRef.current.preload = 'auto';
+        audioRef.current.load?.();
+      } catch (_) {
+        // ignore
+      }
+    }
 
     return () => {
       if (socketRef.current) {
@@ -340,21 +364,67 @@ export const useRestaurantNotifications = () => {
     };
   }, []);
 
-  const playNotificationSound = () => {
+  const playNotificationSound = (payload) => {
     try {
+      // Lazy init: if the first event arrives before Audio is created, create it now.
+      if (!audioRef.current) {
+        try {
+          audioRef.current = new Audio(alertSound);
+          audioRef.current.volume = 0.7;
+          audioRef.current.preload = 'auto';
+          audioRef.current.load?.();
+        } catch (_) {
+          // ignore
+        }
+      }
+
       if (audioRef.current) {
         // Only play if user has interacted with the page (browser autoplay policy)
         if (!userInteractedRef.current) {
           return;
         }
+
+        // Dedupe: if we just played for this order within a short window, skip
+        const now = Date.now();
+        const orderId =
+          payload?.orderId?.toString?.() ||
+          payload?.orderMongoId?.toString?.() ||
+          payload?._id?.toString?.() ||
+          null;
+        if (
+          orderId &&
+          lastSoundRef.current.orderId === orderId &&
+          now - lastSoundRef.current.ts < 1500
+        ) {
+          return;
+        }
+        if (orderId) {
+          lastSoundRef.current = { orderId, ts: now };
+        }
         
         audioRef.current.currentTime = 0;
+        // Ensure audio is loaded before play to reduce first-play delay on some devices
+        try {
+          audioRef.current.load?.();
+        } catch (_) {}
         audioRef.current.play().catch(error => {
           // Don't log autoplay policy errors as they're expected
         });
       }
     } catch (error) {
       // Don't log autoplay policy errors
+    }
+  };
+
+  // Stop/pause any currently playing notification sound
+  const stopNotificationSound = () => {
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    } catch (_) {
+      // ignore
     }
   };
 
@@ -366,7 +436,8 @@ export const useRestaurantNotifications = () => {
     newOrder,
     clearNewOrder,
     isConnected,
-    playNotificationSound
+    playNotificationSound,
+    stopNotificationSound
   };
 };
 

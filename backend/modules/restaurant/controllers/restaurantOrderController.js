@@ -541,9 +541,20 @@ export const acceptOrder = asyncHandler(async (req, res) => {
 
     // Priority-based order notification: First notify nearest delivery boys, then expand after 30 seconds
     // Skip for hotel orders as they are served by hotel staff
-    // Only proceed if delivery assignment mode is 'automatic'
     if (!order.deliveryPartnerId && !order.hotelReference) {
       try {
+        // Canonical restaurant identifier to use for delivery assignment + lookup
+        // (Used by `findNearestDeliveryBoys` and restaurant location fetch below)
+        const restaurantId = ridBusiness || ridMongo || ridGeneric;
+
+        if (!restaurantId) {
+          console.error(
+            `❌ Missing restaurantId for delivery assignment on order ${order.orderId}.`,
+          );
+          // Don't fail the order acceptance if notification fails
+          return successResponse(res, 200, "Order accepted successfully", { order });
+        }
+
         // Check delivery assignment mode from business settings
         const BusinessSettings = (await import("../../admin/models/BusinessSettings.js")).default;
         const businessSettings = await BusinessSettings.getSettings();
@@ -553,17 +564,19 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           console.log(
             `📋 Delivery assignment mode is MANUAL. Order ${order.orderId} will be available for manual assignment in admin panel.`,
           );
-          // In manual mode, we don't automatically notify delivery boys
-          // The order will be available in the manual assignment page
+          // IMPORTANT: Even in manual mode, restaurant acceptance should still immediately
+          // notify the nearest delivery partners (so a rider can pick it up fast).
+          // We only skip the continuous resend loop in manual mode to avoid spam.
         } else {
           // Automatic mode - proceed with automatic notification
           console.log(
             `🔄 Starting priority-based order notification for order ${order.orderId}...`,
           );
+        }
 
-        // Get restaurant location
+        // Get restaurant location (required for both manual + automatic modes)
         let restaurantDoc = null;
-        if (mongoose.Types.ObjectId.isValid(restaurantId)) {
+        if (mongoose.Types.ObjectId.isValid(restaurantId) && String(restaurantId).length === 24) {
           restaurantDoc = await Restaurant.findById(restaurantId).lean();
         }
         if (!restaurantDoc) {
@@ -597,13 +610,17 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           // Requirement: after restaurant accepts, keep notifying delivery partners until someone accepts.
           // This must work even if restaurant app is closed, so we schedule it in backend.
           // Capped to avoid spamming / leaks.
-          const RESEND_LOOP_MS = 30 * 1000; // 30 seconds
-          const RESEND_MAX_ATTEMPTS = 10; // ~5 minutes total
+          // NOTE: In manual assignment mode, we intentionally skip the resend loop to avoid spam.
+          const shouldRunResendLoop = assignmentMode !== "manual";
+          // Resend every 3 seconds (as requested) until assigned, but keep a hard cap to avoid runaway spam.
+          // 3s * 100 = ~5 minutes.
+          const RESEND_LOOP_MS = 3 * 1000; // 3 seconds
+          const RESEND_MAX_ATTEMPTS = 100; // ~5 minutes total
           // In-memory map to avoid multiple loops per order (per node process)
           global.__deliveryResendLoops = global.__deliveryResendLoops || new Map();
           const loopKey = String(order._id);
 
-          if (!global.__deliveryResendLoops.has(loopKey)) {
+          if (shouldRunResendLoop && !global.__deliveryResendLoops.has(loopKey)) {
             global.__deliveryResendLoops.set(loopKey, { attempts: 0, timer: null });
 
             const tick = async () => {
@@ -641,7 +658,8 @@ export const acceptOrder = asyncHandler(async (req, res) => {
                 restaurantLng,
                 restaurantId,
                 50, // km
-                20, // top N
+                10, // top N (keep smaller since loop is frequent)
+                { ignoreManualZoneFilter: true },
               );
 
               if (!candidates || candidates.length === 0) return;
@@ -694,6 +712,8 @@ export const acceptOrder = asyncHandler(async (req, res) => {
               restaurantLng,
               restaurantId,
               5,
+              10,
+              { ignoreManualZoneFilter: true },
             );
 
             if (priorityDeliveryBoys && priorityDeliveryBoys.length > 0) {
@@ -734,45 +754,26 @@ export const acceptOrder = asyncHandler(async (req, res) => {
                   `✅ Notified ${priorityIds.length} priority delivery partners for order ${order.orderId}`,
                 );
 
-                // Step 2: Set timeout to expand to other delivery boys after 30 seconds
-                setTimeout(async () => {
-                  try {
-                    // Re-check if order still doesn't have delivery partner
-                    const checkOrder = await Order.findById(order._id);
-                    if (!checkOrder || checkOrder.deliveryPartnerId) {
-                      console.log(
-                        `ℹ️ Order ${order.orderId} already assigned, skipping expanded notification`,
-                      );
-                      return;
-                    }
-
-                    console.log(
-                      `⏰ 30 seconds passed, expanding notification to other delivery partners for order ${order.orderId}`,
-                    );
-
-                    // Find all other delivery boys (excluding already notified priority ones)
-                    // Get all delivery boys within 50km, excluding priority ones
+                // Step 2 (instant): also notify other nearby delivery boys immediately (no 30s delay)
+                try {
+                  const checkOrder = await Order.findById(order._id);
+                  if (checkOrder && !checkOrder.deliveryPartnerId) {
                     const allDeliveryBoys = await findNearestDeliveryBoys(
                       restaurantLat,
                       restaurantLng,
                       restaurantId,
-                      50, // Max distance 50km
+                      50, // km
+                      20,
+                      { ignoreManualZoneFilter: true },
                     );
 
-                    // Filter out priority delivery boys
                     const expandedDeliveryBoys = allDeliveryBoys.filter(
                       (db) => !priorityIds.includes(db.deliveryPartnerId),
                     );
 
-                    if (
-                      expandedDeliveryBoys &&
-                      expandedDeliveryBoys.length > 0
-                    ) {
-                      const expandedIds = expandedDeliveryBoys.map(
-                        (db) => db.deliveryPartnerId,
-                      );
+                    if (expandedDeliveryBoys && expandedDeliveryBoys.length > 0) {
+                      const expandedIds = expandedDeliveryBoys.map((db) => db.deliveryPartnerId);
 
-                      // Update assignment info
                       checkOrder.assignmentInfo = {
                         ...(checkOrder.assignmentInfo || {}),
                         expandedNotifiedAt: new Date(),
@@ -781,38 +782,25 @@ export const acceptOrder = asyncHandler(async (req, res) => {
                       };
                       await checkOrder.save();
 
-                      // Reload with populated userId and restaurantId (with location)
                       const expandedOrder = await Order.findById(checkOrder._id)
                         .populate("userId", "name phone")
-                        .populate(
-                          "restaurantId",
-                          "name address location phone ownerPhone",
-                        )
+                        .populate("restaurantId", "name address location phone ownerPhone")
                         .lean();
 
                       if (expandedOrder) {
-                        // Notify all expanded delivery boys
-                        await notifyMultipleDeliveryBoys(
-                          expandedOrder,
-                          expandedIds,
-                          "expanded",
-                        );
+                        await notifyMultipleDeliveryBoys(expandedOrder, expandedIds, "expanded");
                         console.log(
-                          `✅ Notified ${expandedIds.length} expanded delivery partners for order ${order.orderId}`,
+                          `✅ Notified ${expandedIds.length} expanded delivery partners instantly for order ${order.orderId}`,
                         );
                       }
-                    } else {
-                      console.warn(
-                        `⚠️ No additional delivery partners found for order ${order.orderId}`,
-                      );
                     }
-                  } catch (expandError) {
-                    console.error(
-                      `❌ Error in expanded notification for order ${order.orderId}:`,
-                      expandError,
-                    );
                   }
-                }, 30000); // 30 seconds timeout
+                } catch (expandError) {
+                  console.error(
+                    `❌ Error in instant expanded notification for order ${order.orderId}:`,
+                    expandError,
+                  );
+                }
               }
             } else {
               // No priority delivery boys found, immediately try to find any delivery boy
@@ -849,7 +837,6 @@ export const acceptOrder = asyncHandler(async (req, res) => {
             }
           }
         }
-        } // End of automatic mode block
       } catch (assignmentError) {
         console.error(
           "❌ Error in priority-based order notification:",

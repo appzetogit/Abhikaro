@@ -672,29 +672,7 @@ Order again from this restaurant in the ${companyName} app.`
                 {/* Separator */}
                 <div className="border-t border-dashed border-gray-200 mx-4 my-1"></div>
 
-                {/* Order ID Card - Clickable */}
-                <Link to={`/user/orders/${order.id}/details`}>
-                  <div className="mx-4 my-2 bg-white border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors cursor-pointer">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                          <Receipt className="w-5 h-5 text-gray-600" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">
-                            Order #{order.orderId || order.id}
-                          </p>
-                          {order.items && order.items.length > 0 && (
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              {order.items.length} item{order.items.length !== 1 ? 's' : ''}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-gray-400" />
-                    </div>
-                  </div>
-                </Link>
+                {/* Order ID Card (hidden on orders list) */}
 
                 {/* Items List */}
                 <div className="px-4 py-2 space-y-2">
@@ -705,23 +683,10 @@ Order again from this restaurant in the ${companyName} app.`
                       const itemQuantity = item.quantity || 1
                       const itemPrice = item.price || 0
                       const itemTotal = itemQuantity * itemPrice
-                      const itemImage = item.image || null
                       
                       return (
                         <div key={item._id || item.id || item.itemId || idx} className="flex items-start gap-3">
-                          {/* Item Image */}
-                          {itemImage && (
-                            <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0">
-                              <img 
-                                src={itemImage} 
-                                alt={itemName}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.target.style.display = 'none'
-                                }}
-                              />
-                            </div>
-                          )}
+                          {/* Item Image (hidden on orders list) */}
                           
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start gap-2">
@@ -753,47 +718,7 @@ Order again from this restaurant in the ${companyName} app.`
                   )}
                 </div>
 
-                {/* Order Summary */}
-                <div className="px-4 py-3 bg-gray-50 rounded-lg mx-4 mb-2">
-                  <div className="space-y-1.5">
-                    {order.subtotal > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">Subtotal</span>
-                        <span className="text-gray-800 font-medium">₹{order.subtotal.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {order.deliveryFee > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">Delivery Fee</span>
-                        <span className="text-gray-800 font-medium">₹{order.deliveryFee.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {order.tax > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">Tax</span>
-                        <span className="text-gray-800 font-medium">₹{order.tax.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {order.pricing?.discount > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-green-600">Discount</span>
-                        <span className="text-green-600 font-medium">-₹{order.pricing.discount.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {order.pricing?.couponCode && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">Coupon Applied</span>
-                        <span className="text-gray-800 font-medium">{order.pricing.couponCode}</span>
-                      </div>
-                    )}
-                    <div className="border-t border-gray-200 pt-1.5 mt-1.5">
-                      <div className="flex justify-between">
-                        <span className="text-sm font-semibold text-gray-800">Total</span>
-                        <span className="text-base font-bold text-gray-900">₹{order.total.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                {/* Order Summary (hidden on orders list) */}
 
                 {/* Date and Payment Info */}
                 <div className="px-4 py-2 flex items-center justify-between">

@@ -6,7 +6,8 @@ import { Printer, Volume2, VolumeX, ChevronDown, ChevronUp, Minus, Plus, X, Aler
 import { toast } from "sonner"
 import BottomNavOrders from "../components/BottomNavOrders"
 import RestaurantNavbar from "../components/RestaurantNavbar"
-import notificationSound from "@/assets/audio/alert.mp3"
+// IMPORTANT: Sound is handled centrally in `useRestaurantNotifications`.
+// This page must not play its own looping audio on popup open.
 import { restaurantAPI, diningAPI } from "@/lib/api"
 import { useRestaurantNotifications } from "../hooks/useRestaurantNotifications"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
@@ -620,6 +621,8 @@ export default function OrdersMain() {
   const [showCancelPopup, setShowCancelPopup] = useState(false)
   const [cancelReason, setCancelReason] = useState("")
   const [orderToCancel, setOrderToCancel] = useState(null)
+  // NOTE: Sound is handled by `useRestaurantNotifications`. This ref is retained only to avoid
+  // wider JSX/UI refactors; it is not used for playback.
   const audioRef = useRef(null)
   const shownOrdersRef = useRef(new Set()) // Track orders already shown in popup
   const [currentRestaurantData, setCurrentRestaurantData] = useState(null)
@@ -677,7 +680,7 @@ export default function OrdersMain() {
     Array.isArray(ordersCacheRef.current.data) ? ordersCacheRef.current.data : []
 
   // Restaurant notifications hook for real-time orders
-  const { newOrder, clearNewOrder, isConnected } = useRestaurantNotifications()
+  const { newOrder, clearNewOrder, isConnected, stopNotificationSound } = useRestaurantNotifications()
 
   const rejectReasons = [
     "Restaurant is too busy",
@@ -1097,18 +1100,8 @@ export default function OrdersMain() {
     return () => clearInterval(interval)
   }, [fetchAllOrders]) // Include fetchAllOrders in dependencies
 
-  // Play audio when popup opens
-  useEffect(() => {
-    if (showNewOrderPopup && !isMuted) {
-      if (audioRef.current) {
-        audioRef.current.loop = true
-        audioRef.current.play().catch(err => console.log("Audio play failed:", err))
-      }
-    } else if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
-    }
-  }, [showNewOrderPopup, isMuted])
+  // Sound for new orders is handled by `useRestaurantNotifications` (socket event gating + autoplay policy).
+  // This page intentionally does NOT play any audio on popup open.
 
   // Close popup immediately if the user cancels the order (realtime via Socket.IO -> window event)
   useEffect(() => {
@@ -1117,11 +1110,7 @@ export default function OrdersMain() {
       const status = (detail.status || '').toString().toLowerCase()
       if (status !== 'cancelled' && status !== 'canceled') return
 
-      // Always stop popup sound on any cancel update (even if order id doesn't match current popup)
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.currentTime = 0
-      }
+      // No popup sound to stop here (sound is centralized in the notifications hook).
 
       const currentOrder = popupOrder || newOrder
       const currentIds = new Set(
@@ -1192,9 +1181,8 @@ export default function OrdersMain() {
       return
     }
 
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
+    if (typeof stopNotificationSound === 'function') {
+      stopNotificationSound()
     }
 
     // Use popupOrder (from Socket.IO or API fallback) or newOrder (from hook)
@@ -1271,9 +1259,8 @@ export default function OrdersMain() {
       }
     }
 
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
+    if (typeof stopNotificationSound === 'function') {
+      stopNotificationSound()
     }
     setShowRejectPopup(false)
     setShowNewOrderPopup(false)
@@ -1324,13 +1311,7 @@ export default function OrdersMain() {
   // Toggle mute
   const toggleMute = () => {
     setIsMuted(!isMuted)
-    if (audioRef.current) {
-      if (!isMuted) {
-        audioRef.current.pause()
-      } else {
-        audioRef.current.play().catch(err => console.log("Audio play failed:", err))
-      }
-    }
+    // No-op: popup sound playback removed (centralized in hook).
   }
 
   // Handle PDF download
@@ -2012,7 +1993,7 @@ export default function OrdersMain() {
       </div>
 
       {/* Audio element */}
-      <audio ref={audioRef} src={notificationSound} />
+      {/* Sound is handled in `useRestaurantNotifications` */}
 
       {/* New Order Popup */}
       <AnimatePresence>
@@ -2204,34 +2185,8 @@ export default function OrdersMain() {
                     </div>
                   )}
 
-                  {/* Additional address summary (replaces cutlery row) */}
-                  {(() => {
-                    const po = popupOrder || newOrder
-                    const ca = po?.customerAddress || {}
-                    const ra = po?.address || {}
-                    const extra =
-                      ca?.additionalDetails ||
-                      ca?.additionalAddress ||
-                      ra?.additionalDetails ||
-                      ra?.additionalAddress ||
-                      po?.additionalAddress ||
-                      ca?.landmark || ca?.area || ''
-                    if (!extra) return null
-                    return (
-                      <div className="mb-4 flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
-                        <svg className="w-5 h-5 text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 12.414M6 10a4 4 0 108 0 4 4 0 00-8 0z" />
-                        </svg>
-                        <div className="text-sm text-gray-700">
-                          <span className="font-medium text-gray-700">Additional address: </span>
-                          <span>{extra}</span>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
                   {/* Total bill */}
-                  <div className="mb-4 flex items-center justify-between py-3 border-y border-gray-200">
+                  <div className="mb-4 flex items-center justify-between py-3 border-y border-gray-200">  
                     <div className="flex items-center gap-2">
                       <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
@@ -2362,21 +2317,7 @@ export default function OrdersMain() {
                   </div>
                 </div>
 
-                {/* Footer */}
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
-                  <button 
-                    onClick={() => {
-                      if (selectedOrder?.orderId || selectedOrder?.mongoId) {
-                        navigate(`/restaurant/feedback?tab=complaints&orderId=${selectedOrder.orderId || selectedOrder.mongoId}`)
-                      } else {
-                        navigate('/restaurant/feedback?tab=complaints')
-                      }
-                    }}
-                    className="text-sm text-gray-600 hover:text-gray-900 transition-colors underline mx-auto block"
-                  >
-                    Need help with this order?
-                  </button>
-                </div>
+                {/* Footer removed (Need help with this order?) */}
               </motion.div>
             </motion.div>
           </>

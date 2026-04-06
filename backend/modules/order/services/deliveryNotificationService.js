@@ -186,14 +186,21 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
       deliveryDistance = calculateDistance(restaurantLat, restaurantLng, customerLat, customerLng);
     }
 
-    // Calculate estimated earnings; use order's delivery fee as fallback when 0 or distance missing
+    // Calculate estimated earnings (delivery partner payout).
+    // IMPORTANT: Do NOT fall back to order.pricing.deliveryFee here — that's customer billing, not rider earning.
     const deliveryFeeFromOrder = order.pricing?.deliveryFee ?? 0;
     let estimatedEarnings = await calculateEstimatedEarnings(deliveryDistance || 0);
     const earnedValue = typeof estimatedEarnings === 'object' ? (estimatedEarnings.totalEarning ?? 0) : (Number(estimatedEarnings) || 0);
-    if (earnedValue <= 0 && deliveryFeeFromOrder > 0) {
-      estimatedEarnings = typeof estimatedEarnings === 'object'
-        ? { ...estimatedEarnings, totalEarning: deliveryFeeFromOrder }
-        : deliveryFeeFromOrder;
+    if (earnedValue <= 0) {
+      // Last-resort fallback: keep a sane non-zero payout so UI never shows ₹0/₹1 due to billing fee confusion.
+      estimatedEarnings = {
+        basePayout: 10,
+        distance: Number(deliveryDistance || 0),
+        commissionPerKm: 0,
+        distanceCommission: 0,
+        totalEarning: 10,
+        breakdown: 'Fallback: base payout only'
+      };
     }
 
     // Prepare order notification data
@@ -504,20 +511,20 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
         deliveryDistance
       });
       
-      // Use deliveryFee as fallback if earnings is 0 or invalid
-      if (earnedValue <= 0 && deliveryFeeFromOrder > 0) {
-        console.log(`⚠️ Earnings is 0, using deliveryFee as fallback: ₹${deliveryFeeFromOrder}`);
+      // Do NOT fall back to deliveryFee (billing). If commission returns 0, use a minimal base payout.
+      if (earnedValue <= 0) {
+        console.log(`⚠️ Earnings is 0, using base payout fallback (not deliveryFee).`);
         estimatedEarnings = typeof estimatedEarnings === 'object'
-          ? { ...estimatedEarnings, totalEarning: deliveryFeeFromOrder }
-          : deliveryFeeFromOrder;
+          ? { ...estimatedEarnings, totalEarning: Math.max(Number(estimatedEarnings.basePayout || 0) || 0, 10) }
+          : 10;
       }
       
       console.log(`✅ Final estimated earnings for order ${orderWithUser.orderId}: ₹${typeof estimatedEarnings === 'object' ? estimatedEarnings.totalEarning : estimatedEarnings} (distance: ${deliveryDistance.toFixed(2)} km)`);
     } catch (earningsError) {
       console.error('❌ Error calculating estimated earnings in notification:', earningsError);
       console.error('❌ Error stack:', earningsError.stack);
-      // Fallback to deliveryFee or default
-      estimatedEarnings = deliveryFeeFromOrder > 0 ? deliveryFeeFromOrder : {
+      // Fallback to default (never use deliveryFee here)
+      estimatedEarnings = {
         basePayout: 10,
         distance: deliveryDistance,
         commissionPerKm: 5,
