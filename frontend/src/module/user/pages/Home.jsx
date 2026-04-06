@@ -254,10 +254,21 @@ export default function Home() {
       ratingPopupTimeoutRef.current = null
     }
 
+    // If user dismisses (X), don't show again for the same order.
+    // They can still rate later from Orders page if needed.
+    try {
+      const orderId = ratingModal?.order?.id
+      if (orderId) {
+        setShownRatingForOrders((prev) => new Set([...prev, orderId]))
+      }
+    } catch {
+      // ignore
+    }
+
     setRatingModal({ open: false, order: null })
     setSelectedRating(null)
     setFeedbackText("")
-  }, [])
+  }, [ratingModal?.order?.id])
 
   const handleSubmitRating = useCallback(async () => {
     if (!ratingModal.order || selectedRating === null) {

@@ -59,6 +59,22 @@ const DeliveryTrackingMap = ({
     orderRef.current = order;
   }, [order]);
 
+  const isOrderDelivered = useMemo(() => {
+    const s = String(order?.status || '').toLowerCase()
+    const deliveryStatus = String(order?.deliveryState?.status || '').toLowerCase()
+    const phase = String(order?.deliveryState?.currentPhase || '').toLowerCase()
+    const deliveredByTracking =
+      order?.tracking?.delivered?.status === true ||
+      order?.tracking?.delivered === true
+    return (
+      s === 'delivered' ||
+      s === 'completed' ||
+      deliveryStatus === 'delivered' ||
+      phase === 'completed' ||
+      deliveredByTracking
+    )
+  }, [order])
+
   useEffect(() => {
     restaurantCoordsRef.current = restaurantCoords;
   }, [restaurantCoords?.lat, restaurantCoords?.lng]);
@@ -186,6 +202,23 @@ const DeliveryTrackingMap = ({
     isMapLoadedRef.current = isMapLoaded;
   }, [isMapLoaded]);
 
+  // Restore last known rider location after refresh for instant route rendering
+  useEffect(() => {
+    try {
+      if (!orderId) return;
+      const key = `tracking:lastRiderLoc:${String(orderId)}`;
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      // Consider fresh if within 30 minutes
+      if (data && data.lat && data.lng && Number(Date.now() - (data.ts || 0)) < 30 * 60 * 1000) {
+        const loc = { lat: Number(data.lat), lng: Number(data.lng), heading: Number(data.heading || 0) };
+        setCurrentLocation(loc);
+        setDeliveryBoyLocation(loc);
+      }
+    } catch {}
+  }, [orderId]);
+
   // Draw route using Google Maps Directions API with live updates
   // OPTIMIZED: Added caching to reduce API calls
   const drawRoute = useCallback(async (start, end) => {
@@ -259,22 +292,43 @@ const DeliveryTrackingMap = ({
             path: cachedResult.routes[0].overview_path,
             geodesic: true,
             strokeColor: '#10b981',
-            strokeOpacity: 0.8,
-            strokeWeight: 4,
+            strokeOpacity: 0.0, // hide solid; show arrows only
+            strokeWeight: 0,
             icons: [{
               icon: {
-                path: 'M 0,-1 0,1',
-                strokeOpacity: 1,
-                strokeWeight: 2,
+                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 3,
                 strokeColor: '#10b981',
-                scale: 4
+                strokeOpacity: 1,
+                fillColor: '#10b981',
+                fillOpacity: 1,
               },
               offset: '0%',
-              repeat: '15px'
+              repeat: '30px'
             }],
-            // Hide the visual route line; we only use polyline points for marker movement.
-            map: null,
-            zIndex: 1
+            map: mapInstance.current,
+            zIndex: 3
+          });
+          routePolylineRef.current = new window.google.maps.Polyline({
+            path: cachedResult.routes[0].overview_path,
+            geodesic: true,
+            strokeColor: '#10b981',
+            strokeOpacity: 0.0,
+            strokeWeight: 0,
+            icons: [{
+              icon: {
+                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 3,
+                strokeColor: '#10b981',
+                strokeOpacity: 1,
+                fillColor: '#10b981',
+                fillOpacity: 1,
+              },
+              offset: '0%',
+              repeat: '30px'
+            }],
+            map: mapInstance.current,
+            zIndex: 3
           });
         }
         return;
@@ -352,22 +406,22 @@ const DeliveryTrackingMap = ({
             path: cached.result.routes[0].overview_path,
             geodesic: true,
             strokeColor: '#10b981',
-            strokeOpacity: 0.8,
-            strokeWeight: 4,
+            strokeOpacity: 0.0,
+            strokeWeight: 0,
             icons: [{
               icon: {
-                path: 'M 0,-1 0,1',
-                strokeOpacity: 1,
-                strokeWeight: 2,
+                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 3,
                 strokeColor: '#10b981',
-                scale: 4
+                strokeOpacity: 1,
+                fillColor: '#10b981',
+                fillOpacity: 1,
               },
               offset: '0%',
-              repeat: '15px'
+              repeat: '30px'
             }],
-            // Hide the visual route line; we only use polyline points for marker movement.
-            map: null,
-            zIndex: 1
+            map: mapInstance.current,
+            zIndex: 3
           });
         }
       }
@@ -460,34 +514,34 @@ const DeliveryTrackingMap = ({
             }
           }
 
-          // Create dashed polyline overlay for better visibility
+          // Create arrow polyline overlay for visibility
           if (result.routes && result.routes[0] && result.routes[0].overview_path) {
             // Remove existing custom polyline if any
             if (routePolylineRef.current) {
               routePolylineRef.current.setMap(null);
             }
 
-            // Create dashed polyline
+            // Create arrow polyline
             routePolylineRef.current = new window.google.maps.Polyline({
               path: result.routes[0].overview_path,
               geodesic: true,
               strokeColor: '#10b981',
-              strokeOpacity: 0.8,
-              strokeWeight: 4,
+              strokeOpacity: 0.0,
+              strokeWeight: 0,
               icons: [{
                 icon: {
-                  path: 'M 0,-1 0,1',
-                  strokeOpacity: 1,
-                  strokeWeight: 2,
+                  path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                  scale: 3,
                   strokeColor: '#10b981',
-                  scale: 4
+                  strokeOpacity: 1,
+                  fillColor: '#10b981',
+                  fillOpacity: 1,
                 },
                 offset: '0%',
-                repeat: '15px'
+                repeat: '30px'
               }],
-              // Hide the visual route line; we only use polyline points for marker movement.
-              map: null,
-              zIndex: 1
+              map: mapInstance.current,
+              zIndex: 3
             });
           }
 
@@ -534,56 +588,18 @@ const DeliveryTrackingMap = ({
     return hasPartner;
   }, [order?.deliveryPartnerId, order?.deliveryPartner, order?.assignmentInfo?.deliveryPartnerId, order?.deliveryState?.status, order?.deliveryState?.currentPhase]);
 
-  // Show customer->restaurant dotted red arc while order is being prepared (before delivery partner accepts)
+  // Remove any pre-acceptance customer->restaurant arc (UX: never show this)
   useEffect(() => {
     if (!isMapLoaded || !mapInstance.current) return;
 
-    // Only show this arc before delivery partner is assigned/accepted
-    if (hasDeliveryPartner) {
-      if (mapInstance.current._customerToRestaurantArc) {
-        mapInstance.current._customerToRestaurantArc.setMap(null);
-        mapInstance.current._customerToRestaurantArc = null;
-      }
-      return;
+    if (mapInstance.current._customerToRestaurantArc) {
+      mapInstance.current._customerToRestaurantArc.setMap(null);
+      mapInstance.current._customerToRestaurantArc = null;
     }
-
-    if (!restaurantCoords?.lat || !restaurantCoords?.lng || !customerCoords?.lat || !customerCoords?.lng) return;
-
-    const path = buildCurvedArcPath(customerCoords, restaurantCoords);
-    if (!path) return;
-
-    // Create or update dotted arc
-    const arc = mapInstance.current._customerToRestaurantArc;
-    const iconColor = '#ef4444'; // red
-
-    if (arc) {
-      arc.setPath(path);
-      if (arc.getMap() == null) arc.setMap(mapInstance.current);
-      return;
-    }
-
-    mapInstance.current._customerToRestaurantArc = new window.google.maps.Polyline({
-      path,
-      geodesic: true,
-      strokeOpacity: 0, // hide solid line; use icons for dotted
-      icons: [
-        {
-          icon: {
-            path: 'M 0,-1 0,1',
-            strokeOpacity: 1,
-            strokeWeight: 4,
-            strokeColor: iconColor,
-            scale: 4,
-          },
-          offset: '0%',
-          repeat: '14px',
-        },
-      ],
-      map: mapInstance.current,
-      zIndex: 2,
-    });
   }, [
     isMapLoaded,
+    // Keep these in deps to maintain stable dependency array size/order across fast refresh
+    // (prevents: "final argument passed to useEffect changed size between renders")
     hasDeliveryPartner,
     restaurantCoords?.lat,
     restaurantCoords?.lng,
@@ -992,6 +1008,10 @@ const DeliveryTrackingMap = ({
         console.log('✅✅✅ Updating bike to REAL delivery boy location:', location);
         setCurrentLocation(location);
         setDeliveryBoyLocation(location);
+        try {
+          const key = `tracking:lastRiderLoc:${String(orderId)}`;
+          localStorage.setItem(key, JSON.stringify({ lat: location.lat, lng: location.lng, heading: location.heading || 0, ts: Date.now() }));
+        } catch {}
 
         // STRICT POLYLINE TRACKING: Marker always on polyline center
         if (isMapLoaded && mapInstance.current) {
@@ -1062,6 +1082,10 @@ const DeliveryTrackingMap = ({
 
         setCurrentLocation(location);
         setDeliveryBoyLocation(location);
+        try {
+          const key = `tracking:lastRiderLoc:${String(orderId)}`;
+          localStorage.setItem(key, JSON.stringify({ lat: location.lat, lng: location.lng, heading: location.heading || 0, ts: Date.now() }));
+        } catch {}
       }
     }
 
@@ -1403,13 +1427,16 @@ const DeliveryTrackingMap = ({
         // Ensure viewport never changes automatically - map stays stable
         directionsRendererRef.current.setOptions({ preserveViewport: true });
 
-        // Add restaurant marker with home icon (only once)
-        if (!mapInstance.current._restaurantMarker) {
+        // Restaurant marker: show only until order is delivered/completed
+        if (isOrderDelivered) {
+          if (mapInstance.current._restaurantMarker) {
+            mapInstance.current._restaurantMarker.setMap(null);
+            mapInstance.current._restaurantMarker = null;
+          }
+        } else if (!mapInstance.current._restaurantMarker) {
           const restaurantHomeIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
-              <!-- Pin shape -->
               <path d="M20 0 C9 0 0 9 0 20 C0 35 20 50 20 50 C20 50 40 35 40 20 C40 9 31 0 20 0 Z" fill="#22c55e" stroke="#ffffff" stroke-width="2"/>
-              <!-- Home icon -->
               <path d="M20 12 L12 18 L12 28 L16 28 L16 24 L24 24 L24 28 L28 28 L28 18 Z" fill="white" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M16 24 L16 20 L20 17 L24 20 L24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -1837,17 +1864,24 @@ const DeliveryTrackingMap = ({
     }
   }, [isMapLoaded, userLiveCoords, userLocationAccuracy]);
 
-  // Keep restaurant marker position in sync when coordinates change
-  // (map is initialized only once; without this effect, navigation back can leave stale marker position).
+  // Keep restaurant marker position in sync when coordinates change (and ensure it exists after refresh)
   useEffect(() => {
     if (!isMapLoaded || !mapInstance.current) return;
     if (!restaurantCoords?.lat || !restaurantCoords?.lng) return;
+
+    // Hide marker once delivered/completed
+    if (isOrderDelivered) {
+      if (mapInstance.current._restaurantMarker) {
+        try { mapInstance.current._restaurantMarker.setMap(null) } catch {}
+        mapInstance.current._restaurantMarker = null
+      }
+      return
+    }
 
     const lat = Number(restaurantCoords.lat)
     const lng = Number(restaurantCoords.lng)
     if (Number.isNaN(lat) || Number.isNaN(lng)) return
 
-    // Create marker if it didn't exist at init (coords may arrive after map init on refresh)
     if (!mapInstance.current._restaurantMarker) {
       const restaurantHomeIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
         <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
@@ -1871,7 +1905,7 @@ const DeliveryTrackingMap = ({
       return
     }
 
-    // If marker exists but got detached (e.g., map internal reset), re-attach it.
+    // If marker exists but got detached, re-attach it.
     try {
       if (mapInstance.current._restaurantMarker.getMap() == null) {
         mapInstance.current._restaurantMarker.setMap(mapInstance.current)
@@ -1881,7 +1915,7 @@ const DeliveryTrackingMap = ({
     }
 
     mapInstance.current._restaurantMarker.setPosition({ lat, lng });
-  }, [isMapLoaded, restaurantCoords?.lat, restaurantCoords?.lng]);
+  }, [isMapLoaded, isOrderDelivered, restaurantCoords?.lat, restaurantCoords?.lng]);
 
   // Periodic check to ensure bike marker is created if it should be visible
   // DISABLED - prevents duplicate marker creation

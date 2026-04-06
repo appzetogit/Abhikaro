@@ -419,11 +419,11 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
                 Bill Image (Captured by Delivery Boy)
               </h3>
               <div className="space-y-3">
-                <div className="relative w-full max-w-2xl border-2 border-slate-300 rounded-xl overflow-hidden bg-white shadow-sm">
+                <div className="relative w-full max-w-xl border-2 border-slate-300 rounded-xl overflow-hidden bg-white shadow-sm">
                   <img
                     src={order.billImageUrl || order.billImage || order.deliveryState?.billImageUrl}
                     alt="Order Bill"
-                    className="w-full h-auto object-contain max-h-[500px] mx-auto block"
+                    className="w-full h-auto object-contain max-h-[360px] mx-auto block"
                     loading="lazy"
                     onError={(e) => {
                       console.error('❌ Failed to load bill image:', e.target.src)

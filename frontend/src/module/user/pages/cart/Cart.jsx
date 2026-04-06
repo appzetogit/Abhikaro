@@ -16,6 +16,7 @@ import { API_BASE_URL } from "@/lib/api/config"
 import { initRazorpayPayment } from "@/lib/utils/razorpay"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
+import { preloadGoogleMaps } from "../../../../utils/mapsPreload"
 
 
 // Removed hardcoded suggested items - now fetching approved addons from backend
@@ -115,6 +116,14 @@ export default function Cart() {
 
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(-10)
 
+  // Warm up Google Maps as soon as success screen appears so the tracking map renders instantly
+  useEffect(() => {
+    if (showOrderSuccess) {
+      try {
+        preloadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
+      } catch {}
+    }
+  }, [showOrderSuccess])
   // Checkout-only contact draft:
   // - Initialize from sessionStorage if present
   // - Otherwise initialize once from profile (if fields empty)
@@ -1657,6 +1666,10 @@ export default function Cart() {
   }
 
   const handleGoToOrders = () => {
+    // Kick off a last-moment preload (non-blocking) to minimize first render latency
+    try {
+      preloadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
+    } catch {}
     setShowOrderSuccess(false)
     navigate(`/user/orders/${placedOrderId}?confirmed=true`)
   }

@@ -593,7 +593,7 @@ export default function OrdersMain() {
   });
 
   const [activeFilter, setActiveFilter] = useState("preparing")
-  const [isTransitioning, setIsTransitioning] = useState(false)
+  // Removed transition gating to allow instant tab changes
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
   const contentRef = useRef(null)
@@ -671,6 +671,10 @@ export default function OrdersMain() {
     }
     return []
   }
+
+  // Synchronous accessor for cached orders to enable instant tab render
+  const getCachedOrders = () =>
+    Array.isArray(ordersCacheRef.current.data) ? ordersCacheRef.current.data : []
 
   // Restaurant notifications hook for real-time orders
   const { newOrder, clearNewOrder, isConnected } = useRestaurantNotifications()
@@ -1713,7 +1717,7 @@ export default function OrdersMain() {
     const minSwipeDistance = 50
     const swipeVelocity = Math.abs(swipeDistance)
 
-    if (swipeVelocity > minSwipeDistance && !isTransitioning) {
+    if (swipeVelocity > minSwipeDistance) {
       const currentIndex = filterTabs.findIndex(tab => tab.id === activeFilter)
       let newIndex = currentIndex
 
@@ -1726,18 +1730,8 @@ export default function OrdersMain() {
       }
 
       if (newIndex !== currentIndex) {
-        setIsTransitioning(true)
-
-        // Smooth transition with animation
-        setTimeout(() => {
-          setActiveFilter(filterTabs[newIndex].id)
-          scrollToFilter(newIndex)
-
-          // Reset transition state after animation
-          setTimeout(() => {
-            setIsTransitioning(false)
-          }, 300)
-        }, 50)
+        setActiveFilter(filterTabs[newIndex].id)
+        scrollToFilter(newIndex)
       }
     }
 
@@ -1760,10 +1754,8 @@ export default function OrdersMain() {
         const containerWidth = container.offsetWidth
         const scrollLeft = buttonLeft - (containerWidth / 2) + (buttonWidth / 2)
 
-        container.scrollTo({
-          left: scrollLeft,
-          behavior: 'smooth'
-        })
+        // Jump instantly to avoid blocking the main thread with smooth scroll
+        container.scrollLeft = scrollLeft
       }
     }
   }
@@ -1788,9 +1780,9 @@ export default function OrdersMain() {
   const renderContent = () => {
     switch (activeFilter) {
       case "preparing":
-        return <PreparingOrders onSelectOrder={handleSelectOrder} onCancel={handleCancelClick} fetchAllOrders={fetchAllOrders} />
+        return <PreparingOrders onSelectOrder={handleSelectOrder} onCancel={handleCancelClick} fetchAllOrders={fetchAllOrders} getCachedOrders={getCachedOrders} />
       case "ready":
-        return <ReadyOrders onSelectOrder={handleSelectOrder} fetchAllOrders={fetchAllOrders} />
+        return <ReadyOrders onSelectOrder={handleSelectOrder} fetchAllOrders={fetchAllOrders} getCachedOrders={getCachedOrders} />
       case "out-for-delivery":
         return <OutForDeliveryOrders onSelectOrder={handleSelectOrder} fetchAllOrders={fetchAllOrders} />
       case "scheduled":
@@ -1833,44 +1825,21 @@ export default function OrdersMain() {
             const isActive = activeFilter === tab.id
 
             return (
-              <motion.button
+              <button
                 key={tab.id}
                 onClick={() => {
-                  if (!isTransitioning) {
-                    setIsTransitioning(true)
+                  // Switch tabs instantly without artificial delay
+                  if (activeFilter !== tab.id) {
                     setActiveFilter(tab.id)
                     scrollToFilter(index)
-                    setTimeout(() => setIsTransitioning(false), 300)
                   }
                 }}
-                className={`shrink-0 px-6 py-3.5 rounded-full font-medium text-sm whitespace-nowrap relative overflow-hidden ${isActive
-                  ? 'text-white'
-                  : 'bg-white text-black'
-                  }`}
-                animate={{
-                  scale: isActive ? 1.05 : 1,
-                  opacity: isActive ? 1 : 0.7,
-                }}
-                transition={{
-                  duration: 0.3,
-                  ease: [0.25, 0.1, 0.25, 1],
-                }}
-                whileTap={{ scale: 0.95 }}
+                className={`shrink-0 px-6 py-3.5 rounded-full font-medium text-sm whitespace-nowrap relative overflow-hidden ${
+                  isActive ? 'text-white bg-black' : 'bg-white text-black'
+                } transition-colors duration-100`}
               >
-                {isActive && (
-                  <motion.div
-                    layoutId="activeFilterBackground"
-                    className="absolute inset-0 bg-black rounded-full -z-10"
-                    initial={false}
-                    transition={{
-                      type: "spring",
-                      stiffness: 500,
-                      damping: 30
-                    }}
-                  />
-                )}
                 <span className="relative z-10">{tab.label}</span>
-              </motion.button>
+              </button>
             )
           })}
         </div>
@@ -1907,7 +1876,7 @@ export default function OrdersMain() {
             const swipeDistance = mouseStartX.current - mouseEndX.current
             const minSwipeDistance = 50
 
-            if (Math.abs(swipeDistance) > minSwipeDistance && !isTransitioning) {
+            if (Math.abs(swipeDistance) > minSwipeDistance) {
               const currentIndex = filterTabs.findIndex(tab => tab.id === activeFilter)
               let newIndex = currentIndex
 
@@ -1918,12 +1887,8 @@ export default function OrdersMain() {
               }
 
               if (newIndex !== currentIndex) {
-                setIsTransitioning(true)
-                setTimeout(() => {
-                  setActiveFilter(filterTabs[newIndex].id)
-                  scrollToFilter(newIndex)
-                  setTimeout(() => setIsTransitioning(false), 300)
-                }, 50)
+                setActiveFilter(filterTabs[newIndex].id)
+                scrollToFilter(newIndex)
               }
             }
           }
@@ -2042,17 +2007,8 @@ export default function OrdersMain() {
             </motion.div>
           )}
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeFilter}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            {renderContent()}
-          </motion.div>
-        </AnimatePresence>
+        {/* Render instantly without transition for snappier tab switching */}
+        {renderContent()}
       </div>
 
       {/* Audio element */}
@@ -3022,9 +2978,43 @@ function OrderCard({
 }
 
 // Preparing Orders List
-function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
+function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders, getCachedOrders }) {
+  // Instant render from cache if available
+  const buildPreparing = (allOrders) => {
+    const preparingOrders = (allOrders || []).filter(
+      order => order.status === 'preparing' || order.status === 'confirmed'
+    )
+    return preparingOrders.map(order => {
+      const initialETA = order.estimatedDeliveryTime || 30
+      const preparingTimestamp = order.tracking?.preparing?.timestamp
+        ? new Date(order.tracking.preparing.timestamp)
+        : new Date(order.createdAt)
+      return {
+        orderId: order.orderId || order._id,
+        mongoId: order._id,
+        status: order.status || 'preparing',
+        customerName: order.userId?.name || 'Customer',
+        type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
+        tableOrToken: null,
+        timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        initialETA,
+        preparingTimestamp,
+        itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
+        photoUrl: order.items?.[0]?.image || null,
+        photoAlt: order.items?.[0]?.name || 'Order',
+        deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null,
+        deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
+        deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
+        paymentMethod: order.paymentMethod ?? order.payment?.method,
+        paymentStatus: order.payment?.status
+      }
+    })
+  }
+
+  const cachedPreparing = buildPreparing(getCachedOrders ? getCachedOrders() : [])
+  const [orders, setOrders] = useState(cachedPreparing)
+  // Render instantly; we'll refresh data in background
+  const [loading, setLoading] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
   const lastAutoResendAtRef = useRef(new Map()) // key -> timestamp
 
@@ -3066,48 +3056,13 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
         if (!isMounted) return
 
         if (Array.isArray(allOrders) && allOrders.length > 0) {
-          // Filter orders with 'preparing' status only
-          // 'confirmed' orders should only appear in popup notification, not in preparing list
-          // After accepting, order status changes to 'preparing' and then appears here
-          const preparingOrders = allOrders.filter(
-            order => order.status === 'preparing' || order.status === 'confirmed'
-          )
-
-          const transformedOrders = preparingOrders.map(order => {
-            const initialETA = order.estimatedDeliveryTime || 30 // in minutes
-            const preparingTimestamp = order.tracking?.preparing?.timestamp
-              ? new Date(order.tracking.preparing.timestamp)
-              : new Date(order.createdAt) // Fallback to createdAt if preparing timestamp not available
-
-            return {
-              orderId: order.orderId || order._id,
-              mongoId: order._id,
-              status: order.status || 'preparing',
-              customerName: order.userId?.name || 'Customer',
-              type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
-              tableOrToken: null,
-              timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-              initialETA, // Store initial ETA in minutes
-              preparingTimestamp, // Store when order started preparing
-              itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
-              photoUrl: order.items?.[0]?.image || null,
-              photoAlt: order.items?.[0]?.name || 'Order',
-              deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null, // Handle both populated object and ObjectId
-              deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
-              deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
-              paymentMethod: order.paymentMethod ?? order.payment?.method,
-              paymentStatus: order.payment?.status
-            }
-          })
-
+          const transformedOrders = buildPreparing(allOrders)
           if (isMounted) {
             setOrders(transformedOrders)
-            setLoading(false)
           }
         } else {
           if (isMounted) {
             setOrders([])
-            setLoading(false)
           }
         }
       } catch (error) {
@@ -3123,7 +3078,6 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
 
         if (isMounted) {
           setOrders([])
-          setLoading(false)
         }
       }
     }
@@ -3359,9 +3313,33 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders }) {
 }
 
 // Ready Orders List
-function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
+function ReadyOrders({ onSelectOrder, fetchAllOrders, getCachedOrders }) {
+  const buildReady = (allOrders) => {
+    const readyOrders = (allOrders || []).filter(order => order.status === 'ready')
+    return readyOrders.map(order => ({
+      orderId: order.orderId || order._id,
+      mongoId: order._id,
+      status: order.status || 'ready',
+      customerName: order.userId?.name || 'Customer',
+      type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
+      tableOrToken: null,
+      timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      eta: null,
+      itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
+      photoUrl: order.items?.[0]?.image || null,
+      photoAlt: order.items?.[0]?.name || 'Order',
+      deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null,
+      deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
+      deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
+      paymentMethod: order.paymentMethod ?? order.payment?.method,
+      paymentStatus: order.payment?.status
+    }))
+  }
+
+  const cachedReady = buildReady(getCachedOrders ? getCachedOrders() : [])
+  const [orders, setOrders] = useState(cachedReady)
+  // Render instantly; refresh in background
+  const [loading, setLoading] = useState(false)
   const lastAutoResendAtRef = useRef(new Map()) // key -> timestamp
 
   // Resend delivery notification for ready orders that are still unassigned
@@ -3385,38 +3363,14 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
         if (!isMounted) return
 
         if (Array.isArray(allOrders) && allOrders.length > 0) {
-          // Filter orders with 'ready' status
-          const readyOrders = allOrders.filter(
-            order => order.status === 'ready'
-          )
-
-          const transformedOrders = readyOrders.map(order => ({
-            orderId: order.orderId || order._id,
-            mongoId: order._id,
-            status: order.status || 'ready',
-            customerName: order.userId?.name || 'Customer',
-            type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
-            tableOrToken: null,
-            timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-            eta: null,
-            itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
-            photoUrl: order.items?.[0]?.image || null,
-            photoAlt: order.items?.[0]?.name || 'Order',
-            deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null, // Handle both populated object and ObjectId
-            deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
-            deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
-            paymentMethod: order.paymentMethod ?? order.payment?.method,
-            paymentStatus: order.payment?.status
-          }))
+          const transformedOrders = buildReady(allOrders)
 
           if (isMounted) {
             setOrders(transformedOrders)
-            setLoading(false)
           }
         } else {
           if (isMounted) {
             setOrders([])
-            setLoading(false)
           }
         }
       } catch (error) {
@@ -3429,7 +3383,6 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders }) {
 
         if (isMounted) {
           setOrders([])
-          setLoading(false)
         }
       }
     }

@@ -432,6 +432,18 @@ Order again from this restaurant in the ${companyName} app.`
   }
 
   const handleCloseRating = () => {
+    // If user closes the popup, don't auto-show it again for the same order.
+    // (They can still rate later from order actions if needed.)
+    try {
+      const o = ratingModal?.order
+      const orderId = o?.id || o?._id || o?.mongoId
+      if (orderId) {
+        setShownRatingForOrders(prev => new Set([...prev, orderId]))
+      }
+    } catch {
+      // ignore
+    }
+
     setRatingModal({ open: false, order: null })
     setSelectedRating(null)
     setFeedbackText("")
