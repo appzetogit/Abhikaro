@@ -9,11 +9,21 @@ import alertSound from '@/assets/audio/alert.mp3';
  * @returns {object} - { newOrder, playSound, isConnected }
  */
 export const useRestaurantNotifications = () => {
+  // Read persisted unlock flag once, synchronously, to avoid a race where the first socket event
+  // arrives before our effects run (causing first order sound to be missed).
+  const initialUnlocked = (() => {
+    try {
+      return localStorage.getItem('restaurant_sound_unlocked') === '1';
+    } catch {
+      return false;
+    }
+  })();
+
   const socketRef = useRef(null);
   const [newOrder, setNewOrder] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const audioRef = useRef(null);
-  const userInteractedRef = useRef(false); // Track user interaction for autoplay policy
+  const userInteractedRef = useRef(initialUnlocked); // Track user interaction for autoplay policy
   // Ring loop (repeat sound for up to 5 minutes, stop on accept/reject/cancel/close)
   const ringIntervalRef = useRef(null);
   const ringTimeoutRef = useRef(null);
@@ -21,13 +31,7 @@ export const useRestaurantNotifications = () => {
   const ringEndedHandlerRef = useRef(null);
   const ringPauseHandlerRef = useRef(null);
   const ringActiveUntilMsRef = useRef(null);
-  const [isSoundUnlocked, setIsSoundUnlocked] = useState(() => {
-    try {
-      return localStorage.getItem('restaurant_sound_unlocked') === '1';
-    } catch {
-      return false;
-    }
-  });
+  const [isSoundUnlocked, setIsSoundUnlocked] = useState(initialUnlocked);
   const [restaurantId, setRestaurantId] = useState(null);
   const lastConnectErrorLogRef = useRef(0);
   const CONNECT_ERROR_LOG_THROTTLE_MS = 10000;
