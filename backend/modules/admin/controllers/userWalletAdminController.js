@@ -60,8 +60,10 @@ export const adjustUserWallet = asyncHandler(async (req, res) => {
         description: safeReason,
         paymentMethod: "other",
         metadata: {
-          adjustedByAdminId: req.user?._id?.toString?.() || null,
+          adjustedByAdminId: req.admin?._id?.toString?.() || null,
+          adjustment: true,
         },
+        processedBy: req.admin?._id,
         processedAt: new Date(),
       });
     } catch (e) {
@@ -76,7 +78,7 @@ export const adjustUserWallet = asyncHandler(async (req, res) => {
       type: safeType,
       amount: numericAmount,
       balance: wallet.balance,
-      adjustedBy: req.user?._id,
+      adjustedBy: req.admin?._id,
     });
 
     return successResponse(res, 200, "Wallet adjusted successfully", {
@@ -105,3 +107,82 @@ export const adjustUserWallet = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Get User Wallet History (Admin)
+ * GET /api/admin/users/:id/wallet/history
+ * Query: page, limit, onlyAdjustments
+ */
+export const getUserWalletHistory = asyncHandler(async (req, res) => {
+  const admin = req.admin;
+  if (!admin?._id) {
+    return errorResponse(res, 401, "Admin authentication required");
+  }
+
+  const { id } = req.params;
+  const { page = 1, limit = 20, onlyAdjustments = "true" } = req.query || {};
+
+  const user = await User.findById(id).lean();
+  if (!user || user.role !== "user") {
+    return errorResponse(res, 404, "User not found");
+  }
+
+  const wallet = await UserWallet.findOne({ userId: user._id })
+    .populate("transactions.processedBy", "name email")
+    .lean();
+
+  if (!wallet) {
+    return successResponse(res, 200, "No history found", {
+      userId: user._id.toString(),
+      transactions: [],
+      pagination: {
+        page: 1,
+        limit: parseInt(limit, 10) || 20,
+        total: 0,
+        pages: 0,
+      },
+    });
+  }
+
+  let transactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
+  transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const onlyAdj = String(onlyAdjustments).toLowerCase() !== "false";
+  if (onlyAdj) {
+    transactions = transactions.filter((t) => {
+      const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
+      return md.adjustment === true || t.type === "addition" || t.type === "deduction";
+    });
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
+  const total = transactions.length;
+  const skip = (pageNum - 1) * limitNum;
+  const paginated = transactions.slice(skip, skip + limitNum);
+
+  return successResponse(res, 200, "User wallet history retrieved successfully", {
+    userId: user._id.toString(),
+    transactions: paginated.map((t) => {
+      const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
+      return {
+        id: t._id,
+        type: t.type,
+        status: t.status,
+        amount: t.amount,
+        description: t.description,
+        date: t.createdAt,
+        processedAt: t.processedAt,
+        processedBy: t.processedBy
+          ? { id: t.processedBy._id, name: t.processedBy.name, email: t.processedBy.email }
+          : null,
+        metadata: md,
+      };
+    }),
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      pages: Math.ceil(total / limitNum) || 1,
+    },
+  });
+});

@@ -39,7 +39,7 @@ import {
   getCustomerWalletReport,
   getAdminPermissionsCatalog,
 } from "../controllers/adminController.js";
-import { adjustUserWallet } from "../controllers/userWalletAdminController.js";
+import { adjustUserWallet, getUserWalletHistory } from "../controllers/userWalletAdminController.js";
 import {
   getHotels,
   getHotelById,
@@ -377,6 +377,7 @@ router.put("/users/:id", updateUser);
 router.put("/users/:id/status", updateUserStatus);
 router.delete("/users/:id", deleteUser);
 router.post("/users/:id/wallet/adjustment", adjustUserWallet);
+router.get("/users/:id/wallet/history", getUserWalletHistory);
 router.get("/customer-wallet-report", getCustomerWalletReport);
 
 // Restaurant Management

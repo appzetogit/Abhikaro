@@ -44,6 +44,11 @@ const transactionSchema = new mongoose.Schema({
     type: Map,
     of: mongoose.Schema.Types.Mixed
   },
+  processedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    sparse: true
+  },
   processedAt: Date, // When transaction was processed
   failureReason: String // If status is Failed
 }, {

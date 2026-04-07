@@ -1346,6 +1346,12 @@ export const adminAPI = {
       payload,
     );
   },
+  getUserWalletHistory: (userId, params = {}) => {
+    return apiClient.get(
+      API_ENDPOINTS.ADMIN.USER_WALLET_HISTORY.replace(":id", userId),
+      { params },
+    );
+  },
 
   // Wallet adjust OTP gate (admin)
   sendWalletAdjustOTP: () => {

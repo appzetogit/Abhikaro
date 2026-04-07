@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { Search, Download, ChevronDown, Calendar, Eye, FileDown, FileSpreadsheet, FileText, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle, Pencil, Trash2, Wallet, IndianRupee } from "lucide-react"
+import { Search, Download, ChevronDown, Calendar, Eye, FileDown, FileSpreadsheet, FileText, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle, Pencil, Trash2, Wallet, IndianRupee, Clock3, Loader2 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { exportCustomersToCSV, exportCustomersToExcel, exportCustomersToPDF } from "../components/customers/customersExportUtils"
 import { adminAPI } from "@/lib/api"
@@ -37,6 +37,19 @@ export default function Customers() {
     amount: "",
     reason: "",
   })
+
+  // Wallet history dialog state
+  const [isWalletHistoryOpen, setIsWalletHistoryOpen] = useState(false)
+  const [walletHistoryLoading, setWalletHistoryLoading] = useState(false)
+  const [walletHistoryItems, setWalletHistoryItems] = useState([])
+  const [walletHistoryPage, setWalletHistoryPage] = useState(1)
+  const [walletHistoryPages, setWalletHistoryPages] = useState(1)
+  const [walletHistoryCustomer, setWalletHistoryCustomer] = useState(null)
+
+  const formatCurrency = useCallback((amount) => {
+    if (amount == null) return "₹0.00"
+    return `₹${Number(amount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }, [])
 
   // Wallet adjust OTP gate (admin phone)
   const [isWalletOtpOpen, setIsWalletOtpOpen] = useState(false)
@@ -166,6 +179,12 @@ export default function Customers() {
     return () => window.removeEventListener('focus', onFocus)
   }, [fetchCustomers])
 
+  useEffect(() => {
+    if (!isWalletHistoryOpen || !walletHistoryCustomer?.id) return
+    fetchWalletHistory(walletHistoryCustomer.id, 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWalletHistoryOpen, walletHistoryCustomer?.id])
+
   const handleToggleStatus = async (customerId) => {
     try {
       // Find customer
@@ -259,6 +278,39 @@ export default function Customers() {
       reason: "",
     })
     setIsWalletOpen(true)
+  }
+
+  const openWalletHistory = (customer) => {
+    setWalletHistoryCustomer(customer)
+    setWalletHistoryItems([])
+    setWalletHistoryPage(1)
+    setWalletHistoryPages(1)
+    setIsWalletHistoryOpen(true)
+  }
+
+  const fetchWalletHistory = async (userId, p = 1) => {
+    try {
+      setWalletHistoryLoading(true)
+      const res = await adminAPI.getUserWalletHistory(userId, {
+        page: p,
+        limit: 20,
+        onlyAdjustments: true,
+      })
+      if (res?.data?.success) {
+        const data = res.data.data || {}
+        setWalletHistoryItems(data.transactions || [])
+        const pg = data.pagination || {}
+        setWalletHistoryPage(pg.page ?? p)
+        setWalletHistoryPages(pg.pages ?? 1)
+      } else {
+        toast.error(res?.data?.message || "Failed to fetch wallet history")
+      }
+    } catch (err) {
+      console.error("Error fetching wallet history:", err)
+      toast.error(err?.response?.data?.message || "Failed to fetch wallet history")
+    } finally {
+      setWalletHistoryLoading(false)
+    }
   }
 
   const closeWalletOtpDialog = useCallback(() => {
@@ -677,6 +729,13 @@ export default function Customers() {
                             title="Edit"
                           >
                             <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openWalletHistory(customer)}
+                            className="p-1.5 rounded text-slate-700 hover:bg-slate-100 transition-colors"
+                            title="Wallet history"
+                          >
+                            <Clock3 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => openWalletAdjustWithOtpGate(customer)}
@@ -1144,6 +1203,131 @@ export default function Customers() {
               className="h-10 bg-emerald-600 hover:bg-emerald-700"
             >
               {verifyingWalletOtp ? "Verifying..." : "Verify & Continue"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Wallet History Modal */}
+      <Dialog
+        open={isWalletHistoryOpen}
+        onOpenChange={(open) => {
+          if (open) setIsWalletHistoryOpen(true)
+          else {
+            setIsWalletHistoryOpen(false)
+            setWalletHistoryCustomer(null)
+            setWalletHistoryItems([])
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg bg-white rounded-xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-5 pb-3 border-b border-slate-200 bg-slate-50/80">
+            <DialogTitle className="flex items-center gap-2 text-base md:text-lg">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                <Clock3 className="w-4 h-4" />
+              </span>
+              <span className="font-semibold text-slate-900">Wallet History</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="px-6 py-4 space-y-4">
+            {walletHistoryCustomer && (
+              <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-xs md:text-sm text-slate-700 flex items-center justify-between gap-3">
+                <p className="font-semibold text-slate-900 truncate">
+                  {walletHistoryCustomer.name || "Customer"}
+                </p>
+                <p className="text-[11px] md:text-xs text-slate-600">
+                  Current:&nbsp;
+                  <span className="font-semibold text-emerald-700">
+                    {formatCurrency(walletHistoryCustomer.walletBalance ?? 0)}
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {walletHistoryLoading ? (
+              <div className="py-10 text-center">
+                <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mx-auto mb-3" />
+                <p className="text-slate-600 text-sm">Loading history…</p>
+              </div>
+            ) : walletHistoryItems.length === 0 ? (
+              <div className="py-10 text-center">
+                <p className="text-slate-700 font-semibold">No history</p>
+                <p className="text-slate-500 text-sm">No wallet adjustments found.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[380px] overflow-auto pr-1">
+                {walletHistoryItems.map((t) => {
+                  const when = t?.date ? new Date(t.date).toLocaleString("en-IN") : "—"
+                  const isAdd = t?.type === "addition"
+                  const title = isAdd ? "Add" : t?.type === "deduction" ? "Deduct" : (t?.type || "Transaction")
+                  return (
+                    <div key={t.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{title}</p>
+                          <p className="text-xs text-slate-600 mt-0.5">{t.description || "—"}</p>
+                          {t?.processedBy?.name && (
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              By: <span className="font-medium text-slate-700">{t.processedBy.name}</span>
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm font-semibold ${isAdd ? "text-emerald-700" : "text-rose-700"}`}>
+                            {t?.amount != null ? `${isAdd ? "+" : "−"}${formatCurrency(Math.abs(Number(t.amount)))}` : "—"}
+                          </p>
+                          <p className="text-[11px] text-slate-500">{when}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="px-6 pb-5 pt-3 border-t border-slate-200 bg-white flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={walletHistoryLoading || walletHistoryPage <= 1 || !walletHistoryCustomer?.id}
+                onClick={() => {
+                  const next = Math.max(1, walletHistoryPage - 1)
+                  setWalletHistoryPage(next)
+                  fetchWalletHistory(walletHistoryCustomer.id, next)
+                }}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                disabled={walletHistoryLoading || walletHistoryPage >= walletHistoryPages || !walletHistoryCustomer?.id}
+                onClick={() => {
+                  const next = Math.min(walletHistoryPages, walletHistoryPage + 1)
+                  setWalletHistoryPage(next)
+                  fetchWalletHistory(walletHistoryCustomer.id, next)
+                }}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+              <p className="text-xs text-slate-600 ml-2">
+                Page {walletHistoryPage} of {walletHistoryPages}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9"
+              onClick={() => {
+                setIsWalletHistoryOpen(false)
+                setWalletHistoryCustomer(null)
+                setWalletHistoryItems([])
+              }}
+            >
+              Close
             </Button>
           </div>
         </DialogContent>

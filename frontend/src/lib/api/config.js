@@ -308,6 +308,7 @@ export const API_ENDPOINTS = {
     USER_BY_ID: "/admin/users/:id",
     USER_STATUS: "/admin/users/:id/status",
     USER_WALLET_ADJUSTMENT: "/admin/users/:id/wallet/adjustment",
+    USER_WALLET_HISTORY: "/admin/users/:id/wallet/history",
     // Security (admin) - OTP gates
     WALLET_ADJUST_OTP_SEND: "/admin/security/wallet-adjust/otp/send",
     WALLET_ADJUST_OTP_VERIFY: "/admin/security/wallet-adjust/otp/verify",
