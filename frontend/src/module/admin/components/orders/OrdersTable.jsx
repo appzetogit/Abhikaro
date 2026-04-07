@@ -307,16 +307,25 @@ export default function OrdersTable({
                       const isPayAtHotel = paymentTypeDisplay === 'Pay at Hotel' || paymentTypeDisplay === 'Pay at Hotel (Cash)';
                       const isPayAtHotelRazor = paymentTypeDisplay === 'Pay at Hotel (Razorpay)';
                       const isHotelOnline = paymentTypeDisplay === 'Hotel (Online)';
+                      const showHotelNameUnderPaymentType =
+                        (isPayAtHotel || isPayAtHotelRazor || isHotelOnline) && Boolean(order.hotelName);
                       
                       return (
-                        <span className={`text-sm font-medium ${
-                          isCod ? 'text-amber-600' : 
-                          isWallet ? 'text-purple-600' : 
-                          (isPayAtHotel || isPayAtHotelRazor || isHotelOnline) ? 'text-orange-600' :
-                          'text-emerald-600'
-                        }`}>
-                          {paymentTypeDisplay}
-                        </span>
+                        <div className="flex flex-col leading-tight">
+                          <span className={`text-sm font-medium ${
+                            isCod ? 'text-amber-600' : 
+                            isWallet ? 'text-purple-600' : 
+                            (isPayAtHotel || isPayAtHotelRazor || isHotelOnline) ? 'text-orange-600' :
+                            'text-emerald-600'
+                          }`}>
+                            {paymentTypeDisplay}
+                          </span>
+                          {showHotelNameUnderPaymentType && (
+                            <span className="text-xs text-slate-500 mt-1">
+                              {order.hotelName}
+                            </span>
+                          )}
+                        </div>
                       );
                     })()}
                   </td>

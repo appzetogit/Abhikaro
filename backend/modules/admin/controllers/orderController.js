@@ -442,6 +442,11 @@ export const getOrders = asyncHandler(async (req, res) => {
         restaurant: order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
         restaurantId: order.restaurantId?.toString?.() || order.restaurantId || '',
         restaurantAddress: restaurantAddress || null,
+        // Hotel/QR context (used by admin UI for QR-origin orders)
+        orderType: order.orderType || null,
+        hotelName: order.hotelName || null,
+        hotelReference: order.hotelReference || null,
+        hotelId: order.hotelId?.toString?.() || order.hotelId || null,
         // Report-specific fields
         totalItemAmount: totalItemAmount,
         itemDiscount: itemDiscount,
