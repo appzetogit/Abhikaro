@@ -1471,14 +1471,20 @@ export default function OrderTracking() {
         </motion.div>
       )}
 
-      {/* Map Section - hide completely when delivered */}
-      {orderStatus !== 'delivered' && (
+      {/* Map Section - hide completely when delivered OR cancelled (all variants) */}
+      {(() => {
+        const raw = (order?.status || orderStatus || '').toString().toLowerCase()
+        const isDelivered = raw === 'delivered' || raw === 'completed'
+        const isCancelled = raw === 'cancelled' || raw === 'canceled' || raw === 'restaurant_cancelled'
+        if (isDelivered || isCancelled) return null
+        return (
         <DeliveryMap
           orderId={orderId}
           order={order}
           isVisible={!showConfirmation && order !== null}
         />
-      )}
+        )
+      })()}
 
       {/* Scrollable Content */}
       <div className="max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 space-y-4 md:space-y-6 pb-24 md:pb-32">

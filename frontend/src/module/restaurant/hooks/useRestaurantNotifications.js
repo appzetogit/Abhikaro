@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '@/lib/api/config';
 import { restaurantAPI } from '@/lib/api';
@@ -14,11 +14,233 @@ export const useRestaurantNotifications = () => {
   const [isConnected, setIsConnected] = useState(false);
   const audioRef = useRef(null);
   const userInteractedRef = useRef(false); // Track user interaction for autoplay policy
+  // Ring loop (repeat sound for up to 5 minutes, stop on accept/reject/cancel/close)
+  const ringIntervalRef = useRef(null);
+  const ringTimeoutRef = useRef(null);
+  const ringingOrderIdRef = useRef(null);
+  const ringEndedHandlerRef = useRef(null);
+  const ringPauseHandlerRef = useRef(null);
+  const ringActiveUntilMsRef = useRef(null);
+  const [isSoundUnlocked, setIsSoundUnlocked] = useState(() => {
+    try {
+      return localStorage.getItem('restaurant_sound_unlocked') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [restaurantId, setRestaurantId] = useState(null);
   const lastConnectErrorLogRef = useRef(0);
   const CONNECT_ERROR_LOG_THROTTLE_MS = 10000;
   // Dedupe sound so it never plays twice for the same order/event burst
   const lastSoundRef = useRef({ orderId: null, ts: 0 });
+
+  const playNotificationSound = (payload) => {
+    try {
+      // Lazy init: if the first event arrives before Audio is created, create it now.
+      if (!audioRef.current) {
+        try {
+          audioRef.current = new Audio(alertSound);
+          audioRef.current.volume = 0.7;
+          audioRef.current.preload = 'auto';
+          audioRef.current.load?.();
+        } catch (_) {
+          // ignore
+        }
+      }
+
+      if (audioRef.current) {
+        // Only play if user has interacted with the page (browser autoplay policy)
+        if (!userInteractedRef.current) {
+          return;
+        }
+
+        // Dedupe: if we just played for this order within a short window, skip
+        const now = Date.now();
+        const orderId =
+          payload?.orderId?.toString?.() ||
+          payload?.orderMongoId?.toString?.() ||
+          payload?._id?.toString?.() ||
+          null;
+        if (
+          orderId &&
+          lastSoundRef.current.orderId === orderId &&
+          now - lastSoundRef.current.ts < 1500
+        ) {
+          return;
+        }
+        if (orderId) {
+          lastSoundRef.current = { orderId, ts: now };
+        }
+
+        audioRef.current.currentTime = 0;
+        // Ensure audio is loaded before play to reduce first-play delay on some devices
+        try {
+          audioRef.current.load?.();
+        } catch (_) {}
+        audioRef.current.play().catch(() => {
+          // Don't log autoplay policy errors as they're expected
+        });
+      }
+    } catch (error) {
+      // Don't log autoplay policy errors
+    }
+  };
+
+  const stopNotificationSound = useCallback(() => {
+    try {
+      if (ringIntervalRef.current) {
+        clearInterval(ringIntervalRef.current);
+        ringIntervalRef.current = null;
+      }
+      if (ringTimeoutRef.current) {
+        clearTimeout(ringTimeoutRef.current);
+        ringTimeoutRef.current = null;
+      }
+      // Remove any ended listener used for loop fallback
+      try {
+        if (audioRef.current && ringEndedHandlerRef.current) {
+          audioRef.current.removeEventListener('ended', ringEndedHandlerRef.current);
+        }
+      } catch {
+        // ignore
+      }
+      ringEndedHandlerRef.current = null;
+      ringPauseHandlerRef.current = null;
+      ringingOrderIdRef.current = null;
+      ringActiveUntilMsRef.current = null;
+    } catch {
+      // ignore
+    }
+
+    try {
+      if (audioRef.current) {
+        // Ensure loop is disabled after we stop ringing
+        try {
+          audioRef.current.loop = false;
+        } catch {
+          // ignore
+        }
+        // Remove listeners used for resilience while ringing
+        try {
+          if (ringEndedHandlerRef.current) {
+            audioRef.current.removeEventListener('ended', ringEndedHandlerRef.current);
+          }
+          if (ringPauseHandlerRef.current) {
+            audioRef.current.removeEventListener('pause', ringPauseHandlerRef.current);
+          }
+        } catch {
+          // ignore
+        }
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    } catch (_) {
+      // ignore
+    }
+  }, []);
+
+  const startRingingForOrder = useCallback(
+    (payload, { durationMs = 5 * 60 * 1000 } = {}) => {
+      // Only ring if user has unlocked audio (autoplay policy)
+      if (!userInteractedRef.current) return;
+
+      const orderId =
+        payload?.orderId?.toString?.() ||
+        payload?.orderMongoId?.toString?.() ||
+        payload?._id?.toString?.() ||
+        null;
+
+      // If already ringing for this order, don't restart timers.
+      if (orderId && ringingOrderIdRef.current === orderId) return;
+
+      // Stop any previous ringing (different order or stale timers)
+      stopNotificationSound();
+
+      ringingOrderIdRef.current = orderId || 'unknown';
+      ringActiveUntilMsRef.current = Date.now() + durationMs;
+
+      // Ensure audio instance exists
+      try {
+        if (!audioRef.current) {
+          audioRef.current = new Audio(alertSound);
+          audioRef.current.volume = 0.7;
+          audioRef.current.preload = 'auto';
+          audioRef.current.load?.();
+        }
+      } catch {
+        // ignore
+      }
+
+      // Prefer native looping: restarts exactly when the MP3 ends (e.g., 28s)
+      if (audioRef.current) {
+        try {
+          audioRef.current.loop = true;
+        } catch {
+          // ignore
+        }
+
+        // Fallback: if loop doesn't work in a WebView, re-play on 'ended'
+        try {
+          if (ringEndedHandlerRef.current) {
+            audioRef.current.removeEventListener('ended', ringEndedHandlerRef.current);
+          }
+          ringEndedHandlerRef.current = () => {
+            try {
+              if (!userInteractedRef.current) return;
+              if (!ringingOrderIdRef.current) return;
+              if (ringActiveUntilMsRef.current && Date.now() > ringActiveUntilMsRef.current) return;
+              audioRef.current.currentTime = 0;
+              audioRef.current.play().catch(() => {});
+            } catch {
+              // ignore
+            }
+          };
+          audioRef.current.addEventListener('ended', ringEndedHandlerRef.current);
+        } catch {
+          // ignore
+        }
+
+        // Resilience: some WebViews pause looping audio after a while. If we're still in the ring window,
+        // and audio pauses unexpectedly, try to resume.
+        try {
+          if (ringPauseHandlerRef.current) {
+            audioRef.current.removeEventListener('pause', ringPauseHandlerRef.current);
+          }
+          ringPauseHandlerRef.current = () => {
+            try {
+              if (!userInteractedRef.current) return;
+              if (!ringingOrderIdRef.current) return;
+              if (ringActiveUntilMsRef.current && Date.now() > ringActiveUntilMsRef.current) return;
+              // If the popup is still active, keep ringing
+              audioRef.current.currentTime = 0;
+              audioRef.current.play().catch(() => {});
+            } catch {
+              // ignore
+            }
+          };
+          audioRef.current.addEventListener('pause', ringPauseHandlerRef.current);
+        } catch {
+          // ignore
+        }
+
+        // Start play (will loop)
+        try {
+          audioRef.current.currentTime = 0;
+          audioRef.current.play().catch(() => {});
+        } catch {
+          // ignore
+        }
+      } else {
+        // As a last resort, do a one-shot play (no loop)
+        playNotificationSound(payload);
+      }
+
+      ringTimeoutRef.current = setTimeout(() => {
+        stopNotificationSound();
+      }, durationMs);
+    },
+    [stopNotificationSound],
+  );
 
   // Get restaurant ID from API
   useEffect(() => {
@@ -262,7 +484,7 @@ export const useRestaurantNotifications = () => {
       window.dispatchEvent(new CustomEvent('new_order_received', { detail: orderData }));
 
       // Play notification sound
-      playNotificationSound(orderData);
+      startRingingForOrder(orderData, { durationMs: 5 * 60 * 1000 });
     });
 
     // IMPORTANT:
@@ -283,10 +505,7 @@ export const useRestaurantNotifications = () => {
       try {
         const status = (data?.status || '').toString().toLowerCase();
         if (status === 'cancelled' || status === 'canceled') {
-          if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-          }
+          stopNotificationSound();
         }
       } catch (e) {
         // ignore
@@ -335,17 +554,21 @@ export const useRestaurantNotifications = () => {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      stopNotificationSound();
+      audioRef.current = null;
     };
-  }, [restaurantId]);
+  }, [restaurantId, startRingingForOrder, stopNotificationSound]);
 
   // Track user interaction for autoplay policy
   useEffect(() => {
     const handleUserInteraction = () => {
       userInteractedRef.current = true;
+      try {
+        localStorage.setItem('restaurant_sound_unlocked', '1');
+      } catch {
+        // ignore
+      }
+      setIsSoundUnlocked(true);
       // Remove listeners after first interaction
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('touchstart', handleUserInteraction);
@@ -364,69 +587,66 @@ export const useRestaurantNotifications = () => {
     };
   }, []);
 
-  const playNotificationSound = (payload) => {
+  // (playNotificationSound / stopNotificationSound / startRingingForOrder are defined above)
+
+  const unlockSound = useCallback(async () => {
+    // Explicitly unlock sound via a user gesture (button click/tap)
+    userInteractedRef.current = true;
     try {
-      // Lazy init: if the first event arrives before Audio is created, create it now.
-      if (!audioRef.current) {
-        try {
-          audioRef.current = new Audio(alertSound);
-          audioRef.current.volume = 0.7;
-          audioRef.current.preload = 'auto';
-          audioRef.current.load?.();
-        } catch (_) {
-          // ignore
-        }
-      }
-
-      if (audioRef.current) {
-        // Only play if user has interacted with the page (browser autoplay policy)
-        if (!userInteractedRef.current) {
-          return;
-        }
-
-        // Dedupe: if we just played for this order within a short window, skip
-        const now = Date.now();
-        const orderId =
-          payload?.orderId?.toString?.() ||
-          payload?.orderMongoId?.toString?.() ||
-          payload?._id?.toString?.() ||
-          null;
-        if (
-          orderId &&
-          lastSoundRef.current.orderId === orderId &&
-          now - lastSoundRef.current.ts < 1500
-        ) {
-          return;
-        }
-        if (orderId) {
-          lastSoundRef.current = { orderId, ts: now };
-        }
-        
-        audioRef.current.currentTime = 0;
-        // Ensure audio is loaded before play to reduce first-play delay on some devices
-        try {
-          audioRef.current.load?.();
-        } catch (_) {}
-        audioRef.current.play().catch(error => {
-          // Don't log autoplay policy errors as they're expected
-        });
-      }
-    } catch (error) {
-      // Don't log autoplay policy errors
-    }
-  };
-
-  // Stop/pause any currently playing notification sound
-  const stopNotificationSound = () => {
-    try {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-    } catch (_) {
+      localStorage.setItem('restaurant_sound_unlocked', '1');
+    } catch {
       // ignore
     }
-  };
+    setIsSoundUnlocked(true);
+
+    // Initialize Audio if needed and attempt a best-effort unlock play (can be silent/low volume)
+    try {
+      if (!audioRef.current) {
+        audioRef.current = new Audio(alertSound);
+        audioRef.current.preload = 'auto';
+      }
+      if (audioRef.current) {
+        const prevVolume = audioRef.current.volume ?? 0.7;
+        // Keep it near-silent to avoid surprising the user
+        audioRef.current.volume = 0.01;
+        audioRef.current.currentTime = 0;
+        await audioRef.current.play().catch(() => {});
+        try {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        } catch {
+          // ignore
+        }
+        audioRef.current.volume = prevVolume;
+      }
+    } catch {
+      // ignore unlock errors
+    }
+
+    return true;
+  }, []);
+
+  // Flutter bridge: allow wrapper to call into web to unlock audio on first gesture.
+  useEffect(() => {
+    try {
+      window.__ABHIKARO_UNLOCK_SOUND__ = unlockSound;
+      return () => {
+        // Only delete if we set it
+        if (window.__ABHIKARO_UNLOCK_SOUND__ === unlockSound) {
+          delete window.__ABHIKARO_UNLOCK_SOUND__;
+        }
+      };
+    } catch {
+      return undefined;
+    }
+  }, [unlockSound]);
+
+  // If we already persisted "unlocked", honor it (still best-effort; some WebViews need a gesture anyway).
+  useEffect(() => {
+    if (isSoundUnlocked) {
+      userInteractedRef.current = true;
+    }
+  }, [isSoundUnlocked]);
 
   const clearNewOrder = () => {
     setNewOrder(null);
@@ -437,7 +657,10 @@ export const useRestaurantNotifications = () => {
     clearNewOrder,
     isConnected,
     playNotificationSound,
-    stopNotificationSound
+    stopNotificationSound,
+    isSoundUnlocked,
+    unlockSound,
+    startRingingForOrder
   };
 };
 

@@ -593,9 +593,19 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
     for (const deliveryPartnerId of deliveryPartnerIds) {
       try {
         const normalizedId = deliveryPartnerId?.toString() || deliveryPartnerId;
+        // Also try legacy business identifier room (`deliveryId`) if present on Delivery profile
+        // Some older clients join rooms using deliveryId instead of Mongo _id.
+        let legacyDeliveryId = null;
+        try {
+          const deliveryDoc = await Delivery.findById(normalizedId).select('deliveryId').lean();
+          legacyDeliveryId = deliveryDoc?.deliveryId?.toString?.() || null;
+        } catch {
+          legacyDeliveryId = null;
+        }
         const roomVariations = [
           `delivery:${normalizedId}`,
           `delivery:${deliveryPartnerId}`,
+          ...(legacyDeliveryId ? [`delivery:${legacyDeliveryId}`] : []),
           ...(mongoose.Types.ObjectId.isValid(normalizedId)
             ? [`delivery:${new mongoose.Types.ObjectId(normalizedId).toString()}`]
             : [])
@@ -605,7 +615,11 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
         for (const room of roomVariations) {
           const sockets = await deliveryNamespace.in(room).fetchSockets();
           if (sockets.length > 0) {
+            // Backward/forward compatibility:
+            // - Newer clients listen to `new_order_available` (priority-based offers)
+            // - Some clients still rely on `new_order` to open the accept popup immediately
             deliveryNamespace.to(room).emit('new_order_available', orderNotification);
+            deliveryNamespace.to(room).emit('new_order', orderNotification);
             deliveryNamespace.to(room).emit('play_notification_sound', {
               type: 'new_order_available',
               orderId: order.orderId,
@@ -624,6 +638,7 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
           // Still emit to room for when they connect
           roomVariations.forEach(room => {
             deliveryNamespace.to(room).emit('new_order_available', orderNotification);
+            deliveryNamespace.to(room).emit('new_order', orderNotification);
           });
           notifiedCount++;
         }

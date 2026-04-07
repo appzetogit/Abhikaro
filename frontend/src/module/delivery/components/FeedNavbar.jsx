@@ -177,7 +177,21 @@ export default function FeedNavbar({ className = "" }) {
           longitude >= -180 && longitude <= 180) {
         await deliveryAPI.updateLocation(latitude, longitude, next);
       } else {
-        await deliveryAPI.updateOnlineStatus(next);
+        // Fallback: use last persisted location from DeliveryHome (if available)
+        try {
+          const rawSaved = window.localStorage.getItem('delivery:lastKnownLocation')
+          const saved = rawSaved ? JSON.parse(rawSaved) : null
+          const lat = saved?.lat
+          const lng = saved?.lng
+          if (typeof lat === 'number' && typeof lng === 'number' &&
+              lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            await deliveryAPI.updateLocation(lat, lng, next)
+          } else {
+            await deliveryAPI.updateOnlineStatus(next);
+          }
+        } catch {
+          await deliveryAPI.updateOnlineStatus(next);
+        }
       }
     } catch (error) {
       // Error updating online status in backend

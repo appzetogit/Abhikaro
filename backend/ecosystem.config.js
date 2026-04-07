@@ -7,8 +7,13 @@ module.exports = {
   apps: [{
     name: 'abhikaro-backend',
     script: './server.js',
-    instances: process.env.PM2_INSTANCES || 'max', // Use all CPU cores
-    exec_mode: 'cluster', // Cluster mode for load balancing
+    // IMPORTANT for Socket.IO (polling/WebView):
+    // - In cluster mode without sticky sessions, Engine.IO polling can hit different workers
+    //   and cause "Session ID unknown", breaking realtime delivery/restaurant notifications.
+    // Default to a single instance (fork mode). If you want multi-instance, you MUST enable
+    // sticky sessions at the proxy/load balancer (or use a proper cluster/sticky setup).
+    instances: process.env.PM2_INSTANCES || 1,
+    exec_mode: process.env.PM2_EXEC_MODE || 'fork',
     env: {
       NODE_ENV: 'production',
       PORT: process.env.PORT || 5000,

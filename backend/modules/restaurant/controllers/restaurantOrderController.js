@@ -706,19 +706,20 @@ export const acceptOrder = asyncHandler(async (req, res) => {
               `⚠️ Order ${order.orderId} already has delivery partner: ${freshOrder.deliveryPartnerId}`,
             );
           } else {
-            // Step 1: Find nearest delivery boys (within 5km priority distance)
+            // Step 1: Find nearest delivery boys (use a wider radius so "accept" immediately reaches riders;
+            // tighter radii can result in 0 candidates and make it look like only manual "Resend" works)
             const priorityDeliveryBoys = await findNearestDeliveryBoys(
               restaurantLat,
               restaurantLng,
               restaurantId,
-              5,
-              10,
+              20,
+              20,
               { ignoreManualZoneFilter: true },
             );
 
             if (priorityDeliveryBoys && priorityDeliveryBoys.length > 0) {
               console.log(
-                `✅ Found ${priorityDeliveryBoys.length} priority delivery partners within 5km`,
+                `✅ Found ${priorityDeliveryBoys.length} priority delivery partners within 20km`,
               );
 
               // Store priority notification info in order
@@ -745,6 +746,16 @@ export const acceptOrder = asyncHandler(async (req, res) => {
                 const priorityIds = priorityDeliveryBoys.map(
                   (db) => db.deliveryPartnerId,
                 );
+
+                // Bump resendVersion so delivery clients treat this as a fresh request (same behavior as manual Resend button)
+                try {
+                  await Order.findByIdAndUpdate(freshOrder._id, {
+                    $inc: { 'assignmentInfo.resendVersion': 1 },
+                    $set: { 'assignmentInfo.assignedBy': 'restaurant_accept' },
+                  });
+                } catch (e) {
+                  // ignore
+                }
                 await notifyMultipleDeliveryBoys(
                   populatedOrder,
                   priorityIds,
@@ -803,7 +814,10 @@ export const acceptOrder = asyncHandler(async (req, res) => {
                 }
               }
             } else {
-              // No priority delivery boys found, immediately try to find any delivery boy
+              // No priority delivery boys found.
+              // Fallback order of operations:
+              // 1) Try nearest single partner within wider radius
+              // 2) If still none, notify a capped set of ANY online riders with valid location
               console.log(
                 `⚠️ No priority delivery partners found, searching for any available delivery partner`,
               );
@@ -814,25 +828,47 @@ export const acceptOrder = asyncHandler(async (req, res) => {
                 50,
               );
 
-              if (anyDeliveryBoy) {
-                const populatedOrder = await Order.findById(freshOrder._id)
-                  .populate("userId", "name phone")
-                  .lean();
+              const populatedOrder = await Order.findById(freshOrder._id)
+                .populate("userId", "name phone")
+                .populate("restaurantId", "name address location phone ownerPhone")
+                .lean();
 
-                if (populatedOrder) {
-                  await notifyMultipleDeliveryBoys(
-                    populatedOrder,
-                    [anyDeliveryBoy.deliveryPartnerId],
-                    "immediate",
-                  );
-                  console.log(
-                    `✅ Notified delivery partner immediately for order ${order.orderId}`,
-                  );
+              if (anyDeliveryBoy && populatedOrder) {
+                await notifyMultipleDeliveryBoys(
+                  populatedOrder,
+                  [anyDeliveryBoy.deliveryPartnerId],
+                  "immediate",
+                );
+                console.log(
+                  `✅ Notified delivery partner immediately for order ${order.orderId}`,
+                );
+              } else if (populatedOrder) {
+                // HARD fallback: notify any online riders (still capped) so order doesn't get stuck.
+                try {
+                  const fallbackRiders = await Delivery.find({
+                    'availability.isOnline': true,
+                    status: { $in: ['approved', 'active'] },
+                    isActive: true,
+                    'availability.currentLocation.coordinates': { $exists: true, $ne: [0, 0] },
+                  })
+                    .select('_id')
+                    .limit(50)
+                    .lean();
+
+                  const fallbackIds = fallbackRiders.map((d) => d._id?.toString?.()).filter(Boolean);
+                  if (fallbackIds.length > 0) {
+                    await notifyMultipleDeliveryBoys(populatedOrder, fallbackIds, 'fallback_any_online');
+                    console.log(
+                      `✅ Fallback notified ${fallbackIds.length} online delivery partners for order ${order.orderId}`,
+                    );
+                  } else {
+                    console.warn(`⚠️ No online delivery partners with valid location found for fallback on order ${order.orderId}`);
+                  }
+                } catch (fallbackErr) {
+                  console.error(`❌ Fallback notify failed for order ${order.orderId}:`, fallbackErr);
                 }
               } else {
-                console.warn(
-                  `⚠️ No delivery partners available for order ${order.orderId}`,
-                );
+                console.warn(`⚠️ Could not populate order for delivery notifications (order ${order.orderId})`);
               }
             }
           }

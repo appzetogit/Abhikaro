@@ -757,6 +757,23 @@ export default function DeliveryHome() {
     isOnlineRef.current = isOnline
   }, [isOnline])
 
+  // Persist last known good rider location so "Online" toggle can update backend even if GPS permission fails momentarily.
+  const persistLastKnownLocation = (loc) => {
+    try {
+      if (!Array.isArray(loc) || loc.length !== 2) return
+      const [lat, lng] = loc
+      if (typeof lat !== 'number' || typeof lng !== 'number') return
+      if (isNaN(lat) || isNaN(lng)) return
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return
+      window.localStorage.setItem(
+        'delivery:lastKnownLocation',
+        JSON.stringify({ lat, lng, ts: Date.now() }),
+      )
+    } catch {
+      // ignore
+    }
+  }
+
   // Sync online status with localStorage changes (from FeedNavbar or other tabs)
   useEffect(() => {
     const handleStorageChange = (e) => {
@@ -1920,6 +1937,7 @@ export default function DeliveryHome() {
               deliveryAPI.updateLocation(lat, lng, true)
                 .then(() => {
                   window.lastLocationSentTime = now;
+                  persistLastKnownLocation([lat, lng])
 
                 })
                 .catch(error => {
@@ -1998,6 +2016,7 @@ export default function DeliveryHome() {
                   .then(() => {
                     window.lastLocationSentTime = now;
                     window.lastSentLocation = newLocation;
+                    persistLastKnownLocation(newLocation)
 
                   })
                   .catch(error => {
@@ -2110,6 +2129,7 @@ export default function DeliveryHome() {
                 .then(() => {
                   window.lastLocationSentTime = now;
                   window.lastSentLocation = smoothedLocation; // Store last sent location
+                  persistLastKnownLocation(smoothedLocation)
                 })
                 .catch(error => {
                   // Only log non-network errors (backend might be down, which is expected in dev)

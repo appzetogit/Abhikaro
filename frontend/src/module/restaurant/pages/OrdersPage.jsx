@@ -31,7 +31,7 @@ export default function OrdersPage() {
   const [error, setError] = useState(null)
 
   // Restaurant notifications hook
-  const { newOrder, clearNewOrder, isConnected } = useRestaurantNotifications()
+  const { newOrder, clearNewOrder, isConnected, isSoundUnlocked, unlockSound } = useRestaurantNotifications()
 
   // Lenis smooth scrolling
   useEffect(() => {
@@ -372,6 +372,17 @@ export default function OrdersPage() {
     <div className="min-h-screen bg-[#f6e9dc] overflow-x-hidden">
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-6 pb-24 md:pb-6">
+        {!isSoundUnlocked && (
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => unlockSound?.()}
+              className="w-full rounded-xl bg-black text-white px-4 py-3 text-sm font-semibold"
+            >
+              Tap to enable order sound
+            </button>
+          </div>
+        )}
         {/* Title */}
         <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center md:text-left">
           Orders

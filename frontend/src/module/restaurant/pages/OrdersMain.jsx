@@ -680,7 +680,8 @@ export default function OrdersMain() {
     Array.isArray(ordersCacheRef.current.data) ? ordersCacheRef.current.data : []
 
   // Restaurant notifications hook for real-time orders
-  const { newOrder, clearNewOrder, isConnected, stopNotificationSound } = useRestaurantNotifications()
+  const { newOrder, clearNewOrder, isConnected, stopNotificationSound, isSoundUnlocked, unlockSound } =
+    useRestaurantNotifications()
 
   const rejectReasons = [
     "Restaurant is too busy",
@@ -923,6 +924,20 @@ export default function OrdersMain() {
       setShowNewOrderPopup(true)
       const createdAtMs = normalizedOrder?.createdAt ? new Date(normalizedOrder.createdAt).getTime() : Date.now()
       acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
+      try {
+        const id =
+          normalizedOrder?.orderId?.toString?.() ||
+          normalizedOrder?.orderMongoId?.toString?.() ||
+          null
+        if (id) {
+          localStorage.setItem(
+            `restaurant_accept_deadline_ms:${id}`,
+            String(acceptDeadlineMsRef.current),
+          )
+        }
+      } catch {
+        // ignore storage errors
+      }
 
       // Always fetch the full order once to merge reliable payment + hotel QR indicators
       try {
@@ -1080,6 +1095,20 @@ export default function OrdersMain() {
             setShowNewOrderPopup(true)
             const createdAtMs = orderForPopup?.createdAt ? new Date(orderForPopup.createdAt).getTime() : Date.now()
             acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
+            try {
+              const id =
+                orderForPopup?.orderId?.toString?.() ||
+                orderForPopup?.orderMongoId?.toString?.() ||
+                null
+              if (id) {
+                localStorage.setItem(
+                  `restaurant_accept_deadline_ms:${id}`,
+                  String(acceptDeadlineMsRef.current),
+                )
+              }
+            } catch {
+              // ignore storage errors
+            }
           }
         }
       } catch (error) {
@@ -1144,11 +1173,31 @@ export default function OrdersMain() {
     if (!showNewOrderPopup) return
 
     const compute = () => {
+      const current = popupOrder || newOrder
+      const orderId =
+        current?.orderId?.toString?.() ||
+        current?.orderMongoId?.toString?.() ||
+        current?._id?.toString?.() ||
+        null
+      const storageKey = orderId ? `restaurant_accept_deadline_ms:${orderId}` : null
+
       const deadline = acceptDeadlineMsRef.current
       const now = Date.now()
       if (!deadline) {
-        // Fallback: if deadline not set yet, assume full window from now
-        acceptDeadlineMsRef.current = now + (ACCEPT_WINDOW_SECONDS * 1000)
+        // Try to restore from storage (survives background/lock/reload)
+        let restored = null
+        if (storageKey) {
+          try {
+            const v = localStorage.getItem(storageKey)
+            const n = v ? Number(v) : NaN
+            if (Number.isFinite(n) && n > 0) restored = n
+          } catch {
+            // ignore
+          }
+        }
+
+        // Fallback: if still missing, assume full window from now
+        acceptDeadlineMsRef.current = restored || (now + (ACCEPT_WINDOW_SECONDS * 1000))
       }
       const d = acceptDeadlineMsRef.current
       const remaining = Math.max(0, Math.ceil((d - now) / 1000))
@@ -1157,8 +1206,62 @@ export default function OrdersMain() {
 
     compute() // update immediately on open
     const timer = setInterval(compute, 1000)
-    return () => clearInterval(timer)
-  }, [showNewOrderPopup])
+
+    // When app returns from background/lock screen, run compute immediately
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        compute()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [showNewOrderPopup, popupOrder, newOrder])
+
+  // If accept window expires, close popup and refresh lists so auto-cancelled order appears in history
+  useEffect(() => {
+    if (!showNewOrderPopup) return
+    if (countdown > 0) return
+
+    try {
+      if (typeof stopNotificationSound === 'function') {
+        stopNotificationSound()
+      }
+    } catch {
+      // ignore
+    }
+
+    // Close popup UI
+    setShowRejectPopup(false)
+    setShowNewOrderPopup(false)
+    setPopupOrder(null)
+    clearNewOrder()
+
+    // Clear persisted deadline
+    try {
+      const current = popupOrder || newOrder
+      const id =
+        current?.orderId?.toString?.() ||
+        current?.orderMongoId?.toString?.() ||
+        current?._id?.toString?.() ||
+        null
+      if (id) localStorage.removeItem(`restaurant_accept_deadline_ms:${id}`)
+    } catch {
+      // ignore
+    }
+
+    acceptDeadlineMsRef.current = null
+
+    // Trigger list refresh (Preparing/Cancelled/etc listen to this)
+    try {
+      window.dispatchEvent(new CustomEvent('new_order_received', { detail: { source: 'accept_window_expired' } }))
+    } catch {
+      // ignore
+    }
+  }, [countdown, showNewOrderPopup])
 
   // Format countdown time
   const formatTime = (seconds) => {
@@ -1225,6 +1328,17 @@ export default function OrdersMain() {
     setShowNewOrderPopup(false)
     setPopupOrder(null)
     clearNewOrder()
+    try {
+      const current = popupOrder || newOrder
+      const id =
+        current?.orderId?.toString?.() ||
+        current?.orderMongoId?.toString?.() ||
+        current?._id?.toString?.() ||
+        null
+      if (id) localStorage.removeItem(`restaurant_accept_deadline_ms:${id}`)
+    } catch {
+      // ignore
+    }
     acceptDeadlineMsRef.current = null
     setCountdown(ACCEPT_WINDOW_SECONDS)
     acceptDeadlineMsRef.current = null
@@ -1266,6 +1380,17 @@ export default function OrdersMain() {
     setShowNewOrderPopup(false)
     setPopupOrder(null)
     clearNewOrder()
+    try {
+      const current = popupOrder || newOrder
+      const id =
+        current?.orderId?.toString?.() ||
+        current?.orderMongoId?.toString?.() ||
+        current?._id?.toString?.() ||
+        null
+      if (id) localStorage.removeItem(`restaurant_accept_deadline_ms:${id}`)
+    } catch {
+      // ignore
+    }
     setRejectReason("")
     setCountdown(240)
     setPrepTime(11)
@@ -1276,6 +1401,17 @@ export default function OrdersMain() {
     setShowNewOrderPopup(false)
     setPopupOrder(null)
     clearNewOrder()
+    try {
+      const current = popupOrder || newOrder
+      const id =
+        current?.orderId?.toString?.() ||
+        current?.orderMongoId?.toString?.() ||
+        current?._id?.toString?.() ||
+        null
+      if (id) localStorage.removeItem(`restaurant_accept_deadline_ms:${id}`)
+    } catch {
+      // ignore
+    }
     setRejectReason("")
     setCountdown(240)
   }
@@ -1788,6 +1924,17 @@ export default function OrdersMain() {
 
       {/* Top Filter Bar - Sticky below navbar */}
       <div className="sticky top-[50px] z-40 pb-2 bg-gray-100">
+        {!isSoundUnlocked && (
+          <div className="px-4 pt-2">
+            <button
+              type="button"
+              onClick={() => unlockSound?.()}
+              className="w-full rounded-xl bg-black text-white px-4 py-3 text-sm font-semibold"
+            >
+              Tap to enable order sound
+            </button>
+          </div>
+        )}
         <div
           ref={filterBarRef}
           className="flex gap-2 overflow-x-auto scrollbar-hide bg-transparent rounded-full px-3 py-2 mt-2"
@@ -2055,14 +2202,60 @@ export default function OrdersMain() {
 
                 {/* Content */}
                 <div className="px-4 py-4 max-h-[60vh] overflow-y-auto">
-                  {/* Order meta (time only - item title hidden by request) */}
-                  <div className="mb-4">
-                    <p className="text-xs text-gray-500">
-                      {(popupOrder || newOrder)?.createdAt
-                        ? new Date((popupOrder || newOrder).createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-                        : 'Just now'}
-                    </p>
-                  </div>
+                  {/* Order meta (time + payment on the same row) */}
+                  {(() => {
+                    const po = (popupOrder || newOrder) || {}
+                    const createdAtLabel = po?.createdAt
+                      ? new Date(po.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                      : 'Just now'
+
+                    // Payment label computation (same logic as below, but rendered near time)
+                    const raw = po?.paymentMethod ?? po?.payment?.method
+                    const m = raw != null ? String(raw).toLowerCase().trim() : ''
+                    const isCod = m === 'cash' || m === 'cod'
+                    const isPayAtHotel = m === 'pay_at_hotel' || m === 'pay at hotel'
+                    const paymentStatus = String(po?.paymentStatus || po?.payment?.status || '').toLowerCase()
+                    const orderTypeStr = (po?.orderType ?? '').toString().trim().toLowerCase()
+                    const isQrType = orderTypeStr === 'qr' || orderTypeStr.includes('qr') || orderTypeStr === 'hotel'
+                    const isHotelOrigin =
+                      isQrType ||
+                      Boolean(
+                        po?.hotelReference ||
+                        po?.hotelId ||
+                        po?.qrReferenceId ||
+                        po?.hotelName ||
+                        po?.roomNumber ||
+                        po?.hotel?.id ||
+                        po?.hotel?.name
+                      )
+
+                    let computedLabel = 'Online'
+                    if (isCod) computedLabel = 'Cash on Delivery'
+                    else if (isPayAtHotel) computedLabel = 'Pay at Hotel'
+                    else if (isHotelOrigin) {
+                      if (paymentStatus === 'processing') computedLabel = 'On Hotel (Online - Processing)'
+                      else if (paymentStatus === 'failed') computedLabel = 'Failed'
+                      else if (paymentStatus === 'refunded') computedLabel = 'Refunded'
+                      else computedLabel = 'On Hotel (Online)'
+                    }
+
+                    const paymentColor =
+                      isCod || isPayAtHotel
+                        ? 'text-amber-600'
+                        : isHotelOrigin
+                          ? 'text-green-700'
+                          : 'text-green-600'
+
+                    return (
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <p className="text-xs text-gray-500">{createdAtLabel}</p>
+                        <p className="text-xs text-gray-500">
+                          Payment:{' '}
+                          <span className={`font-semibold ${paymentColor}`}>{computedLabel}</span>
+                        </p>
+                      </div>
+                    )
+                  })()}
 
                   {/* Details Accordion */}
                   <div className="mb-4">
@@ -2198,71 +2391,7 @@ export default function OrdersMain() {
                     </span>
                   </div>
 
-                  {/* Payment method: handle COD, Pay at Hotel, Online, and Hotel QR Online */}
-                  {(() => {
-                    const raw = (popupOrder || newOrder)?.paymentMethod ?? (popupOrder || newOrder)?.payment?.method;
-                    const m = raw != null ? String(raw).toLowerCase().trim() : '';
-                    const isCod = m === 'cash' || m === 'cod';
-                    const isPayAtHotel = m === 'pay_at_hotel' || m === 'pay at hotel';
-                    const paymentStatus = String((popupOrder || newOrder)?.paymentStatus || (popupOrder || newOrder)?.payment?.status || '').toLowerCase();
-                    const po = (popupOrder || newOrder) || {};
-                    const orderTypeStr = (po?.orderType ?? '').toString().trim().toLowerCase();
-                    const isQrType = orderTypeStr === 'qr' || orderTypeStr.includes('qr') || orderTypeStr === 'hotel';
-                    const isHotelOrigin =
-                      isQrType ||
-                      Boolean(
-                        po?.hotelReference ||
-                        po?.hotelId ||
-                        po?.qrReferenceId ||
-                        po?.hotelName ||
-                        po?.roomNumber ||
-                        po?.hotel?.id ||
-                        po?.hotel?.name
-                      );
-                    // Debug log inputs and computed label
-                    let computedLabel = 'Online';
-                    if (isCod) computedLabel = 'Cash on Delivery';
-                    else if (isPayAtHotel) computedLabel = 'Pay at Hotel';
-                    else if (isHotelOrigin) {
-                      if (paymentStatus === 'processing') computedLabel = 'On Hotel (Online - Processing)';
-                      else if (paymentStatus === 'failed') computedLabel = 'Failed';
-                      else if (paymentStatus === 'refunded') computedLabel = 'Refunded';
-                      else computedLabel = 'On Hotel (Online)';
-                    }
-                    try {
-                      // eslint-disable-next-line no-console
-                      console.log('[PaymentLabel][Popup]', {
-                        orderId: po?.orderId || po?.orderMongoId,
-                        paymentMethod: raw,
-                        normalizedMethod: m,
-                        paymentStatus,
-                        orderType: po?.orderType,
-                        hotelReference: po?.hotelReference,
-                        hotelId: po?.hotelId,
-                        hotelName: po?.hotelName,
-                        roomNumber: po?.roomNumber,
-                        qrReferenceId: po?.qrReferenceId,
-                        isCod,
-                        isPayAtHotel,
-                        isHotelOrigin,
-                        computedLabel
-                      });
-                    } catch {}
-                    return (
-                      <div className="mb-4 flex items-center justify-between py-2">
-                        <span className="text-sm font-medium text-gray-700">Payment</span>
-                        <span className={`text-sm font-semibold ${
-                          isCod || isPayAtHotel
-                            ? 'text-amber-600'
-                            : isHotelOrigin
-                              ? 'text-green-700'
-                              : 'text-green-600'
-                        }`}>
-                          {computedLabel}
-                        </span>
-                      </div>
-                    );
-                  })()}
+                  {/* Payment row removed: shown near time above */}
 
                   {/* Preparation time */}
                   <div className="mb-4">

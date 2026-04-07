@@ -915,9 +915,18 @@ const DeliveryTrackingMap = ({
             }
           }
         } else {
-          // CRITICAL: If no polyline, DO NOT show bike at raw GPS location
-          console.warn('⚠️⚠️⚠️ NO POLYLINE AVAILABLE - Bike marker NOT updated to prevent off-road display');
-          return; // Exit early - don't update marker
+          // Fallback (prod resilience):
+          // If polyline isn't available yet (Directions API slow/blocked), we still want to show a live bike marker
+          // so the user sees tracking. We'll place it at the incoming rider location and keep it visible.
+          // When polyline becomes available later, strict/polyline-based tracking will take over automatically.
+          try {
+            if (bikeMarkerRef.current) {
+              bikeMarkerRef.current.setPosition({ lat, lng });
+              stableRotateBike(bearing || 0);
+            }
+          } catch {
+            // ignore
+          }
         }
 
         // Update previous location for next bearing calculation
