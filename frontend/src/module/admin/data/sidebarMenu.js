@@ -340,6 +340,11 @@ export const sidebarMenuData = [
             path: "/admin/delivery-partners/earnings",
             permissionId: "menu.delivery",
           },
+          {
+            label: "Delivery History",
+            path: "/admin/delivery-partners/history",
+            permissionId: "menu.delivery",
+          },
         ],
       },
     ],

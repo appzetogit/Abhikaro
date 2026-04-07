@@ -129,11 +129,13 @@ import {
   getDeliveryBoyWallets,
   addWalletAdjustment,
   updateWalletBalances,
+  getDeliveryBoyWalletHistory,
 } from "../controllers/deliveryBoyWalletController.js";
 import {
   getRestaurantWalletOverview,
   adjustRestaurantWallet,
 } from "../controllers/restaurantWalletController.js";
+import { getRestaurantWalletHistory } from "../controllers/restaurantWalletController.js";
 import {
   getEmergencyHelp,
   getEmergencyHelpPublic,
@@ -337,6 +339,7 @@ router.post("/delivery-withdrawal/:id/reject", rejectDeliveryWithdrawal);
 router.get("/delivery-boy-wallet", getDeliveryBoyWallets);
 router.post("/delivery-boy-wallet/adjustment", addWalletAdjustment);
 router.put("/delivery-boy-wallet/:id", updateWalletBalances);
+router.get("/delivery-boy-wallet/:id/history", getDeliveryBoyWalletHistory);
 
 // Admin Management
 router.get("/admins", authorizeAdmin("super_admin"), getAdmins);
@@ -396,6 +399,11 @@ router.post(
   "/restaurants/:id/wallet/adjustment",
   requirePermissions("menu.restaurants"),
   adjustRestaurantWallet,
+);
+router.get(
+  "/restaurants/:id/wallet/history",
+  requirePermissions("menu.restaurants"),
+  getRestaurantWalletHistory,
 );
 router.get(
   "/restaurants/:id",

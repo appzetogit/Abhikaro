@@ -1585,6 +1585,12 @@ export const adminAPI = {
       payload,
     );
   },
+  getRestaurantWalletHistory: (restaurantId, params = {}) => {
+    return apiClient.get(
+      API_ENDPOINTS.ADMIN.RESTAURANT_WALLET_HISTORY.replace(":id", restaurantId),
+      { params },
+    );
+  },
 
   // Get all offers (with restaurant and dish details)
   getAllOffers: (params = {}) => {
@@ -2297,6 +2303,12 @@ export const adminAPI = {
     return apiClient.put(
       API_ENDPOINTS.ADMIN.DELIVERY_BOY_WALLET_UPDATE.replace(":id", id),
       data,
+    );
+  },
+  getDeliveryBoyWalletHistory: (id, params = {}) => {
+    return apiClient.get(
+      API_ENDPOINTS.ADMIN.DELIVERY_BOY_WALLET_HISTORY.replace(":id", id),
+      { params },
     );
   },
 

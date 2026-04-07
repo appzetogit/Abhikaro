@@ -129,6 +129,8 @@ export const adjustRestaurantWallet = asyncHandler(async (req, res) => {
     status: "Completed",
     description: desc,
     processedAt: new Date(),
+    processedBy: admin._id,
+    metadata: { adjustment: true, description: descRaw || undefined },
   });
 
   wallet.markModified("transactions");
@@ -145,3 +147,77 @@ export const adjustRestaurantWallet = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * GET /api/admin/restaurants/:id/wallet/history
+ * Query: page, limit, onlyAdjustments
+ */
+export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
+  const admin = req.admin;
+  if (!admin?._id) {
+    return errorResponse(res, 401, "Admin authentication required");
+  }
+
+  const { id } = req.params;
+  const { page = 1, limit = 20, onlyAdjustments = "true" } = req.query || {};
+
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    return errorResponse(res, 400, "Valid restaurant ID is required");
+  }
+
+  const wallet = await RestaurantWallet.findOne({ restaurantId: id })
+    .populate("transactions.processedBy", "name email")
+    .lean();
+
+  if (!wallet) {
+    return successResponse(res, 200, "No history found", {
+      restaurantId: id,
+      transactions: [],
+      pagination: { page: 1, limit: parseInt(limit, 10) || 20, total: 0, pages: 0 },
+    });
+  }
+
+  let transactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
+
+  // newest first
+  transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const onlyAdj = String(onlyAdjustments).toLowerCase() !== "false";
+  if (onlyAdj) {
+    transactions = transactions.filter((t) => {
+      const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
+      return md.adjustment === true || t.type === "bonus" || t.type === "deduction";
+    });
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
+  const total = transactions.length;
+  const skip = (pageNum - 1) * limitNum;
+  const paginated = transactions.slice(skip, skip + limitNum);
+
+  return successResponse(res, 200, "Restaurant wallet history retrieved successfully", {
+    restaurantId: id,
+    transactions: paginated.map((t) => {
+      const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
+      return {
+        id: t._id,
+        type: t.type,
+        status: t.status,
+        amount: t.amount,
+        description: t.description,
+        date: t.createdAt,
+        processedAt: t.processedAt,
+        processedBy: t.processedBy
+          ? { id: t.processedBy._id, name: t.processedBy.name, email: t.processedBy.email }
+          : null,
+        metadata: md,
+      };
+    }),
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      pages: Math.ceil(total / limitNum) || 1,
+    },
+  });
+});

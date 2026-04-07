@@ -9,7 +9,7 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['payment', 'withdrawal', 'bonus', 'deduction', 'refund', 'deposit', 'earning_addon'],
+    enum: ['payment', 'withdrawal', 'bonus', 'deduction', 'refund', 'deposit', 'earning_addon', 'admin_balance_edit'],
     required: true
   },
   status: {
@@ -216,6 +216,8 @@ deliveryWalletSchema.methods.addTransaction = function(transactionData) {
       this.cashInHand = Math.max(0, this.cashInHand - transaction.amount);
     } else if (transaction.type === 'deposit') {
       this.cashInHand = Math.max(0, (this.cashInHand || 0) - transaction.amount);
+    } else if (transaction.type === 'admin_balance_edit') {
+      // Balance was updated directly by admin endpoint; this entry is only for history/audit.
     }
   }
   

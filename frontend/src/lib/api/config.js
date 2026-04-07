@@ -417,6 +417,7 @@ export const API_ENDPOINTS = {
     DELIVERY_BOY_WALLET: "/admin/delivery-boy-wallet",
     DELIVERY_BOY_WALLET_ADJUSTMENT: "/admin/delivery-boy-wallet/adjustment",
     DELIVERY_BOY_WALLET_UPDATE: "/admin/delivery-boy-wallet/:id",
+    DELIVERY_BOY_WALLET_HISTORY: "/admin/delivery-boy-wallet/:id/history",
     DELIVERY_EMERGENCY_HELP: "/admin/delivery-emergency-help",
     DELIVERY_EMERGENCY_HELP_STATUS: "/admin/delivery-emergency-help/status",
     DELIVERY_SUPPORT_TICKETS: "/admin/delivery-support-tickets",
@@ -438,6 +439,7 @@ export const API_ENDPOINTS = {
     // Restaurant wallet (admin)
     RESTAURANT_WALLETS: "/admin/restaurants/wallets",
     RESTAURANT_WALLET_ADJUSTMENT: "/admin/restaurants/:id/wallet/adjustment",
+    RESTAURANT_WALLET_HISTORY: "/admin/restaurants/:id/wallet/history",
     // Admin & permissions management
     ADMINS: "/admin/admins",
     ADMIN_BY_ID: "/admin/admins/:id",

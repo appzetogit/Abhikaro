@@ -26,11 +26,22 @@ export const getOrders = asyncHandler(async (req, res) => {
       paymentStatus,
       zone,
       customer,
-      cancelledBy
+      cancelledBy,
+      deliveryPartnerId
     } = req.query;
 
     // Build query
     const query = {};
+
+    // Delivery partner filter
+    // Supports ObjectId and legacy string values
+    if (deliveryPartnerId && deliveryPartnerId !== "all") {
+      if (mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
+        query.deliveryPartnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+      } else {
+        query.deliveryPartnerId = deliveryPartnerId;
+      }
+    }
 
     // Status filter
     if (status && status !== 'all') {

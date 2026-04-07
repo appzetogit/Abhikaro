@@ -30,6 +30,16 @@ const transactionSchema = new mongoose.Schema({
     default: Date.now
   },
   processedAt: Date
+  ,
+  processedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    sparse: true
+  },
+  metadata: {
+    type: Map,
+    of: mongoose.Schema.Types.Mixed
+  }
 }, {
   timestamps: true,
   _id: true

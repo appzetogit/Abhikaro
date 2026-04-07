@@ -187,6 +187,25 @@ export const updateWalletBalances = asyncHandler(async (req, res) => {
     newCash = ch;
   }
 
+  // Log history entry (before saving new balances)
+  wallet.addTransaction({
+    amount: 0,
+    type: 'admin_balance_edit',
+    status: 'Completed',
+    description: 'Admin balance edit',
+    processedAt: new Date(),
+    processedBy: admin._id,
+    metadata: {
+      adjustment: true,
+      oldPocket: currentPocket,
+      oldCashInHand: currentCash,
+      oldTotalBalance: currentTotal,
+      newPocket,
+      newCashInHand: newCash,
+      newTotalBalance: newPocket + newCash
+    }
+  });
+
   // totalBalance = pocketBalance + cashInHand
   wallet.cashInHand = newCash;
   wallet.totalBalance = newPocket + newCash;
@@ -199,5 +218,79 @@ export const updateWalletBalances = asyncHandler(async (req, res) => {
     cashInHand: Number(wallet.cashInHand) || 0,
     totalWithdrawn: Number(wallet.totalWithdrawn) || 0,
     totalEarned: Number(wallet.totalEarned) || 0
+  });
+});
+
+/**
+ * Get delivery boy wallet adjustment history (admin only)
+ * GET /api/admin/delivery-boy-wallet/:id/history
+ * Query: page, limit, onlyAdjustments
+ */
+export const getDeliveryBoyWalletHistory = asyncHandler(async (req, res) => {
+  const admin = req.admin;
+  if (!admin?._id) {
+    return errorResponse(res, 401, 'Admin authentication required');
+  }
+
+  const { id } = req.params;
+  const { page = 1, limit = 20, onlyAdjustments = 'true' } = req.query || {};
+
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    return errorResponse(res, 400, 'Valid wallet ID is required');
+  }
+
+  const wallet = await DeliveryWallet.findById(id)
+    .populate('transactions.processedBy', 'name email')
+    .lean();
+
+  if (!wallet) {
+    return errorResponse(res, 404, 'Wallet not found');
+  }
+
+  let transactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
+
+  // newest first
+  transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const onlyAdj = String(onlyAdjustments).toLowerCase() !== 'false';
+  if (onlyAdj) {
+    transactions = transactions.filter((t) => {
+      const metaAdj = t?.metadata && (t.metadata.get ? t.metadata.get('adjustment') : t.metadata.adjustment);
+      return metaAdj === true || t.type === 'bonus' || t.type === 'deduction' || t.type === 'admin_balance_edit';
+    });
+  }
+
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const total = transactions.length;
+  const skip = (pageNum - 1) * limitNum;
+  const paginated = transactions.slice(skip, skip + limitNum);
+
+  return successResponse(res, 200, 'Wallet history retrieved successfully', {
+    walletId: wallet._id,
+    transactions: paginated.map((t) => {
+      const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
+      return {
+        id: t._id,
+        type: t.type,
+        status: t.status,
+        amount: t.amount,
+        description: t.description,
+        date: t.createdAt,
+        processedAt: t.processedAt,
+        processedBy: t.processedBy ? {
+          id: t.processedBy._id,
+          name: t.processedBy.name,
+          email: t.processedBy.email
+        } : null,
+        metadata: md
+      };
+    }),
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      pages: Math.ceil(total / limitNum) || 1
+    }
   });
 });
