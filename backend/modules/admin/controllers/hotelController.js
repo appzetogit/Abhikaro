@@ -644,7 +644,7 @@ export const getHotelCommissionStats = asyncHandler(async (req, res) => {
  */
 export const updateHotelCashCollected = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { cashCollected } = req.body;
+  const { cashCollected, balanceAdjustment } = req.body;
 
   const amount = Number(cashCollected);
   if (Number.isNaN(amount) || amount < 0) {
@@ -662,6 +662,53 @@ export const updateHotelCashCollected = asyncHandler(async (req, res) => {
 
   const wallet = await HotelWallet.findOrCreateByHotelId(hotel._id);
   wallet.manualCashCollectedOverride = amount;
+
+  // Optional: adjust available balance (admin credit/deduct)
+  // balanceAdjustment: { type: 'credit'|'deduct', amount: number, description?: string }
+  let appliedAdjustment = null;
+  if (balanceAdjustment != null) {
+    const adjTypeRaw = balanceAdjustment?.type;
+    const adjType = typeof adjTypeRaw === "string" ? adjTypeRaw.trim() : "";
+    if (!["credit", "deduct"].includes(adjType)) {
+      return errorResponse(res, 400, 'balanceAdjustment.type must be "credit" or "deduct"');
+    }
+
+    const adjAmt = Number(balanceAdjustment?.amount);
+    if (!Number.isFinite(adjAmt) || adjAmt <= 0) {
+      return errorResponse(res, 400, "balanceAdjustment.amount must be a positive number");
+    }
+
+    const desc =
+      typeof balanceAdjustment?.description === "string"
+        ? balanceAdjustment.description.trim()
+        : "";
+
+    // Update manual adjustment field (used by admin overview)
+    const currentAdj = Number(wallet.manualAvailableBalanceAdjustment) || 0;
+    const nextAdj = adjType === "credit" ? currentAdj + adjAmt : currentAdj - adjAmt;
+    wallet.manualAvailableBalanceAdjustment = nextAdj;
+
+    // Record transaction AND update wallet aggregates so hotel app balance changes.
+    // NOTE: Admin overview handles avoiding double counting when falling back to
+    // wallet aggregates (see `getHotelWalletOverview` logic).
+    wallet.addTransaction({
+      amount: adjAmt,
+      type: adjType === "credit" ? "bonus" : "deduction",
+      status: "Completed",
+      description: desc || (adjType === "credit" ? "Admin Credit" : "Admin Deduct"),
+      processedAt: new Date(),
+      processedBy: req.admin?._id,
+    });
+    wallet.markModified("transactions");
+
+    appliedAdjustment = {
+      type: adjType,
+      amount: adjAmt,
+      description: desc || undefined,
+      manualAvailableBalanceAdjustment: nextAdj,
+    };
+  }
+
   await wallet.save();
 
   return successResponse(
@@ -676,6 +723,7 @@ export const updateHotelCashCollected = asyncHandler(async (req, res) => {
         phone: hotel.phone,
       },
       cashCollected: amount,
+      balanceAdjustment: appliedAdjustment,
     },
   );
 });
@@ -868,7 +916,7 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
     // Load wallets for these hotels
     const wallets = await HotelWallet.find({ hotelId: { $in: hotelIds } })
       .select(
-        "hotelId totalBalance totalEarned totalWithdrawn withdrawalRequests manualCashCollectedOverride",
+        "hotelId totalBalance totalEarned totalWithdrawn withdrawalRequests manualCashCollectedOverride manualAvailableBalanceAdjustment",
       )
       .lean();
 
@@ -1011,13 +1059,24 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
         typeof stats.hotelEarnings === "number"
           ? stats.hotelEarnings
           : null;
+      const hasStatsEarnings = statsTotalEarned != null;
       const totalEarned =
-        statsTotalEarned != null ? statsTotalEarned : wallet.totalEarned || 0;
+        hasStatsEarnings ? statsTotalEarned : wallet.totalEarned || 0;
       const totalWithdrawn = wallet.totalWithdrawn || 0;
       const totalBalance = wallet.totalBalance || 0;
       const withdrawableRaw = totalEarned - totalWithdrawn;
-      const availableBalance =
-        withdrawableRaw >= 0 ? withdrawableRaw : totalBalance;
+      const baseAvailable = withdrawableRaw >= 0 ? withdrawableRaw : totalBalance;
+
+      const manualAdj =
+        typeof wallet.manualAvailableBalanceAdjustment === "number"
+          ? wallet.manualAvailableBalanceAdjustment
+          : Number(wallet.manualAvailableBalanceAdjustment) || 0;
+
+      // Avoid double counting:
+      // - When we have stats-based earnings, we add `manualAdj` because stats don't include admin adjustments.
+      // - When stats are missing and we fall back to wallet aggregates, adjustments are already reflected
+      //   via wallet transactions (bonus/deduction), so we skip manualAdj.
+      const availableBalance = hasStatsEarnings ? baseAvailable + manualAdj : baseAvailable;
 
       const totalWithdrawalCount = Array.isArray(wallet.withdrawalRequests)
         ? wallet.withdrawalRequests.length

@@ -1567,10 +1567,12 @@ export const adminAPI = {
     return apiClient.get("/admin/hotels/wallets", { params });
   },
   // Update hotel's cash collected override used in admin wallet overview
-  updateHotelCashCollected: (hotelId, cashCollected) => {
+  updateHotelCashCollected: (hotelId, cashCollected, options = {}) => {
     const amount = Number(cashCollected);
+    const balanceAdjustment = options?.balanceAdjustment;
     return apiClient.put(`/admin/hotels/${hotelId}/wallet/cash-collected`, {
       cashCollected: Number.isNaN(amount) ? 0 : amount,
+      ...(balanceAdjustment ? { balanceAdjustment } : {}),
     });
   },
   // Get detailed per-order earnings for a specific hotel wallet (QR / hotel orders)

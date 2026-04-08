@@ -127,6 +127,18 @@ const hotelWalletSchema = new mongoose.Schema(
       default: null,
       min: 0,
     },
+    /**
+     * Admin-only manual adjustment applied to "available balance" shown in
+     * admin overview (credit adds, deduct subtracts).
+     *
+     * NOTE: Admin available balance is derived from order aggregation in
+     * `getHotelWalletOverview`, so this adjustment is tracked separately and
+     * added on top of the derived balance.
+     */
+    manualAvailableBalanceAdjustment: {
+      type: Number,
+      default: 0,
+    },
     totalEarned: {
       type: Number,
       default: 0,
@@ -185,6 +197,9 @@ hotelWalletSchema.methods.addTransaction = function (transactionData) {
       this.totalWithdrawn += transaction.amount;
     } else if (transaction.type === "deduction") {
       this.totalBalance -= transaction.amount;
+      // Deduction should reduce withdrawable amount too (withdrawable is derived
+      // from `totalEarned - totalWithdrawn` in hotel UI/admin overview).
+      this.totalEarned = Math.max(0, (this.totalEarned || 0) - transaction.amount);
     }
   }
 
@@ -230,6 +245,7 @@ hotelWalletSchema.methods.updateTransactionStatus = function (
       this.totalWithdrawn += oldAmount;
     } else if (transaction.type === "deduction") {
       this.totalBalance -= oldAmount;
+      this.totalEarned = Math.max(0, (this.totalEarned || 0) - oldAmount);
     }
   }
 
@@ -250,6 +266,10 @@ hotelWalletSchema.methods.updateTransactionStatus = function (
     } else if (transaction.type === "withdrawal") {
       this.totalBalance += oldAmount;
       this.totalWithdrawn = Math.max(0, this.totalWithdrawn - oldAmount);
+    } else if (transaction.type === "deduction") {
+      // Revert deduction impact
+      this.totalBalance += oldAmount;
+      this.totalEarned += oldAmount;
     }
   }
 

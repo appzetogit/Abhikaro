@@ -1,3 +1,4 @@
+/* @refresh reset */
 import { useState, useEffect, useRef } from "react"
 import { locationAPI, userAPI } from "@/lib/api"
 
@@ -10,6 +11,9 @@ export function useLocation() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [permissionGranted, setPermissionGranted] = useState(false)
+  const manualOverrideUntilRef = useRef(0)
+  const manualOverrideEnabledRef = useRef(false)
+  const MANUAL_OVERRIDE_STORAGE_KEY = "userLocation_manualOverride"
 
   const watchIdRef = useRef(null)
   const updateTimerRef = useRef(null)
@@ -1608,6 +1612,16 @@ export function useLocation() {
       return
     }
 
+    // If user manually selected a location recently, don't let GPS watcher overwrite it immediately.
+    if (Date.now() < manualOverrideUntilRef.current) {
+      return
+    }
+
+    // If user manually selected a location, only resume live tracking when they explicitly request it.
+    if (manualOverrideEnabledRef.current) {
+      return
+    }
+
     // Clear any existing watch
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current)
@@ -1783,6 +1797,80 @@ export function useLocation() {
       watchIdRef.current = null
     }
     clearTimeout(updateTimerRef.current)
+  }
+
+  /**
+   * Manually set user location (e.g. user selects from search / pin on map).
+   * This updates state immediately so the UI reflects the change without reload,
+   * persists to localStorage, and optionally syncs to backend when available.
+   */
+  const setManualLocation = async (
+    locationData,
+    {
+      updateDB = true,
+      pauseWatchMs = 2500,
+    } = {}
+  ) => {
+    try {
+      if (!locationData) return null
+
+      const lat = Number(locationData.latitude)
+      const lng = Number(locationData.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+      // Pause watcher briefly so it doesn't instantly overwrite the manual choice.
+      manualOverrideUntilRef.current = Date.now() + Math.max(0, Number(pauseWatchMs) || 0)
+      // Enable manual override mode: do not resume live tracking until user explicitly requests it.
+      manualOverrideEnabledRef.current = true
+      stopWatchingLocation()
+      try {
+        localStorage.setItem(MANUAL_OVERRIDE_STORAGE_KEY, "true")
+      } catch {}
+
+      const nextLoc = {
+        ...locationData,
+        latitude: lat,
+        longitude: lng,
+        timestamp: locationData.timestamp || Date.now(),
+      }
+
+      // Persist + update state immediately
+      try {
+        localStorage.setItem("userLocation", JSON.stringify(nextLoc))
+      } catch {}
+
+      lastProcessedCoordsRef.current = { latitude: lat, longitude: lng }
+      prevLocationCoordsRef.current = { latitude: lat, longitude: lng }
+      anchorLocationRef.current = { latitude: lat, longitude: lng }
+      lastSavedLocationRef.current = { latitude: lat, longitude: lng }
+
+      setLocation(nextLoc)
+      setPermissionGranted(true)
+      setError(null)
+
+      // Best-effort backend sync (safe for guest users - API can fail silently)
+      if (updateDB) {
+        try {
+          await userAPI.updateLocation({
+            latitude: lat,
+            longitude: lng,
+            address: nextLoc.address || "",
+            city: nextLoc.city || "",
+            state: nextLoc.state || "",
+            area: nextLoc.area || "",
+            formattedAddress: nextLoc.formattedAddress || nextLoc.address || "",
+            accuracy: nextLoc.accuracy ?? null,
+            postalCode: nextLoc.postalCode || nextLoc.zipCode || "",
+            street: nextLoc.street || "",
+            streetNumber: nextLoc.streetNumber || "",
+          })
+        } catch {}
+      }
+
+      return nextLoc
+    } catch {
+      return null
+    }
   }
 
   /* ===================== INIT ===================== */
@@ -2000,6 +2088,11 @@ export function useLocation() {
   const requestLocation = async () => {
     // Reset the fetching flag to allow new request even if one was in progress
     isFetchingLocationRef.current = false
+    // User explicitly requested current GPS location; exit manual override mode.
+    manualOverrideEnabledRef.current = false
+    try {
+      localStorage.removeItem(MANUAL_OVERRIDE_STORAGE_KEY)
+    } catch {}
     
     setLoading(true)
     setError(null)
@@ -2066,5 +2159,7 @@ export function useLocation() {
     requestLocation,
     startWatchingLocation,
     stopWatchingLocation,
+    setManualLocation,
+    isManualOverrideEnabled: manualOverrideEnabledRef.current,
   }
 }

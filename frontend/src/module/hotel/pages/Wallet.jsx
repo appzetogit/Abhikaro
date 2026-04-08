@@ -95,12 +95,19 @@ export default function HotelWallet() {
   // fallback to wallet aggregates if stats are not available.
   const statsTotalEarned = stats?.totalHotelRevenue ?? null
 
+  // Display earnings: keep dashboard-aligned stats when available.
   const totalEarned = statsTotalEarned ?? wallet?.totalEarned ?? 0
   const totalWithdrawn = wallet?.totalWithdrawn ?? 0
 
-  // Withdrawable = totalEarned - totalWithdrawn (dashboard-aligned),
+  // Withdrawable should include admin credits/deductions too.
+  // Admin adjustments are stored in wallet aggregates (totalEarned/totalBalance),
+  // but NOT in order stats; therefore compute withdrawable from wallet first.
+  const walletEarned = wallet?.totalEarned ?? null
+  const withdrawableEarnedBase = walletEarned != null ? walletEarned : totalEarned
+
+  // Withdrawable = earnedBase - totalWithdrawn,
   // clamp to 0 minimum. Fallback to wallet.pendingPayout / balance if needed.
-  const withdrawableAmountRaw = totalEarned - totalWithdrawn
+  const withdrawableAmountRaw = withdrawableEarnedBase - totalWithdrawn
   const withdrawableAmount =
     withdrawableAmountRaw >= 0
       ? withdrawableAmountRaw

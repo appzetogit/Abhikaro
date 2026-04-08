@@ -545,7 +545,9 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       try {
         // Canonical restaurant identifier to use for delivery assignment + lookup
         // (Used by `findNearestDeliveryBoys` and restaurant location fetch below)
-        const restaurantId = ridBusiness || ridMongo || ridGeneric;
+        // IMPORTANT: Prefer Mongo _id for DB lookups (Restaurant.findById, Zone.restaurantId in many deployments).
+        // Using business restaurantId first can silently fail to find location/zone and prevent notifications.
+        const restaurantId = ridMongo || ridBusiness || ridGeneric;
 
         if (!restaurantId) {
           console.error(
@@ -580,9 +582,17 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           restaurantDoc = await Restaurant.findById(restaurantId).lean();
         }
         if (!restaurantDoc) {
-          restaurantDoc = await Restaurant.findOne({
-            $or: [{ restaurantId: restaurantId }, { _id: restaurantId }],
-          }).lean();
+          // Try all known id variations (mongo/business/generic) so we don't miss location due to id format mismatch.
+          const orConds = [];
+          if (ridMongo) orConds.push({ _id: ridMongo });
+          if (ridBusiness) orConds.push({ restaurantId: ridBusiness });
+          if (ridGeneric) orConds.push({ restaurantId: ridGeneric });
+          // Back-compat: also try with the chosen restaurantId as both restaurantId and _id
+          if (restaurantId) {
+            orConds.push({ restaurantId: restaurantId });
+            orConds.push({ _id: restaurantId });
+          }
+          restaurantDoc = await Restaurant.findOne({ $or: orConds }).lean();
         }
 
         if (!restaurantDoc) {

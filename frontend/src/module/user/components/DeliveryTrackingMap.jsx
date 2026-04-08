@@ -1303,8 +1303,8 @@ const DeliveryTrackingMap = ({
         const centerLng = (rLng + cLng) / 2;
         const centerLat = (rLat + cLat) / 2;
 
-        // Get MapTypeId safely
-        const mapTypeId = window.google.maps.MapTypeId?.ROADMAP || 'roadmap';
+        // Get MapTypeId safely (default to terrain; fallback-safe if MapTypeId isn't ready)
+        const mapTypeId = window.google.maps.MapTypeId?.TERRAIN || 'terrain';
 
         // Initialize map - center between user and restaurant, stable view
         mapInstance.current = new window.google.maps.Map(mapRef.current, {

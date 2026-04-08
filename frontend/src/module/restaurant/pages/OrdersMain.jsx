@@ -624,7 +624,10 @@ export default function OrdersMain() {
   // NOTE: Sound is handled by `useRestaurantNotifications`. This ref is retained only to avoid
   // wider JSX/UI refactors; it is not used for playback.
   const audioRef = useRef(null)
-  const shownOrdersRef = useRef(new Set()) // Track orders already shown in popup
+  // Track notifications already shown in popup.
+  // IMPORTANT: Admin "reassign to restaurant" reuses the same orderId; backend sets `createdAt`
+  // to `assignmentInfo.assignedAt` for the popup timer, so dedupe must include createdAt.
+  const shownOrdersRef = useRef(new Set())
   const [currentRestaurantData, setCurrentRestaurantData] = useState(null)
   const [restaurantStatus, setRestaurantStatus] = useState({
     isActive: null,
@@ -863,8 +866,10 @@ export default function OrdersMain() {
     ;(async () => {
       console.log('📦 New order received via Socket.IO:', newOrder)
       const orderId = newOrder.orderId || newOrder.orderMongoId
-      if (!orderId || shownOrdersRef.current.has(orderId)) return
-      shownOrdersRef.current.add(orderId)
+      const createdAtMs = newOrder?.createdAt ? new Date(newOrder.createdAt).getTime() : Date.now()
+      const popupKey = orderId ? `${String(orderId)}:${String(createdAtMs)}` : null
+      if (!orderId || (popupKey && shownOrdersRef.current.has(popupKey))) return
+      if (popupKey) shownOrdersRef.current.add(popupKey)
 
       // Build initial normalized address
       let normalizedAddress =
@@ -922,7 +927,6 @@ export default function OrdersMain() {
 
       setPopupOrder(normalizedOrder)
       setShowNewOrderPopup(true)
-      const createdAtMs = normalizedOrder?.createdAt ? new Date(normalizedOrder.createdAt).getTime() : Date.now()
       acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
       try {
         const id =
@@ -1057,10 +1061,13 @@ export default function OrdersMain() {
         const allOrders = await fetchAllOrders(true) // Force refresh for new orders check
         if (Array.isArray(allOrders) && allOrders.length > 0) {
           // Find confirmed orders that haven't been shown yet
-          const confirmedOrders = allOrders.filter(
-            order => order.status === 'confirmed' &&
-              !shownOrdersRef.current.has(order.orderId || order._id)
-          )
+          const confirmedOrders = allOrders.filter((order) => {
+            if (order.status !== 'confirmed') return false
+            const id = order.orderId || order._id
+            const createdAtMs = order?.createdAt ? new Date(order.createdAt).getTime() : 0
+            const popupKey = id ? `${String(id)}:${String(createdAtMs)}` : null
+            return !popupKey || !shownOrdersRef.current.has(popupKey)
+          })
 
           // Show the most recent confirmed order in popup (double-check state)
           if (confirmedOrders.length > 0 && !showNewOrderPopupRef.current && !newOrderRef.current) {
@@ -1090,10 +1097,11 @@ export default function OrdersMain() {
             }
 
             console.log('📦 Found confirmed order (fallback):', orderForPopup)
-            shownOrdersRef.current.add(orderId)
+            const createdAtMs = orderForPopup?.createdAt ? new Date(orderForPopup.createdAt).getTime() : Date.now()
+            const popupKey = orderId ? `${String(orderId)}:${String(createdAtMs)}` : null
+            if (popupKey) shownOrdersRef.current.add(popupKey)
             setPopupOrder(orderForPopup)
             setShowNewOrderPopup(true)
-            const createdAtMs = orderForPopup?.createdAt ? new Date(orderForPopup.createdAt).getTime() : Date.now()
             acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
             try {
               const id =

@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { useLocation as useGeoLocation } from "../hooks/useLocation"
 import { useProfile } from "../context/ProfileContext"
 import { toast } from "sonner"
 import { locationAPI, userAPI } from "@/lib/api"
 import { Loader } from '@googlemaps/js-api-loader'
+import { useSharedLocation } from "@/lib/context/LocationContext"
 
 // Google Maps implementation - Leaflet components removed
 
@@ -44,7 +44,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   const navigate = useNavigate()
   const inputRef = useRef(null)
   const [searchValue, setSearchValue] = useState("")
-  const { location, loading, requestLocation } = useGeoLocation()
+  const { location, loading, requestLocation, setManualLocation } = useSharedLocation()
   const { addresses = [], addAddress, updateAddress, userProfile } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [mapPosition, setMapPosition] = useState([22.7196, 75.8577]) // Default Indore coordinates [lat, lng]
@@ -492,6 +492,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         const map = new google.maps.Map(mapContainerRef.current, {
           center: initialLocation,
           zoom: 15,
+          mapTypeId: google.maps.MapTypeId?.TERRAIN || 'terrain',
           disableDefaultUI: true, // Zomato-style clean look
           zoomControl: true,
           mapTypeControl: false,
@@ -1055,16 +1056,25 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       area: result?.address || "",
       formattedAddress: result?.address || "",
     }
-    localStorage.setItem("userLocation", JSON.stringify(locationData))
 
+    // Update the SINGLE shared location source so Home updates instantly (no reload needed)
     try {
-      await userAPI.updateLocation(locationData)
-    } catch (error) {
-      // Keep UX smooth: local update should still work even if API write fails.
-    }
+      if (typeof setManualLocation === "function") {
+        await setManualLocation(locationData, { updateDB: true, pauseWatchMs: 2500 })
+      } else {
+        localStorage.setItem("userLocation", JSON.stringify(locationData))
+        try {
+          await userAPI.updateLocation(locationData)
+        } catch {}
+      }
+    } catch {}
 
     await handleMapMoveEnd(lat, lng)
     toast.success("Location selected")
+
+    // Close + navigate home so user immediately sees updated location + zone-scoped data
+    onClose()
+    navigate("/")
   }
 
   const handleAddressFormChange = (e) => {

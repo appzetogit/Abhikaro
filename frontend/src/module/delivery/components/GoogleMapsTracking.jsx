@@ -556,7 +556,7 @@ export default function GoogleMapsTracking({
         zoom={13}
         onLoad={onLoad}
         options={{
-          mapTypeId: 'roadmap',
+          mapTypeId: 'terrain',
           zoomControl: false,
           streetViewControl: false,
           mapTypeControl: false,

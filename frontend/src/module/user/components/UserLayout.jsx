@@ -119,6 +119,7 @@ export default function UserLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { requestLocation, refreshZone } = useSharedLocation()
+  const MANUAL_OVERRIDE_STORAGE_KEY = "userLocation_manualOverride"
 
   // Handle foreground push notifications
   useForegroundNotifications({
@@ -173,8 +174,19 @@ export default function UserLayout() {
         // 2) emit an explicit app-level refresh signal for pages like Home to refetch.
         try {
           refreshZone?.()
-          // requestLocation() forces a fresh location fetch; it internally falls back to cached location.
-          requestLocation?.().catch(() => {})
+          // If user manually selected a location, do NOT auto-refresh GPS and overwrite it.
+          const isManualOverride = (() => {
+            try {
+              return localStorage.getItem(MANUAL_OVERRIDE_STORAGE_KEY) === "true"
+            } catch {
+              return false
+            }
+          })()
+
+          if (!isManualOverride) {
+            // requestLocation() forces a fresh location fetch; it internally falls back to cached location.
+            requestLocation?.().catch(() => {})
+          }
         } catch {
           // ignore
         }

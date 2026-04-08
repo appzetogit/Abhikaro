@@ -390,8 +390,10 @@ export default function DeliveryHome() {
 
   // Firebase live location update: always enabled so long as we have a location and delivery partner is online
   const deliveryBoyId = notifications?.deliveryPartnerId || null
-  const riderLat = riderLocation?.lat ?? null
-  const riderLng = riderLocation?.lng ?? null
+  // NOTE: riderLocation is stored as [lat, lng] throughout this file.
+  // Using riderLocation.lat/lng breaks live updates (always null).
+  const riderLat = Array.isArray(riderLocation) ? riderLocation[0] : null
+  const riderLng = Array.isArray(riderLocation) ? riderLocation[1] : null
   const activeOrderId =
     activeOrder?.orderId ||
     activeOrder?._id ||
@@ -773,6 +775,34 @@ export default function DeliveryHome() {
       // ignore
     }
   }
+
+  // Preload last known location immediately on app open to avoid map showing wrong/blank center
+  // while GPS permission prompt/first fix is pending.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('delivery:lastKnownLocation')
+      const saved = raw ? JSON.parse(raw) : null
+      const lat = saved?.lat
+      const lng = saved?.lng
+
+      if (
+        typeof lat === 'number' &&
+        typeof lng === 'number' &&
+        !isNaN(lat) &&
+        !isNaN(lng) &&
+        lat >= -90 && lat <= 90 &&
+        lng >= -180 && lng <= 180
+      ) {
+        // Only set if we don't already have a live location
+        setRiderLocation(prev => (Array.isArray(prev) && prev.length === 2 ? prev : [lat, lng]))
+        lastLocationRef.current = [lat, lng]
+        smoothedLocationRef.current = [lat, lng]
+        lastValidLocationRef.current = [lat, lng]
+      }
+    } catch {
+      // ignore
+    }
+  }, []) // run once on mount
 
   // Sync online status with localStorage changes (from FeedNavbar or other tabs)
   useEffect(() => {
@@ -5590,7 +5620,7 @@ export default function DeliveryHome() {
 
         // Use google.maps.Map directly - with the direct script tag loading approach,
         // this is the real Map constructor (not a bootstrap stub)
-        let mapTypeId = window.google.maps.MapTypeId?.ROADMAP || 'roadmap';
+        let mapTypeId = window.google.maps.MapTypeId?.TERRAIN || 'terrain';
 
         // Wrap map initialization in try-catch to handle any Google Maps internal errors
         let map;
@@ -6921,7 +6951,7 @@ export default function DeliveryHome() {
           zoom: 18,
           minZoom: 10, // Minimum zoom level (city/area view)
           maxZoom: 21, // Maximum zoom level - allow full zoom
-          mapTypeId: window.google.maps.MapTypeId.ROADMAP || 'roadmap',
+          mapTypeId: window.google.maps.MapTypeId?.TERRAIN || 'terrain',
           disableDefaultUI: true, // Hide all default UI controls
           zoomControl: false,
           mapTypeControl: false,

@@ -86,6 +86,7 @@ const TrackingPage = () => {
             center={center}
             zoom={13}
             options={{
+              mapTypeId: 'terrain',
               styles: lightMapStyle,
               disableDefaultUI: true,
               zoomControl: false,
