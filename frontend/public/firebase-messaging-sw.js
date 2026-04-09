@@ -113,10 +113,11 @@ async function setupBackgroundHandler() {
         badge: data?.badge || '/vite.svg',
         tag,
         data: { ...data, link },
-        // Audible ONLY for delivery new-order channel; keep all other notifications silent.
+        // Audible ONLY for new-order channels; keep all other notifications silent.
         // Android Chrome will use default system notification sound (custom MP3 is not reliable in background).
         silent: !(
-          data?.channelId === 'delivery_new_order' &&
+          (data?.channelId === 'delivery_new_order' ||
+            data?.channelId === 'restaurant_new_order') &&
           (data?.type === 'new_order' || !!data?.orderId)
         ),
         requireInteraction: true,
@@ -125,10 +126,11 @@ async function setupBackgroundHandler() {
 
       // If there is an open window client, ask it to play alert.mp3 (foreground-controlled audio).
       // Only for delivery new-order; won't work if the app is fully closed (no clients).
-      const isDeliveryNewOrder =
-        data?.channelId === 'delivery_new_order' &&
+      const isAudibleNewOrder =
+        (data?.channelId === 'delivery_new_order' ||
+          data?.channelId === 'restaurant_new_order') &&
         (data?.type === 'new_order' || !!data?.orderId);
-      if (isDeliveryNewOrder) {
+      if (isAudibleNewOrder) {
         try {
           self.clients
             .matchAll({ type: 'window', includeUncontrolled: true })

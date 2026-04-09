@@ -163,3 +163,6 @@
 [2026-04-08T06:35:21.412Z] Checking Specific Commission for RestaurantId: 69b1468ea206b33c0f39cea0
 [2026-04-08T06:35:21.443Z] Found Commission: NO
 [2026-04-08T06:35:21.581Z] Any Commission Exists? NO
+[2026-04-09T11:01:39.079Z] Checking Specific Commission for RestaurantId: 69b1468ea206b33c0f39cea0
+[2026-04-09T11:01:39.611Z] Found Commission: YES
+[2026-04-09T11:01:39.611Z] Comm Data: {"type":"percentage","value":30}

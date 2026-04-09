@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, X, Receipt, CheckCircle, Loader2 } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
@@ -40,36 +40,44 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
   const [approvingPayment, setApprovingPayment] = useState(false)
   const [reassigning, setReassigning] = useState(false)
   const [resending, setResending] = useState(false)
-  if (!order) return null
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+
+  const orderIdToUse = order?.id || order?._id || order?.orderId
 
   // Backend should provide a consistent orderStatus, but guard against legacy/inconsistent data:
   // if cancellation fields are present, never show Delivered/other non-cancelled statuses in the UI.
   const isEffectivelyCancelled =
-    order.status === "cancelled" ||
-    order.orderStatus === "Canceled" ||
-    order.orderStatus === "Cancelled by Restaurant" ||
-    order.orderStatus === "Cancelled by User" ||
-    !!order.cancelledAt ||
-    !!order.cancelledBy ||
-    !!order.cancellationReason
+    order?.status === "cancelled" ||
+    order?.orderStatus === "Canceled" ||
+    order?.orderStatus === "Cancelled by Restaurant" ||
+    order?.orderStatus === "Cancelled by User" ||
+    !!order?.cancelledAt ||
+    !!order?.cancelledBy ||
+    !!order?.cancellationReason
 
   const effectiveOrderStatus = isEffectivelyCancelled
-    ? (order.cancelledBy === "restaurant"
+    ? (order?.cancelledBy === "restaurant"
         ? "Cancelled by Restaurant"
-        : order.cancelledBy === "user"
+        : order?.cancelledBy === "user"
         ? "Cancelled by User"
         : "Canceled")
-    : order.orderStatus
+    : order?.orderStatus
 
-  const isOfflinePayment = order.paymentType === "Cash on Delivery" || order.payment?.method === "cash" || order.payment?.method === "cod"
-  const paymentPending = order.paymentStatus === "Pending" || order.paymentStatus === "Unpaid" || order.paymentCollectionStatus === "Not Collected"
+  const isOfflinePayment =
+    order?.paymentType === "Cash on Delivery" ||
+    order?.payment?.method === "cash" ||
+    order?.payment?.method === "cod"
+  const paymentPending =
+    order?.paymentStatus === "Pending" ||
+    order?.paymentStatus === "Unpaid" ||
+    order?.paymentCollectionStatus === "Not Collected"
   const showMarkAsPaid = isOfflinePayment && paymentPending && !isEffectivelyCancelled
 
   const canReassignToRestaurant =
     isEffectivelyCancelled &&
-    (order.cancelledBy === "restaurant" ||
+    (order?.cancelledBy === "restaurant" ||
       /order not accepted within time limit|restaurant did not respond|rejected by restaurant|restaurant cancelled/i.test(
-        order.cancellationReason || ""
+        order?.cancellationReason || ""
       ))
 
   const handleReassignToRestaurant = async () => {
@@ -131,6 +139,82 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
       setApprovingPayment(false)
     }
   }
+
+  const statusOptions = useMemo(
+    () => [
+      { value: "pending", label: "Pending" },
+      { value: "confirmed", label: "Accepted" },
+      { value: "preparing", label: "Processing" },
+      { value: "ready", label: "Ready" },
+      { value: "out_for_delivery", label: "Food On The Way" },
+      { value: "delivered", label: "Delivered" },
+      { value: "cancelled", label: "Canceled" },
+    ],
+    [],
+  )
+
+  const paymentStatusOptions = useMemo(
+    () => [
+      { value: "pending", label: "Pending" },
+      { value: "processing", label: "Processing" },
+      { value: "completed", label: "Paid" },
+      { value: "failed", label: "Failed" },
+      { value: "refunded", label: "Refunded" },
+    ],
+    [],
+  )
+
+  const initialOrderStatusValue = useMemo(() => {
+    const raw = (order?.status || "").toString().toLowerCase()
+    return raw || "pending"
+  }, [order?.status])
+
+  const initialPaymentStatusValue = useMemo(() => {
+    const raw = (order?.payment?.status || "").toString().toLowerCase()
+    return raw || "pending"
+  }, [order?.payment?.status])
+
+  const [editOrderStatus, setEditOrderStatus] = useState("pending")
+  const [editPaymentStatus, setEditPaymentStatus] = useState("pending")
+
+  // Keep editable fields in sync when opening/selecting a new order
+  useEffect(() => {
+    setEditOrderStatus(initialOrderStatusValue)
+    setEditPaymentStatus(initialPaymentStatusValue)
+  }, [initialOrderStatusValue, initialPaymentStatusValue, orderIdToUse, isOpen])
+
+  const hasStatusChanges =
+    editOrderStatus !== initialOrderStatusValue ||
+    editPaymentStatus !== initialPaymentStatusValue
+
+  const handleUpdateStatuses = async () => {
+    if (!orderIdToUse) return
+    if (isEffectivelyCancelled && editOrderStatus !== "cancelled") {
+      toast.error("Cancelled order status cannot be changed")
+      return
+    }
+    try {
+      setUpdatingStatus(true)
+      const resp = await adminAPI.updateOrderStatusAndPaymentStatus(orderIdToUse, {
+        orderStatus: editOrderStatus,
+        paymentStatus: editPaymentStatus,
+      })
+      if (resp?.data?.success) {
+        toast.success("Order updated")
+        onPaymentApproved?.() // refresh orders list
+        onOpenChange(false)
+      } else {
+        toast.error(resp?.data?.message || "Failed to update order")
+      }
+    } catch (err) {
+      console.error("Error updating statuses:", err)
+      toast.error(err?.response?.data?.message || "Failed to update order")
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
+  if (!order) return null
 
   // Debug: Log order data to check billImageUrl
   if (order.billImageUrl) {
@@ -321,6 +405,61 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
                   </div>
                 </div>
               )}
+
+              {/* Admin controls: update order/payment status */}
+              <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-800">Admin Controls</p>
+                  {isEffectivelyCancelled && (
+                    <span className="text-xs px-2 py-1 rounded border bg-white text-slate-600">
+                      Cancelled orders locked
+                    </span>
+                  )}
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Change Order Status</p>
+                    <select
+                      className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                      value={editOrderStatus}
+                      onChange={(e) => setEditOrderStatus(e.target.value)}
+                      disabled={updatingStatus || isEffectivelyCancelled}
+                    >
+                      {statusOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Change Payment Status</p>
+                    <select
+                      className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                      value={editPaymentStatus}
+                      onChange={(e) => setEditPaymentStatus(e.target.value)}
+                      disabled={updatingStatus}
+                    >
+                      {paymentStatusOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={handleUpdateStatuses}
+                    disabled={updatingStatus || !hasStatusChanges}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {updatingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    {updatingStatus ? "Updating..." : "Update"}
+                  </button>
+                </div>
+              </div>
               {order.deliveryType && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">

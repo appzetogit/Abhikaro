@@ -56,6 +56,7 @@ import {
   getHotelWalletOverview,
   updateHotelCashCollected,
   getHotelWalletOrderEarnings,
+  getHotelQROrders,
 } from "../controllers/hotelController.js";
 import {
   getBusinessSettings,
@@ -261,6 +262,7 @@ import {
   resendRestaurantNotification,
   getDeliveryPartnerWallet,
   backfillRestaurantLocation,
+  updateOrderAndPaymentStatus,
 } from "../controllers/orderController.js";
 import {
   getAllReviews,
@@ -519,6 +521,11 @@ router.get(
   "/hotels/:id/wallet/earnings",
   requirePermissions("hotels.wallet_view"),
   getHotelWalletOrderEarnings,
+);
+router.get(
+  "/hotels/:id/qr-orders",
+  requirePermissions("hotels.view"),
+  getHotelQROrders,
 );
 router.get(
   "/hotel-withdrawal/requests",
@@ -801,6 +808,11 @@ router.put(
   "/orders/:orderId/approve-offline-payment",
   requirePermissions("orders.approve_offline_payment"),
   approveOfflinePayment,
+);
+router.patch(
+  "/orders/:orderId/status",
+  requirePermissions("orders.edit"),
+  updateOrderAndPaymentStatus,
 );
 
 // Refund Requests - MUST be registered before any catch-all routes

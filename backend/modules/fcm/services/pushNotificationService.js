@@ -185,13 +185,18 @@ export async function notifyRestaurantNewOrder(order) {
       return;
     }
 
+    const resendVersion = Number(order.assignmentInfo?.resendVersion || 0);
+
     await sendPushNotification(restaurantId.toString(), 'restaurant', {
       title: 'Order has arrived',
       body: `Order #${order.orderId} has arrived. Amount: ₹${order.pricing?.total || 0}`,
       data: {
         type: 'new_order',
         orderId: order.orderId || order._id.toString(),
-        tag: `new_order_${order.orderId || order._id}`
+        channelId: 'restaurant_new_order',
+        sound: 'alert',
+        resendVersion,
+        tag: `restaurant_new_order_${order.orderId || order._id}_${resendVersion}`
       }
     });
   } catch (error) {

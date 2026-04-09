@@ -5,6 +5,7 @@ import {
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import Hotel from "../../hotel/models/Hotel.js";
 import HotelWallet from "../../hotel/models/HotelWallet.js";
+import mongoose from "mongoose";
 
 /**
  * GET /api/admin/hotels
@@ -858,6 +859,205 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
       orders: rows,
     },
   );
+});
+
+/**
+ * Get QR-origin orders (scan->order) for a specific hotel with profit split
+ * GET /api/admin/hotels/:id/qr-orders
+ * Query params: page, limit
+ */
+export const getHotelQROrders = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { page = 1, limit = 20 } = req.query;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return errorResponse(res, 400, "Invalid hotel id");
+  }
+
+  const hotel = await Hotel.findById(id)
+    .select("_id hotelName hotelId commission adminCommission")
+    .lean();
+
+  if (!hotel) {
+    return errorResponse(res, 404, "Hotel not found");
+  }
+
+  const Order = (await import("../../order/models/Order.js")).default;
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const hotelObjectId = hotel._id;
+  const hotelIdStr = hotel.hotelId;
+
+  const finalMatch = {
+    $and: [
+      {
+        $or: [
+          { hotelId: hotelObjectId },
+          { hotelReference: hotelIdStr },
+          { hotelReference: hotelObjectId.toString() },
+        ],
+      },
+      { status: { $ne: "cancelled" } },
+      {
+        $or: [
+          { "payment.status": "completed" },
+          {
+            $and: [
+              { "payment.method": { $in: ["pay_at_hotel", "cash"] } },
+              { status: "delivered" },
+            ],
+          },
+        ],
+      },
+      {
+        $or: [
+          { orderType: "QR" },
+          { hotelReference: { $ne: null } },
+          { hotelId: { $ne: null } },
+          { roomNumber: { $ne: null } },
+        ],
+      },
+    ],
+  };
+
+  const [orders, total] = await Promise.all([
+    Order.find(finalMatch)
+      .select(
+        [
+          "orderId",
+          "userId",
+          "restaurantName",
+          "restaurantId",
+          "pricing.subtotal",
+          "pricing.total",
+          "orderType",
+          "payment.method",
+          "payment.status",
+          "status",
+          "roomNumber",
+          "createdAt",
+          "commissionBreakdown",
+          "commissionPercentages",
+          "hotelCommission",
+          "adminCommission",
+          "restaurantShare",
+        ].join(" "),
+      )
+      .populate("userId", "name phone email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    Order.countDocuments(finalMatch),
+  ]);
+
+  const hotelPct = Number(hotel.commission) || 0;
+  const adminPct = Number(hotel.adminCommission) || 0;
+
+  const rows = orders.map((order) => {
+    const amountBase =
+      (order.pricing && typeof order.pricing.subtotal === "number"
+        ? order.pricing.subtotal
+        : typeof order.pricing?.total === "number"
+          ? order.pricing.total
+          : 0) || 0;
+
+    const hotelProfit =
+      typeof order.hotelCommission === "number" && order.hotelCommission > 0
+        ? order.hotelCommission
+        : typeof order.commissionBreakdown?.hotel === "number"
+          ? order.commissionBreakdown.hotel
+          : Math.round(((amountBase * hotelPct) / 100) * 100) / 100;
+
+    const adminProfit =
+      typeof order.adminCommission === "number" && order.adminCommission > 0
+        ? order.adminCommission
+        : typeof order.commissionBreakdown?.admin === "number"
+          ? order.commissionBreakdown.admin
+          : Math.round(((amountBase * adminPct) / 100) * 100) / 100;
+
+    const restaurantProfit =
+      typeof order.restaurantShare === "number" && order.restaurantShare > 0
+        ? order.restaurantShare
+        : typeof order.commissionBreakdown?.restaurant === "number"
+          ? order.commissionBreakdown.restaurant
+          : Math.round((amountBase - hotelProfit - adminProfit) * 100) / 100;
+
+    return {
+      _id: order._id,
+      orderId: order.orderId,
+      createdAt: order.createdAt,
+      status: order.status,
+      payment: {
+        method: order.payment?.method || null,
+        status: order.payment?.status || null,
+      },
+      orderType: order.orderType || null,
+      roomNumber: order.roomNumber || null,
+      restaurant: {
+        name: order.restaurantName || null,
+        id: order.restaurantId || null,
+      },
+      user: order.userId
+        ? {
+            id: order.userId._id,
+            name: order.userId.name || null,
+            phone: order.userId.phone || null,
+            email: order.userId.email || null,
+          }
+        : null,
+      amountBase: Math.round(amountBase * 100) / 100,
+      profits: {
+        hotel: Math.round((Number(hotelProfit) || 0) * 100) / 100,
+        admin: Math.round((Number(adminProfit) || 0) * 100) / 100,
+        restaurant: Math.round((Number(restaurantProfit) || 0) * 100) / 100,
+      },
+      percentages: {
+        hotel: order.commissionPercentages?.hotel ?? hotelPct,
+        admin: order.commissionPercentages?.admin ?? adminPct,
+        restaurant: order.commissionPercentages?.restaurant ?? null,
+      },
+    };
+  });
+
+  const summary = rows.reduce(
+    (acc, row) => {
+      acc.count += 1;
+      acc.totalBase += Number(row.amountBase) || 0;
+      acc.hotel += Number(row.profits?.hotel) || 0;
+      acc.admin += Number(row.profits?.admin) || 0;
+      acc.restaurant += Number(row.profits?.restaurant) || 0;
+      return acc;
+    },
+    { count: 0, totalBase: 0, hotel: 0, admin: 0, restaurant: 0 },
+  );
+
+  return successResponse(res, 200, "Hotel QR orders fetched successfully", {
+    hotel: {
+      id: hotel._id,
+      hotelId: hotel.hotelId,
+      hotelName: hotel.hotelName,
+    },
+    summary: {
+      count: summary.count,
+      totalBase: Math.round(summary.totalBase * 100) / 100,
+      profits: {
+        hotel: Math.round(summary.hotel * 100) / 100,
+        admin: Math.round(summary.admin * 100) / 100,
+        restaurant: Math.round(summary.restaurant * 100) / 100,
+      },
+    },
+    orders: rows,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      pages: Math.ceil(total / limitNum),
+    },
+  });
 });
 
 /**

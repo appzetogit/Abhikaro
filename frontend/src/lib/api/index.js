@@ -1581,6 +1581,10 @@ export const adminAPI = {
       params,
     });
   },
+  // Get QR-scan orders for a specific hotel with user & split
+  getHotelQrOrders: (hotelId, params = {}) => {
+    return apiClient.get(`/admin/hotels/${hotelId}/qr-orders`, { params });
+  },
 
   // Restaurant wallet overview (admin)
   getRestaurantWalletOverview: (params = {}) => {
@@ -1950,6 +1954,12 @@ export const adminAPI = {
         orderId,
       ),
     );
+  },
+
+  // Admin override: update order status and/or payment status
+  updateOrderStatusAndPaymentStatus: (orderId, payload) => {
+    if (!orderId) return Promise.reject(new Error("Order ID is required"));
+    return apiClient.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, payload);
   },
 
   // Process refund (supports both old and new endpoints)

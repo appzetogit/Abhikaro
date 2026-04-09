@@ -223,6 +223,10 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
       // Resolve payment method for push: override > order.payment > collection
       let fcmPaymentMethod = paymentMethodOverride ?? order.payment?.method ?? 'razorpay';
       
+      // Make tag unique per resend so Web/PWA doesn't replace an older notification silently.
+      const resendVersion = Number(order.assignmentInfo?.resendVersion || 0);
+      const fcmTag = `restaurant_new_order_${order.orderId}_${resendVersion}`;
+
       const fcmResult = await sendToUser(restaurantId, 'restaurant', {
         title: 'Order has arrived',
         body: `Order #${order.orderId} has arrived. Amount: ₹${order.pricing?.total || 0}. Method: ${fcmPaymentMethod === 'cash' ? 'COD' : fcmPaymentMethod.toUpperCase()}`,
@@ -230,7 +234,10 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
         type: 'new_order', 
         orderId: order.orderId,
         orderMongoId: order._id.toString(),
-        tag: `new_order_${order.orderId}`
+        channelId: 'restaurant_new_order',
+        sound: 'alert',
+        resendVersion,
+        tag: fcmTag
       });
       console.log(`📱 [FCM] Push notification result for restaurant ${restaurantId}:`, fcmResult.success ? 'Success' : 'Failed', fcmResult.error || '');
     } catch (fcmErr) {

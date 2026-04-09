@@ -1405,23 +1405,9 @@ export default function OrdersMain() {
   }
 
   const handleRejectCancel = () => {
+    // Cancel should take user back to the accept/details popup (do not clear/close it).
     setShowRejectPopup(false)
-    setShowNewOrderPopup(false)
-    setPopupOrder(null)
-    clearNewOrder()
-    try {
-      const current = popupOrder || newOrder
-      const id =
-        current?.orderId?.toString?.() ||
-        current?.orderMongoId?.toString?.() ||
-        current?._id?.toString?.() ||
-        null
-      if (id) localStorage.removeItem(`restaurant_accept_deadline_ms:${id}`)
-    } catch {
-      // ignore
-    }
     setRejectReason("")
-    setCountdown(240)
   }
 
   // Handle cancel order (for preparing orders)

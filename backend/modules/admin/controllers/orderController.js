@@ -724,6 +724,108 @@ export const approveOfflinePayment = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Admin override: update order status and/or payment status
+ * PATCH /api/admin/orders/:orderId/status
+ * Body: { orderStatus?: string, paymentStatus?: string, cancellationReason?: string }
+ */
+export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { orderStatus, paymentStatus, cancellationReason } = req.body || {};
+
+    if (!orderStatus && !paymentStatus) {
+      return errorResponse(res, 400, "Nothing to update");
+    }
+
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24) {
+      order = await Order.findById(orderId);
+    }
+    if (!order) {
+      order = await Order.findOne({ orderId });
+    }
+
+    if (!order) {
+      return errorResponse(res, 404, "Order not found");
+    }
+
+    const allowedOrderStatuses = new Set([
+      "pending",
+      "confirmed",
+      "preparing",
+      "ready",
+      "out_for_delivery",
+      "delivered",
+      "cancelled",
+    ]);
+
+    const allowedPaymentStatuses = new Set([
+      "pending",
+      "processing",
+      "completed",
+      "failed",
+      "refunded",
+    ]);
+
+    // Disallow reviving cancelled orders (avoid data integrity surprises)
+    if (
+      typeof orderStatus === "string" &&
+      order.status === "cancelled" &&
+      orderStatus.trim().toLowerCase() !== "cancelled"
+    ) {
+      return errorResponse(res, 400, "Cancelled order status cannot be changed");
+    }
+
+    if (typeof orderStatus === "string" && orderStatus.trim().length > 0) {
+      const next = orderStatus.trim().toLowerCase();
+      if (!allowedOrderStatuses.has(next)) {
+        return errorResponse(res, 400, "Invalid order status");
+      }
+
+      order.status = next;
+      if (next === "cancelled") {
+        order.cancelledAt = order.cancelledAt || new Date();
+        order.cancelledBy = order.cancelledBy || "admin";
+        const reason =
+          typeof cancellationReason === "string"
+            ? cancellationReason.trim()
+            : "";
+        order.cancellationReason =
+          reason || order.cancellationReason || "Updated by admin";
+      }
+    }
+
+    if (typeof paymentStatus === "string" && paymentStatus.trim().length > 0) {
+      const next = paymentStatus.trim().toLowerCase();
+      if (!allowedPaymentStatuses.has(next)) {
+        return errorResponse(res, 400, "Invalid payment status");
+      }
+
+      if (!order.payment) order.payment = {};
+      order.payment.status = next;
+
+      // Keep Payment collection in sync when present
+      const paymentRecord = await Payment.findOne({ orderId: order._id });
+      if (paymentRecord) {
+        paymentRecord.status = next;
+        await paymentRecord.save();
+      }
+    }
+
+    await order.save();
+
+    return successResponse(res, 200, "Order updated successfully", {
+      orderId: order.orderId,
+      status: order.status,
+      paymentStatus: order.payment?.status || null,
+    });
+  } catch (error) {
+    console.error("Error updating order/payment status:", error);
+    return errorResponse(res, 500, "Failed to update order");
+  }
+});
+
+/**
  * Get orders searching for deliveryman (ready orders without delivery partner)
  * GET /api/admin/orders/searching-deliveryman
  * Query params: page, limit, search
