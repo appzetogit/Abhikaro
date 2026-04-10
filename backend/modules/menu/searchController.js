@@ -48,19 +48,30 @@ export async function suggestUnifiedSearch(req, res, next) {
         { cuisines: { $elemMatch: { $regex: rx } } },
       ],
       isActive: true,
+      isAcceptingOrders: true,
     } : { isActive: true };
 
-    const restaurants = await Restaurant.find(restaurantQuery, {
+    const restaurants = await Restaurant.find(
+      {
+        ...restaurantQuery,
+        // Ensure closed/offline restaurants do not appear in search surfaces.
+        isAcceptingOrders: true,
+      },
+      {
       name: 1,
       slug: 1,
       profileImage: 1,
+      onboarding: 1,
     })
       .limit(limit)
       .lean();
 
+    const resolveRestaurantName = (r) =>
+      r?.onboarding?.step1?.restaurantName || r?.name || null;
+
     const restaurantsOut = restaurants.map(r => ({
       id: String(r._id),
-      label: r.name,
+      label: resolveRestaurantName(r),
       type: 'restaurant',
       imageUrl: r?.profileImage?.url || null,
       slug: r?.slug || null,
@@ -139,26 +150,34 @@ export async function suggestUnifiedSearch(req, res, next) {
       new Set(dedupedFoods.map(f => String(f.restaurant)).filter(Boolean))
     );
     const rMeta = await Restaurant.find(
-      { _id: { $in: restaurantIds.map(id => new mongoose.Types.ObjectId(id)) } },
-      { name: 1, slug: 1, profileImage: 1 }
+      {
+        _id: { $in: restaurantIds.map(id => new mongoose.Types.ObjectId(id)) },
+        isActive: true,
+        isAcceptingOrders: true,
+      },
+      { name: 1, slug: 1, profileImage: 1, onboarding: 1, isActive: 1, isAcceptingOrders: 1 }
     ).lean();
     const rMetaById = new Map(rMeta.map(r => [String(r._id), r]));
 
-    const foodsOut = dedupedFoods.slice(0, limit).map(f => {
-      const r = rMetaById.get(String(f.restaurant));
-      return {
-        id: String(f.item?.id || ''),
-        label: String(f.item?.name || '').trim(),
-        type: 'food',
-        restaurantId: f.restaurant ? String(f.restaurant) : null,
-        restaurantName: r?.name || null,
-        restaurantSlug: r?.slug || null,
-        imageUrl:
-          (Array.isArray(f.item?.images) && f.item.images[0]) ||
-          f.item?.image ||
-          null,
-      };
-    });
+    const foodsOut = dedupedFoods
+      .map((f) => {
+        const r = rMetaById.get(String(f.restaurant));
+        if (!r || r.isActive !== true || r.isAcceptingOrders !== true) return null;
+        return {
+          id: String(f.item?.id || ''),
+          label: String(f.item?.name || '').trim(),
+          type: 'food',
+          restaurantId: f.restaurant ? String(f.restaurant) : null,
+          restaurantName: resolveRestaurantName(r),
+          restaurantSlug: r?.slug || null,
+          imageUrl:
+            (Array.isArray(f.item?.images) && f.item.images[0]) ||
+            f.item?.image ||
+            null,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, limit);
 
     return res.status(200).json({
       success: true,
@@ -220,21 +239,38 @@ export async function legacyMenuSearch(req, res, next) {
 
     const combined = [...fromSections, ...fromSubsections];
     const seen = new Map();
-    const out = [];
+    const unique = [];
     for (const rec of combined) {
       const name = (rec?.item?.name || '').trim();
       if (!name) continue;
       const key = `${String(rec.restaurant)}::${name.toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.set(key, true);
-      out.push({
+      unique.push({
         id: rec.item?.id || undefined,
         name,
         image: (Array.isArray(rec.item?.images) && rec.item.images[0]) || rec.item?.image || null,
         restaurantId: rec.restaurant ? String(rec.restaurant) : null,
       });
-      if (out.length >= limit) break;
+      if (unique.length >= limit * 2) break;
     }
+
+    const uniqueRestaurantIds = Array.from(
+      new Set(unique.map((x) => x.restaurantId).filter(Boolean))
+    );
+    const allowedRestaurants = await Restaurant.find(
+      {
+        _id: { $in: uniqueRestaurantIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        isActive: true,
+        isAcceptingOrders: true,
+      },
+      { _id: 1 }
+    ).lean();
+    const allowedSet = new Set(allowedRestaurants.map((r) => String(r._id)));
+
+    const out = unique
+      .filter((x) => x.restaurantId && allowedSet.has(String(x.restaurantId)))
+      .slice(0, limit);
 
     return res.status(200).json({
       success: true,

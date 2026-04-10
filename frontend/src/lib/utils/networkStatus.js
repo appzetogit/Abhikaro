@@ -11,6 +11,9 @@ const listeners = new Set();
 const SLOW_THRESHOLD_MS = 3000; // >3s to /health => treat as slow
 const PING_TIMEOUT_MS = 5000;   // hard timeout for health request
 const PING_INTERVAL_MS = 15000; // periodic health check
+const BACKEND_FAILS_BEFORE_UNAVAILABLE = 2; // debounce transient failures
+
+let consecutiveBackendFailures = 0;
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -32,36 +35,82 @@ function setStatus(newStatus) {
   notifyListeners();
 }
 
+function buildHealthCheckUrls() {
+  // Prefer /api/health when API is reverse-proxied but /health isn't.
+  // Support both relative (/api) and absolute (https://api.example.com/api) base URLs.
+  const urls = [];
+
+  if (typeof API_BASE_URL === "string" && API_BASE_URL.startsWith("/")) {
+    urls.push("/api/health");
+    urls.push("/health");
+    return urls;
+  }
+
+  try {
+    const apiUrl = new URL(API_BASE_URL);
+    urls.push(`${apiUrl.origin}/health`);
+    urls.push(`${apiUrl.origin}/api/health`);
+  } catch {
+    // If API_BASE_URL is malformed or unknown, fall back to relative.
+    urls.push("/api/health");
+    urls.push("/health");
+  }
+
+  return urls;
+}
+
+async function fetchWithTimeout(url) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
+  const start = performance.now();
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      // Avoid non-simple headers for GET (can trigger CORS preflight on some setups).
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return { response, elapsedMs: performance.now() - start };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
 async function pingBackend() {
   if (typeof window === "undefined") {
     // In non-browser environments, assume online and skip
     return;
   }
 
-  const baseUrl = API_BASE_URL.replace("/api", "");
-  const healthUrl = `${baseUrl}/health`;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
-
-  const start = performance.now();
-
   try {
-    const response = await fetch(healthUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-    });
+    const candidates = buildHealthCheckUrls();
 
-    clearTimeout(timeoutId);
+    let ok = false;
+    let elapsed = 0;
+    let lastError = null;
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    for (const url of candidates) {
+      try {
+        const { response, elapsedMs } = await fetchWithTimeout(url);
+        if (response.ok) {
+          ok = true;
+          elapsed = elapsedMs;
+          break;
+        }
+        lastError = new Error(`HTTP ${response.status}`);
+      } catch (e) {
+        lastError = e;
+      }
     }
 
-    const elapsed = performance.now() - start;
+    if (!ok) {
+      throw lastError || new Error("Health check failed");
+    }
+
+    consecutiveBackendFailures = 0;
 
     if (navigator.onLine === false) {
       setStatus("offline");
@@ -71,10 +120,19 @@ async function pingBackend() {
       setStatus("online");
     }
   } catch (error) {
-    clearTimeout(timeoutId);
     // Only mark the app as offline when the browser itself is offline.
     // A failed health check while online means the backend is unavailable.
-    setStatus(navigator.onLine === false ? "offline" : "backend_unavailable");
+    if (navigator.onLine === false) {
+      consecutiveBackendFailures = 0;
+      setStatus("offline");
+      return;
+    }
+
+    consecutiveBackendFailures += 1;
+    if (consecutiveBackendFailures >= BACKEND_FAILS_BEFORE_UNAVAILABLE) {
+      setStatus("backend_unavailable");
+    }
+
     if (import.meta.env.DEV) {
       console.warn("[networkStatus] Health check failed:", error?.message || error);
     }

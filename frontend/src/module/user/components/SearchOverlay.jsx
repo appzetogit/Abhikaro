@@ -28,6 +28,19 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
   const [imageErrors, setImageErrors] = useState(new Set())
   const zoneId = contextZoneId || localStorage.getItem("userZoneId")
 
+  const isLikelyGenericRestaurantName = (name) =>
+    /^restaurant\s*\d+$/i.test(String(name || "").trim())
+
+  const restaurantNameById = useMemo(() => {
+    const map = new Map()
+    restaurants.forEach((r) => {
+      const id = r?.id
+      const name = r?.name
+      if (id && name) map.set(String(id), String(name).trim())
+    })
+    return map
+  }, [restaurants])
+
   const getFoodImage = (item) => {
     if (!item || typeof item !== "object") return null
 
@@ -92,11 +105,21 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           item?.restaurant?._id ||
           item?.restaurant?.id ||
           null
+
+        const enrichedRestaurantName = (() => {
+          const candidateName = typeof restaurantName === "string" ? restaurantName.trim() : null
+          if (!restaurantId) return candidateName
+          const byId = restaurantNameById.get(String(restaurantId)) || null
+          if (!candidateName) return byId
+          if (isLikelyGenericRestaurantName(candidateName) && byId) return byId
+          return candidateName
+        })()
+
         const restaurantSlug =
           item?.restaurantSlug ||
           item?.restaurant?.slug ||
-          (typeof restaurantName === "string" && restaurantName.trim()
-            ? restaurantName.trim().toLowerCase().replace(/\s+/g, "-")
+          (typeof enrichedRestaurantName === "string" && enrichedRestaurantName.trim()
+            ? enrichedRestaurantName.trim().toLowerCase().replace(/\s+/g, "-")
             : null)
         return {
           id,
@@ -104,7 +127,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           image: getFoodImage(item),
           slug: item?.slug || null,
           itemType: "food",
-          restaurantName: typeof restaurantName === "string" ? restaurantName.trim() : null,
+          restaurantName: typeof enrichedRestaurantName === "string" ? enrichedRestaurantName.trim() : null,
           restaurantId,
           restaurantSlug,
         }
@@ -183,17 +206,26 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
       ? restaurantsResponse.data.data.restaurants
       : []
 
-    const restaurantIds = restaurants
+    // Only include restaurants that are currently accepting orders.
+    // This keeps search suggestions consistent with ordering availability.
+    const openRestaurants = restaurants.filter((r) => {
+      if (!r) return false
+      if (r.isActive === false) return false
+      if (r.isAcceptingOrders === false || r.isAcceptingOrders === 0) return false
+      return true
+    })
+
+    const restaurantIds = openRestaurants
       .map((restaurant) => restaurant?.restaurantId || restaurant?._id || restaurant?.id)
       .filter(Boolean)
     const restaurantNamesById = new Map(
-      restaurants.map((restaurant) => [
+      openRestaurants.map((restaurant) => [
         restaurant?.restaurantId || restaurant?._id || restaurant?.id,
         restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || null,
       ])
     )
     const restaurantSlugsById = new Map(
-      restaurants.map((restaurant) => [
+      openRestaurants.map((restaurant) => [
         restaurant?.restaurantId || restaurant?._id || restaurant?.id,
         restaurant?.slug ||
           (restaurant?.onboarding?.step1?.restaurantName || restaurant?.name || "")
@@ -364,9 +396,17 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
               cuisine: Array.isArray(r?.cuisines) ? r.cuisines.join(", ") : (r?.cuisine || ""),
               image: coverImage || profileImageUrl || null,
               itemType: "restaurant",
+              isActive: r?.isActive,
+              isAcceptingOrders: r?.isAcceptingOrders,
             }
           })
           .filter((r) => r.id && r.name && r.slug)
+          // Hide closed/offline restaurants from search suggestions
+          .filter((r) => {
+            if (r.isActive === false) return false
+            if (r.isAcceptingOrders === false || r.isAcceptingOrders === 0) return false
+            return true
+          })
 
         setRestaurants(normalized)
       } catch (err) {
@@ -493,7 +533,14 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
               name: f?.label || '',
               image: f?.imageUrl || null,
               itemType: "food",
-              restaurantName: f?.restaurantName || null,
+              restaurantName: (() => {
+                const candidateName = f?.restaurantName || null
+                const restId = f?.restaurantId || null
+                const byId = restId ? (restaurantNameById.get(String(restId)) || null) : null
+                if (!candidateName) return byId
+                if (isLikelyGenericRestaurantName(candidateName) && byId) return byId
+                return candidateName
+              })(),
               restaurantId: f?.restaurantId || null,
               restaurantSlug: f?.restaurantSlug || null,
             })).filter(x => x.name)

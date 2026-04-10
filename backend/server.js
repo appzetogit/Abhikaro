@@ -408,6 +408,7 @@ app.use(helmet({
       connectSrc: [
         "'self'",
         "https://apis.google.com",
+        "https://api.foods.abhikaro.in",
         "https://api.razorpay.com",
         "https://lumberjack.razorpay.com",
         "https://www.googleapis.com",
@@ -418,6 +419,8 @@ app.use(helmet({
         "https://*.googleapis.com",
         "https://api.bigdatacloud.net", // For reverse geocoding
         "ws://localhost:*",
+        "ws://api.foods.abhikaro.in",
+        "wss://api.foods.abhikaro.in",
         "http://localhost:*",
       ],
       frameSrc: [
@@ -536,6 +539,22 @@ app.use('/api/auth/register', strictRateLimit);
 
 // Health check routes for load balancer
 app.get('/health', async (req, res) => {
+  try {
+    const { getHealthStatus } = await import('./config/loadBalancer.js');
+    const health = await getHealthStatus();
+    const statusCode = health.status === 'healthy' ? 200 : health.status === 'degraded' ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// API health check (used by frontend reverse-proxy setups where only /api is routed to backend)
+app.get('/api/health', async (req, res) => {
   try {
     const { getHealthStatus } = await import('./config/loadBalancer.js');
     const health = await getHealthStatus();
@@ -1034,6 +1053,25 @@ function initializeScheduledTasks() {
     console.log('✅ Auto-reject order scheduler initialized (runs every 30 seconds)');
   }).catch((error) => {
     console.error('❌ Failed to initialize auto-reject service:', error);
+  });
+
+  // Import auto-cancel-ready service (Ready but not picked up within 1h30m)
+  import('./modules/order/services/autoCancelReadyService.js').then(({ processAutoCancelReadyOrders }) => {
+    // Run every 5 minutes (cheap + enough for 90-minute threshold)
+    cron.schedule('*/5 * * * *', async () => {
+      try {
+        const result = await processAutoCancelReadyOrders();
+        if (result.processed > 0) {
+          console.log(`[Auto Cancel Ready Cron] ${result.message}`);
+        }
+      } catch (error) {
+        console.error('[Auto Cancel Ready Cron] Error:', error);
+      }
+    });
+
+    console.log('✅ Auto-cancel ready order scheduler initialized (runs every 5 minutes)');
+  }).catch((error) => {
+    console.error('❌ Failed to initialize auto-cancel-ready service:', error);
   });
 
   // Expire stale payment intents (runs every minute)

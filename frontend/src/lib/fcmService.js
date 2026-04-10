@@ -150,6 +150,47 @@ export async function registerFcmToken(accessToken, options = {}) {
 }
 
 /**
+ * Register a *native* (Android/iOS) FCM token with backend.
+ * Use this in Flutter InAppWebView wrappers where Web Push isn't reliable.
+ *
+ * @param {string} accessToken - JWT access token for the logged-in role (hotel/restaurant/user/etc.)
+ * @param {string} nativeFcmToken - token obtained from firebase_messaging (native)
+ * @param {object} options - { platform: 'android'|'ios', deviceId?: string|null }
+ */
+export async function registerNativeFcmToken(accessToken, nativeFcmToken, options = {}) {
+  const { platform = "android", deviceId = null } = options || {};
+
+  if (!nativeFcmToken || typeof nativeFcmToken !== "string") return;
+  if (!accessToken) return;
+
+  try {
+    const apiClient = (await import("./api/axios.js")).default;
+    await apiClient.post(
+      "/fcm/register-token",
+      {
+        fcmToken: nativeFcmToken.trim(),
+        platform: platform === "ios" ? "ios" : "android",
+        deviceId: deviceId || null,
+        // native wrapper handles its own welcome/login UX
+        sendWelcome: false,
+        sendLoginAlert: false,
+      },
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+    if (import.meta.env.DEV) {
+      console.log("[FCM] Native token registered with backend");
+    }
+  } catch (err) {
+    const msg = err?.response?.data?.message || err?.message || "unknown error";
+    if (import.meta.env.DEV) {
+      console.warn("[FCM] Native backend registration failed:", msg, err?.response?.status);
+    }
+  }
+}
+
+/**
  * Remove FCM token on logout
  */
 export async function removeFcmToken() {

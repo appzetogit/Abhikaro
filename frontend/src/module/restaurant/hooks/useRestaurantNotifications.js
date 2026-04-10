@@ -37,6 +37,8 @@ export const useRestaurantNotifications = () => {
   const CONNECT_ERROR_LOG_THROTTLE_MS = 10000;
   // Dedupe sound so it never plays twice for the same order/event burst
   const lastSoundRef = useRef({ orderId: null, ts: 0 });
+  // If an order arrives before audio is unlocked, remember it and ring right after unlock.
+  const pendingRingPayloadRef = useRef(null);
 
   const playNotificationSound = (payload) => {
     try {
@@ -146,7 +148,10 @@ export const useRestaurantNotifications = () => {
   const startRingingForOrder = useCallback(
     (payload, { durationMs = 5 * 60 * 1000 } = {}) => {
       // Only ring if user has unlocked audio (autoplay policy)
-      if (!userInteractedRef.current) return;
+      if (!userInteractedRef.current) {
+        pendingRingPayloadRef.current = payload || null;
+        return;
+      }
 
       const orderId =
         payload?.orderId?.toString?.() ||
@@ -488,6 +493,7 @@ export const useRestaurantNotifications = () => {
       window.dispatchEvent(new CustomEvent('new_order_received', { detail: orderData }));
 
       // Play notification sound
+      // If audio isn't unlocked yet, this will be queued and auto-start after first user interaction.
       startRingingForOrder(orderData, { durationMs: 5 * 60 * 1000 });
     });
 
@@ -563,36 +569,6 @@ export const useRestaurantNotifications = () => {
     };
   }, [restaurantId, startRingingForOrder, stopNotificationSound]);
 
-  // Track user interaction for autoplay policy
-  useEffect(() => {
-    const handleUserInteraction = () => {
-      userInteractedRef.current = true;
-      try {
-        localStorage.setItem('restaurant_sound_unlocked', '1');
-      } catch {
-        // ignore
-      }
-      setIsSoundUnlocked(true);
-      // Remove listeners after first interaction
-      document.removeEventListener('click', handleUserInteraction);
-      document.removeEventListener('touchstart', handleUserInteraction);
-      document.removeEventListener('keydown', handleUserInteraction);
-    };
-    
-    // Listen for user interaction
-    document.addEventListener('click', handleUserInteraction, { once: true });
-    document.addEventListener('touchstart', handleUserInteraction, { once: true });
-    document.addEventListener('keydown', handleUserInteraction, { once: true });
-    
-    return () => {
-      document.removeEventListener('click', handleUserInteraction);
-      document.removeEventListener('touchstart', handleUserInteraction);
-      document.removeEventListener('keydown', handleUserInteraction);
-    };
-  }, []);
-
-  // (playNotificationSound / stopNotificationSound / startRingingForOrder are defined above)
-
   const unlockSound = useCallback(async () => {
     // Explicitly unlock sound via a user gesture (button click/tap)
     userInteractedRef.current = true;
@@ -629,6 +605,56 @@ export const useRestaurantNotifications = () => {
 
     return true;
   }, []);
+
+  // Track user interaction for autoplay policy
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      userInteractedRef.current = true;
+      try {
+        localStorage.setItem('restaurant_sound_unlocked', '1');
+      } catch {
+        // ignore
+      }
+      setIsSoundUnlocked(true);
+
+      // Best-effort: actually "prime" the audio element on first gesture so later plays are allowed.
+      // Some browsers/WebViews require a real play() call within the gesture handler.
+      try {
+        unlockSound?.();
+      } catch {
+        // ignore
+      }
+
+      // If an order arrived while locked, start ringing immediately after unlock.
+      try {
+        const pending = pendingRingPayloadRef.current;
+        if (pending) {
+          pendingRingPayloadRef.current = null;
+          startRingingForOrder(pending, { durationMs: 5 * 60 * 1000 });
+        }
+      } catch {
+        // ignore
+      }
+
+      // Remove listeners after first interaction
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+    
+    // Listen for user interaction
+    document.addEventListener('click', handleUserInteraction, { once: true });
+    document.addEventListener('touchstart', handleUserInteraction, { once: true });
+    document.addEventListener('keydown', handleUserInteraction, { once: true });
+    
+    return () => {
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+  }, [startRingingForOrder, unlockSound]);
+
+  // (playNotificationSound / stopNotificationSound / startRingingForOrder are defined above)
 
   // Flutter bridge: allow wrapper to call into web to unlock audio on first gesture.
   useEffect(() => {

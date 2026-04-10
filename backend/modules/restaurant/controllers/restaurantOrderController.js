@@ -1003,8 +1003,10 @@ export const rejectOrder = asyncHandler(async (req, res) => {
       orderStatus: order.status,
     });
 
-    // Allow rejecting/cancelling orders with status 'pending', 'confirmed', or 'preparing'
-    if (!["pending", "confirmed", "preparing"].includes(order.status)) {
+    // Allow rejecting/cancelling orders with status:
+    // - pending/confirmed: before preparation starts
+    // - preparing/ready: restaurant can still cancel before delivery partner picks it up
+    if (!["pending", "confirmed", "preparing", "ready"].includes(order.status)) {
       return errorResponse(
         res,
         400,

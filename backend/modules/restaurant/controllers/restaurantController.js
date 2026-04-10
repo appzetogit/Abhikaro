@@ -1397,7 +1397,7 @@ export const deleteRestaurantAccount = asyncHandler(async (req, res) => {
 // Get restaurants with dishes under ₹250
 export const getRestaurantsWithDishesUnder250 = async (req, res) => {
   try {
-    const { zoneId } = req.query; // User's zone ID (optional - if provided, filters by zone)
+    const { zoneId, diningCategory } = req.query; // zoneId is required for discovery; diningCategory reserved for future use
 
     // Strict zone mode: under-250 list also requires valid zone.
     if (!zoneId && !diningCategory) {
@@ -1493,6 +1493,8 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
             restaurantId: restaurant.restaurantId,
             name: restaurant.name,
             slug: restaurant.slug,
+            isActive: restaurant.isActive,
+            isAcceptingOrders: restaurant.isAcceptingOrders,
             rating: restaurant.rating || 0,
             totalRatings: restaurant.totalRatings || 0,
             deliveryTime: restaurant.estimatedDeliveryTime || "25-30 mins",
@@ -1522,8 +1524,8 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
       }
     };
 
-    // Get all active restaurants
-    let restaurants = await Restaurant.find({ isActive: true })
+    // Under-250 is an "order now" surface: exclude closed/offline restaurants.
+    let restaurants = await Restaurant.find({ isActive: true, isAcceptingOrders: true })
       .select('-owner -createdAt -updatedAt')
       .lean()
       .limit(100); // Limit to first 100 restaurants for performance

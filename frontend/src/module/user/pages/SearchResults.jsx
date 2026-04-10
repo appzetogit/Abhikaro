@@ -287,6 +287,8 @@ export default function SearchResults() {
                 name: restaurant.onboarding?.step1?.restaurantName || restaurant.name,
                 cuisine: cuisine,
                 rating: restaurant.rating || null, // Use backend rating or null
+                isActive: restaurant.isActive,
+                isAcceptingOrders: restaurant.isAcceptingOrders,
                 deliveryTime: deliveryTime,
                 distance: distance,
                 image: image,
@@ -444,6 +446,10 @@ export default function SearchResults() {
     const allFoods = []
 
     restaurantsData.forEach((restaurant) => {
+      // Do not show dishes from closed/offline restaurants
+      if (restaurant?.isActive === false) return
+      if (restaurant?.isAcceptingOrders === false || restaurant?.isAcceptingOrders === 0) return
+
       const sections = Array.isArray(restaurant?.menu?.sections) ? restaurant.menu.sections : []
       sections.forEach((section) => {
         const sectionItems = Array.isArray(section?.items) ? section.items : []
@@ -538,6 +544,8 @@ export default function SearchResults() {
 
     const matches = restaurantsData.filter((restaurant) => {
       if (!restaurant) return false
+      if (restaurant.isActive === false) return false
+      if (restaurant.isAcceptingOrders === false || restaurant.isAcceptingOrders === 0) return false
 
       // If category filter is applied, restrict to those restaurants first.
       if (selectedCategory !== "all" && menuMatchedRestaurantSlugs.size > 0) {

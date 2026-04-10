@@ -291,9 +291,18 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
 
 // Section item component
 const SectionItem = ({ icon: Icon, title, subtitle, onClick, showArrow = true, rightContent }) => (
-  <motion.button
+  <motion.div
+    role="button"
+    tabIndex={0}
     onClick={onClick}
-    className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left border-b border-dashed border-gray-200 last:border-0"
+    onKeyDown={(e) => {
+      if (!onClick) return
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault()
+        onClick(e)
+      }
+    }}
+    className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left border-b border-dashed border-gray-200 last:border-0 cursor-pointer"
     whileTap={{ scale: 0.99 }}
   >
     <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
@@ -304,7 +313,7 @@ const SectionItem = ({ icon: Icon, title, subtitle, onClick, showArrow = true, r
       {subtitle && <p className="text-sm text-gray-500 truncate">{subtitle}</p>}
     </div>
     {rightContent || (showArrow && <ChevronRight className="w-5 h-5 text-gray-400" />)}
-  </motion.button>
+  </motion.div>
 )
 
 export default function OrderTracking() {

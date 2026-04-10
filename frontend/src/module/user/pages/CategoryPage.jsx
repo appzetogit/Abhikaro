@@ -416,6 +416,9 @@ export default function CategoryPage() {
                 offer: offer,
                 slug: restaurant.slug || restaurant.name?.toLowerCase().replace(/\s+/g, '-'),
                 restaurantId: restaurantId,
+                // Availability flags (used to hide dishes when restaurant is closed/offline)
+                isActive: restaurant.isActive,
+                isAcceptingOrders: restaurant.isAcceptingOrders,
                 hasPaneer: false,
                 category: 'all',
               }
@@ -607,7 +610,14 @@ export default function CategoryPage() {
   // If category is selected, expand restaurants into dish cards (one card per matching dish)
   const filteredRecommended = useMemo(() => {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
-    let filtered = [...sourceData]
+    // Hide closed/offline restaurants when showing dish lists.
+    // We allow undefined flags to pass to avoid hiding older data shapes.
+    let filtered = [...sourceData].filter((r) => {
+      if (!r) return false
+      if (r.isActive === false) return false
+      if (r.isAcceptingOrders === false || r.isAcceptingOrders === 0) return false
+      return true
+    })
 
     // Find current selected category offer percentage (if any)
     const currentCategory =
@@ -694,7 +704,14 @@ export default function CategoryPage() {
 
   const filteredAllRestaurants = useMemo(() => {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
-    let filtered = [...sourceData]
+    // Hide closed/offline restaurants when showing dish lists.
+    // We allow undefined flags to pass to avoid hiding older data shapes.
+    let filtered = [...sourceData].filter((r) => {
+      if (!r) return false
+      if (r.isActive === false) return false
+      if (r.isAcceptingOrders === false || r.isAcceptingOrders === 0) return false
+      return true
+    })
 
     // Find current selected category offer percentage (if any)
     const currentCategory =

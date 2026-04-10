@@ -1346,7 +1346,10 @@ export default function Home() {
     // Return empty array - featured foods will come from API if needed
     return []
   }, [activeFilters, sortBy])
-  const recommendedRestaurants = filteredRestaurants.slice(0, 12)
+  // Recommended should prioritize restaurants that are currently accepting orders
+  const recommendedRestaurants = filteredRestaurants
+    .filter(r => r?.isActive && (r?.isAcceptingOrders !== false && r?.isAcceptingOrders !== 0))
+    .slice(0, 12)
 
   // Memoize callbacks to prevent unnecessary re-renders
   const handleLocationClick = useCallback(() => {

@@ -84,7 +84,14 @@ export default function Under250() {
 
   // Sort and filter restaurants based on selected sort and filters
   const sortedAndFilteredRestaurants = useMemo(() => {
-    let filtered = [...under250Restaurants]
+    // Hide closed/offline restaurants so their dishes don't appear here.
+    // We allow undefined flags to pass to avoid breaking older API shapes.
+    let filtered = [...under250Restaurants].filter((r) => {
+      if (!r) return false
+      if (r.isActive === false) return false
+      if (r.isAcceptingOrders === false || r.isAcceptingOrders === 0) return false
+      return true
+    })
 
     // Apply "Under 30 mins" filter
     if (under30MinsFilter) {

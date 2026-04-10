@@ -177,6 +177,20 @@ export default function HotelOTP() {
         // Dispatch custom event
         window.dispatchEvent(new Event("hotelAuthChanged"))
 
+        // Flutter InAppWebView bridge: pass token to native wrapper (optional)
+        try {
+          const bridge = window.flutter_inappwebview
+          if (bridge && typeof bridge.callHandler === "function") {
+            bridge.callHandler("setAuthToken", {
+              role: "hotel",
+              accessToken,
+              hotelId: hotel?._id || hotel?.hotelId || null,
+            }).catch(() => {})
+          }
+        } catch {
+          // ignore
+        }
+
         // Register FCM token for push notifications (non-blocking)
         import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
           registerFcmToken(accessToken, {
@@ -291,6 +305,20 @@ export default function HotelOTP() {
 
         // Dispatch custom event
         window.dispatchEvent(new Event("hotelAuthChanged"))
+
+        // Flutter InAppWebView bridge: pass token to native wrapper (optional)
+        try {
+          const bridge = window.flutter_inappwebview
+          if (bridge && typeof bridge.callHandler === "function") {
+            bridge.callHandler("setAuthToken", {
+              role: "hotel",
+              accessToken,
+              hotelId: hotel?._id || hotel?.hotelId || null,
+            }).catch(() => {})
+          }
+        } catch {
+          // ignore
+        }
 
         // Register FCM token for push notifications (non-blocking)
         import("@/lib/fcmService.js").then(({ registerFcmToken }) => {

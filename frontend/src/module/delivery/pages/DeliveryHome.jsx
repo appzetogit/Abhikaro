@@ -637,6 +637,10 @@ export default function DeliveryHome() {
   const [showRejectPopup, setShowRejectPopup] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
   const alertAudioRef = useRef(null)
+  const newOrderPopupOpenRef = useRef(false)
+  const alertAudioEndedHandlerRef = useRef(null)
+  const alertAudioUnlockedRef = useRef(false)
+  const ringingOrderKeyRef = useRef(null)
   const userInteractedRef = useRef(false) // Track user interaction for autoplay policy
   const [hasUserInteracted, setHasUserInteracted] = useState(false) // Triggers retry when autoplay becomes allowed
   const newOrderAcceptButtonRef = useRef(null)
@@ -1413,6 +1417,55 @@ export default function DeliveryHome() {
     const handleUserInteraction = () => {
       userInteractedRef.current = true
       setHasUserInteracted(true)
+
+      // Attempt to "unlock" audio playback on mobile browsers by creating/playing
+      // the alert audio within the user gesture, then immediately pausing.
+      // This makes subsequent programmatic plays reliable when a new order arrives.
+      try {
+        const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone'
+        const soundFile = selectedSound === 'original' ? originalSound : alertSound
+        if (!alertAudioRef.current) {
+          alertAudioRef.current = new Audio(soundFile)
+          alertAudioRef.current.volume = 1
+          alertAudioRef.current.loop = true
+          alertAudioRef.current.preload = 'auto'
+        } else {
+          // Keep src in sync with preference
+          const nextSrc = String(soundFile || '')
+          if (nextSrc && !alertAudioRef.current.src.includes(nextSrc.split('/').pop())) {
+            alertAudioRef.current.pause()
+            alertAudioRef.current.src = nextSrc
+            alertAudioRef.current.load()
+          }
+        }
+
+        const a = alertAudioRef.current
+        if (a && !alertAudioUnlockedRef.current) {
+          const prevVolume = a.volume
+          a.volume = 0
+          const p = a.play()
+          if (p && typeof p.then === 'function') {
+            p.then(() => {
+              try {
+                a.pause()
+                a.currentTime = 0
+              } catch (_) { }
+              a.volume = prevVolume
+              alertAudioUnlockedRef.current = true
+            }).catch(() => {
+              a.volume = prevVolume
+            })
+          } else {
+            try {
+              a.pause()
+              a.currentTime = 0
+            } catch (_) { }
+            a.volume = prevVolume
+            alertAudioUnlockedRef.current = true
+          }
+        }
+      } catch (_) { }
+
       // Remove listeners after first interaction
       document.removeEventListener('click', handleUserInteraction)
       document.removeEventListener('touchstart', handleUserInteraction)
@@ -1448,52 +1501,38 @@ export default function DeliveryHome() {
         return null
       }
 
-      // Use selected sound file from assets
-      const audio = new Audio(soundFile)
-
-      audio.volume = 1
-      audio.loop = true // Loop the sound
-
-      // Set up error handler
-      audio.addEventListener('error', (e) => {
-        // Audio error
-      })
-
-      // Preload audio before playing
-      audio.preload = 'auto'
-
-      // Play the sound and wait for it to start
-      try {
-        // Wait for audio to be ready
-        await new Promise((resolve, reject) => {
-          audio.addEventListener('canplaythrough', resolve, { once: true })
-          audio.addEventListener('error', reject, { once: true })
-          audio.load()
-          // Timeout after 3 seconds
-          setTimeout(() => reject(new Error('Audio load timeout')), 3000)
-        })
-
-        const playPromise = audio.play()
-        if (playPromise !== undefined) {
-          await playPromise
-        }
-        return audio
-      } catch (playError) {
-        // Don't log autoplay policy errors as they're expected before user interaction
-        // Try to load and play again
-        try {
-          audio.load()
-          await new Promise((resolve) => setTimeout(resolve, 100)) // Small delay
-          const playPromise = audio.play()
-          if (playPromise !== undefined) {
-            await playPromise
-          }
-          return audio
-        } catch (retryError) {
-          // Don't log autoplay policy errors
-          return null
+      // Reuse a single Audio instance (more reliable on mobile browsers).
+      // Also keeps looping consistent across re-renders.
+      if (!alertAudioRef.current) {
+        alertAudioRef.current = new Audio(soundFile)
+        alertAudioRef.current.volume = 1
+        alertAudioRef.current.loop = true
+        alertAudioRef.current.preload = 'auto'
+      } else {
+        const nextSrc = String(soundFile || '')
+        if (nextSrc && !alertAudioRef.current.src.includes(nextSrc.split('/').pop())) {
+          try {
+            if (alertAudioEndedHandlerRef.current) {
+              alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+            }
+          } catch (_) { }
+          alertAudioRef.current.pause()
+          alertAudioRef.current.src = nextSrc
+          alertAudioRef.current.load()
         }
       }
+
+      const audio = alertAudioRef.current
+      if (!audio) return null
+
+      audio.volume = 1
+      audio.loop = true
+      audio.currentTime = 0
+      const playPromise = audio.play()
+      if (playPromise !== undefined) {
+        await playPromise
+      }
+      return audio
     } catch (error) {
       return null
     }
@@ -1554,12 +1593,43 @@ export default function DeliveryHome() {
   // Play audio while New Order popup is open (loops until popup closes / countdown ends)
   // NOTE: Sound gating (only real order events) is handled by socket->popup flow.
   useEffect(() => {
+    newOrderPopupOpenRef.current = showNewOrderPopup
+  }, [showNewOrderPopup])
+
+  useEffect(() => {
     if (showNewOrderPopup && (newOrder || selectedRestaurant)) {
+      const popupOrderId =
+        selectedRestaurant?.orderId?.toString?.() ||
+        selectedRestaurant?.id?.toString?.() ||
+        newOrder?.orderId?.toString?.() ||
+        newOrder?._id?.toString?.() ||
+        newOrder?.orderMongoId?.toString?.() ||
+        null
+      const popupResendVersion =
+        selectedRestaurant?.resendVersion ??
+        newOrder?.resendVersion ??
+        0
+      const nextRingingKey = popupOrderId ? `${popupOrderId}:${popupResendVersion}` : null
+
+      // If we are already ringing for this exact order (or resend version),
+      // do NOT restart audio on repeated socket payloads.
+      if (nextRingingKey && ringingOrderKeyRef.current === nextRingingKey && alertAudioRef.current) {
+        return
+      }
+
+      ringingOrderKeyRef.current = nextRingingKey || ringingOrderKeyRef.current
+
       // Stop any existing audio first
       if (alertAudioRef.current) {
+        try {
+          if (alertAudioEndedHandlerRef.current) {
+            alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+          }
+        } catch (_) { }
         alertAudioRef.current.pause()
         alertAudioRef.current.currentTime = 0
         alertAudioRef.current = null
+        alertAudioEndedHandlerRef.current = null
       }
 
       const playAudio = async () => {
@@ -1573,13 +1643,16 @@ export default function DeliveryHome() {
               audio.loop = true
             }
 
-            // Manually restart if loop doesn't work in some browsers
-            audio.addEventListener('ended', () => {
-              if (showNewOrderPopup && alertAudioRef.current === audio) {
+            // Manually restart if loop doesn't work in some browsers.
+            // IMPORTANT: Use a ref, not captured state, otherwise it can keep looping after accept/close.
+            const endedHandler = () => {
+              if (newOrderPopupOpenRef.current && alertAudioRef.current === audio) {
                 audio.currentTime = 0
                 audio.play().catch(() => { })
               }
-            })
+            }
+            alertAudioEndedHandlerRef.current = endedHandler
+            audio.addEventListener('ended', endedHandler)
           }
         } catch (_) {
           // ignore
@@ -1597,10 +1670,17 @@ export default function DeliveryHome() {
     } else {
       // Stop audio when popup closes
       if (alertAudioRef.current) {
+        try {
+          if (alertAudioEndedHandlerRef.current) {
+            alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+          }
+        } catch (_) { }
         alertAudioRef.current.pause()
         alertAudioRef.current.currentTime = 0
         alertAudioRef.current = null
+        alertAudioEndedHandlerRef.current = null
       }
+      ringingOrderKeyRef.current = null
       // Also stop the socket-driven one-shot notification sound (if any)
       if (typeof stopNotificationSound === 'function') {
         stopNotificationSound()

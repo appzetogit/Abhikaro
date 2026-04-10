@@ -7,7 +7,7 @@ import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
 import { Suspense, lazy, useEffect, useState, useRef } from "react"
 import Loader from "@/components/Loader"
 import { restoreUserSession, isModuleAuthenticated, getModuleToken } from "@/lib/utils/auth.js"
-import { registerFcmToken } from "@/lib/fcmService.js"
+import { registerFcmToken, registerNativeFcmToken } from "@/lib/fcmService.js"
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@/module/user/components/UserRouter"))
@@ -129,6 +129,38 @@ function UserPathRedirect() {
 
 export default function App() {
   const [sessionRestored, setSessionRestored] = useState(false)
+
+  // Flutter InAppWebView bridge: allow native wrapper to register native FCM token via web context.
+  useEffect(() => {
+    try {
+      window.__ABHIKARO_REGISTER_NATIVE_FCM__ = async (args = {}) => {
+        const {
+          accessToken: providedAccessToken,
+          fcmToken,
+          platform = "android",
+          deviceId = null,
+        } = args || {}
+
+        const accessToken =
+          providedAccessToken ||
+          getModuleToken("hotel") ||
+          getModuleToken("restaurant") ||
+          getModuleToken("delivery") ||
+          getModuleToken("user") ||
+          null
+
+        return registerNativeFcmToken(accessToken, fcmToken, { platform, deviceId })
+      }
+
+      return () => {
+        if (window.__ABHIKARO_REGISTER_NATIVE_FCM__) {
+          delete window.__ABHIKARO_REGISTER_NATIVE_FCM__
+        }
+      }
+    } catch {
+      return undefined
+    }
+  }, [])
 
   useEffect(() => {
     // On initial app mount, try to restore *user* session using refresh token cookie.
