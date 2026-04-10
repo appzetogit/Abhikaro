@@ -2804,6 +2804,14 @@ export default function DeliveryHome() {
 
             // Close popup and show route on main map (not full-screen directions map)
             setShowNewOrderPopup(false);
+            // Safety: if any stale Confirm Order ID popup is open, close it on accept.
+            // Confirm Order ID should only appear after "Reached Pickup" is confirmed (or backend marks reached_pickup later).
+            setShowOrderIdConfirmationPopup(false)
+            try {
+              window.localStorage.removeItem('abhi_delivery_order_id_confirmation')
+            } catch (_) {
+              // ignore storage errors
+            }
             // Persist accepted order so other screens (and refresh) can immediately show it
             try {
               const active = restaurantInfo || null
@@ -2925,9 +2933,11 @@ export default function DeliveryHome() {
             // Show Reached Pickup popup immediately after order acceptance (no distance check)
             // But only if order is not already past pickup phase or reached pickup confirmed
             setTimeout(() => {
-              const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || '';
-              const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || '';
-              const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || '';
+              // IMPORTANT: Use the freshly accepted order data (`restaurantInfo`) instead of `selectedRestaurant`.
+              // `selectedRestaurant` may still point to a previous order for a moment, causing us to skip Reached Pickup.
+              const currentOrderStatus = restaurantInfo?.orderStatus || restaurantInfo?.status || '';
+              const currentDeliveryPhase = restaurantInfo?.deliveryPhase || restaurantInfo?.deliveryState?.currentPhase || '';
+              const currentDeliveryStateStatus = restaurantInfo?.deliveryState?.status || '';
               const isAlreadyPastPickup = currentOrderStatus === 'out_for_delivery' ||
                 currentDeliveryPhase === 'en_route_to_delivery' ||
                 currentDeliveryPhase === 'en_route_to_drop' ||
@@ -6072,10 +6082,17 @@ export default function DeliveryHome() {
   useEffect(() => {
     try {
       if (!selectedRestaurant) return
+      // Never force Confirm Order ID while the "New order / Accept order" popup is active
+      if (showNewOrderPopup) return
 
       const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
       const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
       const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+      const currentOrderId =
+        selectedRestaurant?.orderId ||
+        selectedRestaurant?._id ||
+        selectedRestaurant?.id ||
+        null
 
       const storageKey = 'abhi_delivery_order_id_confirmation'
 
@@ -6100,6 +6117,20 @@ export default function DeliveryHome() {
         return
       }
 
+      // If stored flag is for a different order, clear it (prevents stale popup on new orders)
+      const existingRaw = window.localStorage.getItem(storageKey)
+      if (existingRaw) {
+        try {
+          const existing = JSON.parse(existingRaw)
+          if (existing?.orderId && currentOrderId && String(existing.orderId) !== String(currentOrderId)) {
+            window.localStorage.removeItem(storageKey)
+          }
+        } catch {
+          // Corrupt data: clear it so it doesn't break the flow
+          window.localStorage.removeItem(storageKey)
+        }
+      }
+
       // If rider is at pickup (or reached_pickup) and order ID still not confirmed, ensure flag is set
       const isAtPickupButNotPicked =
         deliveryPhase === 'at_pickup' ||
@@ -6108,6 +6139,7 @@ export default function DeliveryHome() {
       if (isAtPickupButNotPicked) {
         const payload = {
           required: true,
+          orderId: currentOrderId,
           // store when flag was set (optional, for future cleanup/debugging)
           setAt: new Date().toISOString()
         }
@@ -6128,6 +6160,8 @@ export default function DeliveryHome() {
   useEffect(() => {
     try {
       if (!selectedRestaurant) return
+      // If the new-order popup is open, do not restore/force Confirm Order ID yet
+      if (showNewOrderPopup) return
 
       const storageKey = 'abhi_delivery_order_id_confirmation'
       const stored = window.localStorage.getItem(storageKey)
@@ -6135,6 +6169,17 @@ export default function DeliveryHome() {
 
       const parsed = JSON.parse(stored)
       if (!parsed?.required) return
+
+      // Only restore if the flag belongs to the currently active order
+      const currentOrderId =
+        selectedRestaurant?.orderId ||
+        selectedRestaurant?._id ||
+        selectedRestaurant?.id ||
+        null
+      if (parsed?.orderId && currentOrderId && String(parsed.orderId) !== String(currentOrderId)) {
+        window.localStorage.removeItem(storageKey)
+        return
+      }
 
       // Double-check order is not already picked / delivered before forcing popup
       const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
@@ -6162,7 +6207,7 @@ export default function DeliveryHome() {
     } catch (e) {
       // Ignore localStorage errors
     }
-  }, [selectedRestaurant])
+  }, [selectedRestaurant, showNewOrderPopup])
 
   // When order is accepted (selectedRestaurant set), ensure map exists and trigger resize
   useEffect(() => {
