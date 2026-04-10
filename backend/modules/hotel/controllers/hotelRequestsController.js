@@ -115,7 +115,10 @@ export const getHotelRequestStats = async (req, res) => {
           stats.totalHotelRevenue += breakdown.hotel;
         } else {
           // Fallback: Use current hotel settings
-          const hotelCommPercent = hotel.commission || 0;
+          const hotelCommPercent =
+            typeof hotel.commission === "number" && hotel.commission > 0
+              ? hotel.commission
+              : 10;
           stats.totalHotelRevenue += (totalAmount * hotelCommPercent) / 100;
         }
       }

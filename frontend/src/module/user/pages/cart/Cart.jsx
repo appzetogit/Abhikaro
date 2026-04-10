@@ -11,7 +11,7 @@ import { useCart } from "../../context/CartContext"
 import { useProfile } from "../../context/ProfileContext"
 import { useOrders } from "../../context/OrdersContext"
 import { useSharedLocation } from "@/lib/context/LocationContext"
-import { orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS, paymentAPI } from "@/lib/api"
+import api, { orderAPI, restaurantAPI, adminAPI, userAPI, API_ENDPOINTS, paymentAPI } from "@/lib/api"
 import { API_BASE_URL } from "@/lib/api/config"
 import { initRazorpayPayment } from "@/lib/utils/razorpay"
 import { toast } from "sonner"
@@ -113,6 +113,7 @@ export default function Cart() {
   const [orderProgress, setOrderProgress] = useState(0)
   const [showOrderSuccess, setShowOrderSuccess] = useState(false)
   const [placedOrderId, setPlacedOrderId] = useState(null)
+  const [advertiseBanner, setAdvertiseBanner] = useState(null)
 
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(-10)
 
@@ -123,6 +124,23 @@ export default function Cart() {
         preloadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
       } catch {}
     }
+  }, [showOrderSuccess])
+
+  // Load advertise banner for success screen (admin-controlled)
+  useEffect(() => {
+    const loadBanner = async () => {
+      if (!showOrderSuccess) return
+      try {
+        const res = await api.get("/advertise-banners/public", {
+          params: { placement: "order_placed" },
+        })
+        const banner = res?.data?.data?.banner || null
+        setAdvertiseBanner(banner?.imageUrl ? banner : null)
+      } catch {
+        setAdvertiseBanner(null)
+      }
+    }
+    loadBanner()
   }, [showOrderSuccess])
   // Checkout-only contact draft:
   // - Initialize from sessionStorage if present
@@ -2669,6 +2687,21 @@ export default function Cart() {
                 {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Delivery Address") : "Delivery Address"}
               </p>
             </div>
+
+            {/* Advertise Banner (Admin Controlled) */}
+            {advertiseBanner?.imageUrl && (
+              <div
+                className="mt-8 w-full max-w-md"
+                style={{ animation: 'slideUp 0.5s ease-out 0.7s both' }}
+              >
+                <img
+                  src={advertiseBanner.imageUrl}
+                  alt="Offer banner"
+                  className="w-full rounded-2xl shadow-lg object-cover"
+                  loading="lazy"
+                />
+              </div>
+            )}
 
             {/* Order Placed Message */}
             <div

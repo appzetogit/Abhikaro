@@ -638,6 +638,7 @@ export default function DeliveryHome() {
   const [rejectReason, setRejectReason] = useState("")
   const alertAudioRef = useRef(null)
   const userInteractedRef = useRef(false) // Track user interaction for autoplay policy
+  const [hasUserInteracted, setHasUserInteracted] = useState(false) // Triggers retry when autoplay becomes allowed
   const newOrderAcceptButtonRef = useRef(null)
   const newOrderAcceptButtonSwipeStartX = useRef(0)
   const newOrderAcceptButtonSwipeStartY = useRef(0)
@@ -1411,6 +1412,7 @@ export default function DeliveryHome() {
   useEffect(() => {
     const handleUserInteraction = () => {
       userInteractedRef.current = true
+      setHasUserInteracted(true)
       // Remove listeners after first interaction
       document.removeEventListener('click', handleUserInteraction)
       document.removeEventListener('touchstart', handleUserInteraction)
@@ -1599,8 +1601,12 @@ export default function DeliveryHome() {
         alertAudioRef.current.currentTime = 0
         alertAudioRef.current = null
       }
+      // Also stop the socket-driven one-shot notification sound (if any)
+      if (typeof stopNotificationSound === 'function') {
+        stopNotificationSound()
+      }
     }
-  }, [showNewOrderPopup, selectedRestaurant, newOrder])
+  }, [showNewOrderPopup, selectedRestaurant, newOrder, hasUserInteracted])
 
   // Reset countdown when popup closes
   useEffect(() => {
@@ -1647,6 +1653,20 @@ export default function DeliveryHome() {
 
   // Handle reject order
   const handleRejectClick = () => {
+    // Stop sound immediately when rider taps "Deny" (even before selecting a reason)
+    try {
+      if (alertAudioRef.current) {
+        alertAudioRef.current.pause()
+        alertAudioRef.current.currentTime = 0
+        alertAudioRef.current = null
+      }
+    } catch (_) { }
+    // Also stop the socket-driven one-shot notification sound (if any)
+    try {
+      if (typeof stopNotificationSound === 'function') {
+        stopNotificationSound()
+      }
+    } catch (_) { }
     setShowRejectPopup(true)
   }
 
@@ -1654,6 +1674,10 @@ export default function DeliveryHome() {
     if (alertAudioRef.current) {
       alertAudioRef.current.pause()
       alertAudioRef.current.currentTime = 0
+    }
+    // Also stop the socket-driven one-shot notification sound (if any)
+    if (typeof stopNotificationSound === 'function') {
+      stopNotificationSound()
     }
     setShowRejectPopup(false)
     setShowNewOrderPopup(false)
@@ -1688,6 +1712,19 @@ export default function DeliveryHome() {
   const handleRejectCancel = () => {
     setShowRejectPopup(false)
     setRejectReason("")
+    // If rider cancels deny, resume ringtone while the new order popup is still open
+    try {
+      if (showNewOrderPopup && (newOrder || selectedRestaurant)) {
+        setTimeout(async () => {
+          try {
+            const audio = await playAlertSound()
+            if (audio) {
+              alertAudioRef.current = audio
+            }
+          } catch (_) { }
+        }, 100)
+      }
+    } catch (_) { }
   }
 
   // Reset popup state on page load/refresh - ensure no popup shows on refresh

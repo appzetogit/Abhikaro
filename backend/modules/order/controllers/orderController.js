@@ -844,6 +844,23 @@ export const createOrder = async (req, res) => {
       paymentMethod: normalizedPaymentMethod,
     });
 
+    // Push notify hotel partner app when order comes from hotel QR (non-blocking)
+    if (order.orderType === "QR" || order.hotelReference || order.hotelId) {
+      (async () => {
+        try {
+          const { notifyHotelQrScanned } = await import(
+            "../../fcm/services/pushNotificationService.js"
+          );
+          await notifyHotelQrScanned(order);
+        } catch (err) {
+          logger.warn("⚠️ Failed to send hotel QR push (non-blocking):", {
+            orderId: order.orderId,
+            error: err?.message || err,
+          });
+        }
+      })();
+    }
+
     // For wallet payments, check balance and deduct before creating order
     if (normalizedPaymentMethod === "wallet") {
       try {

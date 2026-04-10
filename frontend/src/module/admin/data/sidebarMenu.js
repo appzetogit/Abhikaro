@@ -235,6 +235,13 @@ export const sidebarMenuData = [
         icon: "Bell",
         permissionId: "notifications.send",
       },
+      {
+        type: "link",
+        label: "Advertise Banner",
+        path: "/admin/advertise-banner",
+        icon: "Megaphone",
+        permissionId: "menu.promotions",
+      },
     ],
   },
 

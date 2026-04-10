@@ -293,6 +293,13 @@ import {
   sendWalletAdjustOTP,
   verifyWalletAdjustOTP,
 } from "../controllers/adminWalletOtpController.js";
+import {
+  listAdminAdvertiseBanners,
+  createAdminAdvertiseBanner,
+  updateAdminAdvertiseBanner,
+  deleteAdminAdvertiseBanner,
+  toggleAdminAdvertiseBannerStatus,
+} from "../controllers/advertiseBannersController.js";
 import { authenticateAdmin, authorizeAdmin } from "../middleware/adminAuth.js";
 import { uploadMiddleware } from "../../../shared/utils/cloudinaryService.js";
 import { requirePermissions } from "../middleware/adminPermission.js";
@@ -944,5 +951,12 @@ router.post("/notifications/send-to-user", sendNotificationToUser);
 router.post("/notifications/send-to-restaurant", sendNotificationToRestaurant);
 router.post("/notifications/send-to-delivery", sendNotificationToDelivery);
 router.post("/notifications/broadcast", broadcastNotification);
+
+// Advertise Banners (Admin)
+router.get("/advertise-banners", listAdminAdvertiseBanners);
+router.post("/advertise-banners", uploadMiddleware.single("image"), createAdminAdvertiseBanner);
+router.patch("/advertise-banners/:id", uploadMiddleware.single("image"), updateAdminAdvertiseBanner);
+router.patch("/advertise-banners/:id/status", toggleAdminAdvertiseBannerStatus);
+router.delete("/advertise-banners/:id", deleteAdminAdvertiseBanner);
 
 export default router;

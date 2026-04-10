@@ -2,6 +2,7 @@ import { sendToUser } from './fcmService.js';
 import User from '../../../modules/auth/models/User.js';
 import Restaurant from '../../../modules/restaurant/models/Restaurant.js';
 import Delivery from '../../../modules/delivery/models/Delivery.js';
+import Hotel from '../../../modules/hotel/models/Hotel.js';
 import Admin from '../../../modules/admin/models/Admin.js';
 
 /**
@@ -201,6 +202,56 @@ export async function notifyRestaurantNewOrder(order) {
     });
   } catch (error) {
     console.error('❌ [Push Notification] Error notifying restaurant about new order:', error);
+  }
+}
+
+/**
+ * Send notification to hotel when a user places an order via hotel QR.
+ * Copy requirement: "QR is scanned" + room number.
+ */
+export async function notifyHotelQrScanned(order) {
+  try {
+    const hotelMongoId = order.hotelId?._id || order.hotelId;
+    const hotelReference = order.hotelReference || null;
+
+    // Resolve hotel id if order only has hotelReference string
+    let resolvedHotelId = hotelMongoId ? hotelMongoId.toString() : null;
+    if (!resolvedHotelId && hotelReference) {
+      const hotelDoc = await Hotel.findOne({
+        $or: [
+          { _id: hotelReference },
+          { hotelId: hotelReference },
+        ],
+      })
+        .select('_id')
+        .lean();
+      resolvedHotelId = hotelDoc?._id?.toString() || null;
+    }
+
+    if (!resolvedHotelId) {
+      console.warn('⚠️ [Push Notification] Cannot notify hotel: order has no hotel reference/id');
+      return;
+    }
+
+    const room = order.roomNumber ? String(order.roomNumber) : 'N/A';
+    const oid = order.orderId || order._id?.toString?.() || '';
+
+    await sendPushNotification(resolvedHotelId, 'hotel', {
+      title: 'QR is scanned',
+      body: `Room: ${room} • Order #${oid}`,
+      data: {
+        type: 'hotel_qr_scanned',
+        orderId: oid,
+        orderMongoId: order._id?.toString?.() || null,
+        roomNumber: room,
+        paymentMethod: order.payment?.method || null,
+        channelId: 'hotel_qr_scanned',
+        sound: 'default',
+        tag: `hotel_qr_scanned_${oid || order._id}`,
+      },
+    });
+  } catch (error) {
+    console.error('❌ [Push Notification] Error notifying hotel about QR scan:', error);
   }
 }
 

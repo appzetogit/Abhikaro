@@ -19,6 +19,7 @@ export default function AllZonesMap() {
   const rotatedIconCacheRef = useRef(new Map()) // Cache for rotated bike icons
   const hasFitBoundsRef = useRef(false) // Track if we've already auto-fit bounds
   const deliveryIdToMarkerRef = useRef(new Map()) // deliveryId -> marker
+  const deliveryBoysRef = useRef([]) // latest list for socket handlers (avoid stale closure)
   const socketRef = useRef(null)
   const lastPosRef = useRef(new Map()) // deliveryId -> {lat,lng,heading,ts}
   const lastBearingRef = useRef(new Map()) // deliveryId -> {angle, ts}
@@ -110,6 +111,10 @@ export default function AllZonesMap() {
   }, [computeBearing, haversine])
 
   useEffect(() => {
+    deliveryBoysRef.current = deliveryBoys
+  }, [deliveryBoys])
+
+  useEffect(() => {
     fetchZones()
     fetchRestaurants()
     fetchOnlineDeliveryBoys()
@@ -126,8 +131,8 @@ export default function AllZonesMap() {
     })
 
     socketRef.current.on("connect", () => {
-      // Join rooms for all known delivery partners so far
-      const ids = (deliveryBoys || []).map(b => (b._id || b.id || b.deliveryId || b.fullData?._id || b.fullData?.id)).filter(Boolean)
+      // Join rooms for all known delivery partners (ref = always current list, including after reconnect)
+      const ids = (deliveryBoysRef.current || []).map(b => (b._id || b.id || b.deliveryId || b.fullData?._id || b.fullData?.id)).filter(Boolean)
       ids.forEach(id => socketRef.current.emit("join-delivery", id.toString()))
     })
 
@@ -155,7 +160,7 @@ export default function AllZonesMap() {
     const interval = setInterval(async () => {
       await fetchOnlineDeliveryBoys()
       if (socketRef.current && socketRef.current.connected) {
-        const ids = (deliveryBoys || []).map(b => (b._id || b.id || b.deliveryId || b.fullData?._id || b.fullData?.id)).filter(Boolean)
+        const ids = (deliveryBoysRef.current || []).map(b => (b._id || b.id || b.deliveryId || b.fullData?._id || b.fullData?.id)).filter(Boolean)
         ids.forEach(id => socketRef.current.emit("join-delivery", id.toString()))
       }
     }, 15000)
@@ -297,12 +302,15 @@ export default function AllZonesMap() {
         })
         
         const uniqueBoys = Array.from(uniqueBoysMap.values())
+        deliveryBoysRef.current = uniqueBoys
         setDeliveryBoys(uniqueBoys)
       } else {
+        deliveryBoysRef.current = []
         setDeliveryBoys([])
       }
     } catch (error) {
       console.error("Error fetching delivery boys:", error)
+      deliveryBoysRef.current = []
       setDeliveryBoys([])
     }
   }
@@ -360,7 +368,8 @@ export default function AllZonesMap() {
     const mapOptions = {
       center: initialLocation,
       zoom: 5,
-      mapTypeId: google.maps.MapTypeId.TERRAIN, // Default to terrain map
+      // Some Google Maps builds don't expose MapTypeId enum; string values still work.
+      mapTypeId: google.maps.MapTypeId?.TERRAIN || "terrain", // Default to terrain map
       mapTypeControl: true,
       zoomControl: true,
       streetViewControl: false,
@@ -372,13 +381,21 @@ export default function AllZonesMap() {
       mapOptions.mapTypeControlOptions = {
         style: mapTypeControlStyle,
         position: google.maps.ControlPosition.TOP_RIGHT,
-        mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        mapTypeIds: [
+          google.maps.MapTypeId?.TERRAIN || "terrain",
+          google.maps.MapTypeId?.ROADMAP || "roadmap",
+          google.maps.MapTypeId?.SATELLITE || "satellite",
+        ],
       }
     } else {
       // Fallback: use default mapTypeControlOptions without style
       mapOptions.mapTypeControlOptions = {
         position: google.maps.ControlPosition.TOP_RIGHT,
-        mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        mapTypeIds: [
+          google.maps.MapTypeId?.TERRAIN || "terrain",
+          google.maps.MapTypeId?.ROADMAP || "roadmap",
+          google.maps.MapTypeId?.SATELLITE || "satellite",
+        ],
       }
     }
 

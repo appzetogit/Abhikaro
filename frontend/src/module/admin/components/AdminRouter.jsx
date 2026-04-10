@@ -45,6 +45,7 @@ const AddonsList = lazy(() => import("../pages/addons/AddonsList"));
 const Coupons = lazy(() => import("../pages/Coupons"));
 const NewAdvertisement = lazy(() => import("../pages/advertisement/NewAdvertisement"));
 const PushNotification = lazy(() => import("../pages/PushNotification"));
+const AdvertiseBanner = lazy(() => import("../pages/AdvertiseBanner"));
 // Help & Support
 const CustomerContactUs = lazy(() => import("../pages/CustomerContactUs"));
 const ContactMessages = lazy(() => import("../pages/ContactMessages"));
@@ -216,6 +217,7 @@ export default function AdminRouter() {
           {/* Advertisement */}
           <Route path="advertisement/new" element={<NewAdvertisement />} />
           <Route path="push-notification" element={<PushNotification />} />
+          <Route path="advertise-banner" element={<AdvertiseBanner />} />
 
           {/* HELP & SUPPORT */}
           <Route path="customer-contact-us" element={<CustomerContactUs />} />

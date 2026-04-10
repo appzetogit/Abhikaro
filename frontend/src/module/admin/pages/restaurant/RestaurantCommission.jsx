@@ -26,7 +26,7 @@ export default function RestaurantCommission() {
     restaurantId: "",
     defaultCommission: {
       type: "percentage",
-      value: "10"
+      value: "30"
     },
     notes: ""
   })
@@ -170,7 +170,7 @@ export default function RestaurantCommission() {
       restaurantId: "",
       defaultCommission: {
         type: "percentage",
-        value: "10"
+        value: "30"
       },
       notes: ""
     })
@@ -225,7 +225,7 @@ export default function RestaurantCommission() {
           restaurantId: restaurantId,
           defaultCommission: {
             type: commissionData.defaultCommission?.type || "percentage",
-            value: commissionData.defaultCommission?.value?.toString() || "10"
+            value: commissionData.defaultCommission?.value?.toString() || "30"
           },
           notes: commissionData.notes || ""
         })

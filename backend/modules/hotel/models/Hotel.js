@@ -163,7 +163,7 @@ const hotelSchema = new mongoose.Schema(
     // Commission percentage for orders from QR code scans
     commission: {
       type: Number,
-      default: 0, // Default 0% commission for hotel
+      default: 10, // Default 10% commission for hotel
       min: 0,
       max: 100, // Maximum 100% commission
     },

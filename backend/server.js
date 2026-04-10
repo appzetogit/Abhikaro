@@ -62,6 +62,7 @@ import diningAdminRoutes from './modules/dining/routes/diningAdminRoutes.js';
 import chatRoutes from './modules/chat/routes/chatRoutes.js';
 import firebaseSwRoute from './routes/firebaseSwRoute.js';
 import metricsRoutes from './routes/metrics.js';
+import advertiseBannerPublicRoutes from './modules/admin/routes/advertiseBannerPublicRoutes.js';
 
 
 // Validate required environment variables
@@ -624,6 +625,7 @@ app.use('/api/location', locationRoutes);
 app.use('/api', heroBannerRoutes);
 app.use('/api/dining', diningRoutes);
 app.use('/api/admin/dining', diningAdminRoutes);
+app.use('/api', advertiseBannerPublicRoutes);
 app.use('/api/metrics', metricsRoutes);
 
 // Diagnostics: list socket rooms for a restaurant (dev only)

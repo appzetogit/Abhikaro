@@ -211,10 +211,14 @@ export const updateLocation = asyncHandler(async (req, res) => {
                 const deliveryId = delivery._id.toString();
 
                 // Emit to delivery boy's own room - use final snapped coordinates
+                // Admin AllZonesMap and other clients need deliveryId + heading on this event
+                const headingVal = calculatedBearing ?? finalHeading ?? null;
                 deliveryNamespace.to(`delivery:${deliveryId}`).emit('location-update', {
+                  deliveryId,
                   lat: finalLat,
                   lng: finalLng,
-                  bearing: calculatedBearing || finalHeading || null,
+                  bearing: headingVal,
+                  heading: headingVal,
                   timestamp: Date.now()
                 });
 
@@ -325,9 +329,11 @@ export const updateLocation = asyncHandler(async (req, res) => {
             const deliveryNamespace = io.of('/delivery');
             const deliveryId = delivery._id.toString();
             deliveryNamespace.to(`delivery:${deliveryId}`).emit('location-update', {
+              deliveryId,
               lat: finalLat,
               lng: finalLng,
               bearing: finalHeading,
+              heading: finalHeading,
               timestamp: Date.now()
             });
           } catch (deliveryNamespaceError) {

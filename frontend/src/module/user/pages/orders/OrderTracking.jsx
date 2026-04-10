@@ -222,6 +222,15 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     order?.deliveryPartnerName ||
     "";
 
+  const deliveryPartnerPhone =
+    order?.deliveryPartner?.phone ||
+    order?.deliveryPartnerPhone ||
+    order?.deliveryPartnerId?.phone ||
+    order?.deliveryPartnerId?.phoneNumber ||
+    order?.deliveryPartnerId?.mobile ||
+    order?.deliveryPartnerId?.contactNumber ||
+    "";
+
   const hasAcceptedByDelivery =
     String(order?.deliveryState?.status || "").toLowerCase() === "accepted" ||
     ["en_route_to_pickup", "at_pickup", "en_route_to_delivery", "at_delivery"].includes(
@@ -481,6 +490,12 @@ export default function OrderTracking() {
               restaurantLocation: restaurantCoords ? {
                 coordinates: restaurantCoords
               } : order.restaurantLocation,
+              deliveryPartner: apiOrder.deliveryPartnerId ? {
+                name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
+                avatar: null,
+                phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null
+              } : order?.deliveryPartner || null,
+              deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || order?.deliveryPartnerPhone || null,
               deliveryPartnerId: apiOrder.deliveryPartnerId?._id || apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
               assignmentInfo: apiOrder.assignmentInfo || null,
               deliveryState: apiOrder.deliveryState || null
@@ -504,6 +519,12 @@ export default function OrderTracking() {
             const transformedOrder = {
               ...apiOrder,
               restaurantLocation: order?.restaurantLocation,
+            deliveryPartner: apiOrder.deliveryPartnerId ? {
+              name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
+              avatar: null,
+              phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null
+            } : order?.deliveryPartner || null,
+            deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || order?.deliveryPartnerPhone || null,
               deliveryPartnerId: apiOrder.deliveryPartnerId?._id || apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
               assignmentInfo: apiOrder.assignmentInfo || null,
               deliveryState: apiOrder.deliveryState || null
@@ -703,8 +724,10 @@ export default function OrderTracking() {
             status: apiOrder.status || 'pending',
             deliveryPartner: apiOrder.deliveryPartnerId ? {
               name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
-              avatar: null
+              avatar: null,
+              phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null
             } : null,
+            deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || null,
             deliveryPartnerId: apiOrder.deliveryPartnerId?._id || apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
             assignmentInfo: apiOrder.assignmentInfo || null,
             tracking: apiOrder.tracking || {},
@@ -906,6 +929,28 @@ export default function OrderTracking() {
     return s === 'pending' || s === 'confirmed' || s === 'preparing'
   })()
 
+  const deliveryPartnerName =
+    order?.deliveryPartner?.name ||
+    order?.deliveryPartnerId?.name ||
+    order?.deliveryPartnerName ||
+    ""
+
+  const deliveryPartnerPhone =
+    order?.deliveryPartner?.phone ||
+    order?.deliveryPartnerPhone ||
+    order?.deliveryPartnerId?.phone ||
+    order?.deliveryPartnerId?.phoneNumber ||
+    order?.deliveryPartnerId?.mobile ||
+    order?.deliveryPartnerId?.contactNumber ||
+    ""
+
+  const hasAcceptedByDelivery =
+    String(order?.deliveryState?.status || "").toLowerCase() === "accepted" ||
+    ["en_route_to_pickup", "at_pickup", "en_route_to_delivery", "at_delivery"].includes(
+      String(order?.deliveryState?.currentPhase || "").toLowerCase(),
+    ) ||
+    String(order?.status || "").toLowerCase() === "out_for_delivery"
+
   const handleCancelOrder = () => {
     // Check if order can be cancelled (only Razorpay orders that aren't delivered/cancelled)
     if (!order) return;
@@ -1106,6 +1151,15 @@ export default function OrderTracking() {
     }
     // Remove any non-digit characters except + for international numbers
     const cleanPhone = restaurantPhone.replace(/[^\d+]/g, '')
+    window.location.href = `tel:${cleanPhone}`
+  }
+
+  const handleCallDeliveryPartner = () => {
+    if (!deliveryPartnerPhone) {
+      toast.error("Delivery partner phone number not available")
+      return
+    }
+    const cleanPhone = String(deliveryPartnerPhone).replace(/[^\d+]/g, "")
     window.location.href = `tel:${cleanPhone}`
   }
 
@@ -1644,19 +1698,55 @@ export default function OrderTracking() {
             }}
             showArrow={order?.status !== "delivered" && order?.status !== "cancelled"}
           />
-          {order?.deliveryPartnerId && (
+          {order?.deliveryPartnerId && hasAcceptedByDelivery && (
             <SectionItem
               icon={MessageSquare}
-              title="Chat with Delivery Partner"
-              subtitle="Send a message to your delivery partner"
+              title={deliveryPartnerName || "Delivery partner"}
+              subtitle="Chat or call your delivery partner"
               onClick={() => {
-                const orderIdForChat = order?._id || orderId;
+                const orderIdForChat = order?._id || orderId
                 if (orderIdForChat) {
-                  navigate(`/user/orders/${orderIdForChat}/chat`);
+                  navigate(`/user/orders/${orderIdForChat}/chat`)
                 } else {
-                  toast.error('Order ID not available');
+                  toast.error("Order ID not available")
                 }
               }}
+              showArrow={false}
+              rightContent={
+                <div className="flex items-center gap-2">
+                  <motion.button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const orderIdForChat = order?._id || orderId
+                      if (orderIdForChat) {
+                        navigate(`/user/orders/${orderIdForChat}/chat`)
+                      } else {
+                        toast.error("Order ID not available")
+                      }
+                    }}
+                    className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+                    whileTap={{ scale: 0.9 }}
+                    title="Chat"
+                  >
+                    <MessageSquare className="w-5 h-5 text-gray-700" />
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleCallDeliveryPartner()
+                    }}
+                    className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center hover:bg-green-200 transition-colors"
+                    whileTap={{ scale: 0.9 }}
+                    title="Call"
+                  >
+                    <Phone className="w-5 h-5 text-green-700" />
+                  </motion.button>
+                </div>
+              }
             />
           )}
         </motion.div>

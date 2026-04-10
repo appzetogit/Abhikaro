@@ -168,24 +168,8 @@ function CompletedOrders({ onSelectOrder }) {
                       paymentStatus: order.paymentStatus,
                     })
                   }
-                  className="w-full text-left flex gap-3 items-stretch"
+                  className="w-full text-left flex items-stretch"
                 >
-                  <div className="h-20 w-20 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0 my-auto">
-                    {order.photoUrl ? (
-                      <img
-                        src={order.photoUrl}
-                        alt={order.photoAlt}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center px-2">
-                        <span className="text-[11px] font-medium text-gray-500 text-center leading-tight">
-                          {order.photoAlt}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
                   <div className="flex-1 flex flex-col justify-between min-h-[80px]">
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -386,24 +370,8 @@ function CancelledOrders({ onSelectOrder, fetchAllOrders }) {
                       paymentStatus: order.paymentStatus,
                     })
                   }
-                  className="w-full text-left flex gap-3 items-stretch"
+                  className="w-full text-left flex items-stretch"
                 >
-                  <div className="h-20 w-20 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0 my-auto">
-                    {order.photoUrl ? (
-                      <img
-                        src={order.photoUrl}
-                        alt={order.photoAlt}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center px-2">
-                        <span className="text-[11px] font-medium text-gray-500 text-center leading-tight">
-                          {order.photoAlt}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
                   <div className="flex-1 flex flex-col justify-between min-h-[80px]">
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -2911,25 +2879,8 @@ function OrderCard({
             paymentStatus,
           })
         }
-        className="w-full text-left flex gap-3 items-stretch cursor-pointer"
+        className="w-full text-left flex items-stretch cursor-pointer"
       >
-        {/* Photo */}
-        <div className="h-20 w-20 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0 my-auto">
-          {photoUrl ? (
-            <img
-              src={photoUrl}
-              alt={photoAlt}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center px-2">
-              <span className="text-[11px] font-medium text-gray-500 text-center leading-tight">
-                {photoAlt}
-              </span>
-            </div>
-          )}
-        </div>
-
         {/* Content */}
         <div className="flex-1 flex flex-col justify-between min-h-[80px]">
           {/* Top row */}

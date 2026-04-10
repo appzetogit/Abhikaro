@@ -36,7 +36,7 @@ export const getRestaurantCommissionInfo = asyncHandler(async (req, res) => {
         commission: null,
         defaultCommission: {
           type: "percentage",
-          value: 10,
+          value: 30,
         },
         hasCustomCommission: false,
       });
@@ -46,7 +46,7 @@ export const getRestaurantCommissionInfo = asyncHandler(async (req, res) => {
       commission,
       defaultCommission: commission.defaultCommission || {
         type: "percentage",
-        value: 10,
+        value: 30,
       },
       hasCustomCommission: true,
     });
@@ -118,11 +118,11 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     // Helper function to calculate commission for an order
     const calculateCommissionForOrder = (orderAmount) => {
       if (!restaurantCommission || !restaurantCommission.status) {
-        // Default 10% if no commission setup
+        // Default 30% if no commission setup
         return {
-          commission: (orderAmount * 10) / 100,
+          commission: (orderAmount * 30) / 100,
           type: 'percentage',
-          value: 10
+          value: 30
         };
       }
 
@@ -148,7 +148,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
 
       let commission = 0;
       let commissionType = 'percentage';
-      let commissionValue = 10;
+      let commissionValue = 30;
 
       if (matchingRule) {
         commissionType = matchingRule.type;
@@ -160,15 +160,15 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
         }
       } else if (restaurantCommission.defaultCommission) {
         commissionType = restaurantCommission.defaultCommission.type || 'percentage';
-        commissionValue = restaurantCommission.defaultCommission.value || 10;
+        commissionValue = restaurantCommission.defaultCommission.value || 30;
         if (commissionType === 'percentage') {
           commission = (orderAmount * commissionValue) / 100;
         } else {
           commission = commissionValue;
         }
       } else {
-        // Default 10%
-        commission = (orderAmount * 10) / 100;
+        // Default 30%
+        commission = (orderAmount * 30) / 100;
       }
 
       return {

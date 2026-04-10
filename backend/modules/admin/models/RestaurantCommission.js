@@ -75,7 +75,7 @@ const restaurantCommissionSchema = new mongoose.Schema(
       },
       value: {
         type: Number,
-        default: 10, // Default 10% commission
+        default: 30, // Default 30% commission
         min: 0,
         validate: {
           validator: function(value) {
@@ -215,13 +215,13 @@ restaurantCommissionSchema.statics.calculateCommissionForOrder = async function(
   if (!commission) {
     // Return default commission if no commission setup
     return {
-      commission: (orderAmount * 10) / 100, // Default 10%
+      commission: (orderAmount * 30) / 100, // Default 30%
       type: 'percentage',
-      value: 10,
+      value: 30,
       orderAmount: orderAmount,
       rule: null,
       defaultUsed: true,
-      message: 'No commission setup found, using default 10%'
+      message: 'No commission setup found, using default 30%'
     };
   }
   

@@ -253,6 +253,12 @@ export const getOrderStats = async (req, res) => {
         .json({ success: false, message: "Hotel not found" });
     }
 
+    // Default to 10% hotel commission if not configured (legacy hotels may have 0)
+    const hotelPct =
+      typeof hotel.commission === "number" && hotel.commission > 0
+        ? hotel.commission
+        : 10;
+
     const hotelRefIds = [hotelObjectId, hotelIdStr, hotelObjectId.toString()];
 
     // Aggregation for stats
@@ -301,7 +307,7 @@ export const getOrderStats = async (req, res) => {
                         {
                           $multiply: [
                             { $ifNull: ["$pricing.total", 0] },
-                            Number(hotel.commission) || 0,
+                            hotelPct,
                           ],
                         },
                         100,
@@ -525,6 +531,12 @@ export const getSettlementSummary = async (req, res) => {
         .json({ success: false, message: "Hotel not found" });
     }
 
+    // Default to 10% hotel commission if not configured (legacy hotels may have 0)
+    const hotelPct =
+      typeof hotel.commission === "number" && hotel.commission > 0
+        ? hotel.commission
+        : 10;
+
     // Aggregation for settlement
     const settlementAggregation = await Order.aggregate([
       {
@@ -567,7 +579,7 @@ export const getSettlementSummary = async (req, res) => {
                   {
                     $multiply: [
                       { $ifNull: ["$pricing.total", 0] },
-                      Number(hotel.commission) || 0,
+                      hotelPct,
                     ],
                   },
                   100,
