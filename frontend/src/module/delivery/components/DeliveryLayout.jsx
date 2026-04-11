@@ -75,13 +75,14 @@ export default function DeliveryLayout({
     let userInteracted = false;
     const handleUserInteraction = () => {
       userInteracted = true;
-      document.removeEventListener("click", handleUserInteraction);
-      document.removeEventListener("touchstart", handleUserInteraction);
-      document.removeEventListener("keydown", handleUserInteraction);
+      document.removeEventListener("click", handleUserInteraction, { capture: true });
+      document.removeEventListener("touchstart", handleUserInteraction, { capture: true });
+      document.removeEventListener("keydown", handleUserInteraction, { capture: true });
     };
-    document.addEventListener("click", handleUserInteraction, { once: true });
-    document.addEventListener("touchstart", handleUserInteraction, { once: true });
-    document.addEventListener("keydown", handleUserInteraction, { once: true });
+    const gestureOpts = { once: true, capture: true };
+    document.addEventListener("click", handleUserInteraction, gestureOpts);
+    document.addEventListener("touchstart", handleUserInteraction, gestureOpts);
+    document.addEventListener("keydown", handleUserInteraction, gestureOpts);
 
     const handleMessage = (event) => {
       const msg = event?.data;
@@ -105,9 +106,9 @@ export default function DeliveryLayout({
 
     return () => {
       navigator.serviceWorker.removeEventListener("message", handleMessage);
-      document.removeEventListener("click", handleUserInteraction);
-      document.removeEventListener("touchstart", handleUserInteraction);
-      document.removeEventListener("keydown", handleUserInteraction);
+      document.removeEventListener("click", handleUserInteraction, { capture: true });
+      document.removeEventListener("touchstart", handleUserInteraction, { capture: true });
+      document.removeEventListener("keydown", handleUserInteraction, { capture: true });
       try {
         audio.pause();
       } catch {

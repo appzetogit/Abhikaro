@@ -1,6 +1,7 @@
 import Order from "../../order/models/Order.js";
 import Hotel from "../models/Hotel.js";
 import HotelWallet from "../models/HotelWallet.js";
+import { getHotelCommissionFromOrder } from "../../order/utils/hotelCommissionBase.js";
 import {
   updateSettlementOnStatusChange,
   calculateOrderSettlement,
@@ -259,18 +260,15 @@ export const getOrderStats = async (req, res) => {
         ? hotel.commission
         : 10;
 
-    const hotelRefIds = [hotelObjectId, hotelIdStr, hotelObjectId.toString()];
+    const hotelOrderMatch = {
+      $or: [
+        { hotelId: hotelObjectId },
+        { hotelReference: { $in: [hotelIdStr, hotelObjectId.toString()] } },
+      ],
+    };
 
-    // Aggregation for stats
     const statsResult = await Order.aggregate([
-      {
-        $match: {
-          $or: [
-            { hotelId: hotelObjectId },
-            { hotelReference: { $in: [hotelIdStr, hotelObjectId.toString()] } },
-          ],
-        },
-      },
+      { $match: hotelOrderMatch },
       {
         $facet: {
           counts: [
@@ -281,81 +279,61 @@ export const getOrderStats = async (req, res) => {
               },
             },
           ],
-          financials: [
-            {
-              $match: {
-                $or: [
-                  { "payment.status": "completed" },
-                  {
-                    $and: [
-                      { "payment.method": { $in: ["pay_at_hotel", "cash"] } },
-                      { status: "delivered" },
-                    ],
-                  },
-                ],
-                status: { $ne: "cancelled" },
-              },
-            },
-            {
-              $project: {
-                total: { $ifNull: ["$pricing.total", 0] },
-                hotelComm: {
-                  $ifNull: [
-                    "$commissionBreakdown.hotel",
-                    {
-                      $divide: [
-                        {
-                          $multiply: [
-                            { $ifNull: ["$pricing.total", 0] },
-                            hotelPct,
-                          ],
-                        },
-                        100,
-                      ],
-                    },
-                  ],
-                },
-                isCashCollected: {
-                  $cond: [
-                    {
-                      $and: [
-                        { $in: ["$payment.method", ["pay_at_hotel", "cash"]] },
-                        { $eq: ["$cashCollected", true] },
-                        // Exclude orders where hotel has already handed over cash
-                        {
-                          $ne: ["$hotelCashSettled", true],
-                        },
-                      ],
-                    },
-                    { $ifNull: ["$pricing.total", 0] },
-                    0,
-                  ],
-                },
-              },
-            },
-            {
-              $group: {
-                _id: null,
-                totalRevenue: { $sum: "$total" },
-                yourEarnings: { $sum: "$hotelComm" },
-                totalCashCollected: { $sum: "$isCashCollected" },
-              },
-            },
-          ],
         },
       },
     ]);
+
+    const financialMatch = {
+      $and: [
+        hotelOrderMatch,
+        { status: { $ne: "cancelled" } },
+        {
+          $or: [
+            { "payment.status": "completed" },
+            {
+              $and: [
+                { "payment.method": { $in: ["pay_at_hotel", "cash"] } },
+                { status: "delivered" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const finOrders = await Order.find(financialMatch)
+      .select(
+        "pricing payment.method payment.status status cashCollected hotelCashSettled items",
+      )
+      .lean();
+
+    let totalRevenue = 0;
+    let yourEarnings = 0;
+    let totalCashCollected = 0;
+    for (const order of finOrders) {
+      totalRevenue += order.pricing?.total || 0;
+      yourEarnings += getHotelCommissionFromOrder(order, hotelPct);
+      const pm = order.payment?.method;
+      if (
+        (pm === "pay_at_hotel" || pm === "cash") &&
+        order.cashCollected === true &&
+        order.hotelCashSettled !== true
+      ) {
+        totalCashCollected += order.pricing?.total || 0;
+      }
+    }
+
+    const financial = {
+      totalRevenue,
+      yourEarnings,
+      totalCashCollected,
+    };
 
     const facet = statsResult[0];
     const counts = facet.counts.reduce((acc, curr) => {
       acc[curr._id] = curr.count;
       return acc;
     }, {});
-    const financial = facet.financials[0] || {
-      totalRevenue: 0,
-      yourEarnings: 0,
-      totalCashCollected: 0,
-    };
 
     // Optional override from wallet if admin has manually adjusted cash collected
     let overrideCashCollected = null;

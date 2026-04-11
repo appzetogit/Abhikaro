@@ -189,21 +189,21 @@ export const useDeliveryNotifications = () => {
   useEffect(() => {
     const handleUserInteraction = () => {
       userInteractedRef.current = true;
-      // Remove listeners after first interaction
-      document.removeEventListener('click', handleUserInteraction);
-      document.removeEventListener('touchstart', handleUserInteraction);
-      document.removeEventListener('keydown', handleUserInteraction);
+      document.removeEventListener('click', handleUserInteraction, { capture: true });
+      document.removeEventListener('touchstart', handleUserInteraction, { capture: true });
+      document.removeEventListener('keydown', handleUserInteraction, { capture: true });
     };
-    
-    // Listen for user interaction
-    document.addEventListener('click', handleUserInteraction, { once: true });
-    document.addEventListener('touchstart', handleUserInteraction, { once: true });
-    document.addEventListener('keydown', handleUserInteraction, { once: true });
-    
+
+    // Capture: controls that call stopPropagation() (e.g. Online toggle) still unlock autoplay.
+    const gestureOpts = { once: true, capture: true };
+    document.addEventListener('click', handleUserInteraction, gestureOpts);
+    document.addEventListener('touchstart', handleUserInteraction, gestureOpts);
+    document.addEventListener('keydown', handleUserInteraction, gestureOpts);
+
     return () => {
-      document.removeEventListener('click', handleUserInteraction);
-      document.removeEventListener('touchstart', handleUserInteraction);
-      document.removeEventListener('keydown', handleUserInteraction);
+      document.removeEventListener('click', handleUserInteraction, { capture: true });
+      document.removeEventListener('touchstart', handleUserInteraction, { capture: true });
+      document.removeEventListener('keydown', handleUserInteraction, { capture: true });
     };
   }, []);
   

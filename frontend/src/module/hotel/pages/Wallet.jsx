@@ -99,11 +99,18 @@ export default function HotelWallet() {
   const totalEarned = statsTotalEarned ?? wallet?.totalEarned ?? 0
   const totalWithdrawn = wallet?.totalWithdrawn ?? 0
 
-  // Withdrawable should include admin credits/deductions too.
-  // Admin adjustments are stored in wallet aggregates (totalEarned/totalBalance),
-  // but NOT in order stats; therefore compute withdrawable from wallet first.
-  const walletEarned = wallet?.totalEarned ?? null
-  const withdrawableEarnedBase = walletEarned != null ? walletEarned : totalEarned
+  // Wallet.totalEarned is often still 0 when commissions only appear as synthetic
+  // transactions (never written to HotelWallet). Stats from orders are authoritative then.
+  // When both exist, take the max so manual admin credits on the wallet are not lost.
+  const walletEarnedNum = Number(wallet?.totalEarned) || 0
+  const statsEarnedNum =
+    statsTotalEarned != null && !Number.isNaN(Number(statsTotalEarned))
+      ? Number(statsTotalEarned)
+      : 0
+  const withdrawableEarnedBase =
+    statsTotalEarned != null
+      ? Math.max(walletEarnedNum, statsEarnedNum)
+      : walletEarnedNum
 
   // Withdrawable = earnedBase - totalWithdrawn,
   // clamp to 0 minimum. Fallback to wallet.pendingPayout / balance if needed.

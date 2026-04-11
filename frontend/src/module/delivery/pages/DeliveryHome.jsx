@@ -691,10 +691,10 @@ export default function DeliveryHome() {
   const orderIdConfirmSwipeStartX = useRef(0)
   const orderIdConfirmSwipeStartY = useRef(0)
   const orderIdConfirmIsSwiping = useRef(false)
-  // Bill image upload state
+  // Bill image upload state (single source of truth: URL only — avoids stale "uploaded" without a new capture)
   const [billImageUrl, setBillImageUrl] = useState(null)
   const [isUploadingBill, setIsUploadingBill] = useState(false)
-  const [billImageUploaded, setBillImageUploaded] = useState(false)
+  const confirmBillOrderKeyRef = useRef(null)
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
   const [orderDeliveredButtonProgress, setOrderDeliveredButtonProgress] = useState(0)
@@ -1185,11 +1185,19 @@ export default function DeliveryHome() {
             const method = order.paymentMethod ?? order.payment?.method ?? 'razorpay'
             return method === 'cod' || method === 'cash' ? 'cash' : method
           })(),
+          orderType: order.orderType || null,
+          hotelReference: order.hotelReference || null,
+          hotelId:
+            order.hotelId?._id?.toString?.() ||
+            order.hotelId?.toString?.() ||
+            (typeof order.hotelId === 'string' ? order.hotelId : null),
+          hotelName: order.hotelName || null,
           phone: restaurant.phone || restaurant.ownerPhone || null,
           ownerPhone: restaurant.ownerPhone || null,
           orderStatus: order.status || 'preparing',
           deliveryState,
-          deliveryPhase
+          deliveryPhase,
+          billImageUrl: order.billImageUrl || null,
         }
 
         // If coords are missing after refresh, fetch restaurant details directly (order.restaurantId is often a string)
@@ -1466,21 +1474,23 @@ export default function DeliveryHome() {
         }
       } catch (_) { }
 
-      // Remove listeners after first interaction
-      document.removeEventListener('click', handleUserInteraction)
-      document.removeEventListener('touchstart', handleUserInteraction)
-      document.removeEventListener('keydown', handleUserInteraction)
+      // Remove listeners after first interaction (capture flag must match addEventListener)
+      document.removeEventListener('click', handleUserInteraction, { capture: true })
+      document.removeEventListener('touchstart', handleUserInteraction, { capture: true })
+      document.removeEventListener('keydown', handleUserInteraction, { capture: true })
     }
 
-    // Listen for user interaction
-    document.addEventListener('click', handleUserInteraction, { once: true })
-    document.addEventListener('touchstart', handleUserInteraction, { once: true })
-    document.addEventListener('keydown', handleUserInteraction, { once: true })
+    // Capture phase: FeedNavbar online toggle calls stopPropagation(), which blocks bubble
+    // from reaching document — without capture, first tap never unlocks audio / hasUserInteracted.
+    const gestureOpts = { once: true, capture: true }
+    document.addEventListener('click', handleUserInteraction, gestureOpts)
+    document.addEventListener('touchstart', handleUserInteraction, gestureOpts)
+    document.addEventListener('keydown', handleUserInteraction, gestureOpts)
 
     return () => {
-      document.removeEventListener('click', handleUserInteraction)
-      document.removeEventListener('touchstart', handleUserInteraction)
-      document.removeEventListener('keydown', handleUserInteraction)
+      document.removeEventListener('click', handleUserInteraction, { capture: true })
+      document.removeEventListener('touchstart', handleUserInteraction, { capture: true })
+      document.removeEventListener('keydown', handleUserInteraction, { capture: true })
     }
   }, [])
 
@@ -1659,10 +1669,10 @@ export default function DeliveryHome() {
         }
       }
 
-      // Small delay to ensure popup is fully rendered
+      // Play as soon as the popup is open (no artificial delay — riders need an instant ring).
       const timeoutId = setTimeout(() => {
         playAudio()
-      }, 100)
+      }, 0)
 
       return () => {
         clearTimeout(timeoutId)
@@ -1681,8 +1691,11 @@ export default function DeliveryHome() {
         alertAudioEndedHandlerRef.current = null
       }
       ringingOrderKeyRef.current = null
-      // Also stop the socket-driven one-shot notification sound (if any)
-      if (typeof stopNotificationSound === 'function') {
+      // Do not stop socket one-shot audio while `newOrder` is set but the accept popup is
+      // still opening — mapping runs in an async IIFE, so `showNewOrderPopup` can lag behind
+      // `newOrder` and this branch would otherwise mute `play_notification_sound` instantly.
+      const awaitingNewOrderPopup = Boolean(newOrder) && !showNewOrderPopup
+      if (typeof stopNotificationSound === 'function' && !awaitingNewOrderPopup) {
         stopNotificationSound()
       }
     }
@@ -2653,6 +2666,13 @@ export default function DeliveryHome() {
                   // Normalize "cod" to "cash" for consistency
                   return (method === 'cod' || method === 'cash') ? 'cash' : method;
                 })(), // backend-resolved first (COD vs Online)
+                orderType: order.orderType || null,
+                hotelReference: order.hotelReference || null,
+                hotelId:
+                  order.hotelId?._id?.toString?.() ||
+                  order.hotelId?.toString?.() ||
+                  (typeof order.hotelId === 'string' ? order.hotelId : null),
+                hotelName: order.hotelName || null,
                 phone: order.restaurantId?.phone || order.restaurantId?.ownerPhone || null, // Restaurant phone number (prefer phone, fallback to ownerPhone)
                 ownerPhone: order.restaurantId?.ownerPhone || null, // Owner phone number (separate field for direct access)
                 orderStatus: order.status || 'preparing', // Store order status (pending, preparing, ready, out_for_delivery, delivered)
@@ -2661,7 +2681,8 @@ export default function DeliveryHome() {
                   currentPhase: 'en_route_to_pickup', // CRITICAL: Set to en_route_to_pickup after order acceptance
                   status: 'accepted' // Set status to accepted
                 }, // Store delivery state (currentPhase, status, etc.)
-                deliveryPhase: 'en_route_to_pickup' // CRITICAL: Set to en_route_to_pickup after order acceptance so Reached Pickup popup can show
+                deliveryPhase: 'en_route_to_pickup', // CRITICAL: Set to en_route_to_pickup after order acceptance so Reached Pickup popup can show
+                billImageUrl: order.billImageUrl || null,
               }
 
               // Update state immediately
@@ -3833,10 +3854,7 @@ export default function DeliveryHome() {
 
           setBillImageUrl(imageUrl)
 
-          // Bill image is uploaded to Cloudinary, now enable the button
-          // The bill image URL will be sent when confirming order ID
-
-          setBillImageUploaded(true)
+          // Bill image is uploaded to Cloudinary; swipe is enabled when billImageUrl is set
           toast.success('Bill image uploaded! You can now confirm order ID.')
         } else {
           throw new Error('Failed to get image URL from upload response')
@@ -3858,7 +3876,6 @@ export default function DeliveryHome() {
         toast.error('Failed to upload bill image. Please try again.')
       }
       setBillImageUrl(null)
-      setBillImageUploaded(false)
     } finally {
       setIsUploadingBill(false)
       // Reset file input
@@ -3877,7 +3894,7 @@ export default function DeliveryHome() {
 
   const handleOrderIdConfirmTouchEnd = (e) => {
     // Disable swipe if bill image is not uploaded
-    if (!billImageUploaded) {
+    if (!billImageUrl) {
       toast.error('Please upload bill image first')
       setOrderIdConfirmButtonProgress(0)
       return
@@ -6077,6 +6094,40 @@ export default function DeliveryHome() {
       }, 500);
     }
   }, [showOrderIdConfirmationPopup])
+
+  // When Confirm Order ID opens (or order changes), reset bill capture unless backend already has a bill URL
+  useEffect(() => {
+    if (!showOrderIdConfirmationPopup) {
+      setBillImageUrl(null)
+      setIsUploadingBill(false)
+      confirmBillOrderKeyRef.current = null
+      return
+    }
+    const key = String(
+      selectedRestaurant?.orderId ||
+        selectedRestaurant?.id ||
+        selectedRestaurant?._id ||
+        '',
+    )
+    if (!key) return
+
+    const serverBill =
+      typeof selectedRestaurant?.billImageUrl === 'string' &&
+      selectedRestaurant.billImageUrl.trim()
+        ? selectedRestaurant.billImageUrl.trim()
+        : null
+    if (confirmBillOrderKeyRef.current !== key) {
+      confirmBillOrderKeyRef.current = key
+      setBillImageUrl(serverBill || null)
+      setIsUploadingBill(false)
+    }
+  }, [
+    showOrderIdConfirmationPopup,
+    selectedRestaurant?.orderId,
+    selectedRestaurant?.id,
+    selectedRestaurant?._id,
+    selectedRestaurant?.billImageUrl,
+  ])
 
   // Persist "Confirm Order ID" required state in localStorage so refresh pe bhi popup na hatay
   useEffect(() => {
@@ -11447,7 +11498,7 @@ export default function DeliveryHome() {
             {/* Bill Image Upload Section */}
             <div className="mb-6">
               <p className="text-gray-600 text-sm mb-3 text-center">
-                {billImageUploaded ? '✅ Bill image uploaded' : 'Please capture bill image'}
+                {billImageUrl ? '✅ Bill image uploaded' : 'Please capture bill image'}
               </p>
 
               {/* Camera Button */}
@@ -11457,7 +11508,7 @@ export default function DeliveryHome() {
                   disabled={isUploadingBill}
                   className={`flex items-center justify-center gap-2 px-6 py-3 rounded-lg transition-colors ${isUploadingBill
                     ? 'bg-gray-400 cursor-not-allowed'
-                    : billImageUploaded
+                    : billImageUrl
                       ? 'bg-green-600 hover:bg-green-700'
                       : 'bg-blue-600 hover:bg-blue-700'
                     } text-white font-medium`}
@@ -11467,7 +11518,7 @@ export default function DeliveryHome() {
                       <Loader2 className="w-5 h-5 animate-spin" />
                       <span>Uploading...</span>
                     </>
-                  ) : billImageUploaded ? (
+                  ) : billImageUrl ? (
                     <>
                       <CheckCircle className="w-5 h-5" />
                       <span>Bill Uploaded</span>
@@ -11497,16 +11548,16 @@ export default function DeliveryHome() {
             <div className="relative w-full">
               <motion.div
                 ref={orderIdConfirmButtonRef}
-                className={`relative w-full rounded-full overflow-hidden shadow-xl ${billImageUploaded ? 'bg-green-600' : 'bg-gray-400 cursor-not-allowed'
+                className={`relative w-full rounded-full overflow-hidden shadow-xl ${billImageUrl ? 'bg-green-600' : 'bg-gray-400 cursor-not-allowed'
                   }`}
                 style={{
-                  touchAction: billImageUploaded ? 'pan-x' : 'none',
-                  opacity: billImageUploaded ? 1 : 0.6
+                  touchAction: billImageUrl ? 'pan-x' : 'none',
+                  opacity: billImageUrl ? 1 : 0.6
                 }}
-                onTouchStart={billImageUploaded ? handleOrderIdConfirmTouchStart : undefined}
-                onTouchMove={billImageUploaded ? handleOrderIdConfirmTouchMove : undefined}
-                onTouchEnd={billImageUploaded ? handleOrderIdConfirmTouchEnd : undefined}
-                whileTap={billImageUploaded ? { scale: 0.98 } : {}}
+                onTouchStart={billImageUrl ? handleOrderIdConfirmTouchStart : undefined}
+                onTouchMove={billImageUrl ? handleOrderIdConfirmTouchMove : undefined}
+                onTouchEnd={billImageUrl ? handleOrderIdConfirmTouchEnd : undefined}
+                whileTap={billImageUrl ? { scale: 0.98 } : {}}
               >
                 {/* Swipe progress background */}
                 <motion.div
@@ -11552,7 +11603,7 @@ export default function DeliveryHome() {
                         damping: 25
                       } : { duration: 0 }}
                     >
-                      {!billImageUploaded
+                      {!billImageUrl
                         ? 'Upload Bill First'
                         : orderIdConfirmButtonProgress > 0.5
                           ? 'Release to Confirm'
@@ -11925,6 +11976,12 @@ export default function DeliveryHome() {
             const m = String(rawMethod).toLowerCase().trim()
             const isCod = m === "cash" || m === "cod" || m === "cash on delivery"
             const isPayAtHotel = m === "pay_at_hotel" || m === "pay at hotel"
+            const isHotelQrOnline =
+              !isCod &&
+              !isPayAtHotel &&
+              (String(selectedRestaurant?.orderType || "").toUpperCase() === "QR" ||
+                !!selectedRestaurant?.hotelReference ||
+                !!selectedRestaurant?.hotelId)
             const total = Number(selectedRestaurant.total) || 0
 
             const containerClasses = isCod
@@ -11955,6 +12012,8 @@ export default function DeliveryHome() {
               ? "Collect from customer (COD)"
               : isPayAtHotel
               ? "Pay at Hotel"
+              : isHotelQrOnline
+              ? "Amount paid Hotel (Online)"
               : "Amount paid (Online)"
 
             return (

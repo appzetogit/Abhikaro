@@ -786,7 +786,8 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
 
     let hotelEarning =
       order.commissionBreakdown &&
-      typeof order.commissionBreakdown.hotel === "number"
+      typeof order.commissionBreakdown.hotel === "number" &&
+      order.commissionBreakdown.hotel > 0
         ? order.commissionBreakdown.hotel
         : (total * hotelCommPercent) / 100;
 
@@ -965,25 +966,32 @@ export const getHotelQROrders = asyncHandler(async (req, res) => {
           ? order.pricing.total
           : 0) || 0;
 
+    // Prefer persisted splits only when they are actually set (> 0).
+    // Razorpay / online QR orders often have commissionBreakdown keys present as 0;
+    // `typeof x === "number"` was true for 0 and blocked the hotel % fallback, so the UI showed all zeros.
+    const bdHotel = order.commissionBreakdown?.hotel;
+    const bdAdmin = order.commissionBreakdown?.admin;
+    const bdRestaurant = order.commissionBreakdown?.restaurant;
+
     const hotelProfit =
       typeof order.hotelCommission === "number" && order.hotelCommission > 0
         ? order.hotelCommission
-        : typeof order.commissionBreakdown?.hotel === "number"
-          ? order.commissionBreakdown.hotel
+        : typeof bdHotel === "number" && bdHotel > 0
+          ? bdHotel
           : Math.round(((amountBase * hotelPct) / 100) * 100) / 100;
 
     const adminProfit =
       typeof order.adminCommission === "number" && order.adminCommission > 0
         ? order.adminCommission
-        : typeof order.commissionBreakdown?.admin === "number"
-          ? order.commissionBreakdown.admin
+        : typeof bdAdmin === "number" && bdAdmin > 0
+          ? bdAdmin
           : Math.round(((amountBase * adminPct) / 100) * 100) / 100;
 
     const restaurantProfit =
       typeof order.restaurantShare === "number" && order.restaurantShare > 0
         ? order.restaurantShare
-        : typeof order.commissionBreakdown?.restaurant === "number"
-          ? order.commissionBreakdown.restaurant
+        : typeof bdRestaurant === "number" && bdRestaurant > 0
+          ? bdRestaurant
           : Math.round((amountBase - hotelProfit - adminProfit) * 100) / 100;
 
     return {
@@ -1211,7 +1219,8 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
 
           const hasHotelCommissionFromOrder =
             order.commissionBreakdown &&
-            typeof order.commissionBreakdown.hotel === "number";
+            typeof order.commissionBreakdown.hotel === "number" &&
+            order.commissionBreakdown.hotel > 0;
 
           if (hasHotelCommissionFromOrder) {
             stats.hotelEarnings += order.commissionBreakdown.hotel;

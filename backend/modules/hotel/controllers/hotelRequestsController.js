@@ -5,6 +5,7 @@ import {
 
 import mongoose from "mongoose";
 import Order from "../../order/models/Order.js";
+import { getHotelCommissionFromOrder } from "../../order/utils/hotelCommissionBase.js";
 
 export const getHotelRequests = async (req, res) => {
   try {
@@ -110,17 +111,16 @@ export const getHotelRequestStats = async (req, res) => {
         const totalAmount = order.pricing?.total || 0;
         stats.totalRevenue += totalAmount;
 
-        const breakdown = order.commissionBreakdown;
-        if (breakdown && breakdown.hotel > 0) {
-          stats.totalHotelRevenue += breakdown.hotel;
-        } else {
-          // Fallback: Use current hotel settings
-          const hotelCommPercent =
-            typeof hotel.commission === "number" && hotel.commission > 0
-              ? hotel.commission
-              : 10;
-          stats.totalHotelRevenue += (totalAmount * hotelCommPercent) / 100;
-        }
+        // Always derive hotel commission from food subtotal (stored breakdown can be
+        // wrong when it was computed on grand total, e.g. Razorpay 34.7 vs true 30).
+        const hotelCommPercent =
+          typeof hotel.commission === "number" && hotel.commission > 0
+            ? hotel.commission
+            : 10;
+        stats.totalHotelRevenue += getHotelCommissionFromOrder(
+          order,
+          hotelCommPercent,
+        );
       }
     });
 

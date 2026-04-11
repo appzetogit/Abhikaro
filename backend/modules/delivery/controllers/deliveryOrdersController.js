@@ -75,16 +75,23 @@ export const getOrders = asyncHandler(async (req, res) => {
       }
     });
 
-    // Resolve payment method for each order (COD vs Online)
+    // Resolve payment method for each order (COD vs Online vs Pay-at-Hotel)
     const ordersWithPayment = await Promise.all(
       orders.map(async (order) => {
-        let paymentMethod = order.payment?.method || "razorpay";
+        // Support older shapes where `paymentMethod` may be top-level.
+        let paymentMethod =
+          order.payment?.method || order.paymentMethod || "razorpay";
         
         // Normalize "cod" to "cash" if present
         if (paymentMethod === "cod" || paymentMethod === "cash") {
           paymentMethod = "cash";
         } else {
-          // If not cash/cod, check Payment collection to be sure
+          // Preserve Pay-at-Hotel without consulting Payment collection
+          // (Pay-at-Hotel orders typically don't create a Payment record).
+          if (paymentMethod === "pay_at_hotel") {
+            return { ...order, paymentMethod };
+          }
+          // If not cash/cod, check Payment collection to be sure (COD legacy)
           try {
             const paymentRecord = await Payment.findOne({ orderId: order._id })
               .select("method")
@@ -236,24 +243,30 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
       );
     }
 
-    // Resolve payment method for delivery boy (COD vs Online)
-    // Normalize payment method: check both order.payment.method and Payment collection
-    let paymentMethod = order.payment?.method || "razorpay";
+    // Resolve payment method for delivery boy (COD vs Online vs Pay-at-Hotel)
+    // Normalize payment method: check both order.payment.method, top-level paymentMethod and Payment collection
+    let paymentMethod = order.payment?.method || order.paymentMethod || "razorpay";
     
     // Normalize "cod" to "cash" if present
     if (paymentMethod === "cod" || paymentMethod === "cash") {
       paymentMethod = "cash";
     } else {
-      // If not cash/cod, check Payment collection to be sure
-      try {
-        const paymentRecord = await Payment.findOne({ orderId: order._id })
-          .select("method")
-          .lean();
-        if (paymentRecord?.method === "cash" || paymentRecord?.method === "cod") {
-          paymentMethod = "cash";
+      // Preserve Pay-at-Hotel without consulting Payment collection
+      // (Pay-at-Hotel orders typically don't create a Payment record).
+      if (paymentMethod === "pay_at_hotel") {
+        // keep as-is
+      } else {
+        // If not cash/cod, check Payment collection to be sure (COD legacy)
+        try {
+          const paymentRecord = await Payment.findOne({ orderId: order._id })
+            .select("method")
+            .lean();
+          if (paymentRecord?.method === "cash" || paymentRecord?.method === "cod") {
+            paymentMethod = "cash";
+          }
+        } catch (e) {
+          /* ignore */
         }
-      } catch (e) {
-        /* ignore */
       }
     }
     // Build effective restaurant location/address for clients that expect scalar fields
@@ -2100,6 +2113,28 @@ export const completeDelivery = asyncHandler(async (req, res) => {
 
     if (!order) {
       return errorResponse(res, 404, "Order not found or not assigned to you");
+    }
+
+    // Hard safety: Pay-at-Hotel orders must be cash-settled before delivery completion.
+    // This prevents "Delivered without payment" even if the delivery UI fails to show the button.
+    const effectiveMethod = (order.payment?.method || order.paymentMethod || "")
+      .toString()
+      .toLowerCase()
+      .trim();
+    const isPayAtHotel =
+      effectiveMethod === "pay_at_hotel" || effectiveMethod === "pay at hotel";
+    if (isPayAtHotel) {
+      const settled =
+        order.hotelCashSettled === true ||
+        order.cashCollected === true ||
+        order.payment?.status === "completed";
+      if (!settled) {
+        return errorResponse(
+          res,
+          400,
+          "Please confirm cash collected at hotel before marking this order as delivered",
+        );
+      }
     }
 
     // Check if order is already delivered/completed (idempotent - allow if already completed)
