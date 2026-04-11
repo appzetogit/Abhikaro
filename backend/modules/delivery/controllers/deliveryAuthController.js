@@ -5,6 +5,7 @@ import { successResponse, errorResponse } from '../../../shared/utils/response.j
 import { asyncHandler } from '../../../shared/middleware/asyncHandler.js';
 import { handleAuthFcmToken } from '../../fcm/services/notificationTriggers.js';
 import winston from 'winston';
+import { normalizeDeliveryProfileImages } from '../utils/profileImageNormalize.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -270,6 +271,9 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
     }
 
+    const deliveryPlain = delivery.toObject({ depopulate: true });
+    normalizeDeliveryProfileImages(deliveryPlain, req);
+
     // Return access token and delivery boy info
     return successResponse(res, 200, 'Authentication successful', {
       accessToken: tokens.accessToken,
@@ -281,7 +285,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         phone: delivery.phone,
         phoneVerified: delivery.phoneVerified,
         signupMethod: delivery.signupMethod,
-        profileImage: delivery.profileImage,
+        profileImage: deliveryPlain.profileImage,
         isActive: delivery.isActive,
         status: delivery.status,
         rejectionReason: delivery.rejectionReason || null, // Include rejection reason for blocked accounts
@@ -427,28 +431,30 @@ export const registerFcmToken = asyncHandler(async (req, res) => {
  * GET /api/delivery/auth/me
  */
 export const getCurrentDelivery = asyncHandler(async (req, res) => {
-  // Delivery boy is attached by authenticate middleware
+  const d = req.delivery.toObject({ depopulate: true });
+  normalizeDeliveryProfileImages(d, req);
+
   return successResponse(res, 200, 'Delivery boy retrieved successfully', {
     user: {
-      id: req.delivery._id,
-      deliveryId: req.delivery.deliveryId,
-      name: req.delivery.name,
-      email: req.delivery.email,
-      phone: req.delivery.phone,
-      phoneVerified: req.delivery.phoneVerified,
-      signupMethod: req.delivery.signupMethod,
-      profileImage: req.delivery.profileImage,
-      isActive: req.delivery.isActive,
-      status: req.delivery.status,
-      location: req.delivery.location,
-      vehicle: req.delivery.vehicle,
-      documents: req.delivery.documents,
-      availability: req.delivery.availability,
-      metrics: req.delivery.metrics,
-      earnings: req.delivery.earnings,
-      wallet: req.delivery.wallet,
-      level: req.delivery.level,
-      lastLogin: req.delivery.lastLogin
+      id: d._id,
+      deliveryId: d.deliveryId,
+      name: d.name,
+      email: d.email,
+      phone: d.phone,
+      phoneVerified: d.phoneVerified,
+      signupMethod: d.signupMethod,
+      profileImage: d.profileImage,
+      isActive: d.isActive,
+      status: d.status,
+      location: d.location,
+      vehicle: d.vehicle,
+      documents: d.documents,
+      availability: d.availability,
+      metrics: d.metrics,
+      earnings: d.earnings,
+      wallet: d.wallet,
+      level: d.level,
+      lastLogin: d.lastLogin
     }
   });
 });

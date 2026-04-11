@@ -262,9 +262,8 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       user = await User.findOne(findQuery);
 
       if (!user && !name) {
-        // OTP has NOT been verified yet in this flow.
-        // Tell the client that we need user's name to proceed with auto-registration.
-        // The client should collect name and call this endpoint again with the same OTP and name.
+        // Verify OTP first so invalid codes never advance to the name step (bug: error only after name).
+        await otpService.verifyOTP(phone || null, otp, purpose, email || null);
         return successResponse(
           res,
           200,
@@ -304,7 +303,17 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       // - user exists (normal login), or
       // - user does not exist but name is provided (auto-registration)
       // In both cases we must verify OTP first.
-      await otpService.verifyOTP(phone || null, otp, purpose, email || null);
+      const verifyOptions =
+        !user && name && purpose === "login"
+          ? { allowRecentlyVerifiedLogin: true }
+          : {};
+      await otpService.verifyOTP(
+        phone || null,
+        otp,
+        purpose,
+        email || null,
+        verifyOptions,
+      );
 
       if (!user) {
         // Auto-register new user after OTP verification

@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { HelpCircle, ArrowRight, Phone, Ambulance, AlertTriangle, Shield, ShieldCheck, User } from "lucide-react";
 import { toast } from "sonner";
 import { deliveryAPI } from "@/lib/api";
+import { getDeliveryProfilePhotoUrl, getDeliveryUiAvatarUrl } from "../utils/profilePhoto";
 import { useCompanyName } from "@/lib/hooks/useCompanyName";
 
 const LS_KEY = "app:isOnline";
@@ -114,7 +115,31 @@ export default function FeedNavbar({ className = "" }) {
     e?.stopPropagation?.();
 
     const next = !isOnline;
-    
+
+    if (next) {
+      try {
+        const res = await deliveryAPI.getProfile();
+        const profile = res?.data?.data?.profile;
+        const st = String(profile?.status || "").toLowerCase();
+        if (st === "pending") {
+          toast.error(
+            "You cannot go online until the admin verifies your account.",
+            { id: TOAST_ID_KEY, style: { marginTop: "80px" } },
+          );
+          return;
+        }
+        if (st === "rejected" || st === "blocked") {
+          toast.error(
+            "You cannot go online with your current account status. Contact support if you need help.",
+            { id: TOAST_ID_KEY, style: { marginTop: "80px" } },
+          );
+          return;
+        }
+      } catch {
+        // If verification status cannot be loaded, do not block going online (offline-first networks).
+      }
+    }
+
     // Check for active orders before allowing offline toggle
     if (!next) {
       // User is trying to go offline - check for active orders
@@ -331,15 +356,11 @@ export default function FeedNavbar({ className = "" }) {
         const response = await deliveryAPI.getProfile();
         if (response?.data?.success && response?.data?.data?.profile) {
           const profile = response.data.data.profile;
-          // Use profileImage.url first, fallback to documents.photo/profilePhoto
           const imageUrl =
-            profile.profileImage?.url ||
-            profile.documents?.photo ||
-            profile.documents?.profilePhoto;
-          if (imageUrl) {
-            setProfileImage(imageUrl);
-            setImageError(false);
-          }
+            getDeliveryProfilePhotoUrl(profile) ||
+            getDeliveryUiAvatarUrl(profile?.name);
+          setProfileImage(imageUrl);
+          setImageError(false);
         }
       } catch (error) {
         // Skip logging network and timeout errors (handled by axios interceptor)
@@ -429,8 +450,13 @@ export default function FeedNavbar({ className = "" }) {
               src={profileImage}
               alt="Profile"
               className="w-full h-full object-cover"
-              onError={() => {
-                setImageError(true);
+              onError={(e) => {
+                const fb = getDeliveryUiAvatarUrl("Delivery Partner");
+                if (e.target.src !== fb) {
+                  e.target.src = fb;
+                } else {
+                  setImageError(true);
+                }
               }}
             />
           ) : (

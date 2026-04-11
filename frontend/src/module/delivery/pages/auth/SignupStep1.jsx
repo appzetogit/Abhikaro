@@ -96,7 +96,7 @@ export default function SignupStep1() {
     }
 
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = "Invalid email format"
+      newErrors.email = "Wrong email address"
     }
 
     if (!formData.address.trim()) {

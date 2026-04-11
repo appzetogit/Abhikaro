@@ -58,6 +58,7 @@ const documentsSchema = new mongoose.Schema({
     }
   },
   photo: String, // Profile photo URL
+  profilePhoto: String, // Legacy / alternate key for profile picture URL
   bankDetails: {
     accountNumber: String, // Encrypted
     ifscCode: String,

@@ -11,6 +11,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { restaurantAPI } from "@/lib/api"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
+import { setAuthData as setRestaurantAuthData } from "@/lib/utils/auth"
+import { ensureFirebaseInitialized, firebaseAuth, googleProvider } from "@/lib/firebase"
+import { checkOnboardingStatus } from "../../utils/onboardingUtils"
 
 // Common country codes
 const countryCodes = [
@@ -54,8 +57,82 @@ export default function RestaurantLogin() {
     email: false,
   })
   const [isSending, setIsSending] = useState(false)
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const [apiError, setApiError] = useState("")
   const lastOTPRequestTime = useRef(0) // Track last OTP request time for debouncing
+  const redirectHandledRef = useRef(false)
+
+  const processRestaurantGoogleUser = async (user, _source = "unknown") => {
+    if (redirectHandledRef.current) return
+    redirectHandledRef.current = true
+    setIsGoogleLoading(true)
+    setApiError("")
+    try {
+      const idToken = await user.getIdToken()
+      const response = await restaurantAPI.firebaseGoogleLogin(idToken)
+      const data = response?.data?.data || response?.data
+      const accessToken = data?.accessToken
+      const restaurant = data?.restaurant
+      if (accessToken && restaurant) {
+        setRestaurantAuthData("restaurant", accessToken, restaurant)
+        window.dispatchEvent(new Event("restaurantAuthChanged"))
+        import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
+          registerFcmToken(accessToken, { sendLoginAlert: true }).catch(() => {})
+        })
+        sessionStorage.removeItem("restaurantAuthData")
+        try {
+          const incompleteStep = await checkOnboardingStatus()
+          if (incompleteStep) {
+            navigate(`/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
+          } else {
+            navigate("/restaurant", { replace: true })
+          }
+        } catch {
+          navigate("/restaurant", { replace: true })
+        }
+      } else {
+        redirectHandledRef.current = false
+        setApiError("Invalid response from server. Please try again.")
+      }
+    } catch (err) {
+      redirectHandledRef.current = false
+      setApiError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          "Google sign-in failed. Please try again.",
+      )
+    } finally {
+      setIsGoogleLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        const { getRedirectResult } = await import("firebase/auth")
+        await ensureFirebaseInitialized()
+        if (!firebaseAuth) return
+
+        let result = null
+        try {
+          result = await getRedirectResult(firebaseAuth)
+        } catch {
+          result = null
+        }
+
+        if (result?.user) {
+          await processRestaurantGoogleUser(result.user, "redirect-result")
+        }
+      } catch (e) {
+        console.error("Restaurant Google redirect check:", e)
+        setApiError("Could not complete Google sign-in. Please try again.")
+        setIsGoogleLoading(false)
+      }
+    }
+
+    setTimeout(() => handleRedirectResult(), 400)
+  }, [navigate])
 
   // Prefill phone from sessionStorage when returning from OTP screen
   useEffect(() => {
@@ -92,6 +169,14 @@ export default function RestaurantLogin() {
 
     // Remove any non-digit characters for validation
     const digitsOnly = phone.replace(/\D/g, "")
+
+    if (
+      countryCode !== "+91" &&
+      digitsOnly.length === 10 &&
+      /^[6-9]\d{9}$/.test(digitsOnly)
+    ) {
+      return "This number looks Indian. Select +91 or enter a valid number for the selected country."
+    }
 
     // Minimum length check (at least 7 digits)
     if (digitsOnly.length < 10) {
@@ -315,6 +400,78 @@ export default function RestaurantLogin() {
   const isValidPhone = !errors.phone && formData.phone.trim().length > 0
   const isValidEmail = !errors.email && formData.email.trim().length > 0
 
+  const handleGoogleSignIn = async () => {
+    setApiError("")
+    setIsGoogleLoading(true)
+    redirectHandledRef.current = false
+    try {
+      await ensureFirebaseInitialized()
+      if (!firebaseAuth || !googleProvider) {
+        throw new Error("Google sign-in is not configured. Please use OTP login.")
+      }
+
+      const flutterBridge = window.flutter_inappwebview
+      if (flutterBridge && typeof flutterBridge.callHandler === "function") {
+        try {
+          const result = await Promise.race([
+            flutterBridge.callHandler("nativeGoogleSignIn"),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("FLUTTER_NATIVE_GOOGLE_TIMEOUT")), 12000),
+            ),
+          ])
+          if (result?.success && result.idToken) {
+            const { GoogleAuthProvider, signInWithCredential } = await import("firebase/auth")
+            const credential = GoogleAuthProvider.credential(result.idToken)
+            const userCredential = await signInWithCredential(firebaseAuth, credential)
+            await processRestaurantGoogleUser(userCredential.user, "flutter")
+            return
+          }
+        } catch (e) {
+          if (e?.message !== "FLUTTER_NATIVE_GOOGLE_TIMEOUT") {
+            setIsGoogleLoading(false)
+            return
+          }
+        }
+      }
+
+      const { signInWithPopup, signInWithRedirect } = await import("firebase/auth")
+      try {
+        const userCredential = await signInWithPopup(firebaseAuth, googleProvider)
+        await processRestaurantGoogleUser(userCredential.user, "popup")
+      } catch (popupError) {
+        const code = popupError?.code || ""
+        if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+          setIsGoogleLoading(false)
+          return
+        }
+        if (
+          code === "auth/popup-blocked" ||
+          code === "auth/operation-not-supported-in-this-environment"
+        ) {
+          await signInWithRedirect(firebaseAuth, googleProvider)
+          return
+        }
+        throw popupError
+      }
+    } catch (err) {
+      console.error("Restaurant Google sign-in:", err)
+      redirectHandledRef.current = false
+      const code = err?.code || ""
+      let message = "Google sign-in failed. Please try again."
+      if (code === "auth/configuration-not-found") {
+        message =
+          "Firebase is not set up for this domain. Ask your admin to add this site to Firebase authorized domains."
+      } else if (code === "auth/operation-not-allowed") {
+        message = "Google sign-in is disabled in Firebase. Enable Google provider in Firebase Console."
+      } else if (err?.message) {
+        message = err.message
+      }
+      setApiError(message)
+    } finally {
+      setIsGoogleLoading(false)
+    }
+  }
+
   return (
     <div className="max-h-screen h-screen bg-white flex flex-col">
       {/* Top Section - Logo and Badge */}
@@ -354,6 +511,19 @@ export default function RestaurantLogin() {
                 : "Enter your phone number and we will send an OTP to continue"
               }
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleGoogleSignIn}
+              disabled={isGoogleLoading || isSending}
+              className="w-full h-12 rounded-lg font-semibold text-base border border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
+            >
+              {isGoogleLoading ? "Signing in…" : "Continue with Google"}
+            </Button>
+            <p className="text-center text-xs text-gray-500">or use OTP below</p>
           </div>
 
           {/* Phone Number Input */}

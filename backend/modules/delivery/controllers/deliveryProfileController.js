@@ -4,6 +4,7 @@ import Delivery from '../models/Delivery.js';
 import { validate } from '../../../shared/middleware/validate.js';
 import Joi from 'joi';
 import winston from 'winston';
+import { normalizeDeliveryProfileImages } from '../utils/profileImageNormalize.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -31,6 +32,8 @@ export const getProfile = asyncHandler(async (req, res) => {
     if (!profile) {
       return errorResponse(res, 404, 'Delivery partner not found');
     }
+
+    normalizeDeliveryProfileImages(profile, req);
 
     return successResponse(res, 200, 'Profile retrieved successfully', {
       profile
@@ -117,8 +120,11 @@ export const updateProfile = asyncHandler(async (req, res) => {
       updatedFields: Object.keys(updateData)
     });
 
+    const profileOut = updatedDelivery.toObject({ depopulate: true });
+    normalizeDeliveryProfileImages(profileOut, req);
+
     return successResponse(res, 200, 'Profile updated successfully', {
-      profile: updatedDelivery
+      profile: profileOut
     });
   } catch (error) {
     logger.error(`Error updating delivery profile: ${error.message}`);

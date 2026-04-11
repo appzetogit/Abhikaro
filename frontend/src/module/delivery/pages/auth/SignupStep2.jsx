@@ -35,12 +35,12 @@ export default function SignupStep2() {
   }, [])
 
   // Camera capture handler with Flutter support (reused pattern from other modules)
-  const handleCameraCapture = async (docType, fileInputRef) => {
+  const handleCameraCapture = async (docType, cameraInputRef) => {
     try {
       if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === "function") {
         // Use Flutter InAppWebView handler when available
         const result = await window.flutter_inappwebview.callHandler("openCamera", {
-          source: "camera", // 'camera' for camera, 'gallery' for file picker
+          source: "camera",
           accept: "image/*",
           multiple: false,
           quality: 0.8,
@@ -78,19 +78,47 @@ export default function SignupStep2() {
           return
         }
       } else {
-        // Fallback to standard file input to allow camera/gallery selection in browser
-        if (fileInputRef?.current) {
-          fileInputRef.current.click()
-        }
+        cameraInputRef?.current?.click()
       }
     } catch (error) {
       // Error opening camera
       toast.error("Failed to open camera. Please try again.")
 
-      // Fallback to standard file input
-      if (fileInputRef?.current) {
-        fileInputRef.current.click()
+      cameraInputRef?.current?.click()
+    }
+  }
+
+  const handleFlutterGallery = async (docType) => {
+    try {
+      if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === "function") {
+        const result = await window.flutter_inappwebview.callHandler("openCamera", {
+          source: "gallery",
+          accept: "image/*",
+          multiple: false,
+          quality: 0.8,
+        })
+        if (result?.success) {
+          let file = null
+          if (result.file) {
+            file = result.file
+          } else if (result.base64) {
+            const base64Data = result.base64
+            const mimeType = result.mimeType || "image/jpeg"
+            const fileName = result.fileName || "gallery-image.jpg"
+            const byteCharacters = atob(base64Data.split(",")[1] || base64Data)
+            const byteNumbers = new Array(byteCharacters.length)
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i)
+            }
+            const byteArray = new Uint8Array(byteNumbers)
+            const blob = new Blob([byteArray], { type: mimeType })
+            file = new File([blob], fileName, { type: mimeType })
+          }
+          if (file) await handleFileSelect(docType, file)
+        }
       }
+    } catch {
+      // fall through to native file picker via caller
     }
   }
 
@@ -202,17 +230,57 @@ export default function SignupStep2() {
   }
 
   const DocumentUpload = ({ docType, label, required = true }) => {
-    const fileInputRef = useRef(null)
+    const galleryInputRef = useRef(null)
+    const cameraInputRef = useRef(null)
     const file = documents[docType]
     const uploaded = uploadedDocs[docType]
     const isUploading = uploading[docType]
 
+    const openGallery = async () => {
+      if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === "function") {
+        await handleFlutterGallery(docType)
+        return
+      }
+      galleryInputRef.current?.click()
+    }
+
     return (
       <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <span className="block text-sm font-medium text-gray-700 mb-2">
           {label} {required && <span className="text-red-500">*</span>}
-        </label>
-        
+        </span>
+
+        <input
+          ref={galleryInputRef}
+          id={galleryDomId}
+          type="file"
+          className="hidden"
+          accept="image/*"
+          onChange={(e) => {
+            const selectedFile = e.target.files?.[0]
+            if (selectedFile) {
+              handleFileSelect(docType, selectedFile)
+            }
+            e.target.value = ""
+          }}
+          disabled={isUploading}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*"
+          capture="environment"
+          onChange={(e) => {
+            const selectedFile = e.target.files?.[0]
+            if (selectedFile) {
+              handleFileSelect(docType, selectedFile)
+            }
+            e.target.value = ""
+          }}
+          disabled={isUploading}
+        />
+
         {uploaded ? (
           <div className="relative">
             <img
@@ -234,7 +302,12 @@ export default function SignupStep2() {
           </div>
         ) : (
           <>
-            <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 transition-colors">
+            <button
+              type="button"
+              onClick={openGallery}
+              disabled={isUploading}
+              className="flex w-full flex-col items-center justify-center h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 transition-colors disabled:opacity-60"
+            >
               <div className="flex flex-col items-center justify-center pt-5 pb-6">
                 {isUploading ? (
                   <>
@@ -249,23 +322,10 @@ export default function SignupStep2() {
                   </>
                 )}
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept="image/*"
-                onChange={(e) => {
-                  const selectedFile = e.target.files[0]
-                  if (selectedFile) {
-                    handleFileSelect(docType, selectedFile)
-                  }
-                }}
-                disabled={isUploading}
-              />
-            </label>
+            </button>
             <button
               type="button"
-              onClick={() => handleCameraCapture(docType, fileInputRef)}
+              onClick={() => handleCameraCapture(docType, cameraInputRef)}
               disabled={isUploading}
               className="mt-3 w-full text-sm font-medium text-green-600 hover:text-green-700 disabled:opacity-60 text-center"
             >

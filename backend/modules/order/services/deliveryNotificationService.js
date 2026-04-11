@@ -424,6 +424,10 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
       return { success: false, notified: 0 };
     }
 
+    // Server-side auto-resend loop should refresh availability without spamming
+    // FCM pushes / notification sounds / forced "new_order" popups every few seconds.
+    const isAutoResendTick = phase === 'auto_resend';
+
     const io = await getIOInstance();
     if (!io) {
       console.warn('Socket.IO not initialized, skipping delivery boy notifications');
@@ -634,13 +638,15 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
             // - Newer clients listen to `new_order_available` (priority-based offers)
             // - Some clients still rely on `new_order` to open the accept popup immediately
             deliveryNamespace.to(room).emit('new_order_available', orderNotification);
-            deliveryNamespace.to(room).emit('new_order', orderNotification);
-            deliveryNamespace.to(room).emit('play_notification_sound', {
-              type: 'new_order_available',
-              orderId: order.orderId,
-              message: `New order available: ${order.orderId}`,
-              phase: phase
-            });
+            if (!isAutoResendTick) {
+              deliveryNamespace.to(room).emit('new_order', orderNotification);
+              deliveryNamespace.to(room).emit('play_notification_sound', {
+                type: 'new_order_available',
+                orderId: order.orderId,
+                message: `New order available: ${order.orderId}`,
+                phase: phase
+              });
+            }
             notificationSent = true;
             notifiedCount++;
             console.log(`📤 Notified delivery partner ${normalizedId} in room: ${room} (phase: ${phase})`);
@@ -653,36 +659,40 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
           // Still emit to room for when they connect
           roomVariations.forEach(room => {
             deliveryNamespace.to(room).emit('new_order_available', orderNotification);
-            deliveryNamespace.to(room).emit('new_order', orderNotification);
+            if (!isAutoResendTick) {
+              deliveryNamespace.to(room).emit('new_order', orderNotification);
+            }
           });
           notifiedCount++;
         }
 
         // FCM fallback (reliable): resend flows often happen when sockets are flaky/offline.
-        // Send a minimal payload that frontend can use to open the accept popup by fetching order details.
-        try {
-          const { sendToUser } = await import('../../fcm/services/fcmService.js');
-          const oid = orderWithUser?.orderId || orderWithUser?._id?.toString?.();
-          if (oid) {
-            await sendToUser(deliveryPartnerId, 'delivery', {
-              title: 'New Order Available',
-              body: `Order #${oid} is available to accept.`,
-            }, {
-              type: 'new_order',
-              orderId: oid,
-              tag: oid, // used by frontend to dedupe foreground events
-              link: `/delivery/order/${oid}`,
-              channelId: 'delivery_new_order',
-              // For native Android: raw resource name (res/raw/alert.mp3) => "alert"
-              sound: 'alert',
-              phase: phase,
-              resendVersion: Number(orderWithUser.assignmentInfo?.resendVersion || 0),
-              assignedBy: orderWithUser.assignmentInfo?.assignedBy || null,
-              isResend: ['manual_resend', 'admin_manual_resend'].includes(orderWithUser.assignmentInfo?.assignedBy),
-            });
+        // Skip FCM for automated loop ticks — restaurant "Resend" / first accept notify handles loud alerts.
+        if (!isAutoResendTick) {
+          try {
+            const { sendToUser } = await import('../../fcm/services/fcmService.js');
+            const oid = orderWithUser?.orderId || orderWithUser?._id?.toString?.();
+            if (oid) {
+              await sendToUser(deliveryPartnerId, 'delivery', {
+                title: 'New Order Available',
+                body: `Order #${oid} is available to accept.`,
+              }, {
+                type: 'new_order',
+                orderId: oid,
+                tag: oid, // used by frontend to dedupe foreground events
+                link: `/delivery/order/${oid}`,
+                channelId: 'delivery_new_order',
+                // For native Android: raw resource name (res/raw/alert.mp3) => "alert"
+                sound: 'alert',
+                phase: phase,
+                resendVersion: Number(orderWithUser.assignmentInfo?.resendVersion || 0),
+                assignedBy: orderWithUser.assignmentInfo?.assignedBy || null,
+                isResend: ['manual_resend', 'admin_manual_resend'].includes(orderWithUser.assignmentInfo?.assignedBy),
+              });
+            }
+          } catch (fcmErr) {
+            console.warn('⚠️ FCM delivery notification (multiple) failed:', fcmErr.message);
           }
-        } catch (fcmErr) {
-          console.warn('⚠️ FCM delivery notification (multiple) failed:', fcmErr.message);
         }
       } catch (partnerError) {
         console.error(`❌ Error notifying delivery partner ${deliveryPartnerId}:`, partnerError);

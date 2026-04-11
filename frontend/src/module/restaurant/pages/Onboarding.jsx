@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Image as ImageIcon, Upload, Clock, Calendar as CalendarIcon, Sparkles, ArrowLeft } from "lucide-react"
+import { Image as ImageIcon, Upload, Clock, Calendar as CalendarIcon, Store, ArrowLeft } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import {
@@ -267,9 +267,25 @@ export default function RestaurantOnboarding() {
         if (imageType === 'profileImage') {
           setStep2((prev) => ({ ...prev, profileImage: file }));
         } else if (imageType === 'panImage') {
-          setStep3((prev) => ({ ...prev, panImage: file }));
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setStep3((prev) => ({
+              ...prev,
+              panImage: file,
+              panImagePreviewUrl: typeof reader.result === "string" ? reader.result : "",
+            }));
+          };
+          reader.readAsDataURL(file);
         } else if (imageType === 'gstImage') {
-          setStep3((prev) => ({ ...prev, gstImage: file }));
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setStep3((prev) => ({
+              ...prev,
+              gstImage: file,
+              gstImagePreviewUrl: typeof reader.result === "string" ? reader.result : "",
+            }));
+          };
+          reader.readAsDataURL(file);
         } else if (imageType === 'fssaiImage') {
           setStep3((prev) => ({ ...prev, fssaiImage: file }));
         }
@@ -333,9 +349,25 @@ export default function RestaurantOnboarding() {
         if (imageType === 'profileImage') {
             setStep2((prev) => ({ ...prev, profileImage: file }));
           } else if (imageType === 'panImage') {
-            setStep3((prev) => ({ ...prev, panImage: file }));
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              setStep3((prev) => ({
+                ...prev,
+                panImage: file,
+                panImagePreviewUrl: typeof reader.result === "string" ? reader.result : "",
+              }));
+            };
+            reader.readAsDataURL(file);
           } else if (imageType === 'gstImage') {
-            setStep3((prev) => ({ ...prev, gstImage: file }));
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              setStep3((prev) => ({
+                ...prev,
+                gstImage: file,
+                gstImagePreviewUrl: typeof reader.result === "string" ? reader.result : "",
+              }));
+            };
+            reader.readAsDataURL(file);
           } else if (imageType === 'fssaiImage') {
             setStep3((prev) => ({ ...prev, fssaiImage: file }));
           }
@@ -403,16 +435,19 @@ export default function RestaurantOnboarding() {
               panNumber: data.step3.pan?.panNumber || "",
               nameOnPan: data.step3.pan?.nameOnPan || "",
               panImage: null, // Don't load images from API, user needs to re-upload
+              panImagePreviewUrl: "",
               gstRegistered: data.step3.gst?.isRegistered || false,
               gstNumber: data.step3.gst?.gstNumber || "",
               gstLegalName: data.step3.gst?.legalName || "",
               gstAddress: data.step3.gst?.address || "",
               gstImage: null, // Don't load images from API, user needs to re-upload
+              gstImagePreviewUrl: "",
               fssaiNumber: data.step3.fssai?.registrationNumber || "",
               fssaiExpiry: data.step3.fssai?.expiryDate
                 ? data.step3.fssai.expiryDate.slice(0, 10)
                 : "",
               fssaiImage: null, // Don't load images from API, user needs to re-upload
+              fssaiImagePreviewUrl: "",
               accountNumber: data.step3.bank?.accountNumber || "",
               confirmAccountNumber: data.step3.bank?.accountNumber || "",
               ifscCode: data.step3.bank?.ifscCode || "",
@@ -1100,7 +1135,6 @@ export default function RestaurantOnboarding() {
     <div className="space-y-6">
       <section className="bg-white p-4 sm:p-6 rounded-md">
         <h2 className="text-lg font-semibold text-black mb-4">Restaurant information</h2>
-        <p className="text-sm text-gray-600 mb-4">Restaurant name</p>
         <div className="space-y-3">
           <div>
             <Label className="text-xs text-gray-700">Restaurant name*</Label>
@@ -1625,7 +1659,9 @@ export default function RestaurantOnboarding() {
                   {(() => {
                     let imageSrc = null
 
-                    if (step3.gstImage instanceof File) {
+                    if (step3.gstImagePreviewUrl) {
+                      imageSrc = step3.gstImagePreviewUrl
+                    } else if (step3.gstImage instanceof File) {
                       imageSrc = URL.createObjectURL(step3.gstImage)
                     } else if (step3.gstImage?.url) {
                       imageSrc = step3.gstImage.url
@@ -1670,7 +1706,20 @@ export default function RestaurantOnboarding() {
                   capture="environment"
                   className="hidden"
                   onChange={(e) => {
-                    setStep3({ ...step3, gstImage: e.target.files?.[0] || null })
+                    const file = e.target.files?.[0] || null
+                    if (file) {
+                      const reader = new FileReader()
+                      reader.onloadend = () => {
+                        setStep3((prev) => ({
+                          ...prev,
+                          gstImage: file,
+                          gstImagePreviewUrl: typeof reader.result === "string" ? reader.result : "",
+                        }))
+                      }
+                      reader.readAsDataURL(file)
+                    } else {
+                      setStep3((prev) => ({ ...prev, gstImage: null, gstImagePreviewUrl: "" }))
+                    }
                     e.target.value = ""
                   }}
                 />
@@ -1690,7 +1739,20 @@ export default function RestaurantOnboarding() {
                   accept="image/*"
                   className="hidden"
                   onChange={(e) => {
-                    setStep3({ ...step3, gstImage: e.target.files?.[0] || null })
+                    const file = e.target.files?.[0] || null
+                    if (file) {
+                      const reader = new FileReader()
+                      reader.onloadend = () => {
+                        setStep3((prev) => ({
+                          ...prev,
+                          gstImage: file,
+                          gstImagePreviewUrl: typeof reader.result === "string" ? reader.result : "",
+                        }))
+                      }
+                      reader.readAsDataURL(file)
+                    } else {
+                      setStep3((prev) => ({ ...prev, gstImage: null, gstImagePreviewUrl: "" }))
+                    }
                     e.target.value = ""
                   }}
                 />
@@ -1866,7 +1928,12 @@ export default function RestaurantOnboarding() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             value={step3.ifscCode || ""}
-            onChange={(e) => setStep3({ ...step3, ifscCode: e.target.value })}
+            onChange={(e) =>
+              setStep3({
+                ...step3,
+                ifscCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""),
+              })
+            }
             className="bg-white text-sm"
             placeholder="IFSC code"
           />
@@ -1968,7 +2035,7 @@ export default function RestaurantOnboarding() {
           {/* Clean header without debug labels / auto-fill in production */}
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-white" />
+              <Store className="w-4 h-4 text-white" aria-hidden />
             </div>
           </div>
           {/* Auto-fill dev button removed as per request */}
@@ -2014,7 +2081,7 @@ export default function RestaurantOnboarding() {
                   onClick={() => {
                     if (step === 1) setStep1({ restaurantName: "", ownerName: "", ownerEmail: "", ownerPhone: "", primaryContactNumber: "", location: { addressLine1: "", addressLine2: "", area: "", city: "", landmark: "" } });
                     if (step === 2) setStep2({ menuImages: [], profileImage: null, cuisines: [], openingTime: "", closingTime: "", openDays: [] });
-                    if (step === 3) setStep3({ panNumber: "", nameOnPan: "", panImage: null, gstRegistered: false, gstNumber: "", gstLegalName: "", gstAddress: "", gstImage: null, fssaiNumber: "", fssaiExpiry: "", fssaiImage: null, accountNumber: "", confirmAccountNumber: "", ifscCode: "", accountHolderName: "", accountType: "" });
+                    if (step === 3) setStep3({ panNumber: "", nameOnPan: "", panImage: null, panImagePreviewUrl: "", gstRegistered: false, gstNumber: "", gstLegalName: "", gstAddress: "", gstImage: null, gstImagePreviewUrl: "", fssaiNumber: "", fssaiExpiry: "", fssaiImage: null, fssaiImagePreviewUrl: "", accountNumber: "", confirmAccountNumber: "", ifscCode: "", accountHolderName: "", accountType: "" });
                     if (step === 4) setStep4({ estimatedDeliveryTime: "", featuredDish: "", featuredPrice: "", offer: "" });
                     toast("Step reset cleared");
                   }}

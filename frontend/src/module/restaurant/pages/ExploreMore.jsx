@@ -36,6 +36,7 @@ import { DateRangeCalendar } from "@/components/ui/date-range-calendar"
 import { clearModuleAuth, clearAuthData } from "@/lib/utils/auth"
 import { restaurantAPI } from "@/lib/api"
 import { firebaseAuth } from "@/lib/firebase"
+import BottomNavOrders from "../components/BottomNavOrders"
 
 // Time Picker Wheel Component
 function TimePickerWheel({
@@ -875,7 +876,7 @@ export default function ExploreMore() {
         duration: 0.2,
         ease: [0.25, 0.1, 0.25, 1]
       }}
-      className="min-h-screen bg-white overflow-x-hidden"
+      className="min-h-screen bg-white overflow-x-hidden pb-24"
     >
       {/* Header */}
       <motion.div
@@ -1184,42 +1185,39 @@ export default function ExploreMore() {
 
               {/* Footer Links */}
               <div className="px-6 py-4 border-t border-gray-200">
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to terms of service
-                      console.log("Terms of Service clicked")
+                <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-gray-500">
+                  <button
+                    type="button"
+                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400 bg-transparent p-0 text-sm"
+                    onClick={() => {
+                      setProfileOpen(false)
+                      navigate("/restaurant/terms")
                     }}
                   >
                     Terms of Service
-                  </a>
+                  </button>
                   <span className="text-gray-400">|</span>
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to privacy policy
-                      console.log("Privacy Policy clicked")
+                  <button
+                    type="button"
+                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400 bg-transparent p-0 text-sm"
+                    onClick={() => {
+                      setProfileOpen(false)
+                      navigate("/restaurant/privacy")
                     }}
                   >
                     Privacy Policy
-                  </a>
+                  </button>
                   <span className="text-gray-400">|</span>
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to code of conduct
-                      console.log("Code of Conduct clicked")
+                  <button
+                    type="button"
+                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400 bg-transparent p-0 text-sm"
+                    onClick={() => {
+                      setProfileOpen(false)
+                      navigate("/restaurant/help-centre")
                     }}
                   >
                     Code of Conduct
-                  </a>
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -1593,6 +1591,7 @@ export default function ExploreMore() {
           </>
         )}
       </AnimatePresence>
+      <BottomNavOrders />
     </motion.div>
   )
 }

@@ -109,6 +109,7 @@ const DeliveryOTP = lazy(() => import("@/module/delivery/pages/auth/OTP"))
 const DeliverySignupStep1 = lazy(() => import("@/module/delivery/pages/auth/SignupStep1"))
 const DeliverySignupStep2 = lazy(() => import("@/module/delivery/pages/auth/SignupStep2"))
 const DeliveryWelcome = lazy(() => import("@/module/delivery/pages/auth/Welcome"))
+const DeliveryTermsPublic = lazy(() => import("@/module/delivery/pages/TermsAndConditions"))
 
 // Hotel Module
 const HotelSignup = lazy(() => import("@/module/hotel/pages/auth/Signup"))
@@ -911,6 +912,14 @@ export default function App() {
         <Route path="/delivery/signup" element={<DeliverySignup />} />
         <Route path="/delivery/otp" element={<DeliveryOTP />} />
         <Route path="/delivery/welcome" element={<AuthRedirect module="delivery"><DeliveryWelcome /></AuthRedirect>} />
+        <Route
+          path="/delivery/legal/terms"
+          element={
+            <Suspense fallback={<Loader />}>
+              <DeliveryTermsPublic />
+            </Suspense>
+          }
+        />
 
         {/* Hotel Public Routes */}
         <Route path="/hotel" element={<AuthRedirect module="hotel"><HotelSignup /></AuthRedirect>} />

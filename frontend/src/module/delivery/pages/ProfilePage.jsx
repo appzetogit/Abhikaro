@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { deliveryAPI } from "@/lib/api"
+import { getDeliveryProfilePhotoUrl, getDeliveryUiAvatarUrl } from "../utils/profilePhoto"
 import { toast } from "sonner"
 import { clearModuleAuth } from "@/lib/utils/auth"
 import alertSound from "@/assets/audio/alert.mp3"
@@ -221,40 +222,27 @@ export default function ProfilePage() {
                 </p>
               </div>
               <div className="relative shrink-0 ml-4">
-                {profile?.profileImage?.url ? (
-                  <img 
-                    src={profile.profileImage.url}
+                {loading ? (
+                  <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-200">
+                    <User className="w-10 h-10 md:w-12 md:h-12 text-gray-500" />
+                  </div>
+                ) : (
+                  <img
+                    src={
+                      getDeliveryProfilePhotoUrl(profile) ||
+                      getDeliveryUiAvatarUrl(profile?.name)
+                    }
                     alt="Profile"
                     className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-gray-200"
                     onError={(e) => {
-                      // Fallback to documents.photo/profilePhoto if profileImage fails to load
-                      if (profile?.documents?.photo || profile?.documents?.profilePhoto) {
-                        e.target.src = profile.documents.photo || profile.documents.profilePhoto
-                      } else {
-                        // Show default icon if both fail
-                        e.target.style.display = 'none'
-                        e.target.nextElementSibling?.classList.remove('hidden')
+                      const fallback = getDeliveryUiAvatarUrl(profile?.name)
+                      if (e.target.src !== fallback) {
+                        e.target.src = fallback
                       }
                     }}
                   />
-                ) : (profile?.documents?.photo || profile?.documents?.profilePhoto) ? (
-                  <img 
-                    src={profile.documents.photo || profile.documents.profilePhoto}
-                    alt="Profile"
-                    className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-gray-200"
-                    onError={(e) => {
-                      // Show default icon if image fails to load
-                      e.target.style.display = 'none'
-                      e.target.nextElementSibling?.classList.remove('hidden')
-                    }}
-                  />
-                ) : null}
-                {(!profile?.profileImage?.url && !profile?.documents?.photo && !profile?.documents?.profilePhoto) && (
-                  <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gray-300 flex items-center justify-center border-2 border-gray-200">
-                    <User className="w-10 h-10 md:w-12 md:h-12 text-gray-500" />
-                  </div>
                 )}
-                <div className="absolute bottom-0 right-0 bg-white rounded-full p-2 border-2 border-white">
+                <div className="absolute bottom-0 right-0 bg-white rounded-full p-2 border-2 border-white pointer-events-none">
                   <Briefcase className="w-4 h-4" />
                 </div>
               </div>

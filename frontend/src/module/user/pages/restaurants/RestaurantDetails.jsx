@@ -892,6 +892,12 @@ export default function RestaurantDetails() {
   // Copy to clipboard helper
   const copyToClipboard = async (text) => {
     try {
+      if (
+        typeof window !== "undefined" &&
+        !window.confirm("Native share is not available here. Copy the link to your clipboard?")
+      ) {
+        return
+      }
       await navigator.clipboard.writeText(text)
       toast.success("Link copied to clipboard!")
     } catch (error) {

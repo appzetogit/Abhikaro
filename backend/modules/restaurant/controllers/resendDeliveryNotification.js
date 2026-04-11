@@ -6,6 +6,9 @@ import { findNearestDeliveryBoys } from '../../order/services/deliveryAssignment
 import { notifyMultipleDeliveryBoys } from '../../order/services/deliveryNotificationService.js';
 import mongoose from 'mongoose';
 
+/** Minimum seconds between manual "Resend" pushes for the same order (stops double-tap / UI spam). */
+const MANUAL_RESEND_COOLDOWN_MS = 45 * 1000;
+
 /**
  * Resend delivery notification for unassigned order
  * POST /api/restaurant/orders/:id/resend-delivery-notification
@@ -54,6 +57,19 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
     // Check if order is in valid status (preparing or ready)
     if (!['preparing', 'ready', 'confirmed'].includes(order.status)) {
       return errorResponse(res, 400, `Cannot resend notification. Order status must be 'preparing' or 'ready'. Current status: ${order.status}`);
+    }
+
+    const lastManual = order.assignmentInfo?.lastRestaurantManualResendAt;
+    if (lastManual) {
+      const elapsed = Date.now() - new Date(lastManual).getTime();
+      if (elapsed >= 0 && elapsed < MANUAL_RESEND_COOLDOWN_MS) {
+        const waitSec = Math.ceil((MANUAL_RESEND_COOLDOWN_MS - elapsed) / 1000);
+        return errorResponse(
+          res,
+          429,
+          `Please wait ${waitSec} seconds before resending the delivery notification again.`,
+        );
+      }
     }
 
     // Get restaurant location
@@ -112,19 +128,29 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
           $set: {
             'assignmentInfo.priorityDeliveryPartnerIds': deliveryPartnerIds,
             'assignmentInfo.assignedBy': 'manual_resend',
-            'assignmentInfo.assignedAt': new Date()
+            'assignmentInfo.assignedAt': new Date(),
+            'assignmentInfo.lastRestaurantManualResendAt': new Date(),
           },
           $inc: {
             'assignmentInfo.resendVersion': 1
           },
         });
 
-        await notifyMultipleDeliveryBoys(populatedOrder, deliveryPartnerIds, 'priority');
+        const populatedAfter = await Order.findById(order._id)
+          .populate('userId', 'name phone')
+          .populate('restaurantId', 'name location address phone ownerPhone')
+          .lean();
+
+        if (!populatedAfter) {
+          return errorResponse(res, 500, 'Failed to reload order after update');
+        }
+
+        await notifyMultipleDeliveryBoys(populatedAfter, deliveryPartnerIds, 'priority');
         
         console.log(`✅ Resent notification to ${deliveryPartnerIds.length} delivery partners for order ${order.orderId}`);
 
         return successResponse(res, 200, `Notification sent to ${deliveryPartnerIds.length} delivery partners`, {
-          order: populatedOrder,
+          order: populatedAfter,
           notifiedCount: deliveryPartnerIds.length
         });
       }
@@ -143,19 +169,29 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
           $set: {
             'assignmentInfo.priorityDeliveryPartnerIds': priorityIds,
             'assignmentInfo.assignedBy': 'manual_resend',
-            'assignmentInfo.assignedAt': new Date()
+            'assignmentInfo.assignedAt': new Date(),
+            'assignmentInfo.lastRestaurantManualResendAt': new Date(),
           },
           $inc: {
             'assignmentInfo.resendVersion': 1
           },
         });
 
-        await notifyMultipleDeliveryBoys(populatedOrder, priorityIds, 'priority');
+        const populatedAfter = await Order.findById(order._id)
+          .populate('userId', 'name phone')
+          .populate('restaurantId', 'name location address phone ownerPhone')
+          .lean();
+
+        if (!populatedAfter) {
+          return errorResponse(res, 500, 'Failed to reload order after update');
+        }
+
+        await notifyMultipleDeliveryBoys(populatedAfter, priorityIds, 'priority');
         
         console.log(`✅ Resent notification to ${priorityIds.length} priority delivery partners for order ${order.orderId}`);
 
         return successResponse(res, 200, `Notification sent to ${priorityIds.length} delivery partners`, {
-          order: populatedOrder,
+          order: populatedAfter,
           notifiedCount: priorityIds.length
         });
       }

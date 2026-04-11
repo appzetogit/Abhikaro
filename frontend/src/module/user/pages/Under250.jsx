@@ -458,22 +458,30 @@ export default function Under250() {
   }
 
   const handleShareDish = async (item) => {
+    const shareUrl = window.location.href
     const shareText = `${item.name} - ${item.restaurantName || "Under 250"}`
-    const shareData = {
-      title: item.name,
-      text: shareText,
-      url: window.location.href,
-    }
 
     try {
       if (navigator.share) {
-        await navigator.share(shareData)
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(`${shareText}\n${window.location.href}`)
-        toast.success("Link copied")
+        try {
+          await navigator.share({ title: item.name, text: shareText, url: shareUrl })
+        } catch (inner) {
+          if (inner?.name === "AbortError") return
+          await navigator.share({ title: item.name, url: shareUrl })
+        }
+        return
       }
-    } catch {
-      // Ignore native share cancellation errors
+    } catch (e) {
+      if (e?.name === "AbortError") return
+    }
+
+    if (
+      navigator.clipboard?.writeText &&
+      (typeof window === "undefined" ||
+        window.confirm("Share menu is not available. Copy link to clipboard?"))
+    ) {
+      await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`)
+      toast.success("Link copied")
     }
   }
 

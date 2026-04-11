@@ -46,8 +46,15 @@ export default function TermsAndConditions() {
     <div className="min-h-screen bg-[#f6e9dc] overflow-x-hidden">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4 md:py-3 flex items-center gap-4 rounded-b-3xl md:rounded-b-none">
-        <button 
-          onClick={() => navigate("/delivery/profile")}
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined" && window.history.length > 1) {
+              navigate(-1)
+            } else {
+              navigate("/delivery/sign-in")
+            }
+          }}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <ArrowLeft className="w-5 h-5 text-gray-600" />

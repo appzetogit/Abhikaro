@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { X, Loader2 } from "lucide-react"
 import { deliveryAPI } from "@/lib/api"
+import { getDeliveryProfilePhotoUrl, getDeliveryUiAvatarUrl } from "../utils/profilePhoto"
 import { toast } from "sonner"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
 
@@ -62,22 +63,8 @@ export default function ShowIdCard() {
     return "bg-gray-500"
   }
 
-  // Get profile image URL
-  const getProfileImageUrl = () => {
-    if (profileData?.profileImage?.url) {
-      return profileData.profileImage.url
-    }
-    // Support both legacy `documents.photo` and new `documents.profilePhoto`
-    if (profileData?.documents?.photo) {
-      return profileData.documents.photo
-    }
-    if (profileData?.documents?.profilePhoto) {
-      return profileData.documents.profilePhoto
-    }
-    // Fallback to avatar generator with name
-    const name = profileData?.name || "Delivery Partner"
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=ff8100&color=fff&size=128`
-  }
+  const getProfileImageUrl = () =>
+    getDeliveryProfilePhotoUrl(profileData) || getDeliveryUiAvatarUrl(profileData?.name)
 
   // Get vehicle display text
   const getVehicleDisplay = () => {

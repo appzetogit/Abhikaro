@@ -420,6 +420,8 @@ const orderSchema = new mongoose.Schema(
       zoneName: String,
       deliveryPartnerId: String,
       assignedAt: Date,
+      // Throttles restaurant app "Resend notification" so partners are not spammed
+      lastRestaurantManualResendAt: Date,
       // Delivery partners who were notified for priority/expanded acceptance flows
       priorityDeliveryPartnerIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Delivery" }],
       expandedDeliveryPartnerIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Delivery" }],

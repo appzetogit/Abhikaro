@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Edit2, ChevronRight, FileText, CheckCircle, XCircle, E
 import BottomPopup from "../components/BottomPopup"
 import { toast } from "sonner"
 import { deliveryAPI } from "@/lib/api"
+import { getDeliveryProfilePhotoUrl, getDeliveryUiAvatarUrl } from "../utils/profilePhoto"
 
 export default function ProfileDetails() {
   const navigate = useNavigate()
@@ -102,13 +103,17 @@ export default function ProfileDetails() {
       <div className="relative w-full bg-gray-200 overflow-hidden flex items-center justify-center">
         <img
           src={
-            profile?.profileImage?.url ||
-            profile?.documents?.photo ||
-            profile?.documents?.profilePhoto ||
-            "https://i.pravatar.cc/400?img=12"
+            getDeliveryProfilePhotoUrl(profile) ||
+            getDeliveryUiAvatarUrl(profile?.name)
           }
           alt="Profile"
           className="w-full h-auto max-h-96 object-contain"
+          onError={(e) => {
+            const fb = getDeliveryUiAvatarUrl(profile?.name)
+            if (e.target.src !== fb) {
+              e.target.src = fb
+            }
+          }}
         />
       </div>
 

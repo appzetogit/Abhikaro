@@ -4,6 +4,7 @@ import Delivery from '../models/Delivery.js';
 import { validate } from '../../../shared/middleware/validate.js';
 import Joi from 'joi';
 import winston from 'winston';
+import { normalizeDeliveryProfileImages } from '../utils/profileImageNormalize.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -215,8 +216,11 @@ export const submitSignupDocuments = asyncHandler(async (req, res) => {
       hasDrivingLicense: !!updatedDelivery.documents?.drivingLicense?.document
     });
 
+    const profileOut = updatedDelivery.toObject({ depopulate: true });
+    normalizeDeliveryProfileImages(profileOut, req);
+
     return successResponse(res, 200, 'Documents uploaded successfully', {
-      profile: updatedDelivery,
+      profile: profileOut,
       signupComplete: true
     });
   } catch (error) {

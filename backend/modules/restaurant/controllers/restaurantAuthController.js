@@ -411,7 +411,8 @@ export const verifyOTP = asyncHandler(async (req, res) => {
           const last4 = normalizedPhone.slice(-4);
           effectiveName = `Restaurant ${last4}`;
         } else {
-          // For pure email flows, keep the old behavior and ask client for a name
+          // Email + new restaurant: verify OTP before showing name step (invalid OTP must fail here).
+          await otpService.verifyOTP(phone || null, otp, purpose, email || null);
           return successResponse(
             res,
             200,
@@ -447,8 +448,17 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         );
       }
 
-      // Verify OTP first
-      await otpService.verifyOTP(phone || null, otp, purpose, email || null);
+      const verifyOptions =
+        !restaurant && name && purpose === "login"
+          ? { allowRecentlyVerifiedLogin: true }
+          : {};
+      await otpService.verifyOTP(
+        phone || null,
+        otp,
+        purpose,
+        email || null,
+        verifyOptions,
+      );
 
       if (!restaurant) {
         // Auto-register new restaurant after OTP verification

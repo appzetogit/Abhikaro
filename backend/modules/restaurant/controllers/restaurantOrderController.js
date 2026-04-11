@@ -622,10 +622,10 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           // Capped to avoid spamming / leaks.
           // NOTE: In manual assignment mode, we intentionally skip the resend loop to avoid spam.
           const shouldRunResendLoop = assignmentMode !== "manual";
-          // Resend every 3 seconds (as requested) until assigned, but keep a hard cap to avoid runaway spam.
-          // 3s * 100 = ~5 minutes.
-          const RESEND_LOOP_MS = 3 * 1000; // 3 seconds
-          const RESEND_MAX_ATTEMPTS = 100; // ~5 minutes total
+          // Periodic refresh until assigned (no FCM on this phase — see deliveryNotificationService).
+          // 30s * 10 ≈ 5 minutes of background retries without spamming riders.
+          const RESEND_LOOP_MS = 30 * 1000;
+          const RESEND_MAX_ATTEMPTS = 10;
           // In-memory map to avoid multiple loops per order (per node process)
           global.__deliveryResendLoops = global.__deliveryResendLoops || new Map();
           const loopKey = String(order._id);
@@ -1119,21 +1119,6 @@ export const markOrderPreparing = asyncHandler(async (req, res) => {
       } catch (notifError) {
         console.error("Error sending notification:", notifError);
       }
-    }
-
-    // CRITICAL: Don't assign delivery partner if order is cancelled
-    if (freshOrder.status === "cancelled") {
-      console.log(
-        `⚠️ Order ${freshOrder.orderId} is cancelled. Cannot assign delivery partner.`,
-      );
-      return successResponse(
-        res,
-        200,
-        "Order is cancelled. Cannot assign delivery partner.",
-        {
-          order: freshOrder,
-        },
-      );
     }
 
     // Assign order to nearest delivery boy and notify them (if not already assigned)

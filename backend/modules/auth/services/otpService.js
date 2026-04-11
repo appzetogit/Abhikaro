@@ -239,7 +239,14 @@ class OTPService {
    * @param {string} email - Email address (optional if phone provided)
    * @returns {Promise<Object>}
    */
-  async verifyOTP(phone = null, otp, purpose = "login", email = null) {
+  async verifyOTP(
+    phone = null,
+    otp,
+    purpose = "login",
+    email = null,
+    options = {},
+  ) {
+    const { allowRecentlyVerifiedLogin = false } = options || {};
     try {
       // Validate that either phone or email is provided
       if (!phone && !email) {
@@ -349,6 +356,30 @@ class OTPService {
       }
 
       if (!otpRecord) {
+        // Login name-step: OTP was already verified on the previous request (needsName flow).
+        // Allow the same code within a short window so the client can complete signup/login.
+        if (allowRecentlyVerifiedLogin && purpose === "login") {
+          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+          const verifiedQuery = {
+            otp,
+            purpose: "login",
+            verified: true,
+            updatedAt: { $gt: tenMinutesAgo },
+          };
+          if (normalizedPhone) {
+            verifiedQuery.normalizedPhone = normalizedPhone;
+          } else if (normalizedEmail) {
+            verifiedQuery.email = normalizedEmail;
+          }
+          const recentVerified = await Otp.findOne(verifiedQuery);
+          if (recentVerified) {
+            return {
+              success: true,
+              message: "OTP verified successfully",
+            };
+          }
+        }
+
         // Increment attempts for security (only for unverified OTPs) using normalized identifiers
         const incrementQuery = { purpose, verified: false };
         if (normalizedPhone) {

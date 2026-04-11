@@ -43,6 +43,7 @@ import { formatCurrency } from "../../restaurant/utils/currency"
 import { getAllDeliveryOrders } from "../utils/deliveryOrderStatus"
 import { getUnreadDeliveryNotificationCount } from "../utils/deliveryNotifications"
 import { deliveryAPI, restaurantAPI, uploadAPI } from "@/lib/api"
+import { compressBillImageForUpload, base64ToBlobFast } from "@/lib/utils/compressBillImage"
 import { openExternalUrl } from "@/lib/utils/externalNavigation"
 import { useDeliveryNotificationsContext } from "../context/DeliveryNotificationsContext"
 import { useFirebaseLocationUpdate } from "../hooks/useFirebaseLocationUpdate"
@@ -3783,28 +3784,15 @@ export default function DeliveryHome() {
             file = result.file
 
           } else if (result.base64) {
-            // If Flutter returns base64, convert to File
-
-            let base64Data = result.base64
-
-            // Remove data URL prefix if present
-            if (base64Data.includes(',')) {
-              base64Data = base64Data.split(',')[1]
-            }
-
             try {
-              const byteCharacters = atob(base64Data)
-              const byteNumbers = new Array(byteCharacters.length)
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i)
-              }
-              const byteArray = new Uint8Array(byteNumbers)
               const mimeType = result.mimeType || 'image/jpeg'
-              const blob = new Blob([byteArray], { type: mimeType })
-              file = new File([blob], result.fileName || `bill-image-${Date.now()}.jpg`, { type: mimeType })
-
+              const blob = await base64ToBlobFast(result.base64, mimeType)
+              file = new File(
+                [blob],
+                result.fileName || `bill-image-${Date.now()}.jpg`,
+                { type: blob.type || mimeType }
+              )
             } catch (base64Error) {
-
               toast.error('Failed to process image. Please try again.')
               return
             }
@@ -3854,18 +3842,29 @@ export default function DeliveryHome() {
       return
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size should be less than 5MB')
+    // Allow large camera files; we compress before upload (raw >20MB is unusable in-browser)
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('Image is too large. Please capture again.')
       return
     }
 
     setIsUploadingBill(true)
 
     try {
+      let fileToUpload = file
+      try {
+        fileToUpload = await compressBillImageForUpload(file)
+      } catch {
+        fileToUpload = file
+      }
+
+      if (fileToUpload.size > 5 * 1024 * 1024) {
+        toast.error('Image is still too large after processing. Please try again.')
+        return
+      }
 
       // Upload to Cloudinary via backend
-      const uploadResponse = await uploadAPI.uploadMedia(file, {
+      const uploadResponse = await uploadAPI.uploadMedia(fileToUpload, {
         folder: 'delivery/bills'
       })
 
@@ -5603,6 +5602,21 @@ export default function DeliveryHome() {
       window.removeEventListener('deliveryProfileRefresh', handleProfileRefresh)
     }
   }, [])
+
+  // Unverified / blocked partners must stay offline (sync with FeedNavbar gate).
+  useEffect(() => {
+    const s = String(deliveryStatus || "").toLowerCase()
+    if (s !== "pending" && s !== "blocked" && s !== "rejected") return
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(false))
+      localStorage.setItem("delivery_online_status", "false")
+      window.dispatchEvent(new CustomEvent("onlineStatusChanged"))
+    } catch {
+      // ignore
+    }
+    setIsOnline(false)
+    isOnlineRef.current = false
+  }, [deliveryStatus])
 
   // Handle reverify (resubmit for approval)
   const handleReverify = async () => {

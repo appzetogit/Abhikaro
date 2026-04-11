@@ -393,19 +393,37 @@ export default function Orders() {
       order.restaurantLocation ||
       `${order.address?.city || ""}, ${order.address?.state || ""}`.trim()
 
+    const slugOrId =
+      order.restaurantSlug || order.slug || order.restaurantId || order.restaurant_id || ""
+    const shareUrl = slugOrId
+      ? `${window.location.origin}/user/restaurants/${slugOrId}`
+      : window.location.href
+
     const shareText = `Check out ${order.restaurant} on ${companyName}.
 Location: ${location || "Location not available"}
 Order again from this restaurant in the ${companyName} app.`
 
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: order.restaurant,
-          text: shareText,
-        })
+        try {
+          await navigator.share({
+            title: order.restaurant,
+            text: shareText,
+            url: shareUrl,
+          })
+        } catch (inner) {
+          if (inner?.name === "AbortError") throw inner
+          await navigator.share({ title: order.restaurant, url: shareUrl })
+        }
       } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(shareText)
-        toast.success("Restaurant details copied to clipboard")
+        if (
+          typeof window !== "undefined" &&
+          !window.confirm("Share menu is not available. Copy restaurant link to clipboard?")
+        ) {
+          return
+        }
+        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`)
+        toast.success("Restaurant link copied to clipboard")
       } else {
         toast.info("Sharing is not supported on this device")
       }

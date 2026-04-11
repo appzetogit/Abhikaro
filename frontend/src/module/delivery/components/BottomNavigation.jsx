@@ -2,6 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { User } from "lucide-react"
 import { deliveryAPI } from "@/lib/api"
+import { getDeliveryProfilePhotoUrl, getDeliveryUiAvatarUrl } from "../utils/profilePhoto"
 
 // Heroicons Outline
 import {
@@ -48,14 +49,11 @@ export default function BottomNavigation() {
         const response = await deliveryAPI.getProfile()
         if (response?.data?.success && response?.data?.data?.profile) {
           const profile = response.data.data.profile
-          // Use profileImage.url first, fallback to documents.photo/profilePhoto
           const imageUrl =
-            profile.profileImage?.url ||
-            profile.documents?.photo ||
-            profile.documents?.profilePhoto
-          if (imageUrl) {
-            setProfileImage(imageUrl)
-          }
+            getDeliveryProfilePhotoUrl(profile) ||
+            getDeliveryUiAvatarUrl(profile?.name)
+          setProfileImage(imageUrl)
+          setImageError(false)
         }
       } catch (error) {
         // Skip logging network and timeout errors (handled by axios interceptor)
@@ -125,8 +123,13 @@ export default function BottomNavigation() {
               className={`w-7 h-7 rounded-full border-2 object-cover ${
                 isActive("/delivery/profile") ? "border-black" : "border-gray-300"
               }`}
-              onError={() => {
-                setImageError(true)
+              onError={(e) => {
+                const fb = getDeliveryUiAvatarUrl("Delivery Partner")
+                if (e.target.src !== fb) {
+                  e.target.src = fb
+                } else {
+                  setImageError(true)
+                }
               }}
             />
           ) : (

@@ -21,10 +21,12 @@ import { restaurantAPI } from "@/lib/api"
 import OptimizedImage from "@/components/OptimizedImage"
 import { clearModuleAuth } from "@/lib/utils/auth"
 import { firebaseAuth } from "@/lib/firebase"
+import { useCompanyName } from "@/lib/hooks/useCompanyName"
 
 const STORAGE_KEY = "restaurant_owner_contact"
 
 export default function EditOwner() {
+  const companyName = useCompanyName()
   const navigate = useNavigate()
   const [ownerData, setOwnerData] = useState({
     name: "",
@@ -342,7 +344,7 @@ export default function EditOwner() {
             className="flex items-center gap-2 text-red-600 hover:text-red-700 transition-colors"
           >
             <Trash2 className="w-5 h-5" />
-            <span className="text-sm font-normal">Delete your Zomato account</span>
+            <span className="text-sm font-normal">Delete your {companyName} account</span>
           </button>
         </div>
       </div>
@@ -355,7 +357,7 @@ export default function EditOwner() {
               <span className="text-2xl leading-none text-red-600">!</span>
             </div>
             <DialogTitle className="text-base font-semibold text-gray-900 text-center">
-              You are about to delete your Zomato account
+              You are about to delete your {companyName} account
             </DialogTitle>
             <DialogDescription className="mt-2 text-sm text-gray-600">
               All information associated with your account will be deleted, and you will lose access to your restaurant permanently.

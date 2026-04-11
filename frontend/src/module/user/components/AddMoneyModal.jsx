@@ -174,7 +174,7 @@ export default function AddMoneyModal({ open, onOpenChange, onSuccess }) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="w-[92vw] max-w-sm p-4 sm:p-5">
+      <DialogContent className="w-[92vw] max-w-sm border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-[#1a1a1a]">
         <DialogHeader>
           <DialogTitle className="text-lg md:text-xl font-bold text-gray-900 dark:text-white">
             Add Money to Wallet
@@ -199,7 +199,7 @@ export default function AddMoneyModal({ open, onOpenChange, onSuccess }) {
                 value={amount}
                 onChange={handleAmountChange}
                 placeholder="Enter amount"
-                className="pl-10 h-10 text-base"
+                className="pl-10 h-10 border-gray-300 bg-white text-base text-gray-900 dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-white"
                 disabled={loading || processing}
               />
             </div>

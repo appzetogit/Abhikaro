@@ -328,7 +328,7 @@ export default function DeliverySignIn() {
             By continuing, you agree to our{" "}
             <button
               type="button"
-              onClick={() => navigate("/delivery/profile/terms")}
+              onClick={() => navigate("/delivery/legal/terms")}
               className="text-blue-600 hover:underline"
             >
               Terms and Conditions
