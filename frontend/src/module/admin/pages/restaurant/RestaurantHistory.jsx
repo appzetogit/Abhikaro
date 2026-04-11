@@ -333,8 +333,8 @@ export default function RestaurantHistory() {
                   >
                     <option value="all">All</option>
                     <option value="pending">Pending</option>
-                    <option value="confirmed">Accepted</option>
-                    <option value="preparing">Processing</option>
+                    <option value="confirmed">Awaiting restaurant</option>
+                    <option value="preparing">Accepted (preparing)</option>
                     <option value="out_for_delivery">Food On The Way</option>
                     <option value="delivered">Delivered</option>
                     <option value="cancelled">Cancelled</option>

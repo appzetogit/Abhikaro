@@ -664,6 +664,21 @@ export default function DeliveryHome() {
   const [showCustomerReviewPopup, setShowCustomerReviewPopup] = useState(false)
   // For Pay at Hotel orders: track when delivery partner confirms that hotel has collected cash
   const [hotelCashConfirmed, setHotelCashConfirmed] = useState(false)
+
+  // Keep Pay-at-Hotel confirmation in sync when order is restored/refetched (e.g. after refresh).
+  useEffect(() => {
+    if (!selectedRestaurant) return
+    const settled =
+      selectedRestaurant.hotelCashSettled === true ||
+      selectedRestaurant.cashCollected === true
+    setHotelCashConfirmed(Boolean(settled))
+  }, [
+    selectedRestaurant?.orderId,
+    selectedRestaurant?.id,
+    selectedRestaurant?.hotelCashSettled,
+    selectedRestaurant?.cashCollected,
+  ])
+
   const [showPaymentPage, setShowPaymentPage] = useState(false)
   const [showChatOverlay, setShowChatOverlay] = useState(false)
   const [customerRating, setCustomerRating] = useState(0)
@@ -1198,6 +1213,8 @@ export default function DeliveryHome() {
           deliveryState,
           deliveryPhase,
           billImageUrl: order.billImageUrl || null,
+          hotelCashSettled: order.hotelCashSettled === true,
+          cashCollected: order.cashCollected === true,
         }
 
         // If coords are missing after refresh, fetch restaurant details directly (order.restaurantId is often a string)
@@ -2683,6 +2700,8 @@ export default function DeliveryHome() {
                 }, // Store delivery state (currentPhase, status, etc.)
                 deliveryPhase: 'en_route_to_pickup', // CRITICAL: Set to en_route_to_pickup after order acceptance so Reached Pickup popup can show
                 billImageUrl: order.billImageUrl || null,
+                hotelCashSettled: order.hotelCashSettled === true,
+                cashCollected: order.cashCollected === true,
               }
 
               // Update state immediately
@@ -4693,6 +4712,15 @@ export default function DeliveryHome() {
         }
       }
 
+      const fullOrder = newOrder.fullOrder || {}
+      const rawPay =
+        newOrder.paymentMethod ??
+        fullOrder.payment?.method ??
+        newOrder.payment?.method ??
+        ''
+      const normalizedPay =
+        rawPay === 'cod' || rawPay === 'cash' ? 'cash' : (rawPay || 'razorpay')
+
       const restaurantData = {
         id: newOrder.orderMongoId || newOrder.orderId,
         orderId: newOrder.orderId,
@@ -4714,8 +4742,19 @@ export default function DeliveryHome() {
         customerAddress: newOrder.customerLocation?.address || newOrder.deliveryAddress || 'Customer address',
         customerLat: newOrder.customerLocation?.latitude ?? newOrder.deliveryLat,
         customerLng: newOrder.customerLocation?.longitude ?? newOrder.deliveryLng,
-        items: newOrder.items || [],
-        total: newOrder.total || 0
+        items: newOrder.items || fullOrder.items || [],
+        total: newOrder.total ?? fullOrder.pricing?.total ?? 0,
+        paymentMethod: normalizedPay,
+        orderType: newOrder.orderType ?? fullOrder.orderType ?? null,
+        hotelReference: newOrder.hotelReference ?? fullOrder.hotelReference ?? null,
+        hotelId:
+          newOrder.hotelId ??
+          fullOrder.hotelId?._id?.toString?.() ??
+          fullOrder.hotelId?.toString?.() ??
+          (typeof fullOrder.hotelId === 'string' ? fullOrder.hotelId : null),
+        hotelName: newOrder.hotelName ?? fullOrder.hotelName ?? null,
+        hotelCashSettled: newOrder.hotelCashSettled === true || fullOrder.hotelCashSettled === true,
+        cashCollected: newOrder.cashCollected === true || fullOrder.cashCollected === true,
       }
 
       // Debug: new order popup mapped payload
@@ -4780,6 +4819,13 @@ export default function DeliveryHome() {
             ? Number(earningsObj.totalEarning || 0)
             : Number(earningsObj || 0)
 
+        const rawPay =
+          payload.paymentMethod ??
+          payload.payment?.method ??
+          ''
+        const normalizedPay =
+          rawPay === 'cod' || rawPay === 'cash' ? 'cash' : (rawPay || 'razorpay')
+
         const restaurantData = {
           id: payload._id || payload.orderMongoId || payload.orderId || orderId,
           orderId: payload.orderId || payload._id || orderId,
@@ -4803,7 +4849,17 @@ export default function DeliveryHome() {
           customerLat: payload.customerLocation?.latitude,
           customerLng: payload.customerLocation?.longitude,
           items: payload.items || [],
-          total: payload.total || 0,
+          total: payload.pricing?.total ?? payload.total ?? 0,
+          paymentMethod: normalizedPay,
+          orderType: payload.orderType || null,
+          hotelReference: payload.hotelReference || null,
+          hotelId:
+            payload.hotelId?._id?.toString?.() ||
+            payload.hotelId?.toString?.() ||
+            (typeof payload.hotelId === 'string' ? payload.hotelId : null),
+          hotelName: payload.hotelName || null,
+          hotelCashSettled: payload.hotelCashSettled === true,
+          cashCollected: payload.cashCollected === true,
         }
 
         // Debug: foreground notification mapped payload
@@ -4912,6 +4968,32 @@ export default function DeliveryHome() {
             }
 
             const updates = {}
+            const pmRaw = order.paymentMethod ?? order.payment?.method
+            if (pmRaw) {
+              updates.paymentMethod =
+                pmRaw === 'cod' || pmRaw === 'cash' ? 'cash' : pmRaw
+            }
+            if (order.orderType) {
+              updates.orderType = order.orderType
+            }
+            if (order.hotelReference) {
+              updates.hotelReference = order.hotelReference
+            }
+            if (order.hotelId) {
+              updates.hotelId =
+                order.hotelId?._id?.toString?.() ||
+                order.hotelId?.toString?.() ||
+                (typeof order.hotelId === 'string' ? order.hotelId : null)
+            }
+            if (order.hotelName) {
+              updates.hotelName = order.hotelName
+            }
+            if (order.hotelCashSettled === true) {
+              updates.hotelCashSettled = true
+            }
+            if (order.cashCollected === true) {
+              updates.cashCollected = true
+            }
             if (
               restaurantAddress &&
               restaurantAddress !== 'Restaurant address' &&
@@ -12037,17 +12119,29 @@ export default function DeliveryHome() {
                 </div>
 
                 {/* For Pay at Hotel orders, show a clear Cash Collected indicator (for delivery partner) */}
-                {isPayAtHotel && selectedRestaurant?.orderId && (
+                {isPayAtHotel &&
+                  (selectedRestaurant?.orderId || selectedRestaurant?.id) && (
                   <button
                     type="button"
                     onClick={async () => {
                       if (hotelCashConfirmed) return
                       try {
+                        const oid =
+                          selectedRestaurant.orderId || selectedRestaurant.id
                         const response = await deliveryAPI.markHotelCashSettled(
-                          selectedRestaurant.orderId,
+                          oid,
                         )
                         if (response?.data?.success) {
                           setHotelCashConfirmed(true)
+                          setSelectedRestaurant((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  hotelCashSettled: true,
+                                  cashCollected: true,
+                                }
+                              : prev,
+                          )
                         }
                       } catch (error) {
 

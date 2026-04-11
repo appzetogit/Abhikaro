@@ -6,7 +6,10 @@ import mongoose from 'mongoose';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import { findNearestDeliveryBoys } from '../../order/services/deliveryAssignmentService.js';
 import { notifyMultipleDeliveryBoys } from '../../order/services/deliveryNotificationService.js';
-import { notifyRestaurantNewOrder } from '../../order/services/restaurantNotificationService.js';
+import {
+  notifyRestaurantNewOrder,
+  notifyRestaurantOrderUpdate,
+} from '../../order/services/restaurantNotificationService.js';
 
 /**
  * Get all orders for admin
@@ -767,14 +770,7 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
       "refunded",
     ]);
 
-    // Disallow reviving cancelled orders (avoid data integrity surprises)
-    if (
-      typeof orderStatus === "string" &&
-      order.status === "cancelled" &&
-      orderStatus.trim().toLowerCase() !== "cancelled"
-    ) {
-      return errorResponse(res, 400, "Cancelled order status cannot be changed");
-    }
+    let shouldNotifyRestaurantPreparing = false;
 
     if (typeof orderStatus === "string" && orderStatus.trim().length > 0) {
       const next = orderStatus.trim().toLowerCase();
@@ -782,6 +778,8 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
         return errorResponse(res, 400, "Invalid order status");
       }
 
+      const prevStatus = order.status;
+      const wasCancelled = prevStatus === "cancelled";
       order.status = next;
       if (next === "cancelled") {
         order.cancelledAt = order.cancelledAt || new Date();
@@ -792,6 +790,20 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
             : "";
         order.cancellationReason =
           reason || order.cancellationReason || "Updated by admin";
+      } else if (wasCancelled) {
+        // Admin reopened the order: clear cancellation so listings and flows treat it as active
+        order.cancelledAt = null;
+        order.cancelledBy = null;
+        order.cancellationReason = null;
+      }
+
+      // Match restaurant accept flow: `preparing` is the accepted/in-kitchen state
+      if (next === "preparing" && prevStatus !== "preparing") {
+        if (!order.tracking) order.tracking = {};
+        if (prevStatus === "pending" && !order.tracking.confirmed?.status) {
+          order.tracking.confirmed = { status: true, timestamp: new Date() };
+        }
+        shouldNotifyRestaurantPreparing = true;
       }
     }
 
@@ -813,6 +825,17 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
     }
 
     await order.save();
+
+    if (shouldNotifyRestaurantPreparing) {
+      try {
+        await notifyRestaurantOrderUpdate(order._id.toString(), "preparing");
+      } catch (notifyErr) {
+        console.error(
+          "Admin status update: failed to notify restaurant socket clients:",
+          notifyErr,
+        );
+      }
+    }
 
     return successResponse(res, 200, "Order updated successfully", {
       orderId: order.orderId,

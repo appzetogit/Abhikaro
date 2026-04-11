@@ -27,6 +27,43 @@ const logger = winston.createLogger({
 });
 
 /**
+ * Single source of truth for how we expose payment method to delivery clients.
+ * Fixes live cases where `order.payment` is missing/legacy but Payment row has pay_at_hotel,
+ * and ensures pay_at_hotel is never overwritten by a secondary Payment lookup (acceptOrder bug).
+ */
+async function resolveDeliveryOrderPaymentMethod(order) {
+  if (!order?._id) {
+    return "razorpay";
+  }
+  const embeddedMethod = order?.payment?.method;
+  let paymentMethod =
+    embeddedMethod || order?.paymentMethod || "razorpay";
+  if (paymentMethod === "cod" || paymentMethod === "cash") {
+    return "cash";
+  }
+  const lower = String(paymentMethod).toLowerCase().trim();
+  if (lower === "pay_at_hotel" || lower === "pay at hotel") {
+    return "pay_at_hotel";
+  }
+  try {
+    const paymentRecord = await Payment.findOne({ orderId: order._id })
+      .select("method")
+      .lean();
+    const pm = paymentRecord?.method;
+    if (pm === "cash" || pm === "cod") {
+      return "cash";
+    }
+    // If Order.payment.method was never stored, Payment row still identifies Pay-at-Hotel.
+    if (pm === "pay_at_hotel" && !embeddedMethod) {
+      return "pay_at_hotel";
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return paymentMethod;
+}
+
+/**
  * Get Delivery Partner Orders
  * GET /api/delivery/orders
  * Query params: status, page, limit
@@ -78,31 +115,7 @@ export const getOrders = asyncHandler(async (req, res) => {
     // Resolve payment method for each order (COD vs Online vs Pay-at-Hotel)
     const ordersWithPayment = await Promise.all(
       orders.map(async (order) => {
-        // Support older shapes where `paymentMethod` may be top-level.
-        let paymentMethod =
-          order.payment?.method || order.paymentMethod || "razorpay";
-        
-        // Normalize "cod" to "cash" if present
-        if (paymentMethod === "cod" || paymentMethod === "cash") {
-          paymentMethod = "cash";
-        } else {
-          // Preserve Pay-at-Hotel without consulting Payment collection
-          // (Pay-at-Hotel orders typically don't create a Payment record).
-          if (paymentMethod === "pay_at_hotel") {
-            return { ...order, paymentMethod };
-          }
-          // If not cash/cod, check Payment collection to be sure (COD legacy)
-          try {
-            const paymentRecord = await Payment.findOne({ orderId: order._id })
-              .select("method")
-              .lean();
-            if (paymentRecord?.method === "cash" || paymentRecord?.method === "cod") {
-              paymentMethod = "cash";
-            }
-          } catch (e) {
-            /* ignore */
-          }
-        }
+        const paymentMethod = await resolveDeliveryOrderPaymentMethod(order);
         return { ...order, paymentMethod };
       })
     );
@@ -243,32 +256,7 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
       );
     }
 
-    // Resolve payment method for delivery boy (COD vs Online vs Pay-at-Hotel)
-    // Normalize payment method: check both order.payment.method, top-level paymentMethod and Payment collection
-    let paymentMethod = order.payment?.method || order.paymentMethod || "razorpay";
-    
-    // Normalize "cod" to "cash" if present
-    if (paymentMethod === "cod" || paymentMethod === "cash") {
-      paymentMethod = "cash";
-    } else {
-      // Preserve Pay-at-Hotel without consulting Payment collection
-      // (Pay-at-Hotel orders typically don't create a Payment record).
-      if (paymentMethod === "pay_at_hotel") {
-        // keep as-is
-      } else {
-        // If not cash/cod, check Payment collection to be sure (COD legacy)
-        try {
-          const paymentRecord = await Payment.findOne({ orderId: order._id })
-            .select("method")
-            .lean();
-          if (paymentRecord?.method === "cash" || paymentRecord?.method === "cod") {
-            paymentMethod = "cash";
-          }
-        } catch (e) {
-          /* ignore */
-        }
-      }
-    }
+    const paymentMethod = await resolveDeliveryOrderPaymentMethod(order);
     // Build effective restaurant location/address for clients that expect scalar fields
     let effectiveRestaurantCoords = null;
     let effectiveRestaurantAddress = null;
@@ -1247,28 +1235,9 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       };
     }
 
-    // Resolve payment method for delivery boy (COD vs Online) - use Payment collection if order.payment is wrong
-    // Normalize payment method: check both order.payment.method and Payment collection
-    let paymentMethod = updatedOrder.payment?.method || "razorpay";
-    
-    // Normalize "cod" to "cash" if present
-    if (paymentMethod === "cod" || paymentMethod === "cash") {
-      paymentMethod = "cash";
-    } else {
-      // If not cash/cod, check Payment collection to be sure
-      try {
-        const paymentRecord = await Payment.findOne({
-          orderId: updatedOrder._id,
-        })
-          .select("method")
-          .lean();
-        if (paymentRecord?.method === "cash" || paymentRecord?.method === "cod") {
-          paymentMethod = "cash";
-        }
-      } catch (e) {
-        /* ignore */
-      }
-    }
+    const paymentMethod = await resolveDeliveryOrderPaymentMethod(
+      updatedOrder,
+    );
     const orderWithPayment = { ...updatedOrder, paymentMethod };
 
     return successResponse(res, 200, "Order accepted successfully", {
@@ -2117,7 +2086,9 @@ export const completeDelivery = asyncHandler(async (req, res) => {
 
     // Hard safety: Pay-at-Hotel orders must be cash-settled before delivery completion.
     // This prevents "Delivered without payment" even if the delivery UI fails to show the button.
-    const effectiveMethod = (order.payment?.method || order.paymentMethod || "")
+    const effectiveMethod = (
+      await resolveDeliveryOrderPaymentMethod(order)
+    )
       .toString()
       .toLowerCase()
       .trim();
@@ -2901,9 +2872,16 @@ export const markHotelCashSettled = asyncHandler(async (req, res) => {
       );
     }
 
-    // Only allow for pay_at_hotel / cash orders
-    const method = order.payment?.method;
-    const isCashFlow = method === "pay_at_hotel" || method === "cash";
+    // Only allow for pay_at_hotel / cash orders (align with resolveDeliveryOrderPaymentMethod)
+    const resolved = await resolveDeliveryOrderPaymentMethod(order);
+    const normalized = String(resolved || "")
+      .toLowerCase()
+      .trim();
+    const isCashFlow =
+      normalized === "pay_at_hotel" ||
+      normalized === "pay at hotel" ||
+      normalized === "cash" ||
+      normalized === "cod";
 
     if (!isCashFlow) {
       return errorResponse(

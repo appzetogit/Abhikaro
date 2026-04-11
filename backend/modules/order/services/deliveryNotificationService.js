@@ -247,7 +247,22 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
       pickupDistance: pickupDistance ? `${pickupDistance.toFixed(2)} km` : 'Distance not available',
       deliveryDistance: deliveryDistance ? `${deliveryDistance.toFixed(2)} km` : 'Calculating...',
       deliveryDistanceRaw: deliveryDistance || 0, // Raw distance number for calculations
-      estimatedEarnings
+      estimatedEarnings,
+      // Payment + hotel context (delivery app shows Pay at Hotel / cash-collected UI from this)
+      paymentMethod: order.payment?.method || "razorpay",
+      paymentStatus: order.payment?.status || null,
+      orderType: order.orderType || null,
+      hotelReference: order.hotelReference || null,
+      hotelId: (() => {
+        const h = order.hotelId;
+        if (!h) return null;
+        if (typeof h === "object" && h._id) return h._id.toString();
+        return h.toString?.() || String(h);
+      })(),
+      hotelName: order.hotelName || null,
+      roomNumber: order.roomNumber || null,
+      hotelCashSettled: order.hotelCashSettled === true,
+      cashCollected: order.cashCollected === true,
     };
 
     // Get delivery namespace

@@ -140,11 +140,12 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
     }
   }
 
+  // Backend: restaurant "accept" sets status `preparing`, not `confirmed` (`confirmed` = paid / awaiting restaurant tap).
   const statusOptions = useMemo(
     () => [
       { value: "pending", label: "Pending" },
-      { value: "confirmed", label: "Accepted" },
-      { value: "preparing", label: "Processing" },
+      { value: "confirmed", label: "Awaiting restaurant (paid)" },
+      { value: "preparing", label: "Accepted" },
       { value: "ready", label: "Ready" },
       { value: "out_for_delivery", label: "Food On The Way" },
       { value: "delivered", label: "Delivered" },
@@ -189,10 +190,6 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
 
   const handleUpdateStatuses = async () => {
     if (!orderIdToUse) return
-    if (isEffectivelyCancelled && editOrderStatus !== "cancelled") {
-      toast.error("Cancelled order status cannot be changed")
-      return
-    }
     try {
       setUpdatingStatus(true)
       const resp = await adminAPI.updateOrderStatusAndPaymentStatus(orderIdToUse, {
@@ -411,8 +408,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-800">Admin Controls</p>
                   {isEffectivelyCancelled && (
-                    <span className="text-xs px-2 py-1 rounded border bg-white text-slate-600">
-                      Cancelled orders locked
+                    <span className="text-xs px-2 py-1 rounded border bg-amber-50 text-amber-800 border-amber-200">
+                      Cancelled — pick a new status and Update to reopen
                     </span>
                   )}
                 </div>
@@ -423,7 +420,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
                       className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
                       value={editOrderStatus}
                       onChange={(e) => setEditOrderStatus(e.target.value)}
-                      disabled={updatingStatus || isEffectivelyCancelled}
+                      disabled={updatingStatus}
                     >
                       {statusOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
