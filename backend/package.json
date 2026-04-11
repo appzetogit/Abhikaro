@@ -10,6 +10,8 @@
     "test": "node scripts/smoke-test.js",
     "test:fcm": "node scripts/test-fcm.js",
     "test:delivery": "node scripts/test-delivery-order-flow.js",
+    "test:delivery-payment-labels": "node scripts/tests/delivery-payment-popup-classification.js",
+    "diagnose:delivery-payment": "node scripts/diagnose-delivery-order-payment.js",
     "test:payments": "node scripts/tests/payment-verify-integration.js",
     "fix:order-review-popup": "node scripts/fixOrderReviewPopup.js"
   },

@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "serve": "vite preview --host 0.0.0.0",
-    "test:rating-popup": "node src/utils/ratingPopupEligibilityTest.js"
+    "test:rating-popup": "node src/utils/ratingPopupEligibilityTest.js",
+    "test:delivery-payment-labels": "node scripts/test-delivery-payment-labels.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

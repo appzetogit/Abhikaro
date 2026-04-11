@@ -59,6 +59,10 @@ import {
   animateMarker,
   calculateDistance
 } from "../utils/liveTrackingPolyline"
+import {
+  getDeliveryPaymentKind,
+  getDeliveryPaymentLabel,
+} from "../utils/deliveryPaymentLabels"
 // import dropLocationBanner from "../../../assets/droplocationbanner.png" // File not found - commented out
 import alertSound from "../../../assets/audio/alert.mp3"
 import originalSound from "../../../assets/audio/original.mp3"
@@ -4274,9 +4278,7 @@ export default function DeliveryHome() {
 
   // Helper: determine if current order is Pay at Hotel
   const isCurrentOrderPayAtHotel = () => {
-    const raw = selectedRestaurant?.paymentMethod ?? selectedRestaurant?.payment?.method
-    const m = raw != null ? String(raw).toLowerCase().trim() : ''
-    return m === 'pay_at_hotel' || m === 'pay at hotel'
+    return getDeliveryPaymentKind(selectedRestaurant) === "pay_at_hotel"
   }
 
   // Handle Order Delivered button swipe
@@ -12053,17 +12055,9 @@ export default function DeliveryHome() {
 
           {/* Payment info: Online = amount paid, COD = collect from customer, Pay at Hotel = hotel collects */}
           {selectedRestaurant?.total != null && (() => {
-            const rawMethod =
-              selectedRestaurant?.paymentMethod ?? selectedRestaurant?.payment?.method ?? ""
-            const m = String(rawMethod).toLowerCase().trim()
-            const isCod = m === "cash" || m === "cod" || m === "cash on delivery"
-            const isPayAtHotel = m === "pay_at_hotel" || m === "pay at hotel"
-            const isHotelQrOnline =
-              !isCod &&
-              !isPayAtHotel &&
-              (String(selectedRestaurant?.orderType || "").toUpperCase() === "QR" ||
-                !!selectedRestaurant?.hotelReference ||
-                !!selectedRestaurant?.hotelId)
+            const payKind = getDeliveryPaymentKind(selectedRestaurant)
+            const isCod = payKind === "cod"
+            const isPayAtHotel = payKind === "pay_at_hotel"
             const total = Number(selectedRestaurant.total) || 0
 
             const containerClasses = isCod
@@ -12090,13 +12084,7 @@ export default function DeliveryHome() {
               ? "text-orange-700"
               : "text-emerald-700"
 
-            const label = isCod
-              ? "Collect from customer (COD)"
-              : isPayAtHotel
-              ? "Pay at Hotel"
-              : isHotelQrOnline
-              ? "Amount paid Hotel (Online)"
-              : "Amount paid (Online)"
+            const label = getDeliveryPaymentLabel(payKind)
 
             return (
               <div className="mb-6 space-y-3">
@@ -12168,9 +12156,9 @@ export default function DeliveryHome() {
               ref={orderDeliveredButtonRef}
               className={`relative w-full rounded-full overflow-hidden shadow-xl ${
                 ((() => {
-                  const raw = selectedRestaurant?.paymentMethod ?? selectedRestaurant?.payment?.method
-                  const m = raw != null ? String(raw).toLowerCase().trim() : ''
-                  const disabled = (m === 'pay_at_hotel' || m === 'pay at hotel') && !hotelCashConfirmed
+                  const disabled =
+                    getDeliveryPaymentKind(selectedRestaurant) === "pay_at_hotel" &&
+                    !hotelCashConfirmed
                   return disabled
                 })())
                   ? 'bg-gray-300 cursor-not-allowed opacity-70'
