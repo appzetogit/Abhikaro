@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, Clock, MapPin, X } from "lucide-react"
 import { deliveryAPI } from "@/lib/api"
+import { getDeliveryPaymentKind, getDeliveryPaymentLabel } from "../utils/deliveryPaymentLabels"
 
 export default function NewOrderPopup({
   isOpen,
@@ -340,6 +341,29 @@ export default function NewOrderPopup({
                   <p className="text-4xl font-bold text-gray-900 mb-2">
                     ₹{getEarnings()}
                   </p>
+                  {(() => {
+                    const kind = getDeliveryPaymentKind(orderData)
+                    const label = getDeliveryPaymentLabel(kind)
+                    const isPayAtHotel = kind === "pay_at_hotel"
+                    const isCod = kind === "cod"
+                    const chipClass = isPayAtHotel
+                      ? "bg-orange-50 border-orange-200 text-orange-800"
+                      : isCod
+                        ? "bg-amber-50 border-amber-200 text-amber-800"
+                        : "bg-emerald-50 border-emerald-200 text-emerald-800"
+                    return (
+                      <div className="mt-2">
+                        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold ${chipClass}`}>
+                          <span>{label}</span>
+                          {isPayAtHotel && (
+                            <span className="font-bold">
+                              (confirm cash at hotel before Delivered)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
                   {/* Earnings Breakdown hidden as per requirement */}
                   <p className="text-gray-400 text-xs">
                     Pickup: {orderData?.pickupDistance || orderData?.pickupDistance || '0 km'}

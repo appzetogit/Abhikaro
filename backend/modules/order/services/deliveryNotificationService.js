@@ -510,15 +510,19 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
           const RestaurantModel = await import('../../restaurant/models/Restaurant.js');
           const rawRid = orderWithUser.restaurantId;
           let restaurant = null;
-          if (mongoose.Types.ObjectId.isValid(rawRid)) {
-            restaurant = await RestaurantModel.default.findById(rawRid)
+          const rawRidStr = rawRid?.toString?.() || rawRid;
+          if (mongoose.Types.ObjectId.isValid(rawRidStr) && String(rawRidStr).length === 24) {
+            restaurant = await RestaurantModel.default.findById(new mongoose.Types.ObjectId(rawRidStr))
               .select('name address location')
               .lean();
           }
           if (!restaurant) {
-            restaurant = await RestaurantModel.default.findOne({
-              $or: [{ restaurantId: rawRid }, { _id: rawRid }],
-            })
+            const or = [{ restaurantId: rawRidStr }];
+            // Only include _id when valid to avoid CastError for values like "REST-...."
+            if (mongoose.Types.ObjectId.isValid(rawRidStr) && String(rawRidStr).length === 24) {
+              or.push({ _id: new mongoose.Types.ObjectId(rawRidStr) });
+            }
+            restaurant = await RestaurantModel.default.findOne({ $or: or })
               .select('name address location')
               .lean();
           }

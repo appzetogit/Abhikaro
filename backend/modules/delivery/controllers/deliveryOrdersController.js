@@ -256,6 +256,27 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
       }
     }
 
+    // Fallback: Order.restaurantId is often a business string like "REST-...." (not populate-able).
+    // Resolve restaurant by Restaurant.restaurantId and use its stored location.
+    if (!effectiveRestaurantCoords && order.restaurantId && typeof order.restaurantId === "string") {
+      try {
+        const restDoc = await Restaurant.findOne({ restaurantId: order.restaurantId })
+          .select("address location")
+          .lean();
+        const coords =
+          restDoc?.location?.geoLocation?.coordinates?.length
+            ? restDoc.location.geoLocation.coordinates
+            : restDoc?.location?.coordinates;
+        if (coords && coords.length === 2) {
+          effectiveRestaurantCoords = coords;
+          effectiveRestaurantAddress =
+            restDoc.location?.formattedAddress || restDoc.location?.address || restDoc.address || null;
+        }
+      } catch (_) {
+        // ignore
+      }
+    }
+
     // Delivery/customer coords
     const deliveryCoords = Array.isArray(order.address?.location?.coordinates)
       ? order.address.location.coordinates

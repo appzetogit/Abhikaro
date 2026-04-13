@@ -2524,13 +2524,19 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
     // Get restaurant location from restaurant doc or fall back to order.restaurantLocation
     const restaurantId = order.restaurantId;
     let restaurantDoc = null;
-    if (mongoose.Types.ObjectId.isValid(restaurantId)) {
-      restaurantDoc = await Restaurant.findById(restaurantId).select('location').lean();
+    const restaurantIdStr = restaurantId?.toString?.() || restaurantId;
+    if (mongoose.Types.ObjectId.isValid(restaurantIdStr) && String(restaurantIdStr).length === 24) {
+      restaurantDoc = await Restaurant.findById(new mongoose.Types.ObjectId(restaurantIdStr))
+        .select('location')
+        .lean();
     }
     if (!restaurantDoc) {
-      restaurantDoc = await Restaurant.findOne({
-        $or: [{ restaurantId: restaurantId }, { _id: restaurantId }],
-      })
+      const restaurantOr = [{ restaurantId: restaurantIdStr }];
+      // Only include _id lookup when it is a valid ObjectId, otherwise Mongoose throws CastError
+      if (mongoose.Types.ObjectId.isValid(restaurantIdStr) && String(restaurantIdStr).length === 24) {
+        restaurantOr.push({ _id: new mongoose.Types.ObjectId(restaurantIdStr) });
+      }
+      restaurantDoc = await Restaurant.findOne({ $or: restaurantOr })
         .select('location')
         .lean();
     }
@@ -2577,9 +2583,14 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
     }
     if (!zone) {
       // Fallback: try to resolve restaurant by business restaurantId string
-      const restaurantDoc = await Restaurant.findOne({
-        $or: [{ restaurantId: restaurantId }, { _id: restaurantId }],
-      }).select('_id').lean();
+      const restaurantOr = [{ restaurantId: restaurantId }];
+      // Only include _id lookup when it is a valid ObjectId, otherwise Mongoose throws CastError
+      if (mongoose.Types.ObjectId.isValid(restaurantId?.toString?.() || restaurantId)) {
+        restaurantOr.push({ _id: new mongoose.Types.ObjectId(restaurantId) });
+      }
+      const restaurantDoc = await Restaurant.findOne({ $or: restaurantOr })
+        .select('_id')
+        .lean();
       if (restaurantDoc?._id) {
         zone = await Zone.findOne({
           restaurantId: restaurantDoc._id,

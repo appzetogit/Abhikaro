@@ -4680,6 +4680,19 @@ export default function DeliveryHome() {
         if (payloadLocation.latitude != null) payloadLat = Number(payloadLocation.latitude)
         if (payloadLocation.longitude != null) payloadLng = Number(payloadLocation.longitude)
       }
+      // Fallbacks: many notification payloads send pickup/restaurant coords as flat fields
+      if ((payloadLat == null || isNaN(payloadLat)) && newOrder.pickupLat != null) {
+        payloadLat = Number(newOrder.pickupLat)
+      }
+      if ((payloadLng == null || isNaN(payloadLng)) && newOrder.pickupLng != null) {
+        payloadLng = Number(newOrder.pickupLng)
+      }
+      if ((payloadLat == null || isNaN(payloadLat)) && newOrder.restaurantLat != null) {
+        payloadLat = Number(newOrder.restaurantLat)
+      }
+      if ((payloadLng == null || isNaN(payloadLng)) && newOrder.restaurantLng != null) {
+        payloadLng = Number(newOrder.restaurantLng)
+      }
 
       let mappedAddress = restaurantAddress
       if (!mappedAddress) {
@@ -4758,7 +4771,7 @@ export default function DeliveryHome() {
         customerLat: newOrder.customerLocation?.latitude ?? newOrder.deliveryLat,
         customerLng: newOrder.customerLocation?.longitude ?? newOrder.deliveryLng,
         items: newOrder.items || fullOrder.items || [],
-        total: newOrder.total ?? fullOrder.pricing?.total ?? 0,
+        total: newOrder.total ?? newOrder.totalAmount ?? fullOrder.pricing?.total ?? 0,
         paymentMethod: normalizedPay,
         orderType: newOrder.orderType ?? fullOrder.orderType ?? null,
         hotelReference: newOrder.hotelReference ?? fullOrder.hotelReference ?? null,
@@ -7122,15 +7135,21 @@ export default function DeliveryHome() {
           liveTrackingPolylineShadowRef.current = new window.google.maps.Polyline({
             path: path,
             geodesic: true,
-            strokeColor: '#FFFFFF', // White shadow/outline
-            strokeOpacity: 0.6,
-            strokeWeight: 10, // Slightly thicker for shadow effect
+            // Hide the outline/shadow. The white outline was showing as an unwanted "white polyline".
+            // If we ever want an outline again, prefer a subtle dark stroke with low opacity.
+            strokeColor: '#000000',
+            strokeOpacity: 0,
+            strokeWeight: 10, // Keep weight but invisible (opacity 0)
             zIndex: 999, // Behind main polyline
             icons: [],
             map: window.deliveryMapInstance
           });
         } else {
           liveTrackingPolylineShadowRef.current.setPath(path);
+          // Ensure legacy shadow (if any) is not visible
+          try {
+            liveTrackingPolylineShadowRef.current.setOptions({ strokeOpacity: 0 });
+          } catch (_) {}
         }
 
       }
@@ -8842,6 +8861,63 @@ export default function DeliveryHome() {
         ...prev,
         tripTime: formatDurationSecs(totalTime),
       } : prev))
+    }
+
+    // Fallback: if refs were never populated (e.g. route calc failed / missing coords),
+    // compute a best-effort distance/time so UI doesn't stay stuck on "Calculating...".
+    if (totalDistance <= 0 || totalTime <= 0) {
+      try {
+        const restLat = Number(selectedRestaurant?.lat ?? selectedRestaurant?.restaurantLat)
+        const restLng = Number(selectedRestaurant?.lng ?? selectedRestaurant?.restaurantLng)
+        const custLat = Number(selectedRestaurant?.customerLat ?? selectedRestaurant?.deliveryLat)
+        const custLng = Number(selectedRestaurant?.customerLng ?? selectedRestaurant?.deliveryLng)
+
+        const hasCoords =
+          Number.isFinite(restLat) &&
+          Number.isFinite(restLng) &&
+          Number.isFinite(custLat) &&
+          Number.isFinite(custLng)
+
+        if (hasCoords) {
+          // Haversine in meters
+          const R = 6371000
+          const toRad = (d) => (d * Math.PI) / 180
+          const dLat = toRad(custLat - restLat)
+          const dLng = toRad(custLng - restLng)
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(restLat)) *
+              Math.cos(toRad(custLat)) *
+              Math.sin(dLng / 2) *
+              Math.sin(dLng / 2)
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+          const meters = R * c
+
+          // Add a small multiplier to better approximate road distance vs straight line
+          const approxMeters = Math.max(0, meters * 1.25)
+          const approxKm = approxMeters / 1000
+
+          if (totalDistance <= 0 && approxMeters > 0) {
+            setTripDistance(approxMeters)
+            setSelectedRestaurant((prev) =>
+              prev
+                ? { ...prev, tripDistance: formatDistanceMeters(approxMeters) }
+                : prev,
+            )
+          }
+
+          // Estimate time assuming 25 km/h average within city traffic
+          const approxSecs = Math.max(1, Math.round((approxKm / 25) * 3600))
+          if (totalTime <= 0 && approxSecs > 0) {
+            setTripTime(approxSecs)
+            setSelectedRestaurant((prev) =>
+              prev ? { ...prev, tripTime: formatDurationSecs(approxSecs) } : prev,
+            )
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
     }
 
   }, [showOrderDeliveredAnimation, tripDistance, tripTime])

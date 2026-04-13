@@ -912,6 +912,17 @@ export default function Cart() {
   // User actually pays after admin offer as well
   const total = Math.max(0, totalAfterBaseDiscount - categoryOfferDiscount)
 
+  // Pay at Hotel rule: allow only up to ₹600
+  const PAY_AT_HOTEL_MAX_TOTAL = 699
+  const canShowPayAtHotel = Boolean(isHotelOrder) && Number(total || 0) <= PAY_AT_HOTEL_MAX_TOTAL
+
+  // If total crosses limit, force selection back to online
+  useEffect(() => {
+    if (!canShowPayAtHotel && selectedPaymentMethod === "pay_at_hotel") {
+      setSelectedPaymentMethod("razorpay")
+    }
+  }, [canShowPayAtHotel, selectedPaymentMethod])
+
   const savings =
     (pricing?.savings || (baseDiscount + (subtotal > 500 ? 32 : 0))) +
     categoryOfferDiscount
@@ -1708,14 +1719,14 @@ export default function Cart() {
 
   // Layout helpers - behave differently for hotel QR orders vs normal orders
   const scrollContainerClass = isHotelOrder
-    ? "pt-16 md:pt-20 pb-72 md:pb-80"
+    ? "pt-16 md:pt-20 pb-16 md:pb-24"
     : "overflow-y-auto overflow-x-hidden pt-16 md:pt-20 pb-44 md:pb-56"
 
   const scrollContainerStyle = isHotelOrder
     ? {
         WebkitOverflowScrolling: "touch",
         paddingTop: "64px", // Header height
-        paddingBottom: "260px", // Extra space below Order Summary + button
+        paddingBottom: "75px", // Space for sticky payment + button (reduced more)
       }
     : {
         height: "100vh",
@@ -2359,50 +2370,83 @@ export default function Cart() {
           <div className="px-4 md:px-6 py-3 md:py-4">
             <div className="w-full max-w-md md:max-w-lg mx-auto">
               {/* Pay Using */}
-              <div className="flex items-center justify-between mb-2 md:mb-3">
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-gray-600 dark:text-gray-300" />
-                  <div className="leading-tight">
-                    <p className="text-sm md:text-base font-medium text-gray-800 dark:text-gray-200">
-                      {selectedPaymentMethod === "razorpay"
-                        ? "Online"
-                        : selectedPaymentMethod === "wallet"
-                          ? "Wallet"
-                          : selectedPaymentMethod === "pay_at_hotel"
-                            ? "Pay at Hotel"
-                            : "Online Payment"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="relative">
+              <div className={`mb-2 md:mb-3 ${isHotelOrder ? "flex justify-center" : "flex items-center justify-between"}`}>
+                <div className="relative w-full">
                   <div className="mb-4">
-                    <select
-                      value={selectedPaymentMethod}
-                      onChange={(e) => setSelectedPaymentMethod(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-orange-500 focus:border-transparent appearance-none"
-                    >
-                      {isHotelOrder ? (
-                        // Show only Pay at Hotel and Razorpay for hotel orders
-                        <>
-                          <option value="razorpay">💰 Online Payment</option>
-                          <option value="pay_at_hotel">💳 Pay at Hotel</option>
-                        </>
+                    {isHotelOrder ? (
+                      // Hotel orders: show 2 exclusive toggle buttons (single-select)
+                      canShowPayAtHotel ? (
+                        <div className="grid grid-cols-2 gap-2 max-w-md mx-auto">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPaymentMethod("razorpay")}
+                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
+                              selectedPaymentMethod === "razorpay"
+                                ? "bg-orange-600 border-orange-600 text-white"
+                                : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
+                            }`}
+                          >
+                            💰 Online Payment
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPaymentMethod("pay_at_hotel")}
+                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
+                              selectedPaymentMethod === "pay_at_hotel"
+                                ? "bg-orange-600 border-orange-600 text-white"
+                                : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
+                            }`}
+                          >
+                            💳 Pay at Hotel
+                          </button>
+                        </div>
                       ) : (
-                        // Show online payment and wallet for regular orders (COD disabled)
-                        <>
-                          <option value="razorpay">💰 Online</option>
-                          <option value="wallet">
-                            👛 Wallet{isLoadingWallet ? ' (Loading...)' : walletBalance > 0 ? ` (₹${walletBalance})` : ' (₹0)'}
-                          </option>
-                        </>
-                      )}
-                    </select>
+                        <div className="max-w-md mx-auto">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPaymentMethod("razorpay")}
+                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
+                              selectedPaymentMethod === "razorpay"
+                                ? "bg-orange-600 border-orange-600 text-white"
+                                : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
+                            }`}
+                          >
+                            💰 Online Payment
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      // Regular orders: show 2 exclusive toggle buttons (single-select)
+                      <div className="grid grid-cols-2 gap-2 max-w-md mx-auto">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPaymentMethod("razorpay")}
+                          className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
+                            selectedPaymentMethod === "razorpay"
+                              ? "bg-orange-600 border-orange-600 text-white"
+                              : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
+                          }`}
+                        >
+                          💰 Online
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPaymentMethod("wallet")}
+                          className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
+                            selectedPaymentMethod === "wallet"
+                              ? "bg-orange-600 border-orange-600 text-white"
+                              : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
+                          }`}
+                        >
+                          👛 Wallet{isLoadingWallet ? " (Loading...)" : ` (₹${walletBalance || 0})`}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Room Number Field - Shown for all hotel orders */}
+                  {/* Room Number Field - Shown for all hotel orders (online + pay-at-hotel) */}
                   {isHotelOrder && (
-                    <div className="mb-3 p-3 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-lg border-2 border-orange-200 dark:border-orange-700">
+                    <div className="mb-3 p-3 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-lg border-2 border-orange-200 dark:border-orange-700 max-w-md mx-auto">
                       <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
                         🏨 Room Number <span className="text-red-500">*</span>
                       </label>
@@ -2421,7 +2465,7 @@ export default function Cart() {
                       )}
                     </div>
                   )}
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 dark:text-gray-400" />
+                  {/* Chevron removed: payment is now buttons (no dropdown) */}
                 </div>
               </div>
 
