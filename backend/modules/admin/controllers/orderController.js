@@ -2555,31 +2555,81 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
 
     const [restaurantLng, restaurantLat] = effectiveRestaurantLocation.coordinates;
 
-    // Find nearest delivery boys (priority)
-    const priorityDeliveryBoys = (
-      await findNearestDeliveryBoys(
-        restaurantLat,
-        restaurantLng,
-        restaurantId,
-        20, // 20km radius for priority
-      )
-    ).slice(0, 10); // Top 10 nearest
+    // Prefer notifying ALL online delivery partners in the restaurant's zone.
+    // This matches "all delivery boys in that zone should receive the request".
+    const BusinessSettings = (await import('../models/BusinessSettings.js')).default;
+    const businessSettings = await BusinessSettings.getSettings();
+    const assignmentMode = businessSettings?.deliveryAssignmentMode || 'automatic';
 
-    // Fallback with larger radius
-    let deliveryBoysToNotify = priorityDeliveryBoys;
-    if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
-      deliveryBoysToNotify = (
+    const Zone = (await import('../models/Zone.js')).default;
+    const Delivery = (await import('../../delivery/models/Delivery.js')).default;
+
+    let deliveryPartnerIds = [];
+
+    // Resolve zone by restaurantId (Zone.restaurantId is Restaurant ObjectId).
+    // order.restaurantId may be ObjectId or legacy string.
+    let zone = null;
+    if (mongoose.Types.ObjectId.isValid(restaurantId?.toString?.() || restaurantId)) {
+      zone = await Zone.findOne({
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+        isActive: true,
+      }).select('_id name').lean();
+    }
+    if (!zone) {
+      // Fallback: try to resolve restaurant by business restaurantId string
+      const restaurantDoc = await Restaurant.findOne({
+        $or: [{ restaurantId: restaurantId }, { _id: restaurantId }],
+      }).select('_id').lean();
+      if (restaurantDoc?._id) {
+        zone = await Zone.findOne({
+          restaurantId: restaurantDoc._id,
+          isActive: true,
+        }).select('_id name').lean();
+      }
+    }
+
+    if (zone?._id) {
+      const zonePartners = await Delivery.find({
+        'availability.isOnline': true,
+        status: { $in: ['approved', 'active'] },
+        isActive: true,
+        'availability.zones': zone._id,
+      }).select('_id').lean();
+
+      deliveryPartnerIds = (zonePartners || []).map((p) => p._id.toString());
+      console.log(
+        `📣 Admin resend: notifying ${deliveryPartnerIds.length} partners in zone ${zone.name} (${zone._id}) (mode=${assignmentMode})`,
+      );
+    }
+
+    // Fallback: if zone is missing or no partners in zone, use distance-based nearest logic.
+    if (!deliveryPartnerIds || deliveryPartnerIds.length === 0) {
+      const priorityDeliveryBoys = (
         await findNearestDeliveryBoys(
           restaurantLat,
           restaurantLng,
           restaurantId,
-          50, // 50km radius
+          20, // 20km radius for priority
         )
-      ).slice(0, 20); // Top 20 nearest
-    }
+      ).slice(0, 10); // Top 10 nearest
 
-    if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
-      return errorResponse(res, 404, 'No delivery partners available in your area');
+      let deliveryBoysToNotify = priorityDeliveryBoys;
+      if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
+        deliveryBoysToNotify = (
+          await findNearestDeliveryBoys(
+            restaurantLat,
+            restaurantLng,
+            restaurantId,
+            50, // 50km radius
+          )
+        ).slice(0, 20); // Top 20 nearest
+      }
+
+      if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
+        return errorResponse(res, 404, 'No delivery partners available in your area');
+      }
+
+      deliveryPartnerIds = deliveryBoysToNotify.map((db) => db.deliveryPartnerId);
     }
 
     // Populate order for notification payload
@@ -2591,8 +2641,6 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
     if (!populatedOrder) {
       return errorResponse(res, 500, 'Failed to load order for notification');
     }
-
-    const deliveryPartnerIds = deliveryBoysToNotify.map((db) => db.deliveryPartnerId);
 
     // Update assignment info for tracking
     await Order.findByIdAndUpdate(order._id, {

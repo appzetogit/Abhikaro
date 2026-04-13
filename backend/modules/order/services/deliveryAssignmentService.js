@@ -77,11 +77,31 @@ export async function findNearestDeliveryBoys(
 
     if (restaurantId) {
       try {
-        const restaurantIdObj = restaurantId.toString ? restaurantId.toString() : restaurantId;
-        zone = await Zone.findOne({
-          restaurantId: restaurantIdObj,
-          isActive: true
-        }).lean();
+        const restaurantIdRaw = restaurantId.toString ? restaurantId.toString() : restaurantId;
+
+        // Zone.restaurantId is a Restaurant ObjectId.
+        // Call sites sometimes pass a Restaurant ObjectId, and sometimes pass a business `restaurantId` string.
+        // Resolve both to a Restaurant ObjectId before looking up Zone.
+        let restaurantObjectId = null;
+        if (mongoose.Types.ObjectId.isValid(restaurantIdRaw) && String(restaurantIdRaw).length === 24) {
+          restaurantObjectId = new mongoose.Types.ObjectId(restaurantIdRaw);
+        } else {
+          const restaurantDoc = await Restaurant.findOne({ restaurantId: restaurantIdRaw })
+            .select('_id')
+            .lean();
+          if (restaurantDoc?._id) {
+            restaurantObjectId = restaurantDoc._id;
+          }
+        }
+
+        if (restaurantObjectId) {
+          zone = await Zone.findOne({
+            restaurantId: restaurantObjectId,
+            isActive: true,
+          }).lean();
+        } else {
+          zone = null;
+        }
 
         if (zone) {
           console.log(`✅ Found zone: ${zone.name} (${zone._id}) for restaurant ${restaurantId}`);
