@@ -811,7 +811,10 @@ export async function notifyDeliveryBoyOrderReady(order, deliveryPartnerId) {
     const normalizedDeliveryPartnerId = deliveryPartnerId?.toString() || deliveryPartnerId;
 
     // Prepare order ready notification
-    const coords = order.restaurantId?.location?.coordinates;
+    const coords =
+      order.restaurantId?.location?.geoLocation?.coordinates?.length
+        ? order.restaurantId.location.geoLocation.coordinates
+        : order.restaurantId?.location?.coordinates;
     const orderReadyNotification = {
       orderId: order.orderId || order._id,
       mongoId: order._id?.toString(),
@@ -857,6 +860,26 @@ export async function notifyDeliveryBoyOrderReady(order, deliveryPartnerId) {
       console.warn(`⚠️ Delivery partner ${normalizedDeliveryPartnerId} not found in any room, broadcasting to all`);
       deliveryNamespace.emit('order_ready', orderReadyNotification);
       notificationSent = true;
+    }
+
+    // Also send FCM push (reliable) so rider gets "Order is ready" even if socket is flaky.
+    try {
+      const { sendToUser } = await import('../../fcm/services/fcmService.js');
+      const oid = order.orderId || order._id?.toString?.();
+      if (oid) {
+        await sendToUser(deliveryPartnerId, 'delivery', {
+          title: 'Order is ready',
+          body: `Order #${oid} is ready for pickup.`,
+        }, {
+          type: 'order_ready',
+          orderId: oid,
+          tag: oid,
+          link: `/delivery/order/${oid}`,
+          channelId: 'delivery_order_ready',
+        });
+      }
+    } catch (fcmErr) {
+      console.warn('FCM delivery order_ready notification failed:', fcmErr.message);
     }
 
     return {

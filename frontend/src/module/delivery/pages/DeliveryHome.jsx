@@ -382,7 +382,7 @@ export default function DeliveryHome() {
 
   // Delivery notifications from shared socket (provided by DeliveryLayout)
   const notifications = useDeliveryNotificationsContext()
-  const { newOrder, clearNewOrder, markOrderRejected, orderReady, clearOrderReady, isConnected, stopNotificationSound } = notifications || {}
+  const { newOrder, clearNewOrder, markOrderRejected, orderReady, clearOrderReady, orderTaken, clearOrderTaken, isConnected, stopNotificationSound } = notifications || {}
 
   // Default location - will be set from saved location or GPS, not hardcoded
   const [riderLocation, setRiderLocation] = useState(null) // Will be set from GPS or saved location
@@ -4800,6 +4800,38 @@ export default function DeliveryHome() {
       setCountdownSeconds(300) // Reset countdown to 5 minutes
     })()
   }, [newOrder, calculateTimeAway, riderLocation])
+
+  // If another delivery partner accepts this order, close our popup instantly.
+  useEffect(() => {
+    if (!orderTaken) return
+    const takenOrderId =
+      orderTaken?.orderId?.toString?.() ||
+      orderTaken?.orderMongoId?.toString?.() ||
+      null
+    if (!takenOrderId) return
+
+    const currentPopupOrderId =
+      selectedRestaurant?.orderId?.toString?.() ||
+      selectedRestaurant?.id?.toString?.() ||
+      newOrder?.orderId?.toString?.() ||
+      newOrder?.orderMongoId?.toString?.() ||
+      null
+
+    if (currentPopupOrderId && (currentPopupOrderId === takenOrderId)) {
+      // If this is not the accepter, close popup
+      const accepterId = orderTaken?.assignedDeliveryPartnerId?.toString?.() || null
+      const me = notifications?.deliveryPartnerId?.toString?.() || null
+      if (accepterId && me && accepterId === me) {
+        clearOrderTaken?.()
+        return
+      }
+      setShowNewOrderPopup(false)
+      setIsNewOrderPopupMinimized(false)
+      clearNewOrder?.()
+      stopNotificationSound?.()
+      clearOrderTaken?.()
+    }
+  }, [orderTaken, selectedRestaurant, newOrder, notifications?.deliveryPartnerId])
 
   // Also show new order popup when a FOREGROUND FCM push arrives.
   // In many setups the push contains only { type: 'new_order', orderId }, so we fetch details.

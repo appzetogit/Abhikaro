@@ -1126,6 +1126,54 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       }
     })();
 
+    // Notify OTHER delivery partners (who received this request) to close their accept popup instantly.
+    ;(async () => {
+      try {
+        const serverModule = await import("../../../server.js");
+        const getIO = serverModule.getIO;
+        const io = getIO ? getIO() : null;
+        if (!io) return;
+
+        const deliveryNamespace = io.of("/delivery");
+        const assignmentInfo = updatedOrder?.assignmentInfo || {};
+        const priorityIds = assignmentInfo.priorityDeliveryPartnerIds || [];
+        const expandedIds = assignmentInfo.expandedDeliveryPartnerIds || [];
+        const currentId = delivery?._id?.toString?.();
+
+        const allTargets = [
+          ...new Set(
+            [...priorityIds, ...expandedIds]
+              .map((x) => x?.toString?.() || x)
+              .filter(Boolean),
+          ),
+        ];
+        const targets = allTargets.filter((id) => id !== currentId);
+        if (targets.length === 0) return;
+
+        const payload = {
+          orderId: updatedOrder.orderId,
+          orderMongoId: updatedOrder._id?.toString?.(),
+          assignedDeliveryPartnerId: currentId,
+          timestamp: new Date().toISOString(),
+        };
+
+        for (const targetId of targets) {
+          const normalized = targetId?.toString?.() || targetId;
+          const roomVariations = [
+            `delivery:${normalized}`,
+            ...(mongoose.Types.ObjectId.isValid(normalized)
+              ? [`delivery:${new mongoose.Types.ObjectId(normalized).toString()}`]
+              : []),
+          ];
+          for (const room of roomVariations) {
+            deliveryNamespace.to(room).emit("order_taken", payload);
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
+    })();
+
     // Calculate delivery distance (restaurant to customer) for earnings calculation
     let deliveryDistance = 0;
     if (

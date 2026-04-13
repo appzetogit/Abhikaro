@@ -12,6 +12,10 @@ export const useDeliveryNotifications = () => {
   // Step 1: All refs first (unconditional)
   const socketRef = useRef(null);
   const audioRef = useRef(null);
+  // Track user interaction for autoplay policy
+  const userInteractedRef = useRef(false);
+  // Track orders that this delivery partner has explicitly rejected (to avoid re-notifying)
+  const rejectedOrderIdsRef = useRef(new Set());
   // NOTE: Do NOT add new hooks above existing state hooks lightly.
   // HMR can surface "hook order changed" errors. For in-flight fetch dedupe, we store
   // the Map on the existing `socketRef` object (no new hooks required).
@@ -19,14 +23,11 @@ export const useDeliveryNotifications = () => {
   // Step 2: All state hooks (unconditional)
   const [newOrder, setNewOrder] = useState(null);
   const [orderReady, setOrderReady] = useState(null);
+  const [orderTaken, setOrderTaken] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [deliveryPartnerId, setDeliveryPartnerId] = useState(null);
 
-  // Step 3: All callbacks/refs before effects (unconditional)
-  // Track user interaction for autoplay policy
-  const userInteractedRef = useRef(false);
-  // Track orders that this delivery partner has explicitly rejected (to avoid re-notifying)
-  const rejectedOrderIdsRef = useRef(new Set());
+  // Step 3: All callbacks before effects (unconditional)
 
   const normalizeOrderId = useCallback((payload) => {
     return (
@@ -586,6 +587,20 @@ export const useDeliveryNotifications = () => {
       // Keep push notification / UI state updates only.
     });
 
+    // When another delivery partner accepts the same order, close the popup instantly.
+    socketRef.current.on('order_taken', (data) => {
+      try {
+        setOrderTaken(data || {});
+        const orderId = normalizeOrderId(data);
+        if (orderId && newOrder && normalizeOrderId(newOrder) === orderId) {
+          setNewOrder(null);
+          stopNotificationSound();
+        }
+      } catch (_) {
+        // ignore
+      }
+    });
+
     // FIXED: Listen for wallet update events to refresh wallet state immediately
     socketRef.current.on('wallet_updated', (data) => {
       // Dispatch custom event to trigger wallet refresh in all components
@@ -648,12 +663,18 @@ export const useDeliveryNotifications = () => {
     setOrderReady(null);
   };
 
+  const clearOrderTaken = () => {
+    setOrderTaken(null);
+  };
+
   return {
     newOrder,
     clearNewOrder,
     markOrderRejected,
     orderReady,
     clearOrderReady,
+    orderTaken,
+    clearOrderTaken,
     isConnected,
     playNotificationSound,
     stopNotificationSound

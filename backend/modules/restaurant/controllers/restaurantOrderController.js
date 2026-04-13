@@ -25,6 +25,7 @@ import {
 import RestaurantWallet from "../models/RestaurantWallet.js";
 import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
 import mongoose from "mongoose";
+import Zone from "../../admin/models/Zone.js";
 
 // Dynamic import to avoid circular dependency; used for customer realtime updates
 let getIO = null;
@@ -1570,47 +1571,76 @@ export const markOrderReady = asyncHandler(async (req, res) => {
     // We only notify eligible delivery partners and keep the order unassigned until acceptance.
     if (!populatedOrder.deliveryPartnerId && !isHotelOrder) {
       try {
-        const restaurantDoc = await Restaurant.findById(restaurantId)
-          .select("location")
-          .lean();
+        // Notify ALL delivery partners assigned to this restaurant's zone.
+        // This matches product requirement: "jo zone me hai un sab ko request jani chahiye".
+        const restaurantObjectId = restaurant?._id;
+        let zone = null;
+        if (restaurantObjectId) {
+          zone = await Zone.findOne({
+            restaurantId: restaurantObjectId,
+            isActive: true,
+          })
+            .select("_id name")
+            .lean();
+        }
 
-        if (restaurantDoc?.location?.coordinates && restaurantDoc.location.coordinates.length >= 2) {
-          const [restaurantLng, restaurantLat] = restaurantDoc.location.coordinates;
-
-          const priorityDeliveryBoys = await findNearestDeliveryBoys(
-            restaurantLat,
-            restaurantLng,
-            restaurantId,
-            20, // 20km priority radius
-            10, // Top 10
+        let notifiedIds = [];
+        if (zone?._id) {
+          const zonePartners = await Delivery.find({
+            "availability.isOnline": true,
+            status: { $in: ["approved", "active"] },
+            isActive: true,
+            "availability.zones": zone._id,
+          })
+            .select("_id")
+            .lean();
+          notifiedIds = (zonePartners || []).map((p) => p._id.toString());
+          console.log(
+            `📣 Order ${order.orderId} ready → notifying ${notifiedIds.length} partners in zone ${zone.name} (${zone._id})`,
           );
+        }
 
-          const notifiedIds =
-            priorityDeliveryBoys && priorityDeliveryBoys.length > 0
-              ? priorityDeliveryBoys.map((db) => db.deliveryPartnerId)
-              : [];
-
-          if (notifiedIds.length > 0) {
-            await Order.findByIdAndUpdate(order._id, {
-              $set: {
-                "assignmentInfo.priorityDeliveryPartnerIds": notifiedIds,
-                "assignmentInfo.assignedBy": "nearest_available",
-                "assignmentInfo.assignedAt": new Date(),
-              },
-            });
-
-            await notifyMultipleDeliveryBoys(populatedOrder, notifiedIds, "priority");
-            console.log(
-              `✅ Order ${order.orderId} ready notification sent to ${notifiedIds.length} delivery partners (awaiting acceptance)`,
+        // Fallback: if zone missing or empty, fall back to nearest list (better than notifying none)
+        if (!notifiedIds || notifiedIds.length === 0) {
+          const restaurantDoc = await Restaurant.findById(restaurant?._id)
+            .select("location")
+            .lean();
+          const coords =
+            restaurantDoc?.location?.geoLocation?.coordinates?.length
+              ? restaurantDoc.location.geoLocation.coordinates
+              : restaurantDoc?.location?.coordinates;
+          if (coords && coords.length >= 2) {
+            const [restaurantLng, restaurantLat] = coords;
+            const priorityDeliveryBoys = await findNearestDeliveryBoys(
+              restaurantLat,
+              restaurantLng,
+              restaurantIdString || restaurant?._id?.toString?.(),
+              20,
+              10,
             );
-          } else {
-            console.warn(
-              `⚠️ Order ${order.orderId} is ready but no nearby delivery partners found to notify`,
-            );
+            notifiedIds =
+              priorityDeliveryBoys && priorityDeliveryBoys.length > 0
+                ? priorityDeliveryBoys.map((db) => db.deliveryPartnerId)
+                : [];
           }
+        }
+
+        if (notifiedIds.length > 0) {
+          await Order.findByIdAndUpdate(order._id, {
+            $set: {
+              "assignmentInfo.priorityDeliveryPartnerIds": notifiedIds,
+              "assignmentInfo.assignedBy": "zone_ready_broadcast",
+              "assignmentInfo.assignedAt": new Date(),
+            },
+          });
+
+          await notifyMultipleDeliveryBoys(populatedOrder, notifiedIds, "zone_ready");
+          console.log(
+            `✅ Order ${order.orderId} ready notification sent to ${notifiedIds.length} delivery partners (awaiting acceptance)`,
+          );
         } else {
-          console.error(
-            `❌ Restaurant ${restaurantId} location not found. Cannot notify delivery partners.`,
+          console.warn(
+            `⚠️ Order ${order.orderId} is ready but no delivery partners found to notify`,
           );
         }
       } catch (notifyError) {
