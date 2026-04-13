@@ -7,6 +7,10 @@ import OptimizedImage from "@/components/OptimizedImage"
 export default function HeroBannerCarousel({ banners, loading }) {
   const navigate = useNavigate()
   const [currentIndex, setCurrentIndex] = useState(0)
+
+  useEffect(() => {
+    setCurrentIndex(0)
+  }, [banners?.length])
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
   const touchEndX = useRef(0)
@@ -175,9 +179,14 @@ export default function HeroBannerCarousel({ banners, loading }) {
           const linkedRestaurants = bannerData?.linkedRestaurants || []
           const hasLinkedRestaurants = linkedRestaurants.length > 0
 
+          const slideKey =
+            (bannerData?.imageUrl && String(bannerData.imageUrl)) ||
+            (typeof image === "string" ? image : "") ||
+            `slide-${index}`
+
           return (
             <div
-              key={index}
+              key={`${slideKey}-${index}`}
               className="h-full flex-shrink-0 sm:px-4 lg:px-6"
               style={{ width: '100vw', cursor: hasLinkedRestaurants ? 'pointer' : 'default' }}
               onClick={() => {

@@ -156,20 +156,23 @@ export async function getTokensForUser(userId, role) {
   }
   
   const tokens = [];
-  if (doc.fcmtokenWeb) {
-    tokens.push(doc.fcmtokenWeb);
-    console.log(`✅ [FCM] Found web token for ${role} ${userId}`);
-  }
   if (doc.fcmtokenMobile) {
-    tokens.push(doc.fcmtokenMobile);
+    tokens.push(String(doc.fcmtokenMobile));
     console.log(`✅ [FCM] Found mobile token for ${role} ${userId}`);
   }
+  if (doc.fcmtokenWeb) {
+    tokens.push(String(doc.fcmtokenWeb));
+    console.log(`✅ [FCM] Found web token for ${role} ${userId}`);
+  }
+
+  // Deduplicate in case the same device token is saved in both fields
+  const uniqueTokens = Array.from(new Set(tokens.filter(Boolean)));
   
-  if (tokens.length === 0) {
+  if (uniqueTokens.length === 0) {
     console.warn(`⚠️ [FCM] No FCM tokens found for ${role} ${userId}`);
   }
   
-  return tokens;
+  return uniqueTokens;
 }
 
 /**
@@ -181,7 +184,10 @@ export async function getTokensForUser(userId, role) {
 export async function sendNotification(tokens, notification, data = {}) {
   if (!await initializeFcm()) return { success: false, error: 'FCM not initialized' };
 
-  const tokenArray = Array.isArray(tokens) ? tokens : [tokens].filter(Boolean);
+  const tokenArrayRaw = Array.isArray(tokens) ? tokens : [tokens];
+  // Deduplicate tokens to avoid duplicate notifications when the same token
+  // is stored multiple times (e.g. web + mobile fields).
+  const tokenArray = Array.from(new Set(tokenArrayRaw.map((t) => String(t || '').trim()).filter(Boolean)));
   if (tokenArray.length === 0) return { success: false, error: 'No tokens provided' };
 
   // Ensure tag is present in data for deduplication
@@ -445,6 +451,13 @@ export async function sendToUser(userId, role, notification, data = {}) {
     console.warn(`⚠️ [FCM] No tokens found for ${role} ${userId}`);
     return { success: false, error: 'No tokens found for user' };
   }
-  console.log(`📤 [FCM] Sending notification to ${role} ${userId} with ${tokens.length} token(s)`);
-  return sendNotification(tokens, notification, data);
+  const preferMobileOnly =
+    data?.preferMobileOnly === true ||
+    data?.preferMobileOnly === "true" ||
+    data?.singleDevice === true ||
+    data?.singleDevice === "true";
+
+  const finalTokens = preferMobileOnly ? tokens.slice(0, 1) : tokens;
+  console.log(`📤 [FCM] Sending notification to ${role} ${userId} with ${finalTokens.length} token(s)`);
+  return sendNotification(finalTokens, notification, data);
 }

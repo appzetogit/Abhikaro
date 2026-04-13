@@ -1714,6 +1714,76 @@ export const confirmOrderId = asyncHandler(async (req, res) => {
       .populate("restaurantId", "name location address")
       .lean();
 
+    // Pay-at-hotel orders: credit restaurant profit at pickup (when rider confirms order ID).
+    // Hotel module doesn't have "collect payment" flow; restaurant should see profit immediately after pickup.
+    try {
+      const isPayAtHotel = updatedOrder?.payment?.method === "pay_at_hotel";
+      if (isPayAtHotel && updatedOrder?.restaurantId?._id) {
+        const restaurantId = updatedOrder.restaurantId._id;
+        const orderDbId = updatedOrder._id;
+        const orderNumber = updatedOrder.orderId;
+
+        const wallet = await RestaurantWallet.findOrCreateByRestaurantId(
+          restaurantId,
+        );
+
+        const orderIdStr = orderDbId?.toString?.() || String(orderDbId);
+        const alreadyCredited = wallet.transactions?.some(
+          (t) =>
+            t?.type === "payment" && t?.orderId?.toString?.() === orderIdStr,
+        );
+
+        if (!alreadyCredited) {
+          const pricing = updatedOrder.pricing || {};
+          const totalAmount = Number(pricing.subtotal ?? pricing.total ?? 0);
+
+          // Compute restaurant share for QR/hotel orders:
+          // prefer stored breakdown/percentages if present, otherwise fallback 70%.
+          let restaurantShare = 0;
+          if (
+            updatedOrder.commissionBreakdown &&
+            (updatedOrder.commissionBreakdown.hotel > 0 ||
+              updatedOrder.commissionBreakdown.admin > 0)
+          ) {
+            restaurantShare = Number(updatedOrder.commissionBreakdown.restaurant || 0);
+          } else if (
+            updatedOrder.commissionPercentages &&
+            (updatedOrder.commissionPercentages.hotel > 0 ||
+              updatedOrder.commissionPercentages.admin > 0)
+          ) {
+            const hotelPct = Number(updatedOrder.commissionPercentages.hotel || 0);
+            const adminPct = Number(updatedOrder.commissionPercentages.admin || 0);
+            const hotelShare = Math.round(totalAmount * (hotelPct / 100) * 100) / 100;
+            const adminShare = Math.round(totalAmount * (adminPct / 100) * 100) / 100;
+            restaurantShare = Math.round((totalAmount - hotelShare - adminShare) * 100) / 100;
+          } else {
+            restaurantShare = Math.round(totalAmount * 0.7 * 100) / 100;
+          }
+
+          if (restaurantShare > 0) {
+            wallet.addTransaction({
+              amount: restaurantShare,
+              type: "payment",
+              status: "Completed",
+              description: `Pay at Hotel order #${orderNumber} pickup credit (₹${restaurantShare.toFixed(2)})`,
+              orderId: orderDbId,
+            });
+            await wallet.save();
+
+            // Store on order for reporting/debugging (no commissionDistributed flip here)
+            await Order.findByIdAndUpdate(orderDbId, {
+              $set: { restaurantShare: restaurantShare },
+            });
+          }
+        }
+      }
+    } catch (walletErr) {
+      console.error(
+        `❌ Failed to credit restaurant wallet on pickup for order ${updatedOrder?.orderId}:`,
+        walletErr?.message || walletErr,
+      );
+    }
+
     console.log(`✅ Order ID confirmed for order ${order.orderId}`);
     console.log(
       `📍 Route to delivery calculated: ${routeData.distance.toFixed(2)} km, ${routeData.duration.toFixed(1)} mins`,
@@ -2518,13 +2588,20 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       const discount = Number(order.pricing?.discount || 0);
       const foodPrice = Math.max(0, subtotal - discount);
 
-      // Find restaurant by restaurantId (can be string or ObjectId)
+      // Find restaurant by restaurantId (Order.restaurantId is usually a string),
+      // but in this controller we also populate("restaurantId"), so it can be an object.
       let restaurant = null;
-      if (mongoose.Types.ObjectId.isValid(order.restaurantId)) {
-        restaurant = await Restaurant.findById(order.restaurantId);
+      const restaurantIdRaw = order.restaurantId;
+      const populatedRestaurantObjectId = restaurantIdRaw?._id;
+      const populatedRestaurantPublicId = restaurantIdRaw?.restaurantId;
+
+      if (populatedRestaurantObjectId) {
+        restaurant = await Restaurant.findById(populatedRestaurantObjectId);
+      } else if (mongoose.Types.ObjectId.isValid(restaurantIdRaw)) {
+        restaurant = await Restaurant.findById(restaurantIdRaw);
       } else {
         restaurant = await Restaurant.findOne({
-          restaurantId: order.restaurantId,
+          restaurantId: populatedRestaurantPublicId || restaurantIdRaw,
         });
       }
 

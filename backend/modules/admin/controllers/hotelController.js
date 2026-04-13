@@ -231,6 +231,42 @@ export const updateHotel = asyncHandler(async (req, res) => {
     }
   }
 
+  // If admin is approving the hotel (inactive -> active),
+  // ensure default commissions are set when missing.
+  // This keeps Hotel Commission screen consistent after approval.
+  const wantsActivate = updateData.isActive === true;
+  if (wantsActivate) {
+    const existing = await Hotel.findById(id).select("isActive commission adminCommission").lean();
+    if (!existing) {
+      return errorResponse(res, 404, "Hotel not found");
+    }
+
+    const wasInactive = existing.isActive === false;
+    if (wasInactive) {
+      // Set approval metadata if available in request context
+      // (admin middleware typically attaches req.admin / req.user).
+      if (!updateData.approvedAt) updateData.approvedAt = new Date();
+      if (!updateData.approvedBy) {
+        const approverId = req.admin?._id || req.user?._id || req.user?.userId || null;
+        if (approverId) updateData.approvedBy = approverId;
+      }
+      // Clear rejection fields on approve
+      updateData.rejectionReason = null;
+      updateData.rejectedAt = null;
+      updateData.rejectedBy = null;
+    }
+
+    // Defaults (only if not explicitly set in this request AND not already set)
+    const existingHotelCommission = Number(existing.commission);
+    const existingAdminCommission = Number(existing.adminCommission);
+    if (updateData.commission === undefined && (!Number.isFinite(existingHotelCommission) || existingHotelCommission <= 0)) {
+      updateData.commission = 10;
+    }
+    if (updateData.adminCommission === undefined && (!Number.isFinite(existingAdminCommission) || existingAdminCommission <= 0)) {
+      updateData.adminCommission = 20;
+    }
+  }
+
   // Normalize email if provided
   if (updateData.email && typeof updateData.email === "string") {
     updateData.email = updateData.email.toLowerCase().trim();

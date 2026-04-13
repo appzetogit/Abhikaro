@@ -93,6 +93,9 @@ export default function Home() {
   const isHandlingSwitchOff = useRef(false)
   const heroBannersRetryRef = useRef(false)
   const landingConfigRetryRef = useRef(false)
+  const heroBannerFetchAbortRef = useRef(null)
+  const landingFetchAbortRef = useRef(null)
+  const categoriesFetchAbortRef = useRef(null)
 
   // Rating & feedback popup (after order delivered)
   const [ratingModal, setRatingModal] = useState({ open: false, order: null })
@@ -100,6 +103,7 @@ export default function Home() {
   const [selectedRating, setSelectedRating] = useState(null)
   const [feedbackText, setFeedbackText] = useState("")
   const [submittingRating, setSubmittingRating] = useState(false)
+  const [brokenRecommendedImageBySlug, setBrokenRecommendedImageBySlug] = useState({})
 
   // Track orders that have shown rating popup - persist in localStorage
   const [shownRatingForOrders, setShownRatingForOrders] = useState(() => {
@@ -472,28 +476,38 @@ export default function Home() {
     }
   }, [ratingModal.open, shownRatingForOrders, handleOpenRatingModal, normalizeOrderForRating])
 
-  const fetchHeroBanners = useCallback(async ({ retry = false } = {}) => {
+  const fetchHeroBanners = useCallback(async ({ retry = false, silent = false } = {}) => {
+    heroBannerFetchAbortRef.current?.abort()
+    const controller = new AbortController()
+    heroBannerFetchAbortRef.current = controller
+
     try {
-      setLoadingBanners(true)
-      const response = await api.get('/hero-banners/public')
-      if (response.data.success && response.data.data.banners) {
-        const banners = response.data.data.banners
+      if (!silent) setLoadingBanners(true)
+      const response = await api.get('/hero-banners/public', {
+        signal: controller.signal,
+      })
+      if (controller.signal.aborted) return
+
+      const banners = response?.data?.data?.banners
+      if (response?.data?.success && Array.isArray(banners)) {
         setHeroBannersData(banners)
-        // Extract image URLs for display
-        setHeroBannerImages(banners.map(b => b.imageUrl || b))
+        setHeroBannerImages(banners.map((b) => b.imageUrl || b))
         heroBannersRetryRef.current = false
       }
     } catch (error) {
+      if (controller.signal.aborted) return
+      if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return
       // Keep last-known banners on transient failures.
       // Retry once after a short delay to handle WebView refresh/network blips.
       if (!retry && !heroBannersRetryRef.current) {
         heroBannersRetryRef.current = true
         setTimeout(() => {
-          fetchHeroBanners({ retry: true })
+          fetchHeroBanners({ retry: true, silent: true })
         }, 1500)
       }
     } finally {
-      setLoadingBanners(false)
+      if (controller.signal.aborted) return
+      if (!silent) setLoadingBanners(false)
     }
   }, [])
 
@@ -502,33 +516,44 @@ export default function Home() {
     fetchHeroBanners()
   }, [fetchHeroBanners])
 
+  const fetchRealCategories = useCallback(async ({ silent = false } = {}) => {
+    categoriesFetchAbortRef.current?.abort()
+    const controller = new AbortController()
+    categoriesFetchAbortRef.current = controller
+
+    try {
+      if (!silent) setLoadingRealCategories(true)
+      const response = await api.get('/categories/public?home=true', {
+        signal: controller.signal,
+      })
+      if (controller.signal.aborted) return
+
+      if (response.data.success && response.data.data.categories) {
+        const adminCategories = response.data.data.categories.map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          image: cat.image || foodImages[0], // Fallback to default image if not provided
+          slug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'),
+          label: cat.name, // For compatibility with existing code
+        }))
+        setRealCategories(adminCategories)
+      } else if (!silent) {
+        setRealCategories([])
+      }
+    } catch (error) {
+      if (controller.signal.aborted) return
+      if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return
+      if (!silent) setRealCategories([])
+    } finally {
+      if (controller.signal.aborted) return
+      if (!silent) setLoadingRealCategories(false)
+    }
+  }, [])
+
   // Fetch real categories from backend API
   useEffect(() => {
-    const fetchRealCategories = async () => {
-      try {
-        setLoadingRealCategories(true)
-        const response = await api.get('/categories/public?home=true')
-        if (response.data.success && response.data.data.categories) {
-          const adminCategories = response.data.data.categories.map(cat => ({
-            id: cat.id,
-            name: cat.name,
-            image: cat.image || foodImages[0], // Fallback to default image if not provided
-            slug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'),
-            label: cat.name // For compatibility with existing code
-          }))
-          setRealCategories(adminCategories)
-        } else {
-          setRealCategories([])
-        }
-      } catch (error) {
-        setRealCategories([])
-      } finally {
-        setLoadingRealCategories(false)
-      }
-    }
-
     fetchRealCategories()
-  }, [])
+  }, [fetchRealCategories])
 
   // Fetch ALL active categories for the "See all" modal (not limited by home config)
   useEffect(() => {
@@ -560,10 +585,18 @@ export default function Home() {
     fetchAllCategories()
   }, [showAllCategoriesModal])
 
-  const fetchLandingConfig = useCallback(async ({ retry = false } = {}) => {
+  const fetchLandingConfig = useCallback(async ({ retry = false, silent = false } = {}) => {
+    landingFetchAbortRef.current?.abort()
+    const controller = new AbortController()
+    landingFetchAbortRef.current = controller
+
     try {
-      setLoadingLandingConfig(true)
-      const response = await api.get('/hero-banners/landing/public')
+      if (!silent) setLoadingLandingConfig(true)
+      const response = await api.get('/hero-banners/landing/public', {
+        signal: controller.signal,
+      })
+      if (controller.signal.aborted) return
+
       if (response.data.success && response.data.data) {
         const apiCategories = response.data.data.categories || []
         const apiExploreMore = response.data.data.exploreMore || []
@@ -584,16 +617,19 @@ export default function Home() {
         landingConfigRetryRef.current = false
       }
     } catch (error) {
+      if (controller.signal.aborted) return
+      if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return
       // Keep last-known landing config on transient failures.
       // Retry once after a short delay to handle WebView refresh/network blips.
       if (!retry && !landingConfigRetryRef.current) {
         landingConfigRetryRef.current = true
         setTimeout(() => {
-          fetchLandingConfig({ retry: true })
+          fetchLandingConfig({ retry: true, silent: true })
         }, 1500)
       }
     } finally {
-      setLoadingLandingConfig(false)
+      if (controller.signal.aborted) return
+      if (!silent) setLoadingLandingConfig(false)
     }
   }, [])
 
@@ -602,15 +638,26 @@ export default function Home() {
     fetchLandingConfig()
   }, [fetchLandingConfig])
 
+  useEffect(() => {
+    return () => {
+      heroBannerFetchAbortRef.current?.abort()
+      landingFetchAbortRef.current?.abort()
+      categoriesFetchAbortRef.current?.abort()
+    }
+  }, [])
+
   // When WebView/app returns to foreground, refetch if we have no banners/config (common after in-app refresh).
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return
       if (!loadingBanners && heroBannerImages.length === 0) {
-        fetchHeroBanners()
+        fetchHeroBanners({ silent: false })
       }
       if (!loadingLandingConfig && landingCategories.length === 0 && landingExploreMore.length === 0) {
-        fetchLandingConfig()
+        fetchLandingConfig({ silent: false })
+      }
+      if (!loadingRealCategories && realCategories.length === 0) {
+        fetchRealCategories({ silent: false })
       }
     }
 
@@ -621,11 +668,14 @@ export default function Home() {
   }, [
     fetchHeroBanners,
     fetchLandingConfig,
+    fetchRealCategories,
     heroBannerImages.length,
     landingCategories.length,
     landingExploreMore.length,
     loadingBanners,
-    loadingLandingConfig
+    loadingLandingConfig,
+    loadingRealCategories,
+    realCategories.length,
   ])
 
   // Auto-cycle hero banner images
@@ -654,14 +704,16 @@ export default function Home() {
       smoothTouch: false, // Disabled to prevent double-click issues on touch-enabled devices
     })
 
+    let rafId = 0
     function raf(time) {
       lenis.raf(time)
-      requestAnimationFrame(raf)
+      rafId = requestAnimationFrame(raf)
     }
 
-    requestAnimationFrame(raf)
+    rafId = requestAnimationFrame(raf)
 
     return () => {
+      cancelAnimationFrame(rafId)
       lenis.destroy()
     }
   }, [])
@@ -1141,10 +1193,13 @@ export default function Home() {
     fetchRestaurants(appliedFilters)
   }, [appliedFilters, fetchRestaurants, zoneId, zoneLoading, loading])
 
-  // Android WebView "in-app refresh" can bring the app back to foreground without changing filters.
-  // UserLayout emits a single `app:refresh` event on foreground; refetch restaurants when ready.
+  // Android WebView "in-app refresh" / BFCache restore: UserLayout emits `app:refresh` on foreground.
+  // Refetch hero, landing, and categories (silent) so banners/icons do not stay blank; then restaurants.
   useEffect(() => {
     const handleAppRefresh = () => {
+      fetchHeroBanners({ silent: true })
+      fetchLandingConfig({ silent: true })
+      fetchRealCategories({ silent: true })
       if (zoneLoading || loading) return
       if (!zoneId) return
       fetchRestaurants(appliedFilters)
@@ -1152,7 +1207,16 @@ export default function Home() {
 
     window.addEventListener('app:refresh', handleAppRefresh)
     return () => window.removeEventListener('app:refresh', handleAppRefresh)
-  }, [appliedFilters, fetchRestaurants, zoneId, zoneLoading, loading])
+  }, [
+    appliedFilters,
+    fetchHeroBanners,
+    fetchLandingConfig,
+    fetchRealCategories,
+    fetchRestaurants,
+    zoneId,
+    zoneLoading,
+    loading,
+  ])
 
   // Warm image cache for first visible cards so menu images appear instantly on app open.
   useEffect(() => {
@@ -1773,17 +1837,16 @@ export default function Home() {
                   >
                     <div className="group min-w-0">
                       <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
-                        {restaurant.image ? (
+                        {restaurant.image && !brokenRecommendedImageBySlug[restaurantSlug] ? (
                           <img
                             src={restaurant.image}
                             alt={restaurantName}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            onError={(e) => {
-                              e.target.style.display = "none"
-                              const placeholder = document.createElement("div")
-                              placeholder.className = "w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-4xl"
-                              placeholder.textContent = "🍽️"
-                              e.target.parentElement.appendChild(placeholder)
+                            onError={() => {
+                              setBrokenRecommendedImageBySlug((prev) => ({
+                                ...prev,
+                                [restaurantSlug]: true,
+                              }))
                             }}
                           />
                         ) : (
@@ -1914,7 +1977,7 @@ export default function Home() {
                 .filter(item => item.id !== 'giftcard' && item.label?.toLowerCase() !== 'gift card')
                 .map((item, index) => (
                   <motion.div
-                    key={item._id}
+                    key={String(item._id ?? item.id ?? item.label ?? "explore") + `-${index}`}
                     initial={{ opacity: 0, y: 20, scale: 0.9 }}
                     whileInView={{ opacity: 1, y: 0, scale: 1 }}
                     viewport={{ once: true }}

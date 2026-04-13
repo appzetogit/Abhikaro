@@ -145,7 +145,9 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         email: email.toLowerCase().trim(),
         address,
         signupMethod: "phone",
-        isActive: process.env.NODE_ENV === "development", // Auto-approve in development
+        // Hotels must be approved by admin before appearing in Hotel List.
+        // New signups should always go to Admin → Hotel Requests.
+        isActive: false,
       };
 
       // Add document images if provided

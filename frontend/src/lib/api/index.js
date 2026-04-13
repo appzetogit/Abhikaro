@@ -1449,6 +1449,16 @@ export const adminAPI = {
     );
   },
 
+  // Delete restaurant menu add-on (Admin)
+  deleteRestaurantMenuAddon: (restaurantId, addonId) => {
+    return apiClient.delete(
+      API_ENDPOINTS.ADMIN.RESTAURANT_MENU_ADDON_BY_ID.replace(
+        ":id",
+        restaurantId,
+      ).replace(":addonId", addonId),
+    );
+  },
+
   // Get dining categories
   getDiningCategories: () => {
     return apiClient.get("/admin/dining/categories");
@@ -1709,7 +1719,7 @@ export const adminAPI = {
 
   /**
    * Broadcast notification to all / specific role
-   * target: 'user' | 'restaurant' | 'delivery' | 'admin' | 'all'
+   * target: 'user' | 'restaurant' | 'delivery' | 'hotel' | 'admin' | 'all'
    * data can contain extra fields like zone, image, link etc.
    */
   sendBroadcastNotification: (payload) => {
@@ -2470,8 +2480,8 @@ export const uploadAPI = {
 // Export order API helper functions
 export const orderAPI = {
   // Calculate order pricing
-  calculateOrder: (orderData) => {
-    return apiClient.post(API_ENDPOINTS.ORDER.CALCULATE, orderData);
+  calculateOrder: (orderData, config = {}) => {
+    return apiClient.post(API_ENDPOINTS.ORDER.CALCULATE, orderData, config);
   },
 
   // Create order and get Razorpay order

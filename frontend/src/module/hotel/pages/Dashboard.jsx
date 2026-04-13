@@ -23,7 +23,6 @@ export default function HotelDashboard() {
     remainingSettlement: 0
   })
   const [loading, setLoading] = useState(true)
-  const [updatingStatus, setUpdatingStatus] = useState(false)
 
   // Handle foreground push notifications while hotel panel is open
   useForegroundNotifications({
@@ -65,8 +64,9 @@ export default function HotelDashboard() {
       try {
         // Fetch hotel data
         const hotelResponse = await hotelAPI.getCurrentHotel()
-        if (hotelResponse.data?.success && hotelResponse.data.data?.hotel) {
-          setHotel(hotelResponse.data.data.hotel)
+        const hotelPayload = hotelResponse.data?.data?.hotel || null
+        if (hotelResponse.data?.success && hotelPayload) {
+          setHotel(hotelPayload)
         }
 
         // Fetch request stats
@@ -121,14 +121,27 @@ export default function HotelDashboard() {
           }
         }
 
-        // Fetch settlement summary
-        try {
-          const settlementResponse = await hotelAPI.getSettlementSummary()
-          if (settlementResponse.data?.success) {
-            setSettlementSummary(settlementResponse.data.data);
+        // Fetch settlement summary (only for active hotels).
+        // Inactive hotels (awaiting admin approval) are blocked from /hotel/orders/* endpoints.
+        if (hotelPayload?.isActive) {
+          try {
+            const settlementResponse = await hotelAPI.getSettlementSummary()
+            if (settlementResponse.data?.success) {
+              setSettlementSummary(settlementResponse.data.data)
+            }
+          } catch (settlementError) {
+            // Don't spam console for expected 401 while session refresh happens.
+            if (settlementError?.response?.status !== 401) {
+              console.error("Error fetching settlement summary:", settlementError)
+            }
           }
-        } catch (settlementError) {
-          console.error("Error fetching settlement summary:", settlementError);
+        } else {
+          setSettlementSummary({
+            totalCashCollected: 0,
+            adminCommissionDue: 0,
+            settlementPaid: 0,
+            remainingSettlement: 0,
+          })
         }
       } catch (error) {
         console.error("Error fetching hotel data:", error)
@@ -143,25 +156,6 @@ export default function HotelDashboard() {
 
     fetchData()
   }, [navigate])
-
-  const handleToggleStatus = async () => {
-    if (updatingStatus) return
-
-    const newStatus = !hotel.isActive
-    setUpdatingStatus(true)
-
-    try {
-      const response = await hotelAPI.updateProfile({ isActive: newStatus })
-      if (response.data?.success && response.data.data?.hotel) {
-        setHotel(response.data.data.hotel)
-      }
-    } catch (error) {
-      console.error("Error updating hotel status:", error)
-      // Revert on error - hotel state will remain unchanged
-    } finally {
-      setUpdatingStatus(false)
-    }
-  }
 
   if (loading) {
     return (
@@ -194,26 +188,6 @@ export default function HotelDashboard() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{hotel.hotelName}</h1>
               <p className="text-sm text-gray-500 mt-1">Dashboard Overview</p>
-            </div>
-            {/* Status Toggle */}
-            <div className="flex items-center gap-3">
-              <span className={`text-sm font-medium ${hotel.isActive ? "text-green-600" : "text-red-600"
-                }`}>
-                {hotel.isActive ? "Active" : "Inactive"}
-              </span>
-              <button
-                onClick={handleToggleStatus}
-                disabled={updatingStatus}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#ff8100] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${hotel.isActive ? "bg-green-500" : "bg-red-500"
-                  }`}
-                role="switch"
-                aria-checked={hotel.isActive}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hotel.isActive ? "translate-x-6" : "translate-x-1"
-                    }`}
-                />
-              </button>
             </div>
           </div>
         </div>

@@ -241,6 +241,8 @@ export async function notifyHotelQrScanned(order) {
       body: `Room: ${room} • Order #${oid}`,
       data: {
         type: 'hotel_qr_scanned',
+        // Hotel device should receive only once (prefer mobile token if present)
+        preferMobileOnly: true,
         orderId: oid,
         orderMongoId: order._id?.toString?.() || null,
         roomNumber: room,
@@ -342,5 +344,25 @@ export async function notifyDeliveryFromAdmin(deliveryId, payload) {
     });
   } catch (error) {
     console.error('❌ [Push Notification] Error notifying delivery boy from admin:', error);
+  }
+}
+
+/**
+ * Send notification to hotel from admin
+ */
+export async function notifyHotelFromAdmin(hotelId, payload) {
+  try {
+    await sendPushNotification(hotelId.toString(), 'hotel', {
+      title: payload.title || 'Notification',
+      body: payload.body || '',
+      data: {
+        type: 'admin_notification',
+        ...payload.data,
+        image: payload.data?.image || undefined,
+        tag: payload.data?.tag || `admin_notification_hotel_${hotelId}_${Date.now()}`
+      }
+    });
+  } catch (error) {
+    console.error('❌ [Push Notification] Error notifying hotel from admin:', error);
   }
 }

@@ -316,12 +316,23 @@ export default function HubMenu() {
     }
   }, [activeTab])
 
-  // Handle add-on image add
-  const handleAddonImageAdd = (e) => {
-    const files = Array.from(e.target.files)
+  const base64ToFile = (base64, mimeType = "image/jpeg", fileName = "camera.jpg") => {
+    const raw = String(base64 || "")
+    const data = raw.includes(",") ? raw.split(",")[1] : raw
+    const byteCharacters = atob(data)
+    const byteNumbers = new Array(byteCharacters.length)
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i)
+    }
+    const byteArray = new Uint8Array(byteNumbers)
+    const blob = new Blob([byteArray], { type: mimeType })
+    return new File([blob], fileName, { type: mimeType })
+  }
 
+  const addAddonFiles = (files) => {
     const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"]
-    const validFiles = files.filter(file => {
+    const validFiles = (files || []).filter((file) => {
+      if (!file) return false
       if (!allowedTypes.includes(file.type)) {
         toast.error(`${file.name}: Invalid file type. Please upload PNG, JPG, JPEG, or WEBP.`)
         return false
@@ -339,16 +350,55 @@ export default function HubMenu() {
     const newImagePreviews = []
     const newImageFilesMap = new Map(addonImageFiles)
 
-    validFiles.forEach(file => {
+    validFiles.forEach((file) => {
       const previewUrl = URL.createObjectURL(file)
       newImagePreviews.push(previewUrl)
       newImageFilesMap.set(previewUrl, file)
     })
 
-    setAddonImages([...addonImages, ...newImagePreviews])
+    setAddonImages((prev) => [...prev, ...newImagePreviews])
     setAddonImageFiles(newImageFilesMap)
+  }
 
+  // Handle add-on image add (web file inputs)
+  const handleAddonImageAdd = (e) => {
+    const files = Array.from(e.target.files || [])
+    addAddonFiles(files)
     if (e?.target) e.target.value = ""
+  }
+
+  // Handle add-on camera via Flutter InAppWebView handler when available
+  const handleAddonFlutterCamera = async () => {
+    try {
+      const bridge = window.flutter_inappwebview
+      if (!bridge || typeof bridge.callHandler !== "function") {
+        addonFileInputRef?.current?.click()
+        return
+      }
+
+      const result = await bridge.callHandler("openCamera", {
+        source: "camera",
+        accept: "image/*",
+        multiple: false,
+        quality: 0.8,
+      })
+
+      if (!result || !result.success || !result.base64) return
+
+      const file = base64ToFile(
+        result.base64,
+        result.mimeType || "image/jpeg",
+        result.fileName || `addon_camera_${Date.now()}.jpg`,
+      )
+      addAddonFiles([file])
+      toast.success("Image captured successfully")
+    } catch (error) {
+      // Avoid noisy cancel errors
+      const msg = String(error?.message || "")
+      if (!/cancel/i.test(msg)) {
+        toast.error("Failed to open camera")
+      }
+    }
   }
 
   // Handle add-on image delete
@@ -2269,13 +2319,14 @@ export default function HubMenu() {
                       className="hidden"
                       id="addon-image-camera"
                     />
-                    <label
-                      htmlFor="addon-image-camera"
+                    <button
+                      type="button"
+                      onClick={handleAddonFlutterCamera}
                       className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
                     >
                       <Camera className="h-5 w-5 text-gray-500" />
                       <span className="text-sm font-medium text-gray-700">Camera</span>
-                    </label>
+                    </button>
                     <input
                       type="file"
                       accept="image/*"

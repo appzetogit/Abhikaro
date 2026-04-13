@@ -65,11 +65,22 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
   try {
     const restaurant = req.restaurant;
     const { startDate, endDate } = req.query;
+    const restaurantMongoId = restaurant?._id;
 
-    // Get restaurant ID
-    const restaurantId = restaurant._id?.toString() || restaurant.restaurantId || restaurant.id;
+    // Orders store restaurant identifier in Order.restaurantId (string).
+    // In most flows this is Restaurant.restaurantId (e.g. "REST007685"),
+    // but some legacy flows stored Restaurant._id as a string. We support both,
+    // while keeping the query strictly scoped to THIS authenticated restaurant.
+    const restaurantObjectId = restaurant._id?.toString();
+    const restaurantPublicId = restaurant.restaurantId?.toString();
 
-    if (!restaurantId) {
+    const restaurantIdVariations = [
+      restaurantPublicId,
+      restaurantObjectId,
+      restaurant.id?.toString?.(),
+    ].filter(Boolean);
+
+    if (restaurantIdVariations.length === 0) {
       return errorResponse(res, 500, 'Restaurant ID not found');
     }
 
@@ -88,27 +99,14 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     currentCycleEnd.setDate(currentCycleStart.getDate() + 6);
     currentCycleEnd.setHours(23, 59, 59, 999);
 
-    // Query for restaurant orders - handle multiple restaurantId formats
-    const restaurantIdVariations = [restaurantId];
-    if (mongoose.Types.ObjectId.isValid(restaurantId)) {
-      const objectIdString = new mongoose.Types.ObjectId(restaurantId).toString();
-      if (!restaurantIdVariations.includes(objectIdString)) {
-        restaurantIdVariations.push(objectIdString);
-      }
-    }
-
-    const restaurantIdQuery = {
-      $or: [
-        { restaurantId: { $in: restaurantIdVariations } },
-        { restaurantId: restaurantId }
-      ]
-    };
+    // Query for restaurant orders - strict match against this restaurant identifiers only
+    const restaurantIdQuery = { restaurantId: { $in: Array.from(new Set(restaurantIdVariations)) } };
 
     // Get commission setup for restaurant
     let restaurantCommission = null;
     try {
       restaurantCommission = await RestaurantCommission.findOne({
-        restaurant: restaurantId,
+        restaurant: restaurantObjectId || restaurantPublicId,
         status: true
       }).lean();
     } catch (commissionError) {
@@ -205,7 +203,9 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       .lean();
     }
 
-    console.log(`📊 Finance API - Current cycle orders found: ${currentCycleOrders.length} for restaurant ${restaurantId}`);
+    console.log(
+      `📊 Finance API - Current cycle orders found: ${currentCycleOrders.length} for restaurant ${restaurantPublicId || restaurantObjectId}`,
+    );
     console.log(`📅 Date range: ${currentCycleStart.toISOString()} to ${currentCycleEnd.toISOString()}`);
 
     // Get all unique user IDs from orders
@@ -253,11 +253,52 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     // IMPORTANT: Commission is calculated on FOOD PRICE (subtotal - discount), NOT on total (which includes platform fee, GST, delivery fee)
     let currentCycleTotal = 0;
     let currentCycleCommission = 0;
+
+    // Backfill missing wallet credits (idempotent) for delivered orders.
+    // This repairs legacy cases where wallet credit was skipped due to earlier bugs.
+    let walletBackfillAdded = 0;
+    let wallet = null;
+    try {
+      if (restaurantMongoId) {
+        wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurantMongoId);
+      }
+    } catch (walletLoadErr) {
+      console.warn('⚠️ Could not load restaurant wallet for backfill:', walletLoadErr.message);
+      wallet = null;
+    }
+
     const currentCycleOrdersData = await Promise.all(currentCycleOrders.map(async (order) => {
       // Food price = subtotal - discount (this is what commission is calculated on)
       const foodPrice = (order.pricing?.subtotal || 0) - (order.pricing?.discount || 0);
       const commissionData = calculateCommissionForOrder(foodPrice);
       const payout = foodPrice - commissionData.commission;
+
+      // Wallet backfill: ensure a "payment" transaction exists for this delivered order
+      try {
+        if (wallet && restaurantMongoId && order?._id && payout > 0) {
+          const orderIdStr = order._id.toString();
+          const alreadyCredited = wallet.transactions?.some(
+            (t) => t?.type === 'payment' && t?.orderId?.toString?.() === orderIdStr,
+          );
+          if (!alreadyCredited) {
+            wallet.addTransaction({
+              amount: Math.round(payout * 100) / 100,
+              type: 'payment',
+              status: 'Completed',
+              description: `Order #${order.orderId} - Backfilled earning`,
+              orderId: order._id,
+              metadata: new Map([
+                ['source', 'finance_backfill'],
+                ['foodPrice', Math.round(foodPrice * 100) / 100],
+                ['commission', Math.round(commissionData.commission * 100) / 100],
+              ]),
+            });
+            walletBackfillAdded += 1;
+          }
+        }
+      } catch (backfillErr) {
+        console.warn(`⚠️ Wallet backfill failed for order ${order?.orderId}:`, backfillErr.message);
+      }
       
       currentCycleTotal += foodPrice; // Use food price, not total
       currentCycleCommission += commissionData.commission;
@@ -356,11 +397,24 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       };
     }));
 
+    // Persist wallet backfill once
+    try {
+      if (walletBackfillAdded > 0 && wallet) {
+        await wallet.save();
+        console.log('✅ Wallet backfill applied:', {
+          restaurantId: restaurantMongoId?.toString?.(),
+          walletBackfillAdded,
+        });
+      }
+    } catch (walletSaveErr) {
+      console.warn('⚠️ Could not save wallet backfill:', walletSaveErr.message);
+    }
+
     // Fetch dining table bookings for current cycle (completed and paid)
     let currentCycleDiningTotal = 0;
     let currentCycleDiningCommission = 0;
     const currentCycleDiningBookings = await TableBooking.find({
-      restaurant: restaurantId,
+      restaurant: restaurantMongoId,
       status: { $in: ['completed', 'dining_completed'] },
       paymentStatus: 'paid',
       paidAt: { $gte: currentCycleStart, $lte: currentCycleEnd }
@@ -597,7 +651,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     // Get all withdrawal requests (pending + approved) to subtract from estimatedPayout
     // This ensures that once a withdrawal is made, it's immediately reflected in the available balance
     const allWithdrawals = await WithdrawalRequest.find({
-      restaurantId: restaurant._id,
+      restaurantId: restaurantMongoId,
       status: { $in: ['Pending', 'Approved'] }
     }).lean();
 
@@ -610,21 +664,10 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     // Get actual withdrawable balance from RestaurantWallet (used by withdrawal API for validation)
     let withdrawableBalance = availablePayout;
     try {
-      // Ensure we use ObjectId - req.restaurant._id may be ObjectId or string
-      let restaurantObjectId = restaurant._id;
-      if (!restaurantObjectId || !mongoose.Types.ObjectId.isValid(restaurantObjectId)) {
-        const doc = await Restaurant.findOne({
-          $or: [
-            { restaurantId: restaurantId },
-            { slug: restaurantId },
-          ],
-        }).select('_id').lean();
-        restaurantObjectId = doc?._id;
-      }
-      if (restaurantObjectId) {
-        const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurantObjectId);
+      if (restaurantMongoId) {
+        const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurantMongoId);
         withdrawableBalance = Number(wallet.totalBalance) || 0;
-        console.log('💰 Wallet balance:', { restaurantId: restaurantObjectId.toString(), withdrawableBalance });
+        console.log('💰 Wallet balance:', { restaurantId: restaurantMongoId.toString(), withdrawableBalance });
       }
     } catch (walletErr) {
       console.warn('⚠️ Could not fetch restaurant wallet:', walletErr.message);
@@ -657,7 +700,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       restaurant: {
         // Prefer onboarding.step1.restaurantName if available (more accurate)
         name: restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant',
-        restaurantId: restaurant.restaurantId || restaurantId,
+        restaurantId: restaurant.restaurantId || restaurantPublicId || restaurantObjectId,
         address: restaurant.location?.address || restaurant.location?.formattedAddress || '',
         onboarding: restaurant.onboarding // Include onboarding data for frontend
       }

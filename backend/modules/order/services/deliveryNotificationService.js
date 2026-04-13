@@ -129,16 +129,21 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
     }
 
     // Get restaurant details for pickup location
+    // order.restaurantId is usually a string, but can be a populated object in some call sites.
     let restaurant = null;
-    if (mongoose.Types.ObjectId.isValid(order.restaurantId)) {
-      restaurant = await Restaurant.findById(order.restaurantId).lean();
+    const restaurantIdRaw = order.restaurantId;
+    const populatedRestaurantObjectId = restaurantIdRaw?._id;
+    const populatedRestaurantPublicId = restaurantIdRaw?.restaurantId;
+
+    if (populatedRestaurantObjectId) {
+      restaurant = await Restaurant.findById(populatedRestaurantObjectId).lean();
+    } else if (mongoose.Types.ObjectId.isValid(restaurantIdRaw)) {
+      restaurant = await Restaurant.findById(restaurantIdRaw).lean();
     }
     if (!restaurant) {
+      const lookupId = populatedRestaurantPublicId || restaurantIdRaw;
       restaurant = await Restaurant.findOne({
-        $or: [
-          { restaurantId: order.restaurantId },
-          { _id: order.restaurantId }
-        ]
+        $or: [{ restaurantId: lookupId }, { _id: lookupId }],
       }).lean();
     }
 
@@ -161,10 +166,27 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
               null,
           }
         : null;
+    const normalizedRestaurantLocation = restaurant?.location
+      ? {
+          ...restaurant.location,
+          // Support both legacy `location.coordinates` and new `location.geoLocation.coordinates`
+          coordinates:
+            restaurant.location.coordinates?.length
+              ? restaurant.location.coordinates
+              : restaurant.location.geoLocation?.coordinates?.length
+                ? restaurant.location.geoLocation.coordinates
+                : restaurant.location.coordinates,
+        }
+      : null;
+
     const effectiveRestaurantLocation =
-      restaurant?.location?.coordinates?.length ? restaurant.location : fallbackRestaurantLocation;
+      normalizedRestaurantLocation?.coordinates?.length
+        ? normalizedRestaurantLocation
+        : fallbackRestaurantLocation;
+
     const effectiveRestaurantAddress =
       restaurant?.location?.formattedAddress ||
+      restaurant?.location?.address ||
       restaurant?.address ||
       fallbackRestaurantLocation?.formattedAddress ||
       fallbackRestaurantLocation?.address ||
@@ -231,6 +253,17 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
       // Also provide delivery coordinates explicitly
       deliveryLat: order.address.location.coordinates?.[1] ?? null,
       deliveryLng: order.address.location.coordinates?.[0] ?? null,
+      // Explicit pickup/drop aliases (some client builds rely on these)
+      pickupLat: effectiveRestaurantLocation?.coordinates?.[1] ?? null,
+      pickupLng: effectiveRestaurantLocation?.coordinates?.[0] ?? null,
+      pickupAddress: effectiveRestaurantAddress,
+      dropLat: order.address.location.coordinates?.[1] ?? null,
+      dropLng: order.address.location.coordinates?.[0] ?? null,
+      dropAddress:
+        order.address.formattedAddress ||
+        order.address.address ||
+        `${order.address.street || ""}${order.address.city ? `, ${order.address.city}` : ""}`.trim() ||
+        "Customer address",
       items: order.items.map(item => ({
         name: item.name,
         quantity: item.quantity,
@@ -459,20 +492,53 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
                           orderWithUser.restaurantId.location?.formattedAddress ||
                           orderWithUser.restaurantId.location?.address ||
                           'Restaurant address';
-        restaurantLocation = orderWithUser.restaurantId.location;
+        // Normalize coordinates (supports geoLocation) for populated restaurant
+        restaurantLocation = orderWithUser.restaurantId.location
+          ? {
+              ...orderWithUser.restaurantId.location,
+              coordinates:
+                orderWithUser.restaurantId.location.coordinates?.length
+                  ? orderWithUser.restaurantId.location.coordinates
+                  : orderWithUser.restaurantId.location.geoLocation?.coordinates?.length
+                    ? orderWithUser.restaurantId.location.geoLocation.coordinates
+                    : orderWithUser.restaurantId.location.coordinates,
+            }
+          : orderWithUser.restaurantId.location;
       } else {
         // If restaurantId is just an ID, fetch restaurant details
         try {
           const RestaurantModel = await import('../../restaurant/models/Restaurant.js');
-          const restaurant = await RestaurantModel.default.findById(orderWithUser.restaurantId)
-            .select('name address location')
-            .lean();
+          const rawRid = orderWithUser.restaurantId;
+          let restaurant = null;
+          if (mongoose.Types.ObjectId.isValid(rawRid)) {
+            restaurant = await RestaurantModel.default.findById(rawRid)
+              .select('name address location')
+              .lean();
+          }
+          if (!restaurant) {
+            restaurant = await RestaurantModel.default.findOne({
+              $or: [{ restaurantId: rawRid }, { _id: rawRid }],
+            })
+              .select('name address location')
+              .lean();
+          }
           if (restaurant) {
             restaurantAddress = restaurant.address || 
                               restaurant.location?.formattedAddress ||
                               restaurant.location?.address ||
                               'Restaurant address';
-            restaurantLocation = restaurant.location;
+            // Normalize coordinates (supports geoLocation)
+            restaurantLocation = restaurant.location
+              ? {
+                  ...restaurant.location,
+                  coordinates:
+                    restaurant.location.coordinates?.length
+                      ? restaurant.location.coordinates
+                      : restaurant.location.geoLocation?.coordinates?.length
+                        ? restaurant.location.geoLocation.coordinates
+                        : restaurant.location.coordinates,
+                }
+              : restaurant.location;
           }
         } catch (e) {
           console.warn('⚠️ Could not fetch restaurant details for notification:', e.message);
@@ -563,6 +629,11 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
       resendVersion: Number(orderWithUser.assignmentInfo?.resendVersion || 0),
       assignedBy: orderWithUser.assignmentInfo?.assignedBy || null,
       isResend: ['manual_resend', 'admin_manual_resend'].includes(orderWithUser.assignmentInfo?.assignedBy),
+      // Provide a stable restaurantId identifier for client fallbacks (some clients fetch restaurant details by id)
+      restaurantId:
+        typeof orderWithUser.restaurantId === 'string'
+          ? orderWithUser.restaurantId
+          : (orderWithUser.restaurantId?.restaurantId || orderWithUser.restaurantId?._id?.toString?.() || null),
       restaurantName: orderWithUser.restaurantName || orderWithUser.restaurantId?.name,
       restaurantAddress: restaurantAddress,
       restaurantLocation: restaurantLocation ? {
@@ -571,6 +642,10 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
         address: restaurantLocation.formattedAddress || restaurantLocation.address || restaurantAddress,
         formattedAddress: restaurantLocation.formattedAddress || restaurantLocation.address || restaurantAddress
       } : null,
+      // Explicit pickup/drop aliases (for consistent delivery UI)
+      pickupLat: restaurantLocation?.coordinates?.[1] || orderWithUser.restaurantId?.location?.coordinates?.[1] || null,
+      pickupLng: restaurantLocation?.coordinates?.[0] || orderWithUser.restaurantId?.location?.coordinates?.[0] || null,
+      pickupAddress: restaurantAddress,
       customerName: orderWithUser.userId?.name || 'Customer',
       customerPhone: orderWithUser.userId?.phone || '',
       deliveryAddress: orderWithUser.address?.address || orderWithUser.address?.location?.address || orderWithUser.address?.formattedAddress,
@@ -579,6 +654,13 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
         longitude: orderWithUser.address.location.coordinates?.[0],
         address: orderWithUser.address.formattedAddress || orderWithUser.address.address
       } : null,
+      dropLat: orderWithUser.address?.location?.coordinates?.[1] || null,
+      dropLng: orderWithUser.address?.location?.coordinates?.[0] || null,
+      dropAddress:
+        orderWithUser.address?.formattedAddress ||
+        orderWithUser.address?.address ||
+        orderWithUser.address?.location?.address ||
+        'Customer address',
       totalAmount: orderWithUser.pricing?.total || 0,
       deliveryFee: deliveryFeeFromOrder,
       estimatedEarnings: estimatedEarnings, // Include calculated earnings

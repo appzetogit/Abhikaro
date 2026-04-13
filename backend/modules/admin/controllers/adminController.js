@@ -2948,6 +2948,56 @@ export const updateRestaurantMenu = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Delete Restaurant Add-on (Admin)
+ * DELETE /api/admin/restaurants/:id/menu/addon/:addonId
+ *
+ * Removes an addon from the restaurant's Menu.addons array.
+ */
+export const deleteRestaurantAddon = asyncHandler(async (req, res) => {
+  try {
+    const { id, addonId } = req.params;
+
+    // Validate restaurant exists
+    const restaurant = await Restaurant.findById(id);
+    if (!restaurant) {
+      return errorResponse(res, 404, "Restaurant not found");
+    }
+
+    const Menu = (await import("../../restaurant/models/Menu.js")).default;
+    const menu = await Menu.findOne({ restaurant: id });
+
+    if (!menu) {
+      return errorResponse(res, 404, "Menu not found");
+    }
+
+    if (!Array.isArray(menu.addons) || menu.addons.length === 0) {
+      return errorResponse(res, 404, "Add-on not found");
+    }
+
+    const idx = menu.addons.findIndex((a) => String(a?.id) === String(addonId));
+    if (idx === -1) {
+      return errorResponse(res, 404, "Add-on not found");
+    }
+
+    menu.addons.splice(idx, 1);
+    menu.markModified("addons");
+    await menu.save();
+
+    return successResponse(res, 200, "Add-on deleted successfully", {
+      menu: {
+        addons: menu.addons,
+        isActive: menu.isActive,
+      },
+    });
+  } catch (error) {
+    logger.error(`Error deleting restaurant add-on: ${error.message}`, {
+      error: error.stack,
+    });
+    return errorResponse(res, 500, "Failed to delete add-on");
+  }
+});
+
+/**
  * Reverify Restaurant (Resubmit for approval)
  * POST /api/admin/restaurants/:id/reverify
  */

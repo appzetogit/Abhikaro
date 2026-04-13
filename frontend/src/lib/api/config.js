@@ -441,6 +441,8 @@ export const API_ENDPOINTS = {
     RESTAURANT_WALLETS: "/admin/restaurants/wallets",
     RESTAURANT_WALLET_ADJUSTMENT: "/admin/restaurants/:id/wallet/adjustment",
     RESTAURANT_WALLET_HISTORY: "/admin/restaurants/:id/wallet/history",
+    // Admin restaurant menu addon operations
+    RESTAURANT_MENU_ADDON_BY_ID: "/admin/restaurants/:id/menu/addon/:addonId",
     // Admin & permissions management
     ADMINS: "/admin/admins",
     ADMIN_BY_ID: "/admin/admins/:id",

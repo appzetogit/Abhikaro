@@ -34,6 +34,7 @@ import {
   updateRestaurantDiningSettings,
   getRestaurantMenu,
   updateRestaurantMenu,
+  deleteRestaurantAddon,
   getAllOffers,
   getRestaurantAnalytics,
   getCustomerWalletReport,
@@ -489,6 +490,11 @@ router.put(
   "/restaurants/:id/menu",
   requirePermissions("menu.restaurants"),
   updateRestaurantMenu,
+);
+router.delete(
+  "/restaurants/:id/menu/addon/:addonId",
+  requirePermissions("menu.restaurants"),
+  deleteRestaurantAddon,
 );
 router.delete(
   "/restaurants/:id",

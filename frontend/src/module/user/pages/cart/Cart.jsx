@@ -210,6 +210,7 @@ export default function Cart() {
   const [loadingRestaurant, setLoadingRestaurant] = useState(false)
   const [pricing, setPricing] = useState(null)
   const [loadingPricing, setLoadingPricing] = useState(false)
+  const pricingAbortRef = useRef(null)
 
   // Addons state
   const [addons, setAddons] = useState([])
@@ -619,9 +620,14 @@ export default function Cart() {
   useEffect(() => {
     const calculatePricing = async () => {
       if (cart.length === 0 || !defaultAddress) {
+        pricingAbortRef.current?.abort?.()
         setPricing(null)
         return
       }
+
+      pricingAbortRef.current?.abort?.()
+      const controller = new AbortController()
+      pricingAbortRef.current = controller
 
       try {
         setLoadingPricing(true)
@@ -643,7 +649,9 @@ export default function Cart() {
           deliveryAddress: defaultAddress,
           couponCode: appliedCoupon?.code || couponCode || null,
           deliveryFleet: deliveryFleet || 'standard'
-        })
+        }, { signal: controller.signal })
+
+        if (controller.signal.aborted) return
 
         if (response?.data?.success && response?.data?.data?.pricing) {
           setPricing(response.data.data.pricing)
@@ -657,16 +665,22 @@ export default function Cart() {
           }
         }
       } catch (error) {
-        // Network errors or 404 errors - silently handle, fallback to frontend calculation
-        // Fallback to frontend calculation if backend fails
-        setPricing(null)
+        // Abort/cancel is expected when inputs change quickly; keep last-known pricing to avoid flicker.
+        if (controller.signal.aborted) return
+        if (error?.code === "ERR_CANCELED" || error?.name === "CanceledError" || error?.name === "AbortError") return
+        // For transient failures, keep last-known pricing; UI already falls back to fee settings where needed.
       } finally {
-        setLoadingPricing(false)
+        if (pricingAbortRef.current === controller) {
+          setLoadingPricing(false)
+        }
       }
     }
 
     calculatePricing()
-  }, [cart, defaultAddress, appliedCoupon, couponCode, deliveryFleet, restaurantId])
+    return () => {
+      pricingAbortRef.current?.abort?.()
+    }
+  }, [cart, defaultAddress, appliedCoupon, couponCode, deliveryFleet, restaurantId, restaurantData])
 
   // Fetch wallet balance
   useEffect(() => {

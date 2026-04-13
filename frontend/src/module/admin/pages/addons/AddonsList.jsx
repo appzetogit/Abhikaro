@@ -141,49 +141,20 @@ export default function AddonsList() {
     try {
       setDeleting(true)
       
-      // Get the restaurant's menu to find and remove the addon
-      const menuResponse = await restaurantAPI.getMenuByRestaurantId(addon.restaurantId)
-      const menu = menuResponse?.data?.data?.menu || menuResponse?.data?.menu
-      
-      if (!menu) {
-        throw new Error("Menu not found")
-      }
-
-      // Find and remove the addon from the menu
-      const addonIndex = menu.addons?.findIndex(a => 
-        String(a.id) === String(addon.id) || 
-        String(a.id) === String(addon.originalAddon?.id)
-      )
-
-      if (addonIndex === -1 || !menu.addons) {
-        throw new Error("Addon not found in menu")
-      }
-
-      // Remove addon from array
-      menu.addons.splice(addonIndex, 1)
-
-      // Update menu in backend
+      // Admin endpoint: real delete from DB (Menu.addons)
+      // If restaurant/menu/addon is already missing, treat as already deleted.
+      const addonKey = addon._id || addon.originalAddon?._id || addon.id || addon.originalAddon?.id
       try {
-        const response = await apiClient.put(
-          `/restaurant/menu`,
-          { 
-            sections: menu.sections || [],
-            addons: menu.addons
-          }
-        )
-        
-        if (!response.data || !response.data.success) {
-          throw new Error(response.data?.message || "Failed to update menu")
-        }
+        await adminAPI.deleteRestaurantMenuAddon(addon.restaurantId, addonKey)
       } catch (apiError) {
-        if (apiError.response?.status === 401 || apiError.response?.status === 403) {
-          throw new Error("Admin cannot directly update restaurant menus. Please contact developer to add admin menu update endpoint.")
+        const status = apiError?.response?.status
+        if (status !== 404) {
+          throw apiError
         }
-        throw apiError
       }
 
       // Remove from local state
-      setAddons(addons.filter(a => a.id !== id))
+      setAddons((prev) => prev.filter((a) => a.id !== id))
       toast.success("Addon deleted successfully")
     } catch (error) {
       console.error("Error deleting addon:", error)

@@ -67,9 +67,14 @@ export default function CategoryCarousel({
                 ? { name: category.name, image: category.image, slug: category.slug }
                 : { name: category.label, image: category.imageUrl, slug: category.slug }
 
+              const rowKey =
+                (category.id && String(category.id)) ||
+                (category._id && String(category._id)) ||
+                `${categoryData.slug || categoryData.name || "cat"}-${index}`
+
               return (
                 <motion.div
-                  key={category.id || category._id || index}
+                  key={rowKey}
                   className="flex-shrink-0"
                   initial={{ opacity: 0, y: 20, scale: 0.9 }}
                   whileInView={{ opacity: 1, y: 0, scale: 1 }}

@@ -1577,33 +1577,9 @@ export default function DeliveryHome() {
   useEffect(() => {
     if (showNewOrderPopup && countdownSeconds > 0) {
       countdownTimerRef.current = setInterval(() => {
-        setCountdownSeconds((prev) => {
-          if (prev <= 1) {
-            // Stop audio when countdown reaches 0
-            if (alertAudioRef.current) {
-              alertAudioRef.current.pause()
-              alertAudioRef.current.currentTime = 0
-              alertAudioRef.current = null
-            }
-            // Auto-close when countdown reaches 0
-            setShowNewOrderPopup(false)
-            // CRITICAL: Clear stale socket notification payload so resend (same orderId)
-            // can re-open popup + sound reliably.
-            try {
-              if (typeof clearNewOrder === 'function') {
-                clearNewOrder()
-              }
-            } catch (_) { }
-            // Also clear popup-specific mapped state
-            try {
-              setSelectedRestaurant(null)
-              setIsNewOrderPopupMinimized(false)
-              setNewOrderDragY(0)
-            } catch (_) { }
-            return 0
-          }
-          return prev - 1
-        })
+        // IMPORTANT: Don't run side-effects inside setState updater.
+        // React may invoke updaters during render, which can trigger "setState while rendering" warnings.
+        setCountdownSeconds((prev) => (prev > 0 ? prev - 1 : 0))
       }, 1000)
     } else {
       if (countdownTimerRef.current) {
@@ -1621,6 +1597,44 @@ export default function DeliveryHome() {
       }
     }
   }, [showNewOrderPopup, countdownSeconds])
+
+  // Auto-close when countdown reaches 0 (side-effects after commit)
+  const autoClosedNewOrderRef = useRef(false)
+  useEffect(() => {
+    if (!showNewOrderPopup) {
+      autoClosedNewOrderRef.current = false
+      return
+    }
+    if (countdownSeconds > 0) return
+    if (autoClosedNewOrderRef.current) return
+    autoClosedNewOrderRef.current = true
+
+    // Stop audio when countdown reaches 0
+    try {
+      if (alertAudioRef.current) {
+        alertAudioRef.current.pause()
+        alertAudioRef.current.currentTime = 0
+        alertAudioRef.current = null
+      }
+    } catch (_) { }
+
+    // Auto-close when countdown reaches 0
+    setShowNewOrderPopup(false)
+
+    // Clear stale socket notification payload so resend (same orderId) can re-open popup + sound reliably.
+    try {
+      if (typeof clearNewOrder === 'function') {
+        clearNewOrder()
+      }
+    } catch (_) { }
+
+    // Clear popup-specific mapped state
+    try {
+      setSelectedRestaurant(null)
+      setIsNewOrderPopupMinimized(false)
+      setNewOrderDragY(0)
+    } catch (_) { }
+  }, [showNewOrderPopup, countdownSeconds, clearNewOrder])
 
   // Play audio while New Order popup is open (loops until popup closes / countdown ends)
   // NOTE: Sound gating (only real order events) is handled by socket->popup flow.

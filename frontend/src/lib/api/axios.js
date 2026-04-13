@@ -364,6 +364,20 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
+    // Axios request cancellation / AbortController should be silent.
+    // Otherwise dev mode shows a noisy toast: "canceled".
+    const isCanceled =
+      axios.isCancel?.(error) ||
+      error?.code === "ERR_CANCELED" ||
+      error?.name === "CanceledError" ||
+      error?.name === "AbortError" ||
+      error?.message === "canceled" ||
+      error?.message === "Request aborted";
+
+    if (isCanceled) {
+      return Promise.reject(error);
+    }
+
     const originalRequest = error.config || {};
     const requestUrl = String(originalRequest.url || "");
     const currentPath = window.location.pathname;

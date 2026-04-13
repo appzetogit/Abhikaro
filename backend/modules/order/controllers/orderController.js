@@ -965,6 +965,17 @@ export const createOrder = async (req, res) => {
           logger.error("❌ Error sending push notifications:", pushError);
         }
 
+        // Hotel QR orders: notify hotel that QR is scanned + room number
+        try {
+          if (order.orderType === "QR" || order.hotelReference || order.hotelId) {
+            const { notifyHotelQrScanned } =
+              await import("../../fcm/services/pushNotificationService.js");
+            await notifyHotelQrScanned(order);
+          }
+        } catch (hotelPushError) {
+          logger.error("❌ Error sending hotel QR scanned push:", hotelPushError);
+        }
+
         // Respond to client
         return res.status(201).json({
           success: true,
@@ -1047,6 +1058,17 @@ export const createOrder = async (req, res) => {
         await notifyUserOrderPlaced(order);
       } catch (pushError) {
         logger.error("❌ Error sending push notifications:", pushError);
+      }
+
+      // Hotel QR orders: notify hotel that QR is scanned + room number
+      try {
+        if (order.orderType === "QR" || order.hotelReference || order.hotelId) {
+          const { notifyHotelQrScanned } =
+            await import("../../fcm/services/pushNotificationService.js");
+          await notifyHotelQrScanned(order);
+        }
+      } catch (hotelPushError) {
+        logger.error("❌ Error sending hotel QR scanned push:", hotelPushError);
       }
 
       // Notify hotel/restaurant about new Pay at Hotel order
@@ -1138,6 +1160,17 @@ export const createOrder = async (req, res) => {
         await notifyUserOrderPlaced(order);
       } catch (pushError) {
         logger.error("❌ Error sending push notifications:", pushError);
+      }
+
+      // Hotel QR orders: notify hotel that QR is scanned + room number
+      try {
+        if (order.orderType === "QR" || order.hotelReference || order.hotelId) {
+          const { notifyHotelQrScanned } =
+            await import("../../fcm/services/pushNotificationService.js");
+          await notifyHotelQrScanned(order);
+        }
+      } catch (hotelPushError) {
+        logger.error("❌ Error sending hotel QR scanned push:", hotelPushError);
       }
 
       // Notify restaurant about new COD order via Socket.IO (non-blocking)
@@ -1395,6 +1428,17 @@ export const verifyOrderPayment = async (req, res) => {
       await notifyUserOrderPlaced(order);
     } catch (pushError) {
       logger.error("❌ Error sending push notifications:", pushError);
+    }
+
+    // Hotel QR orders: notify hotel that QR is scanned + room number
+    try {
+      if (order.orderType === "QR" || order.hotelReference || order.hotelId) {
+        const { notifyHotelQrScanned } =
+          await import("../../fcm/services/pushNotificationService.js");
+        await notifyHotelQrScanned(order);
+      }
+    } catch (hotelPushError) {
+      logger.error("❌ Error sending hotel QR scanned push:", hotelPushError);
     }
 
     // Calculate order settlement and hold escrow

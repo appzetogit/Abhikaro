@@ -357,16 +357,24 @@ export default function OrderTracking() {
   // Derive the UI status from the latest `order` object.
   // This prevents stale localStorage state from showing wrong banners after refresh.
   const mapOrderToUIStatus = useCallback((o) => {
-    const rawStatus = String(o?.status || "").toLowerCase()
+    const normalize = (v) =>
+      String(v || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+
+    const rawStatus = normalize(o?.status)
+    const deliveryStatus = normalize(o?.deliveryState?.status)
+    const currentPhase = normalize(o?.deliveryState?.currentPhase)
 
     const trackingDelivered =
       o?.tracking?.delivered?.status === true || o?.tracking?.delivered === true
 
     const stateDelivered =
-      String(o?.deliveryState?.status || "").toLowerCase() === "delivered"
+      deliveryStatus === "delivered"
 
     const phaseCompleted =
-      String(o?.deliveryState?.currentPhase || "").toLowerCase() === "completed"
+      currentPhase === "completed"
 
     const isDelivered =
       rawStatus === "delivered" ||
@@ -384,12 +392,39 @@ export default function OrderTracking() {
       return { uiStatus: "delivered", estimatedTimeOverride: 0 }
     }
 
-    if (rawStatus === "preparing") {
+    // Delivery phases (these are often the most reliable realtime signals)
+    if (["en_route_to_delivery", "at_delivery"].includes(currentPhase)) {
+      return { uiStatus: "on_way", estimatedTimeOverride: null }
+    }
+    if (["en_route_to_pickup", "at_pickup"].includes(currentPhase)) {
+      return { uiStatus: "pickup", estimatedTimeOverride: null }
+    }
+
+    // Common order status variants from backend
+    if (
+      ["preparing", "processing", "cooking", "confirmed", "accepted"].includes(
+        rawStatus,
+      )
+    ) {
       return { uiStatus: "preparing", estimatedTimeOverride: null }
     }
 
-    if (rawStatus === "ready" || rawStatus === "out_for_delivery") {
+    if (["ready", "packed"].includes(rawStatus)) {
       return { uiStatus: "pickup", estimatedTimeOverride: null }
+    }
+
+    if (
+      [
+        "out_for_delivery",
+        "outfordelivery",
+        "on_way",
+        "on_the_way",
+        "picked_up",
+        "pickedup",
+        "dispatched",
+      ].includes(rawStatus)
+    ) {
+      return { uiStatus: "on_way", estimatedTimeOverride: null }
     }
 
     return { uiStatus: "placed", estimatedTimeOverride: null }
@@ -901,8 +936,26 @@ export default function OrderTracking() {
       }
 
       // Update order status in UI
-      if (status === 'out_for_delivery') {
-        setOrderStatus('on_way');
+      const s = String(status || "").trim().toLowerCase().replace(/\s+/g, "_")
+      if (["cancelled", "canceled"].includes(s)) setOrderStatus("cancelled")
+      else if (["delivered", "completed"].includes(s)) setOrderStatus("delivered")
+      else if (["ready", "packed"].includes(s)) setOrderStatus("pickup")
+      else if (
+        [
+          "out_for_delivery",
+          "outfordelivery",
+          "on_way",
+          "on_the_way",
+          "picked_up",
+          "pickedup",
+          "dispatched",
+        ].includes(s)
+      ) {
+        setOrderStatus("on_way")
+      } else if (["preparing", "processing", "cooking", "confirmed", "accepted"].includes(s)) {
+        setOrderStatus("preparing")
+      } else if (s) {
+        setOrderStatus("placed")
       }
 
       // Show notification toast
@@ -1391,9 +1444,17 @@ export default function OrderTracking() {
       color: "bg-green-700"
     },
     pickup: {
-      title: "Order picked up",
+      title: "Order ready",
       subtitle: estimatedTime !== null && estimatedTime > 0 ? `Arriving in ${estimatedTime} mins` : "On the way",
       color: "bg-green-700"
+    },
+    on_way: {
+      title: "On the way",
+      subtitle:
+        estimatedTime !== null && estimatedTime > 0
+          ? `Arriving in ${estimatedTime} mins`
+          : "Your delivery partner is on the way",
+      color: "bg-green-700",
     },
     delivered: {
       title: "Order delivered",
@@ -1567,15 +1628,35 @@ export default function OrderTracking() {
             return null
           }
 
-          // Check if delivery partner has accepted pickup
-          // Delivery partner accepts when status is 'ready' or 'out_for_delivery' or tracking shows outForDelivery
-          const hasAcceptedPickup = order?.tracking?.outForDelivery?.status === true ||
-            order?.tracking?.out_for_delivery?.status === true ||
-            order?.status === 'out_for_delivery' ||
-            order?.status === 'ready'
+          const normalize = (v) =>
+            String(v || "")
+              .trim()
+              .toLowerCase()
+              .replace(/\s+/g, "_")
 
-          // Show "Food is Cooking" until delivery partner accepts pickup
-          if (!hasAcceptedPickup) {
+          const raw = normalize(order?.status)
+          const deliveryStatus = normalize(order?.deliveryState?.status)
+          const phase = normalize(order?.deliveryState?.currentPhase)
+
+          // Once order moves beyond cooking/prep (ready / pickup assigned / on-way), hide cooking card.
+          const hasMovedForward =
+            ["ready", "packed"].includes(raw) ||
+            [
+              "out_for_delivery",
+              "outfordelivery",
+              "on_way",
+              "on_the_way",
+              "picked_up",
+              "pickedup",
+              "dispatched",
+            ].includes(raw) ||
+            order?.tracking?.outForDelivery?.status === true ||
+            order?.tracking?.out_for_delivery?.status === true ||
+            deliveryStatus === "accepted" ||
+            ["en_route_to_pickup", "at_pickup", "en_route_to_delivery", "at_delivery"].includes(phase)
+
+          // Show "Food is Cooking" only while truly in prep
+          if (!hasMovedForward && ["placed", "pending", "confirmed", "preparing", "processing", "cooking", ""].includes(raw)) {
             return (
               <motion.div
                 className="bg-white rounded-xl p-4 shadow-sm"

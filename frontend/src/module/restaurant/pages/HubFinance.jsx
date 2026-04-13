@@ -13,7 +13,29 @@ export default function HubFinance() {
     const tabParam = searchParams.get("tab")
     return tabParam === "invoices" ? "invoices" : "payouts"
   })
-  const [selectedDateRange, setSelectedDateRange] = useState("14 Nov - 14 Dec'25")
+  const [selectedDateRange, setSelectedDateRange] = useState(() => {
+    const today = new Date()
+    today.setHours(23, 59, 59, 999)
+
+    // Default to "This week" (Monday to Sunday) based on today's date
+    const currentDay = today.getDay()
+    const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1
+    const thisWeekStart = new Date(today)
+    thisWeekStart.setDate(today.getDate() - daysFromMonday)
+    thisWeekStart.setHours(0, 0, 0, 0)
+    const thisWeekEnd = new Date(thisWeekStart)
+    thisWeekEnd.setDate(thisWeekStart.getDate() + 6)
+    thisWeekEnd.setHours(23, 59, 59, 999)
+
+    const formatDateForDisplay = (date) => {
+      const day = date.getDate()
+      const month = date.toLocaleString('en-US', { month: 'short' })
+      const year = date.getFullYear().toString().slice(-2)
+      return `${day} ${month}'${year}`
+    }
+
+    return `${formatDateForDisplay(thisWeekStart)} - ${formatDateForDisplay(thisWeekEnd)}`
+  })
   const [showDownloadMenu, setShowDownloadMenu] = useState(false)
   const [showDateRangePicker, setShowDateRangePicker] = useState(false)
   const downloadMenuRef = useRef(null)
@@ -184,34 +206,41 @@ export default function HubFinance() {
       const parts = dateRangeStr.split(' - ')
       if (parts.length !== 2) return null
       
-      const startStr = parts[0].trim() // "14 Nov"
-      const endStr = parts[1].trim().replace("'", " ") // "14 Dec 25"
-      
-      const currentYear = new Date().getFullYear()
-      const startParts = startStr.split(' ')
-      const endParts = endStr.split(' ')
-      
-      if (startParts.length < 2 || endParts.length < 2) return null
-      
       const monthMap = {
         'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
         'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
       }
       
-      const startDay = parseInt(startParts[0])
-      const startMonth = monthMap[startParts[1]]
-      const endDay = parseInt(endParts[0])
-      const endMonth = monthMap[endParts[1]]
-      const year = endParts.length > 2 ? parseInt('20' + endParts[2]) : currentYear
-      
-      // Validate month values
-      if (startMonth === undefined || endMonth === undefined || isNaN(startDay) || isNaN(endDay)) {
-        console.error('Invalid date components:', { startMonth, endMonth, startDay, endDay, dateRangeStr })
+      const parseSide = (str) => {
+        // Accept: "6 Apr'26", "6 Apr '26", "6 Apr", "6 Apr 26"
+        const cleaned = String(str || '').trim().replace(/\u2019/g, "'") // smart quote → '
+        const m = cleaned.match(/^(\d{1,2})\s+([A-Za-z]{3})(?:\s*'?\s*(\d{2}))?$/)
+        if (!m) return null
+        const day = parseInt(m[1], 10)
+        const monthToken = m[2]
+        const year2 = m[3] ? parseInt(m[3], 10) : null
+        const month = monthMap[monthToken]
+        if (month === undefined || Number.isNaN(day)) return null
+        return { day, month, year2 }
+      }
+
+      const startParsed = parseSide(parts[0])
+      const endParsed = parseSide(parts[1])
+
+      if (!startParsed || !endParsed) {
+        console.error('Invalid date components:', { dateRangeStr })
         return null
       }
+
+      const currentYear = new Date().getFullYear()
+      const resolvedYear =
+        (endParsed.year2 != null ? 2000 + endParsed.year2 : null) ||
+        (startParsed.year2 != null ? 2000 + startParsed.year2 : null) ||
+        currentYear
       
-      const startDate = new Date(year, startMonth, startDay)
-      const endDate = new Date(year, endMonth, endDay)
+      // Validate month values
+      const startDate = new Date(resolvedYear, startParsed.month, startParsed.day)
+      const endDate = new Date(resolvedYear, endParsed.month, endParsed.day)
       
       // Validate dates
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {

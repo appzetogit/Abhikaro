@@ -220,6 +220,9 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
     // 2. FCM push notification (Attempt this regardless of Socket.IO status to ensure backup delivery)
     try {
       const { sendToUser } = await import('../../fcm/services/fcmService.js');
+      // IMPORTANT: FCM tokens are stored on Restaurant documents by Mongo _id.
+      // Order.restaurantId can be a business id string (e.g. "REST007685"), so prefer restaurant._id when available.
+      const fcmTargetRestaurantId = restaurant?._id?.toString?.() || restaurantId;
       // Resolve payment method for push: override > order.payment > collection
       let fcmPaymentMethod = paymentMethodOverride ?? order.payment?.method ?? 'razorpay';
       
@@ -227,7 +230,7 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
       const resendVersion = Number(order.assignmentInfo?.resendVersion || 0);
       const fcmTag = `restaurant_new_order_${order.orderId}_${resendVersion}`;
 
-      const fcmResult = await sendToUser(restaurantId, 'restaurant', {
+      const fcmResult = await sendToUser(fcmTargetRestaurantId, 'restaurant', {
         title: 'Order has arrived',
         body: `Order #${order.orderId} has arrived. Amount: ₹${order.pricing?.total || 0}. Method: ${fcmPaymentMethod === 'cash' ? 'COD' : fcmPaymentMethod.toUpperCase()}`,
       }, { 
@@ -239,7 +242,7 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
         resendVersion,
         tag: fcmTag
       });
-      console.log(`📱 [FCM] Push notification result for restaurant ${restaurantId}:`, fcmResult.success ? 'Success' : 'Failed', fcmResult.error || '');
+      console.log(`📱 [FCM] Push notification result for restaurant ${fcmTargetRestaurantId}:`, fcmResult.success ? 'Success' : 'Failed', fcmResult.error || '');
     } catch (fcmErr) {
       console.warn('⚠️ [FCM] Restaurant push notification error:', fcmErr.message);
     }

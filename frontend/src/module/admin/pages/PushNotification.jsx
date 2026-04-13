@@ -6,7 +6,6 @@ import { toast } from "sonner"
 export default function PushNotification() {
   const [formData, setFormData] = useState({
     title: "",
-    zone: "All",
     sendTo: "Customer",
     description: "",
     bannerImage: null,
@@ -53,6 +52,7 @@ export default function PushNotification() {
         Customer: "user",
         "Delivery Man": "delivery",
         Restaurant: "restaurant",
+        Hotel: "hotel",
       }
       const target = targetMap[formData.sendTo] || "user"
 
@@ -83,7 +83,8 @@ export default function PushNotification() {
         body: formData.description.trim(),
         data: {
           type: "admin_notification",
-          zone: formData.zone,
+          // Avoid sending twice when both web + mobile tokens exist.
+          preferMobileOnly: true,
           image: imageUrl || undefined,
         },
       })
@@ -97,7 +98,6 @@ export default function PushNotification() {
           title: formData.title.trim(),
           description: formData.description.trim(),
           image: imageUrl,
-          zone: formData.zone,
           target: formData.sendTo,
           status: true,
         },
@@ -120,7 +120,6 @@ export default function PushNotification() {
   const handleReset = () => {
     setFormData({
       title: "",
-      zone: "All",
       sendTo: "Customer",
       description: "",
       bannerImage: null,
@@ -172,7 +171,7 @@ export default function PushNotification() {
           </div>
 
           <form onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Title
@@ -188,21 +187,6 @@ export default function PushNotification() {
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Zone
-                </label>
-                <select
-                  value={formData.zone}
-                  onChange={(e) => handleInputChange("zone", e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                >
-                  <option value="All">All</option>
-                  <option value="Asia">Asia</option>
-                  <option value="Europe">Europe</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Send To
                 </label>
                 <select
@@ -213,6 +197,7 @@ export default function PushNotification() {
                   <option value="Customer">Customer</option>
                   <option value="Delivery Man">Delivery Man</option>
                   <option value="Restaurant">Restaurant</option>
+                  <option value="Hotel">Hotel</option>
                 </select>
               </div>
             </div>
@@ -321,7 +306,6 @@ export default function PushNotification() {
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Title</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Description</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Image</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Zone</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Target</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Action</th>
@@ -359,9 +343,6 @@ export default function PushNotification() {
                           No image
                         </div>
                       )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-slate-700">{notification.zone}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm text-slate-700">{notification.target}</span>

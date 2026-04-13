@@ -4,11 +4,13 @@ import {
   notifyUserFromAdmin,
   notifyRestaurantFromAdmin,
   notifyDeliveryFromAdmin,
+  notifyHotelFromAdmin,
   notifyAllAdmins
 } from '../../fcm/services/pushNotificationService.js';
 import User from '../../auth/models/User.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import Delivery from '../../delivery/models/Delivery.js';
+import Hotel from '../../hotel/models/Hotel.js';
 
 /**
  * Send notification to user(s) from admin
@@ -126,8 +128,8 @@ export const broadcastNotification = asyncHandler(async (req, res) => {
     return errorResponse(res, 400, 'Title and body are required');
   }
 
-  if (!target || !['user', 'restaurant', 'delivery', 'admin', 'all'].includes(target)) {
-    return errorResponse(res, 400, 'Target must be one of: user, restaurant, delivery, admin, all');
+  if (!target || !['user', 'restaurant', 'delivery', 'hotel', 'admin', 'all'].includes(target)) {
+    return errorResponse(res, 400, 'Target must be one of: user, restaurant, delivery, hotel, admin, all');
   }
 
   try {
@@ -174,6 +176,20 @@ export const broadcastNotification = asyncHandler(async (req, res) => {
         deliveries.map(delivery => notifyDeliveryFromAdmin(delivery._id.toString(), payload))
       );
       results.push(...deliveryResults);
+    }
+
+    if (target === 'all' || target === 'hotel') {
+      const hotels = await Hotel.find({
+        $or: [
+          { fcmtokenWeb: { $exists: true, $ne: null } },
+          { fcmtokenMobile: { $exists: true, $ne: null } }
+        ]
+      }).select('_id').lean();
+
+      const hotelResults = await Promise.allSettled(
+        hotels.map(hotel => notifyHotelFromAdmin(hotel._id.toString(), payload))
+      );
+      results.push(...hotelResults);
     }
 
     if (target === 'all' || target === 'admin') {

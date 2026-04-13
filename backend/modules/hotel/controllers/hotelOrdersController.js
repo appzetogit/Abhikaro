@@ -702,6 +702,35 @@ export const markOrderAsDelivered = async (req, res) => {
       console.error("Error updating settlement on delivery:", settlementError);
     }
 
+    // Pay-at-hotel / Cash QR orders:
+    // Some hotels mark "Delivered" without tapping "Collect Payment".
+    // Ensure commissions are distributed so restaurant wallet is credited.
+    try {
+      const isPayAtHotelOrCash =
+        order.payment?.method === "pay_at_hotel" || order.payment?.method === "cash";
+
+      if (isPayAtHotelOrCash) {
+        // Mark payment/cash as collected on delivery (fallback behavior)
+        if (order.payment?.status !== "completed") {
+          order.payment.status = "completed";
+        }
+        if (order.cashCollected !== true) {
+          order.cashCollected = true;
+        }
+        await order.save();
+
+        // Distribute QR commissions (credits restaurant/admin/hotel wallets)
+        if (!order.commissionDistributed && order.orderType === "QR") {
+          await distributeCommissions(order._id);
+        }
+      }
+    } catch (distErr) {
+      console.error(
+        `❌ Failed to distribute QR commission on delivery for order ${order?.orderId}:`,
+        distErr?.message || distErr,
+      );
+    }
+
     return res.status(200).json({
       success: true,
       message: "Order marked as delivered successfully.",

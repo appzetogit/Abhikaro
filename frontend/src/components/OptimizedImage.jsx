@@ -42,6 +42,21 @@ const OptimizedImage = React.memo(({
     }
   }, [src, priority])
 
+  // BFCache restore (back/forward) can leave <img> in a broken state; reset so URLs load again.
+  useEffect(() => {
+    const onPageShow = (e) => {
+      if (!e?.persisted) return
+      setHasError(false)
+      setIsLoaded(false)
+      setForceVisible(false)
+      if (priority) {
+        setIsInView(true)
+      }
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
+  }, [src, priority])
+
   // Check if image URL supports optimization (external URLs from known providers)
   const getOptimizationProvider = (imageSrc) => {
     if (!imageSrc || typeof imageSrc !== 'string' || imageSrc === '') return false

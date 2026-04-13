@@ -169,15 +169,24 @@ export default function NewOrderPopup({
 
   // Calculate earnings
   const getEarnings = () => {
+    // IMPORTANT:
+    // Backend can send either:
+    // - estimatedEarnings: number (total)
+    // - estimatedEarnings: { basePayout, distanceCommission, totalEarning, ... }
+    // DeliveryHome already computes a stable numeric `amount` for UI.
+    // Prefer `amount`/`totalEarning` to avoid flicker between basePayout (e.g. 20) and total (e.g. 40).
+    const amount = Number(orderData?.amount ?? 0)
+    if (Number.isFinite(amount) && amount > 0) return amount.toFixed(2)
+
     const earnings = orderData?.estimatedEarnings || 0
     let value = 0
 
     if (earnings) {
       if (typeof earnings === 'object') {
-        if (earnings.basePayout != null) {
-          value = Number(earnings.basePayout) || 0
-        } else if (earnings.totalEarning != null) {
+        if (earnings.totalEarning != null) {
           value = Number(earnings.totalEarning) || 0
+        } else if (earnings.basePayout != null) {
+          value = Number(earnings.basePayout) || 0
         }
       } else if (typeof earnings === 'number') {
         value = earnings > 0 ? Number(earnings) : 0
