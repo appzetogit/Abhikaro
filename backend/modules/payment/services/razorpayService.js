@@ -16,12 +16,30 @@ const logger = winston.createLogger({
 
 // Initialize Razorpay instance
 let razorpayInstance = null;
+let lastCredFingerprint = null;
+
+const fingerprintCreds = (keyId, keySecret) => {
+  const a = String(keyId || '').trim();
+  const b = String(keySecret || '').trim();
+  // Don't log secrets; fingerprint only for change detection
+  return `${a.length}:${b.length}:${a.slice(0, 6)}`;
+};
 
 const initializeRazorpay = async () => {
   try {
     const credentials = await getRazorpayCredentials();
     const keyId = credentials.keyId;
     const keySecret = credentials.keySecret;
+
+    // If creds changed since last init, re-init instance
+    const fp = fingerprintCreds(keyId, keySecret);
+    if (razorpayInstance && lastCredFingerprint && fp !== lastCredFingerprint) {
+      logger.warn('Razorpay credentials changed; reinitializing instance', {
+        previous: lastCredFingerprint,
+        current: fp
+      });
+      razorpayInstance = null;
+    }
 
     logger.info('Razorpay credentials check:', {
       hasKeyId: !!keyId,
@@ -43,6 +61,7 @@ const initializeRazorpay = async () => {
         key_id: keyId,
         key_secret: keySecret
       });
+      lastCredFingerprint = fp;
       logger.info('Razorpay initialized successfully');
       return razorpayInstance;
     } catch (error) {
@@ -63,9 +82,14 @@ const initializeRazorpay = async () => {
 
 // Get Razorpay instance
 const getRazorpayInstance = async () => {
-  if (!razorpayInstance) {
+  // Always ensure instance matches current env creds (fixes stale cached creds).
+  const { keyId, keySecret } = await getRazorpayCredentials();
+  const fp = fingerprintCreds(keyId, keySecret);
+
+  if (!razorpayInstance || !lastCredFingerprint || fp !== lastCredFingerprint) {
     return await initializeRazorpay();
   }
+
   return razorpayInstance;
 };
 
