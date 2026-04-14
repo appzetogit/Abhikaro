@@ -367,40 +367,6 @@ export default function HubMenu() {
     if (e?.target) e.target.value = ""
   }
 
-  // Handle add-on camera via Flutter InAppWebView handler when available
-  const handleAddonFlutterCamera = async () => {
-    try {
-      const bridge = window.flutter_inappwebview
-      if (!bridge || typeof bridge.callHandler !== "function") {
-        addonFileInputRef?.current?.click()
-        return
-      }
-
-      const result = await bridge.callHandler("openCamera", {
-        source: "camera",
-        accept: "image/*",
-        multiple: false,
-        quality: 0.8,
-      })
-
-      if (!result || !result.success || !result.base64) return
-
-      const file = base64ToFile(
-        result.base64,
-        result.mimeType || "image/jpeg",
-        result.fileName || `addon_camera_${Date.now()}.jpg`,
-      )
-      addAddonFiles([file])
-      toast.success("Image captured successfully")
-    } catch (error) {
-      // Avoid noisy cancel errors
-      const msg = String(error?.message || "")
-      if (!/cancel/i.test(msg)) {
-        toast.error("Failed to open camera")
-      }
-    }
-  }
-
   // Handle add-on image delete
   const handleAddonImageDelete = (index) => {
     if (index < 0 || index >= addonImages.length) return
@@ -2307,9 +2273,10 @@ export default function HubMenu() {
                     </div>
                   )}
 
-                  {/* Add Image Buttons */}
+                  {/* Add Image Button (Gallery / Camera via system picker) */}
                   <div className="flex gap-2">
                     <input
+                      ref={addonFileInputRef}
                       type="file"
                       accept="image/*"
                       multiple
@@ -2318,10 +2285,10 @@ export default function HubMenu() {
                         e.target.value = ""
                       }}
                       className="hidden"
-                      id="addon-image-gallery"
+                      id="addon-image-picker"
                     />
                     <label
-                      htmlFor="addon-image-gallery"
+                      htmlFor="addon-image-picker"
                       className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
                     >
                       <Upload className="h-5 w-5 text-gray-500" />
