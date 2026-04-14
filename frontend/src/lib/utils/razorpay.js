@@ -112,45 +112,33 @@ export const initRazorpayPayment = async (options) => {
       }
     };
 
-    // If caller hasn't provided a custom config, explicitly enable default blocks
-    // and set an order so all common methods are visible (esp. inside webviews).
+    // If caller hasn't provided a custom config, explicitly configure display
+    // so all common methods are visible (esp. inside webviews).
     if (options.config) {
       // Respect caller override
       razorpayOptions.config = options.config;
     } else {
       razorpayOptions.config = {
         display: {
-          // Define blocks for major payment methods
+          // Razorpay expects block codes without the `block.` prefix.
+          // Sequence entries reference blocks as `block.<code>`.
           blocks: {
-            'block.upi': {
-              name: 'UPI',
-              instruments: [{ method: 'upi' }]
-            },
-            'block.card': {
-              name: 'Cards',
-              instruments: [{ method: 'card' }]
-            },
-            'block.netbanking': {
-              name: 'Netbanking',
-              instruments: [{ method: 'netbanking' }]
-            },
-            'block.wallet': {
-              name: 'Wallet',
-              instruments: [{ method: 'wallet' }]
-            },
-            'block.emi': {
-              name: 'EMI',
-              instruments: [{ method: 'emi' }]
-            },
-            'block.paylater': {
-              name: 'Pay Later',
-              instruments: [{ method: 'paylater' }]
+            all: {
+              name: 'All Payment Options',
+              instruments: [
+                { method: 'upi' },
+                { method: 'card' },
+                { method: 'netbanking' },
+                { method: 'wallet' },
+                { method: 'emi' },
+                { method: 'paylater' }
+              ]
             }
           },
-          // Show UPI first by default, then Card, Netbanking, Wallet
-          sequence: ['block.upi', 'block.card', 'block.netbanking', 'block.wallet', 'block.emi', 'block.paylater'],
-          // Also show Razorpay's default blocks to keep offers/banks visible
+          sequence: ['block.all'],
           preferences: {
+            // Keep Razorpay defaults so offers / instrument discovery works,
+            // but our block ensures UPI is explicitly present.
             show_default_blocks: true
           }
         }
