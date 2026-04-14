@@ -1144,6 +1144,7 @@ export default function PocketPage() {
         <DepositPopup
           cashInHand={balances.cashInHand ?? walletState?.cashInHand ?? 0}
           onSuccess={() => setShowDepositPopup(false)}
+          onRequestClose={() => setShowDepositPopup(false)}
         />
       </BottomPopup>
     </div>

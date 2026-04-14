@@ -5,7 +5,7 @@ import { initRazorpayPayment } from "@/lib/utils/razorpay"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
 
-export default function DepositPopup({ onSuccess, cashInHand = 0 }) {
+export default function DepositPopup({ onSuccess, cashInHand = 0, onRequestClose }) {
   const [amount, setAmount] = useState("")
   const [loading, setLoading] = useState(false)
   const [processing, setProcessing] = useState(false)
@@ -55,6 +55,16 @@ export default function DepositPopup({ onSuccess, cashInHand = 0 }) {
       const name = profile?.name || ""
 
       const companyName = await getCompanyNameAsync()
+
+      // Close the bottom-sheet before Razorpay to avoid overlay/z-index issues in mobile webviews
+      // that can cause incomplete Checkout rendering (missing UPI app icons).
+      if (onRequestClose) {
+        try {
+          onRequestClose()
+        } catch (_) {}
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+
       setProcessing(true)
       await initRazorpayPayment({
         key: rp.key,
