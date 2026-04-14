@@ -187,13 +187,20 @@ export function clearEnvCache() {
  * @returns {Promise<Object>} { keyId, keySecret }
  */
 export async function getRazorpayCredentials() {
-  const apiKey = await getEnvVar("RAZORPAY_API_KEY");
-  const secretKey = await getEnvVar("RAZORPAY_SECRET_KEY");
+  // IMPORTANT: Razorpay credentials must come from backend .env ONLY.
+  // Do not read from Admin/DB-stored environment variables for payment credentials.
+  const apiKey =
+    process.env.RAZORPAY_API_KEY ||
+    process.env.RAZORPAY_KEY_ID ||
+    "";
+  const secretKey =
+    process.env.RAZORPAY_SECRET_KEY ||
+    process.env.RAZORPAY_KEY_SECRET ||
+    "";
 
-  // Fallback to old env var names
   return {
-    keyId: apiKey || process.env.RAZORPAY_KEY_ID || "",
-    keySecret: secretKey || process.env.RAZORPAY_KEY_SECRET || "",
+    keyId: String(apiKey || "").trim(),
+    keySecret: String(secretKey || "").trim(),
   };
 }
 
