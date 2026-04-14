@@ -120,26 +120,12 @@ export const initRazorpayPayment = async (options) => {
     } else {
       razorpayOptions.config = {
         display: {
-          // Razorpay expects block codes without the `block.` prefix.
-          // Sequence entries reference blocks as `block.<code>`.
-          blocks: {
-            all: {
-              name: 'All Payment Options',
-              instruments: [
-                { method: 'upi' },
-                { method: 'card' },
-                { method: 'netbanking' },
-                { method: 'wallet' },
-                { method: 'emi' },
-                { method: 'paylater' }
-              ]
-            }
-          },
-          sequence: ['block.all'],
+          // Use method-level sequencing (no custom blocks) so Checkout renders
+          // the standard UI (incl. UPI apps/icons) but in our preferred order.
+          sequence: ['upi', 'card', 'netbanking', 'wallet', 'emi', 'paylater'],
           preferences: {
-            // Keep Razorpay defaults so offers / instrument discovery works,
-            // but our block ensures UPI is explicitly present.
-            show_default_blocks: true
+            // Avoid duplicates; show only the ordered methods above.
+            show_default_blocks: false,
           }
         }
       };
