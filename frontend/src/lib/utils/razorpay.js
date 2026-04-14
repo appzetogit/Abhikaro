@@ -5,6 +5,23 @@
 
 let razorpayLoaded = false;
 
+const isProbablyWebView = () => {
+  try {
+    const ua = String(navigator?.userAgent || "");
+    // Common WebView indicators:
+    // - Android WebView: "; wv" or "Version/x.x" without Chrome brand
+    // - iOS WebView: AppleWebKit but missing Safari
+    const isAndroid = /Android/i.test(ua);
+    const hasWv = /\bwv\b/i.test(ua);
+    const hasVersion = /Version\/\d+/i.test(ua);
+    const hasSafari = /Safari/i.test(ua);
+    const isIOSWebView = /iPhone|iPad|iPod/i.test(ua) && !hasSafari;
+    return (isAndroid && (hasWv || hasVersion)) || isIOSWebView;
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Load Razorpay checkout script
  */
@@ -82,6 +99,9 @@ export const initRazorpayPayment = async (options) => {
       // Allow redirect/deep-link for UPI intent apps (GPay/PhonePe/etc.)
       // Razorpay will still use in-modal UI where applicable.
       redirect: options.redirect ?? true,
+      // Razorpay requirement for enabling UPI Intent inside Android WebView checkout.
+      // See: https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/webview/upi-intent-android/
+      webview_intent: options.webview_intent ?? isProbablyWebView(),
       prefill: {
         name: options.prefill?.name || '',
         email: options.prefill?.email || '',
