@@ -59,6 +59,7 @@ export default function HubMenu() {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
   const [isAddAddonModalOpen, setIsAddAddonModalOpen] = useState(false)
+  const [isAddonImagePickerOpen, setIsAddonImagePickerOpen] = useState(false)
   const [addons, setAddons] = useState([])
   const [loadingAddons, setLoadingAddons] = useState(false)
 
@@ -365,6 +366,50 @@ export default function HubMenu() {
     const files = Array.from(e.target.files || [])
     addAddonFiles(files)
     if (e?.target) e.target.value = ""
+  }
+
+  const openAddonSystemPicker = () => {
+    addonFileInputRef?.current?.click()
+  }
+
+  const handleAddonPickImage = () => {
+    const bridge = window.flutter_inappwebview
+    if (bridge && typeof bridge.callHandler === "function") {
+      setIsAddonImagePickerOpen(true)
+      return
+    }
+    openAddonSystemPicker()
+  }
+
+  const handleAddonFlutterCameraCapture = async () => {
+    try {
+      const bridge = window.flutter_inappwebview
+      if (!bridge || typeof bridge.callHandler !== "function") {
+        openAddonSystemPicker()
+        return
+      }
+
+      const result = await bridge.callHandler("openCamera", {
+        source: "camera",
+        accept: "image/*",
+        multiple: false,
+        quality: 0.8,
+      })
+
+      if (!result || !result.success || !result.base64) return
+
+      const file = base64ToFile(
+        result.base64,
+        result.mimeType || "image/jpeg",
+        result.fileName || `addon_camera_${Date.now()}.jpg`,
+      )
+      addAddonFiles([file])
+    } catch (error) {
+      const msg = String(error?.message || "")
+      if (!/cancel/i.test(msg)) {
+        toast.error("Failed to capture image")
+      }
+    }
   }
 
   // Handle add-on image delete
@@ -2287,17 +2332,75 @@ export default function HubMenu() {
                       className="hidden"
                       id="addon-image-picker"
                     />
-                    <label
-                      htmlFor="addon-image-picker"
+                    <button
+                      type="button"
+                      onClick={handleAddonPickImage}
                       className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
                     >
                       <Upload className="h-5 w-5 text-gray-500" />
                       <span className="text-sm font-medium text-gray-700">Gallery</span>
-                    </label>
+                    </button>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">Add multiple images (PNG, JPG, WEBP - max 5MB each)</p>
                 </div>
               </div>
+
+              {/* Flutter-only picker (Camera / Photos) */}
+              <AnimatePresence>
+                {isAddonImagePickerOpen && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[60] bg-black/40 flex items-end justify-center"
+                    onClick={() => setIsAddonImagePickerOpen(false)}
+                  >
+                    <motion.div
+                      initial={{ y: 30, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: 30, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="w-full max-w-md bg-white rounded-t-2xl p-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-sm font-semibold text-gray-900">Add image</div>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddonImagePickerOpen(false)}
+                          className="p-2 rounded-full hover:bg-gray-100"
+                        >
+                          <X className="h-5 w-5 text-gray-600" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setIsAddonImagePickerOpen(false)
+                            await handleAddonFlutterCameraCapture()
+                          }}
+                          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 font-medium"
+                        >
+                          <Camera className="h-5 w-5 text-gray-700" />
+                          Camera
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddonImagePickerOpen(false)
+                            openAddonSystemPicker()
+                          }}
+                          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 font-medium"
+                        >
+                          <Upload className="h-5 w-5 text-gray-700" />
+                          Photos
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Modal Footer */}
               <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center gap-3">
