@@ -2307,26 +2307,8 @@ export default function HubMenu() {
                     </div>
                   )}
 
-                  {/* Add Image Buttons - Camera & Gallery */}
+                  {/* Add Image Buttons */}
                   <div className="flex gap-2">
-                    <input
-                      ref={addonFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      multiple
-                      onChange={handleAddonImageAdd}
-                      className="hidden"
-                      id="addon-image-camera"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddonFlutterCamera}
-                      className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
-                    >
-                      <Camera className="h-5 w-5 text-gray-500" />
-                      <span className="text-sm font-medium text-gray-700">Camera</span>
-                    </button>
                     <input
                       type="file"
                       accept="image/*"
