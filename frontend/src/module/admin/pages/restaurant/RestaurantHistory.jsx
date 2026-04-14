@@ -137,20 +137,22 @@ export default function RestaurantHistory() {
     let orderTotal = 0
     let restaurantTotal = 0
     let adminTotal = 0
-    let deliveryTotal = 0
     for (const o of orders || []) {
+      const isDelivered =
+        String(o.orderStatus || o.status || "").toLowerCase() === "delivered"
+      const isPaid = String(o.paymentStatus || "").toLowerCase() === "paid"
+      // For "Revenue/Earnings" tiles, count only delivered + paid orders.
+      if (!isDelivered || !isPaid) continue
       const e = o.earnings || {}
       orderTotal += Number(o.totalAmount ?? e.orderTotal ?? 0)
       restaurantTotal += Number(e.restaurantEarning ?? 0)
       adminTotal += Number(e.adminEarning ?? 0)
-      deliveryTotal += Number(e.deliveryEarning ?? 0)
     }
     return {
       totalOrders,
       orderTotal,
       restaurantTotal,
       adminTotal,
-      deliveryTotal,
     }
   }, [orders])
 
@@ -176,7 +178,6 @@ export default function RestaurantHistory() {
       "Total",
       "RestaurantEarning",
       "AdminEarning",
-      "DeliveryEarning",
       "Status",
     ]
     const rows = (orders || []).map((o) => [
@@ -188,7 +189,6 @@ export default function RestaurantHistory() {
       (o.totalAmount ?? o.earnings?.orderTotal ?? 0),
       o.earnings?.restaurantEarning ?? 0,
       o.earnings?.adminEarning ?? 0,
-      o.earnings?.deliveryEarning ?? 0,
       o.orderStatus || o.status || "",
     ])
     const csv = [header, ...rows]
@@ -310,10 +310,6 @@ export default function RestaurantHistory() {
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
                 <div className="text-xs text-slate-500">Admin</div>
                 <div className="mt-1 text-xl font-bold text-indigo-700">{formatCurrency(stats.adminTotal)}</div>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-                <div className="text-xs text-slate-500">Delivery</div>
-                <div className="mt-1 text-xl font-bold text-orange-700">{formatCurrency(stats.deliveryTotal)}</div>
               </div>
             </div>
 

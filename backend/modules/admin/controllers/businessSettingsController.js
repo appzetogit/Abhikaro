@@ -82,7 +82,6 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       withdrawScheduleDayOfWeek,
       withdrawScheduleStartTime,
       maintenanceMode,
-      deliveryAssignmentMode,
       homeCategoriesLimit,
     } = req.body;
 
@@ -194,11 +193,9 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
         settings.maintenanceMode.endDate = new Date(maintenanceMode.endDate);
       }
     }
-    if (deliveryAssignmentMode !== undefined) {
-      if (["automatic", "manual"].includes(deliveryAssignmentMode)) {
-        settings.deliveryAssignmentMode = deliveryAssignmentMode;
-      }
-    }
+    // Force automatic assignment mode.
+    // "Manual assignment" feature has been removed end-to-end from the product.
+    settings.deliveryAssignmentMode = "automatic";
 
     // Home categories limit (used by /categories/public?home=true)
     if (homeCategoriesLimit !== undefined) {

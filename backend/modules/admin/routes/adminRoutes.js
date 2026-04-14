@@ -264,6 +264,7 @@ import {
   getDeliveryPartnerWallet,
   backfillRestaurantLocation,
   updateOrderAndPaymentStatus,
+  getPaymentHistory,
 } from "../controllers/orderController.js";
 import {
   getAllReviews,
@@ -758,6 +759,11 @@ router.put("/customer-contact-us/:id/status", updateCustomerContactMessageStatus
 
 // Order Management
 router.get("/orders", requirePermissions("orders.view"), getOrders);
+router.get(
+  "/payments/history",
+  requirePermissions("orders.view"),
+  getPaymentHistory,
+);
 router.post(
   "/orders/bulk-delete",
   requirePermissions("orders.delete"),

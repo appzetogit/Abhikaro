@@ -12,8 +12,7 @@ const CommissionManagement = lazy(() => import("../pages/CommissionManagement"))
 const FoodApproval = lazy(() => import("../pages/restaurant/FoodApproval"));
 const OrdersPage = lazy(() => import("../pages/orders/OrdersPage"));
 const OrderDetectDelivery = lazy(() => import("../pages/OrderDetectDelivery"));
-const OrderSetting = lazy(() => import("../pages/orders/OrderSetting"));
-const ManualAssignment = lazy(() => import("../pages/orders/ManualAssignment"));
+const PaymentHistory = lazy(() => import("../pages/orders/PaymentHistory"));
 const Category = lazy(() => import("../pages/categories/Category"));
 const FeeSettings = lazy(() => import("../pages/fee-settings/FeeSettings"));
 // Restaurant Management
@@ -165,8 +164,14 @@ export default function AdminRouter() {
           <Route path="orders/refunded" element={<OrdersPage statusKey="refunded" />} />
           <Route path="orders/offline-payments" element={<OrdersPage statusKey="offline-payments" />} />
           <Route path="order-detect-delivery" element={<OrderDetectDelivery />} />
-          <Route path="order-setting" element={<OrderSetting />} />
-          <Route path="manual-assignment" element={<ManualAssignment />} />
+          <Route
+            path="payment-history"
+            element={
+              <ProtectedRoute requiredPermission="orders.view">
+                <PaymentHistory />
+              </ProtectedRoute>
+            }
+          />
 
           {/* RESTAURANT MANAGEMENT */}
           <Route path="zone-setup" element={<ZoneSetup />} />

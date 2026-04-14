@@ -1,6 +1,12 @@
 /**
- * Commissionable food subtotal for hotel QR commission (same basis as createOrder QR split).
- * Prefer `pricing.subtotal`; if missing (legacy), derive from total and fee lines:
+ * Commissionable base for hotel QR commission.
+ *
+ * IMPORTANT:
+ * Hotel commission should be calculated on the food subtotal (not the final total),
+ * so Online and Pay-at-Hotel/Cash show the same earning for a given order.
+ *
+ * Prefer `pricing.subtotal`; if missing (legacy), derive from `pricing.total`
+ * by removing fee lines and taxes:
  * total = subtotal - discount + deliveryFee + platformFee + tax
  * ⇒ subtotal = total + discount - deliveryFee - platformFee - tax
  * (adminOfferDiscount reduces what user pays; include in reconstruction when present.)
@@ -13,7 +19,8 @@ export function getHotelCommissionableSubtotal(order) {
     return Math.round(p.subtotal * 100) / 100;
   }
 
-  const total = typeof p.total === "number" && !Number.isNaN(p.total) ? p.total : 0;
+  const total =
+    typeof p.total === "number" && !Number.isNaN(p.total) ? p.total : 0;
   const discount = typeof p.discount === "number" ? p.discount : 0;
   const deliveryFee = typeof p.deliveryFee === "number" ? p.deliveryFee : 0;
   const platformFee = typeof p.platformFee === "number" ? p.platformFee : 0;

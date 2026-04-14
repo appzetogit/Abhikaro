@@ -71,78 +71,8 @@ import bikeLogo from "../../../assets/bikelogo.png"
 
 // Ola Maps API Key removed
 
-// Mock restaurants data
-const mockRestaurants = [
-  {
-    id: 1,
-    name: "Hotel Pankaj",
-    address: "Opposite Midway, Behror Locality, Behror",
-    lat: 28.2849,
-    lng: 76.1209,
-    distance: "3.56 km",
-    timeAway: "4 mins",
-    orders: 2,
-    estimatedEarnings: 76.62, // Consistent payment amount
-    pickupDistance: "3.56 km",
-    dropDistance: "12.2 km",
-    payment: "COD",
-    amount: 76.62, // Payment amount (consistent with estimatedEarnings)
-    items: 2,
-    phone: "+911234567890",
-    orderId: "ORD1234567890",
-    customerName: "Rajesh Kumar",
-    customerAddress: "401, 4th Floor, Pushparatna Solitare Building, Janjeerwala Square, New Palasia, Indore",
-    customerPhone: "+919876543210",
-    tripTime: "38 mins",
-    tripDistance: "8.8 kms"
-  },
-  {
-    id: 2,
-    name: "Haldi",
-    address: "B 2, Narnor-Alwar Rd, Indus Valley, Behror",
-    lat: 28.2780,
-    lng: 76.1150,
-    distance: "4.2 km",
-    timeAway: "4 mins",
-    orders: 1,
-    estimatedEarnings: 76.62,
-    pickupDistance: "4.2 km",
-    dropDistance: "8.5 km",
-    payment: "COD",
-    amount: 76.62,
-    items: 3,
-    phone: "+911234567891",
-    orderId: "ORD1234567891",
-    customerName: "Priya Sharma",
-    customerAddress: "Flat 302, Green Valley Apartments, MG Road, Indore",
-    customerPhone: "+919876543211",
-    tripTime: "35 mins",
-    tripDistance: "7.5 kms"
-  },
-  {
-    id: 3,
-    name: "Pandit Ji Samose Wale",
-    address: "Near Govt. Senior Secondary School, Behror Locality, Behror",
-    lat: 28.2870,
-    lng: 76.1250,
-    distance: "5.04 km",
-    timeAway: "6 mins",
-    orders: 1,
-    estimatedEarnings: 76.62,
-    pickupDistance: "5.04 km",
-    dropDistance: "7.8 km",
-    payment: "COD",
-    amount: 76.62,
-    items: 1,
-    phone: "+911234567892",
-    orderId: "ORD1234567892",
-    customerName: "Amit Patel",
-    customerAddress: "House No. 45, Sector 5, Vijay Nagar, Indore",
-    customerPhone: "+919876543212",
-    tripTime: "32 mins",
-    tripDistance: "6.9 kms"
-  }
-]
+// Mock restaurants data (disabled): prevents default/dummy popups in UI
+const mockRestaurants = []
 
 // ============================================
 // STABLE TRACKING SYSTEM - RAPIDO/UBER STYLE
@@ -11101,7 +11031,7 @@ export default function DeliveryHome() {
                   <div className="mb-4">
                     <p className="text-gray-500 text-xs mb-1">Order ID</p>
                     <p className="text-base font-semibold text-gray-900">
-                      {newOrder?.orderId || selectedRestaurant?.orderId || 'ORD1234567890'}
+                      {newOrder?.orderId || selectedRestaurant?.orderId || ""}
                     </p>
                   </div>
 
@@ -11439,7 +11369,7 @@ export default function DeliveryHome() {
               })()}
             </p>
             <p className="text-gray-500 text-sm font-medium">
-              Order ID: {selectedRestaurant?.orderId || 'ORD1234567890'}
+              Order ID: {selectedRestaurant?.orderId || ""}
             </p>
           </div>
 
@@ -11711,7 +11641,7 @@ export default function DeliveryHome() {
             <div className="bg-gray-50 rounded-xl p-6 mb-6 overflow-hidden">
               <p className="text-gray-500 text-xs mb-2">Order ID</p>
               <p className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-wider whitespace-nowrap overflow-x-auto min-w-0">
-                {selectedRestaurant?.orderId || selectedRestaurant?.id || newOrder?.orderId || newOrder?.orderMongoId || 'ORD1234567890'}
+                {selectedRestaurant?.orderId || selectedRestaurant?.id || newOrder?.orderId || newOrder?.orderMongoId || ""}
               </p>
             </div>
 
@@ -11863,7 +11793,10 @@ export default function DeliveryHome() {
 
       {/* Reached Drop Popup - shown instantly after Order Picked Up confirmation */}
       <BottomPopup
-        isOpen={showReachedDropPopup}
+        isOpen={
+          showReachedDropPopup &&
+          Boolean(selectedRestaurant?.orderId || selectedRestaurant?._id || selectedRestaurant?.id)
+        }
         onClose={() => setShowReachedDropPopup(false)}
         showCloseButton={false}
         closeOnBackdropClick={false}
@@ -11884,10 +11817,10 @@ export default function DeliveryHome() {
           {/* Customer Info */}
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {selectedRestaurant?.customerName || 'Customer Name'}
+              {selectedRestaurant?.customerName || ""}
             </h2>
             <p className="text-gray-600 mb-1 leading-relaxed">
-              {selectedRestaurant?.customerAddress || 'Customer Address'}
+              {selectedRestaurant?.customerAddress || ""}
             </p>
             {/* Additional address / delivery instructions */}
             {(() => {
@@ -11905,7 +11838,7 @@ export default function DeliveryHome() {
               }
             })()}
             <p className="text-gray-500 text-sm font-medium mt-1">
-              Order ID: {selectedRestaurant?.orderId || 'ORD1234567890'}
+              Order ID: {selectedRestaurant?.orderId || ""}
             </p>
           </div>
 
@@ -12491,7 +12424,7 @@ export default function DeliveryHome() {
             {/* Header */}
             <div className="bg-green-500 text-white px-6 py-6">
               <h1 className="text-2xl font-bold mb-2">Payment</h1>
-              <p className="text-white/90 text-sm">Order ID: {selectedRestaurant?.orderId || 'ORD1234567890'}</p>
+              <p className="text-white/90 text-sm">Order ID: {selectedRestaurant?.orderId || ""}</p>
             </div>
 
             {/* Payment Amount */}

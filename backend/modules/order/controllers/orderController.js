@@ -600,10 +600,11 @@ export const createOrder = async (req, res) => {
         }
 
         // Logic:
-        // Hotel gets Fixed % (e.g. 10%) of subtotal/commissionable amount
-        // Admin gets Fixed % (e.g. 20%) of subtotal/commissionable amount
+        // Hotel gets Fixed % (e.g. 10%) of total/commissionable amount
+        // Admin gets Fixed % (e.g. 20%) of total/commissionable amount
         // Restaurant gets the Remainder
 
+        // NOTE: Hotel commission should be on food subtotal, not on final payable total.
         const commissionableAmount = pricing.subtotal;
 
         const hotelAmount = (commissionableAmount * hotelPct) / 100;

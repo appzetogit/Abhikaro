@@ -6,6 +6,7 @@ import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import Hotel from "../../hotel/models/Hotel.js";
 import HotelWallet from "../../hotel/models/HotelWallet.js";
 import mongoose from "mongoose";
+import { getHotelCommissionFromOrder } from "../../order/utils/hotelCommissionBase.js";
 
 /**
  * GET /api/admin/hotels
@@ -799,7 +800,8 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
     },
   })
     .select(
-      "orderId pricing.total payment.method cashCollected commissionBreakdown.hotel orderType createdAt",
+      // include pricing fields so commission base can be derived for legacy orders
+      "orderId pricing.total pricing.subtotal pricing.discount pricing.deliveryFee pricing.platformFee pricing.tax pricing.adminOfferDiscount payment.method cashCollected commissionBreakdown.hotel orderType createdAt hotelReference",
     )
     .sort({ createdAt: -1 })
     .limit(lim)
@@ -820,12 +822,9 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
         ? order.pricing.total
         : 0) || 0;
 
-    let hotelEarning =
-      order.commissionBreakdown &&
-      typeof order.commissionBreakdown.hotel === "number" &&
-      order.commissionBreakdown.hotel > 0
-        ? order.commissionBreakdown.hotel
-        : (total * hotelCommPercent) / 100;
+    // Always compute from subtotal base so Online and Pay-at-Hotel/Cash match,
+    // even for historical orders that stored an incorrect hotel breakdown.
+    let hotelEarning = getHotelCommissionFromOrder(order, hotelCommPercent);
 
     // Normalize to 2 decimals
     hotelEarning = Math.round(hotelEarning * 100) / 100;
@@ -1205,7 +1204,7 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
               ],
             })
               .select(
-                "hotelId hotelReference pricing.total commissionBreakdown.hotel status payment.method cashCollected hotelCashSettled",
+                "hotelId hotelReference pricing.total pricing.subtotal pricing.discount pricing.deliveryFee pricing.platformFee pricing.tax pricing.adminOfferDiscount commissionBreakdown.hotel status payment.method cashCollected hotelCashSettled",
               )
               .lean();
 
@@ -1253,18 +1252,9 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
         if (order.status !== "cancelled") {
           stats.totalAmountCollected += totalAmount;
 
-          const hasHotelCommissionFromOrder =
-            order.commissionBreakdown &&
-            typeof order.commissionBreakdown.hotel === "number" &&
-            order.commissionBreakdown.hotel > 0;
-
-          if (hasHotelCommissionFromOrder) {
-            stats.hotelEarnings += order.commissionBreakdown.hotel;
-          } else {
-            // Fallback: derive from hotel's current commission percentage
-            const hotelCommPercent = Number(hotelDoc.commission) || 0;
-            stats.hotelEarnings += (totalAmount * hotelCommPercent) / 100;
-          }
+          // Always compute from subtotal base so Online and Pay-at-Hotel/Cash match.
+          const hotelCommPercent = Number(hotelDoc.commission) || 0;
+          stats.hotelEarnings += getHotelCommissionFromOrder(order, hotelCommPercent);
 
           const paymentMethod =
             order.payment && typeof order.payment.method === "string"

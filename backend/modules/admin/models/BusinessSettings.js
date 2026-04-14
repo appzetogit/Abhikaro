@@ -167,6 +167,11 @@ businessSettingsSchema.statics.getSettings = async function () {
         deliveryAssignmentMode: "automatic",
       });
     }
+    // Manual assignment is no longer supported. Normalize any legacy values.
+    if (settings.deliveryAssignmentMode !== "automatic") {
+      settings.deliveryAssignmentMode = "automatic";
+      await settings.save();
+    }
     return settings;
   } catch (error) {
     console.error("Error in getSettings:", error);
@@ -186,6 +191,11 @@ businessSettingsSchema.statics.getSettings = async function () {
         deliveryWithdrawalLimit: 100,
         deliveryAssignmentMode: "automatic",
       });
+      await settings.save();
+    }
+    // Manual assignment is no longer supported. Normalize any legacy values.
+    if (settings.deliveryAssignmentMode !== "automatic") {
+      settings.deliveryAssignmentMode = "automatic";
       await settings.save();
     }
     return settings;

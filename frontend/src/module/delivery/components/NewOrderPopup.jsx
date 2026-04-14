@@ -374,7 +374,7 @@ export default function NewOrderPopup({
                 <div className="mb-4">
                   <p className="text-gray-500 text-xs mb-1">Order ID</p>
                   <p className="text-base font-semibold text-gray-900">
-                    {orderData?.orderId || 'ORD1234567890'}
+                    {orderData?.orderId || ""}
                   </p>
                 </div>
 

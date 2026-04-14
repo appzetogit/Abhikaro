@@ -60,7 +60,6 @@ export default function RestaurantOrderHistoryTable({
               <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-700 uppercase tracking-wider">Total</th>
               <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-700 uppercase tracking-wider">Restaurant</th>
               <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-700 uppercase tracking-wider">Admin</th>
-              <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-700 uppercase tracking-wider">Delivery</th>
               <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Status</th>
               <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Actions</th>
             </tr>
@@ -80,7 +79,6 @@ export default function RestaurantOrderHistoryTable({
                 <td className="px-4 py-3 text-sm text-right font-semibold text-slate-900">{currency(o.totalAmount ?? o.earnings?.orderTotal)}</td>
                 <td className="px-4 py-3 text-sm text-right text-slate-800">{currency(o.earnings?.restaurantEarning)}</td>
                 <td className="px-4 py-3 text-sm text-right text-slate-800">{currency(o.earnings?.adminEarning)}</td>
-                <td className="px-4 py-3 text-sm text-right text-slate-800">{currency(o.earnings?.deliveryEarning)}</td>
                 <td className="px-4 py-3 text-sm">
                   <span className="inline-flex px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
                     {o.orderStatus || o.status}

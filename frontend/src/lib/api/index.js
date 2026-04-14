@@ -1596,6 +1596,11 @@ export const adminAPI = {
     return apiClient.get(`/admin/hotels/${hotelId}/qr-orders`, { params });
   },
 
+  // Admin payment history
+  getPaymentHistory: (params = {}) => {
+    return apiClient.get("/admin/payments/history", { params });
+  },
+
   // Restaurant wallet overview (admin)
   getRestaurantWalletOverview: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.ADMIN.RESTAURANT_WALLETS, { params });

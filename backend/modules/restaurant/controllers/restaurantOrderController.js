@@ -558,24 +558,12 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           return successResponse(res, 200, "Order accepted successfully", { order });
         }
 
-        // Check delivery assignment mode from business settings
-        const BusinessSettings = (await import("../../admin/models/BusinessSettings.js")).default;
-        const businessSettings = await BusinessSettings.getSettings();
-        const assignmentMode = businessSettings?.deliveryAssignmentMode || "automatic";
-        
-        if (assignmentMode === "manual") {
-          console.log(
-            `📋 Delivery assignment mode is MANUAL. Order ${order.orderId} will be available for manual assignment in admin panel.`,
-          );
-          // IMPORTANT: Even in manual mode, restaurant acceptance should still immediately
-          // notify the nearest delivery partners (so a rider can pick it up fast).
-          // We only skip the continuous resend loop in manual mode to avoid spam.
-        } else {
-          // Automatic mode - proceed with automatic notification
-          console.log(
-            `🔄 Starting priority-based order notification for order ${order.orderId}...`,
-          );
-        }
+        // Manual assignment is no longer supported.
+        const assignmentMode = "automatic";
+
+        console.log(
+          `🔄 Starting priority-based order notification for order ${order.orderId}...`,
+        );
 
         // Get restaurant location (required for both manual + automatic modes)
         let restaurantDoc = null;
@@ -621,8 +609,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           // Requirement: after restaurant accepts, keep notifying delivery partners until someone accepts.
           // This must work even if restaurant app is closed, so we schedule it in backend.
           // Capped to avoid spamming / leaks.
-          // NOTE: In manual assignment mode, we intentionally skip the resend loop to avoid spam.
-          const shouldRunResendLoop = assignmentMode !== "manual";
+          const shouldRunResendLoop = true;
           // Periodic refresh until assigned (no FCM on this phase — see deliveryNotificationService).
           // 30s * 10 ≈ 5 minutes of background retries without spamming riders.
           const RESEND_LOOP_MS = 30 * 1000;

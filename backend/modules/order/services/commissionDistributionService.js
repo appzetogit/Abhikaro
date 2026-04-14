@@ -5,6 +5,7 @@ import {
   creditRestaurantWallet,
 } from "./escrowWalletService.js";
 import winston from "winston";
+import { getHotelCommissionableSubtotal } from "../utils/hotelCommissionBase.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -49,7 +50,10 @@ export const distributeCommissions = async (orderId) => {
       restaurantId,
       orderId: orderNumber,
     } = order;
-    const totalAmount = pricing.subtotal;
+    // IMPORTANT:
+    // QR split should be based on commissionable food subtotal so Online and
+    // Pay-at-Hotel/Cash yield the same hotel earning for the same order.
+    const totalAmount = getHotelCommissionableSubtotal(order);
 
     // Split logic: Use stored breakdown if available, otherwise fallback to 10/20 default
     let hotelShare = 0;

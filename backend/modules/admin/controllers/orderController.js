@@ -214,25 +214,31 @@ export const getOrders = asyncHandler(async (req, res) => {
     // Get total count
     const total = await Order.countDocuments(query);
 
-    // Batch fetch settlements for platform fee and refund status (more efficient than individual queries)
-    let settlementMap = new Map();
+    // Batch fetch settlements for platform fee, refund status, and accurate earnings (more efficient than individual queries)
+    let settlementPlatformFeeMap = new Map();
     let refundStatusMap = new Map();
+    let settlementEarningsMap = new Map();
     try {
       const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
       const orderIds = orders.map(o => o._id);
       const settlements = await OrderSettlement.find({ orderId: { $in: orderIds } })
-        .select('orderId userPayment.platformFee cancellationDetails.refundStatus')
+        .select('orderId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning')
         .lean();
       
       // Create maps for quick lookup
       settlements.forEach(s => {
         if (s.orderId) {
           if (s.userPayment?.platformFee !== undefined) {
-            settlementMap.set(s.orderId.toString(), s.userPayment.platformFee);
+            settlementPlatformFeeMap.set(s.orderId.toString(), s.userPayment.platformFee);
           }
           if (s.cancellationDetails?.refundStatus) {
             refundStatusMap.set(s.orderId.toString(), s.cancellationDetails.refundStatus);
           }
+          settlementEarningsMap.set(s.orderId.toString(), {
+            adminEarning: Number(s.adminEarning?.totalEarning || 0),
+            restaurantEarning: Number(s.restaurantEarning?.netEarning || 0),
+            deliveryEarning: Number(s.deliveryPartnerEarning?.totalEarning || 0),
+          });
         }
       });
     } catch (err) {
@@ -273,6 +279,48 @@ export const getOrders = asyncHandler(async (req, res) => {
       });
     } catch (err) {
       console.warn('Could not batch fetch admin commissions for earnings breakdown:', err.message);
+    }
+
+    // Batch fetch Hotel commission config for QR/Hotel orders (prevents ₹300/₹71 fallback)
+    let hotelConfigByKey = new Map();
+    let qrGlobalCommission = { hotel: 0, admin: 0 };
+    try {
+      const CommissionSettings = (await import('../models/CommissionSettings.js')).default;
+      const latest = await CommissionSettings.findOne().sort({ createdAt: -1 }).lean();
+      const hotelPct = Number(latest?.qrCommission?.hotel || 0);
+      const adminPct = Number(latest?.qrCommission?.admin || 0);
+      qrGlobalCommission = { hotel: hotelPct, admin: adminPct };
+    } catch (err) {
+      // Non-blocking; we'll fall back to stored fields if config missing
+      console.warn('Could not load CommissionSettings for QR split:', err.message);
+    }
+
+    try {
+      const Hotel = (await import('../../hotel/models/Hotel.js')).default;
+      const hotelObjectIds = [];
+      const hotelIdStrings = [];
+      for (const o of orders) {
+        if (o?.hotelId && mongoose.Types.ObjectId.isValid(o.hotelId)) {
+          hotelObjectIds.push(new mongoose.Types.ObjectId(o.hotelId));
+        }
+        if (o?.hotelReference && typeof o.hotelReference === 'string') {
+          hotelIdStrings.push(o.hotelReference);
+        }
+      }
+      const or = [];
+      if (hotelObjectIds.length) or.push({ _id: { $in: hotelObjectIds } });
+      if (hotelIdStrings.length) or.push({ hotelId: { $in: hotelIdStrings } });
+      if (or.length) {
+        const hotels = await Hotel.find({ $or: or })
+          .select('_id hotelId commission adminCommission hotelName')
+          .lean();
+        for (const h of hotels || []) {
+          if (h?._id) hotelConfigByKey.set(String(h._id), h);
+          if (h?.hotelId) hotelConfigByKey.set(String(h.hotelId), h);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not batch load Hotel config for QR split:', err.message);
     }
 
     // Transform orders to match frontend format
@@ -362,7 +410,7 @@ export const getOrders = asyncHandler(async (req, res) => {
       let platformFee = order.pricing?.platformFee;
       if (platformFee === undefined || platformFee === null) {
         // Get from settlement map (batch fetched above)
-        platformFee = settlementMap.get(order._id.toString());
+        platformFee = settlementPlatformFeeMap.get(order._id.toString());
         
         // If still not found, calculate from total (fallback for old orders)
         if (platformFee === undefined || platformFee === null) {
@@ -391,28 +439,130 @@ export const getOrders = asyncHandler(async (req, res) => {
       // Order amount (final total)
       const orderAmount = order.pricing?.total || 0;
 
-      // Earnings breakdown (per order) for admin view
+      // Earnings breakdown (per order) for admin views.
+      // Prefer OrderSettlement (source of truth). Fallback to AdminCommission, then to a safe approximation.
+      const settlementEarnings = settlementEarningsMap.get(order._id.toString());
       const commissionInfo = commissionMapByOrderId.get(order._id.toString()) || {};
-      let deliveryEarning = order.estimatedEarnings?.totalEarning || 0; // real payout to delivery boy for this order
-      let restaurantEarning = commissionInfo.restaurantEarning || 0;     // net earning to restaurant after commission (when available)
 
-      // Fallback for older orders where commissions/estimatedEarnings were not stored
-      if (!restaurantEarning && !deliveryEarning) {
+      let restaurantEarning =
+        settlementEarnings?.restaurantEarning ?? commissionInfo.restaurantEarning ?? 0;
+      let deliveryEarning =
+        settlementEarnings?.deliveryEarning ?? order.estimatedEarnings?.totalEarning ?? 0;
+      let adminEarning =
+        settlementEarnings?.adminEarning ?? commissionInfo.adminEarning ?? 0;
+
+      const isHotelQrOrder = (order.orderType === 'QR' || !!order.hotelReference || !!order.hotelId);
+
+      // QR / Hotel (Online) earnings (commission + fees):
+      // Many QR orders don't have OrderSettlement populated, so we compute from stored breakdown + pricing.
+      if (isHotelQrOrder) {
+        const commissionableFood = Math.max(0, Number(subtotal || 0) - Number(discount || 0));
+        // Prefer explicit stored amounts. If missing/zero, derive from:
+        // 1) Hotel-specific commission config (hotel.commission, hotel.adminCommission)
+        // 2) Global CommissionSettings.qrCommission (hotel/admin)
+        // 3) order.commissionPercentages (legacy)
+        const hotelCfg =
+          hotelConfigByKey.get(String(order.hotelId || "")) ||
+          hotelConfigByKey.get(String(order.hotelReference || "")) ||
+          null;
+
+        const pctHotel =
+          Number(hotelCfg?.commission || 0) ||
+          Number(qrGlobalCommission?.hotel || 0) ||
+          Number(order.commissionPercentages?.hotel || 0);
+        const pctAdmin =
+          Number(hotelCfg?.adminCommission || 0) ||
+          Number(qrGlobalCommission?.admin || 0) ||
+          Number(order.commissionPercentages?.admin || 0);
+
+        let hotelCommission =
+          Number(order.commissionBreakdown?.hotel || 0) ||
+          Number(order.hotelCommission || 0) ||
+          0;
+        let qrAdminCommission =
+          Number(order.commissionBreakdown?.admin || 0) ||
+          Number(order.adminCommission || 0) ||
+          0;
+
+        if (!hotelCommission && pctHotel > 0 && commissionableFood > 0) {
+          hotelCommission = Math.round(((commissionableFood * pctHotel) / 100) * 100) / 100;
+        }
+        if (!qrAdminCommission && pctAdmin > 0 && commissionableFood > 0) {
+          qrAdminCommission = Math.round(((commissionableFood * pctAdmin) / 100) * 100) / 100;
+        }
+
+        // Restaurant net (commissionableFood - hotel - admin commission)
+        const qrRestaurantNet =
+          Math.max(0, commissionableFood - hotelCommission - qrAdminCommission);
+
+        // IMPORTANT: For QR/Hotel online flows, some legacy fields store "food subtotal" (e.g. 300)
+        // under restaurantShare/commissionBreakdown.restaurant, which is NOT the net earning.
+        // So we override restaurant earning using the computed net.
+        if (qrRestaurantNet > 0) {
+          restaurantEarning = Math.round(qrRestaurantNet * 100) / 100;
+        } else if (!restaurantEarning) {
+          // If we truly cannot compute, fall back to any explicit value
+          const explicitRestaurant =
+            Number(order.restaurantShare || 0) ||
+            Number(order.commissionBreakdown?.restaurant || 0);
+          if (explicitRestaurant > 0) {
+            restaurantEarning = explicitRestaurant;
+          }
+        }
+
+        // Admin total = admin commission + platformFee + deliveryFee + tax (GST)
+        const adminFeesTotal =
+          Number(platformFee || 0) +
+          Number(deliveryFee || 0) +
+          Number(tax || 0);
+        const qrAdminTotal = Math.max(0, qrAdminCommission + adminFeesTotal);
+
+        // If adminEarning is missing OR looks like only fees, replace with computed total
+        if (
+          !adminEarning ||
+          (adminFeesTotal > 0 && Math.abs(Number(adminEarning) - adminFeesTotal) < 0.01)
+        ) {
+          adminEarning = Math.round(qrAdminTotal * 100) / 100;
+        }
+
+        // Also ensure hotel commission is excluded when we later derive restaurant (if needed)
+      }
+
+      // If restaurant earning is still missing/zero:
+      // - For DIRECT orders: derive from restaurant % on derived subtotal
+      // - For QR/Hotel orders: derive as total - admin - hotelCommission - delivery
+      if (!restaurantEarning) {
+        const pct = Number(order.commissionPercentages?.restaurant || 0);
+        if (!isHotelQrOrder && pct > 0) {
+          const feePlatform = Number(platformFee || 0);
+          const feeDelivery = Number(deliveryFee || 0);
+          const feeTax = Number(tax || 0);
+          const derivedSubtotal = Math.max(0, orderAmount - feePlatform - feeDelivery - feeTax);
+          const derived = (derivedSubtotal * pct) / 100;
+          if (derived > 0) restaurantEarning = Math.round(derived * 100) / 100;
+        } else if (isHotelQrOrder && Number(orderAmount) > 0) {
+          const hotelCommission =
+            Number(order.hotelCommission || 0) ||
+            Number(order.commissionBreakdown?.hotel || 0);
+          const derived =
+            Number(orderAmount) -
+            Number(adminEarning || 0) -
+            Number(hotelCommission || 0) -
+            Number(deliveryEarning || 0);
+          if (derived > 0) restaurantEarning = Math.round(derived * 100) / 100;
+        }
+      }
+
+      // Last-resort fallback for older orders where settlement/commission weren't stored
+      if (!restaurantEarning && !deliveryEarning && !adminEarning) {
         const subtotal = order.pricing?.subtotal || 0;
         const discount = order.pricing?.discount || 0;
         const deliveryFee = order.pricing?.deliveryFee || 0;
 
-        // Basic assumption: restaurant keeps discounted subtotal,
-        // delivery boy gets 80% of delivery fee,
-        // admin keeps the rest.
         restaurantEarning = Math.max(0, subtotal - discount);
-        if (deliveryFee) {
-          deliveryEarning = Number((deliveryFee * 0.8).toFixed(2));
-        }
+        deliveryEarning = deliveryFee ? Number((deliveryFee * 0.8).toFixed(2)) : 0;
+        adminEarning = Math.max(0, orderAmount - restaurantEarning - deliveryEarning);
       }
-
-      // Admin earning = everything left after paying restaurant (net) and delivery boy
-      const adminEarning = Math.max(0, orderAmount - restaurantEarning - deliveryEarning);
 
       // Build a human‑readable restaurant address if available
       const rawRestaurant = order.restaurantId || {};
@@ -551,6 +701,237 @@ export const getOrders = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error('Error fetching admin orders:', error);
     return errorResponse(res, 500, 'Failed to fetch orders');
+  }
+});
+
+/**
+ * Payment history (admin)
+ * GET /api/admin/payments/history
+ *
+ * Query params:
+ * - page, limit
+ * - paymentStatus: pending|processing|completed|failed|refunded|cancelled
+ * - paymentMethod: razorpay|wallet|cash|pay_at_hotel|upi|card
+ * - orderType: all|QR|DIRECT
+ * - search: orderId / razorpay ids / transaction id / user name/phone/email
+ * - fromDate, toDate (createdAt)
+ */
+export const getPaymentHistory = asyncHandler(async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 50,
+      paymentStatus,
+      paymentMethod,
+      orderType = "all",
+      search,
+      fromDate,
+      toDate,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip = (pageNum - 1) * limitNum;
+
+    const query = {};
+
+    if (paymentMethod && paymentMethod !== "all") {
+      query["payment.method"] = String(paymentMethod).toLowerCase();
+    }
+    if (paymentStatus && paymentStatus !== "all") {
+      query["payment.status"] = String(paymentStatus).toLowerCase();
+    }
+
+    if (orderType && orderType !== "all") {
+      if (orderType === "QR") {
+        query.$or = [
+          { orderType: "QR" },
+          { hotelReference: { $ne: null } },
+          { hotelId: { $ne: null } },
+        ];
+      } else if (orderType === "DIRECT") {
+        query.orderType = "DIRECT";
+        query.hotelReference = null;
+        query.hotelId = null;
+      }
+    }
+
+    if (fromDate || toDate) {
+      query.createdAt = {};
+      if (fromDate) {
+        const start = new Date(fromDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    // Search on Order (orderId) first; Payment gateway ids and user search are handled via post-filtering.
+    if (search && String(search).trim()) {
+      const q = String(search).trim();
+      query.$or = [
+        ...(Array.isArray(query.$or) ? query.$or : []),
+        { orderId: { $regex: q, $options: "i" } },
+        { "payment.razorpayOrderId": { $regex: q, $options: "i" } },
+        { "payment.razorpayPaymentId": { $regex: q, $options: "i" } },
+        { "payment.transactionId": { $regex: q, $options: "i" } },
+      ];
+    }
+
+    const [orders, total] = await Promise.all([
+      Order.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .select(
+          [
+            "orderId",
+            "status",
+            "cancelledBy",
+            "cancellationReason",
+            "createdAt",
+            "pricing.total",
+            "pricing.subtotal",
+            "payment.method",
+            "payment.status",
+            "payment.razorpayOrderId",
+            "payment.razorpayPaymentId",
+            "payment.transactionId",
+            "cashCollected",
+            "orderType",
+            "hotelReference",
+            "hotelName",
+            "hotelId",
+            "restaurantId",
+            "restaurantName",
+            "userId",
+          ].join(" "),
+        )
+        .populate("userId", "name fullName phone email")
+        .populate("hotelId", "hotelName hotelId")
+        .lean(),
+      Order.countDocuments(query),
+    ]);
+
+    const orderIds = orders.map((o) => o._id);
+    let paymentByOrderId = new Map();
+    try {
+      const payments = await Payment.find({ orderId: { $in: orderIds } })
+        .select(
+          "orderId paymentId method status amount currency transactionId razorpay.orderId razorpay.paymentId razorpay.signature createdAt completedAt failedAt failureReason",
+        )
+        .lean();
+      payments.forEach((p) => {
+        if (p?.orderId) paymentByOrderId.set(p.orderId.toString(), p);
+      });
+    } catch (err) {
+      // Non-blocking: page can still render from Order.payment fields
+      console.warn("Payment history: failed to batch load Payment docs:", err?.message || err);
+    }
+
+    const rows = orders.map((order) => {
+      const paymentDoc = paymentByOrderId.get(order._id.toString()) || null;
+      const effectiveStatus =
+        paymentDoc?.status || order.payment?.status || "pending";
+      const effectiveMethod =
+        order.payment?.method || paymentDoc?.method || "unknown";
+
+      const isHotelOrder =
+        order.orderType === "QR" ||
+        Boolean(order.hotelReference) ||
+        Boolean(order.hotelId) ||
+        effectiveMethod === "pay_at_hotel";
+
+      const paymentFlow = (() => {
+        if (effectiveMethod === "pay_at_hotel") return "HOTEL_PAY_AT_HOTEL";
+        if (effectiveMethod === "cash") return isHotelOrder ? "HOTEL_CASH" : "COD";
+        if (effectiveMethod === "wallet" || effectiveMethod === "razorpay") {
+          return isHotelOrder ? "HOTEL_ONLINE" : "ONLINE";
+        }
+        return isHotelOrder ? "HOTEL_OTHER" : "OTHER";
+      })();
+
+      const user = order.userId
+        ? {
+            id: order.userId._id,
+            name: order.userId.fullName || order.userId.name || null,
+            phone: order.userId.phone || null,
+            email: order.userId.email || null,
+          }
+        : null;
+
+      const hotel =
+        order.hotelId || order.hotelName || order.hotelReference
+          ? {
+              id: order.hotelId?._id || order.hotelId || null,
+              hotelId: order.hotelId?.hotelId || order.hotelReference || null,
+              name: order.hotelId?.hotelName || order.hotelName || null,
+            }
+          : null;
+
+      return {
+        orderMongoId: order._id,
+        orderId: order.orderId,
+        orderStatus: order.status || null,
+        cancelledBy: order.cancelledBy || null,
+        cancellationReason: order.cancellationReason || null,
+        createdAt: order.createdAt,
+        orderType: order.orderType || (isHotelOrder ? "QR" : "DIRECT"),
+        amount: {
+          total: Number(order.pricing?.total) || 0,
+          subtotal: Number(order.pricing?.subtotal) || 0,
+          paidAmount: Number(paymentDoc?.amount) || Number(order.pricing?.total) || 0,
+          currency: paymentDoc?.currency || "INR",
+        },
+        payment: {
+          method: effectiveMethod,
+          status: effectiveStatus,
+          flow: paymentFlow,
+          cashCollected: order.cashCollected === true,
+          orderRazorpayOrderId: order.payment?.razorpayOrderId || null,
+          orderRazorpayPaymentId: order.payment?.razorpayPaymentId || null,
+          orderTransactionId: order.payment?.transactionId || null,
+          paymentId: paymentDoc?.paymentId || null,
+          paymentCollection: paymentDoc
+            ? {
+                id: paymentDoc._id,
+                method: paymentDoc.method,
+                status: paymentDoc.status,
+                transactionId: paymentDoc.transactionId || null,
+                razorpayOrderId: paymentDoc.razorpay?.orderId || null,
+                razorpayPaymentId: paymentDoc.razorpay?.paymentId || null,
+                createdAt: paymentDoc.createdAt,
+                completedAt: paymentDoc.completedAt,
+                failedAt: paymentDoc.failedAt,
+                failureReason: paymentDoc.failureReason || null,
+              }
+            : null,
+        },
+        user,
+        restaurant: {
+          id: order.restaurantId || null,
+          name: order.restaurantName || null,
+        },
+        hotel,
+      };
+    });
+
+    return successResponse(res, 200, "Payment history retrieved successfully", {
+      rows,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching payment history:", error);
+    return errorResponse(res, 500, "Failed to fetch payment history");
   }
 });
 
@@ -2563,9 +2944,8 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
 
     // Prefer notifying ALL online delivery partners in the restaurant's zone.
     // This matches "all delivery boys in that zone should receive the request".
-    const BusinessSettings = (await import('../models/BusinessSettings.js')).default;
-    const businessSettings = await BusinessSettings.getSettings();
-    const assignmentMode = businessSettings?.deliveryAssignmentMode || 'automatic';
+    // Manual assignment is no longer supported.
+    const assignmentMode = 'automatic';
 
     const Zone = (await import('../models/Zone.js')).default;
     const Delivery = (await import('../../delivery/models/Delivery.js')).default;
