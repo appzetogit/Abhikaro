@@ -79,8 +79,9 @@ export const initRazorpayPayment = async (options) => {
         emi: true,
         paylater: true,
       },
-      // Keep in WebView (no redirection)
-      redirect: false,
+      // Allow redirect/deep-link for UPI intent apps (GPay/PhonePe/etc.)
+      // Razorpay will still use in-modal UI where applicable.
+      redirect: options.redirect ?? true,
       prefill: {
         name: options.prefill?.name || '',
         email: options.prefill?.email || '',
@@ -112,23 +113,9 @@ export const initRazorpayPayment = async (options) => {
       }
     };
 
-    // If caller hasn't provided a custom config, explicitly configure display
-    // so all common methods are visible (esp. inside webviews).
+    // Prefer Razorpay default Checkout UI (best chance to show UPI intent apps list).
     if (options.config) {
-      // Respect caller override
       razorpayOptions.config = options.config;
-    } else {
-      razorpayOptions.config = {
-        display: {
-          // Use method-level sequencing (no custom blocks) so Checkout renders
-          // the standard UI (incl. UPI apps/icons) but in our preferred order.
-          sequence: ['upi', 'card', 'netbanking', 'wallet', 'emi', 'paylater'],
-          preferences: {
-            // Avoid duplicates; show only the ordered methods above.
-            show_default_blocks: false,
-          }
-        }
-      };
     }
 
     const razorpay = new window.Razorpay(razorpayOptions);
