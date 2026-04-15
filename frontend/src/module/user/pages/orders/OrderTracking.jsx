@@ -33,6 +33,7 @@ import { useSharedLocation } from "@/lib/context/LocationContext"
 import DeliveryTrackingMap from "../../components/DeliveryTrackingMap"
 import { orderAPI, restaurantAPI } from "@/lib/api"
 import circleIcon from "@/assets/circleicon.png"
+import { preloadGoogleMaps } from "@/utils/mapsPreload"
 
 // Animated checkmark component
 const AnimatedCheckmark = ({ delay = 0 }) => (
@@ -181,13 +182,12 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
         return candidateAlt;
       }
 
-      console.warn('⚠️ Restaurant coordinates invalid; falling back to default Indore:', { raw: coords });
-      return { lat: 22.7196, lng: 75.8577 };
+      console.warn('⚠️ Restaurant coordinates invalid; will not render restaurant marker:', { raw: coords });
+      return null;
     }
 
-    console.warn('⚠️ Restaurant coordinates not found, using default Indore coordinates');
-    // Default Indore coordinates
-    return { lat: 22.7196, lng: 75.8577 };
+    console.warn('⚠️ Restaurant coordinates not found; will not render restaurant marker');
+    return null;
   };
 
   const getCustomerCoords = () => {
@@ -197,8 +197,7 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
         lng: order.address.coordinates[0]
       };
     }
-    // Default Indore coordinates
-    return { lat: 22.7196, lng: 75.8577 };
+    return null;
   };
 
   // Get user's live location coordinates
@@ -244,7 +243,7 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     avatar: order.deliveryPartner.avatar || null
   } : null;
 
-  if (!isVisible || !orderId || !order) {
+  if (!isVisible || !orderId || !order || !customerCoords) {
     return (
       <motion.div
         className="relative h-64 bg-gradient-to-b from-gray-100 to-gray-200"
@@ -349,6 +348,24 @@ export default function OrderTracking() {
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false)
 
   const defaultAddress = getDefaultAddress()
+
+  // Preload Google Maps script early so map appears faster.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { getGoogleMapsApiKey } = await import("@/lib/utils/googleMapsApiKey.js")
+        const key = await getGoogleMapsApiKey()
+        if (cancelled) return
+        if (key) preloadGoogleMaps(key)
+      } catch {
+        // non-blocking
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     orderStatusRef.current = orderStatus

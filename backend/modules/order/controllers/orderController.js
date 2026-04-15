@@ -18,6 +18,7 @@ import { processCancellationRefund } from "../services/cancellationRefundService
 import etaCalculationService from "../services/etaCalculationService.js";
 import etaWebSocketService from "../services/etaWebSocketService.js";
 import UserWallet from "../../user/models/UserWallet.js";
+import OrderSettlement from "../models/OrderSettlement.js";
 import { distributeCommissions } from "../services/commissionDistributionService.js";
 import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from "../../../shared/utils/cache.js";
 
@@ -1689,6 +1690,30 @@ export const getUserOrders = async (req, res) => {
       .populate("userId", "name phone email")
       .lean();
 
+    // Attach refund details (from settlement) so user UI can show "Refunded ₹X • 24 hours..."
+    const orderIds = orders.map((o) => o?._id).filter(Boolean);
+    let settlementMap = new Map();
+    if (orderIds.length > 0) {
+      const settlements = await OrderSettlement.find({ orderId: { $in: orderIds } })
+        .select("orderId cancellationDetails.refundStatus cancellationDetails.refundAmount cancellationDetails.refundInitiatedAt cancellationDetails.refundProcessedAt cancellationDetails.razorpayRefundId")
+        .lean();
+      for (const s of settlements || []) {
+        settlementMap.set(String(s.orderId), s.cancellationDetails || null);
+      }
+    }
+
+    const ordersWithRefund = orders.map((o) => {
+      const cd = settlementMap.get(String(o._id)) || null;
+      return {
+        ...o,
+        refundStatus: cd?.refundStatus || null,
+        refundAmount: typeof cd?.refundAmount === "number" ? cd.refundAmount : null,
+        refundInitiatedAt: cd?.refundInitiatedAt || null,
+        refundProcessedAt: cd?.refundProcessedAt || null,
+        razorpayRefundId: cd?.razorpayRefundId || null,
+      };
+    });
+
     const total = await Order.countDocuments(query);
 
     logger.info(
@@ -1698,7 +1723,7 @@ export const getUserOrders = async (req, res) => {
     res.json({
       success: true,
       data: {
-        orders,
+        orders: ordersWithRefund,
         pagination: {
           total,
           page: parseInt(page),
@@ -1771,11 +1796,17 @@ export const getOrderDetails = async (req, res) => {
       orderId: order._id,
     }).lean();
 
+    // Get settlement details (for refund status/amount)
+    const settlement = await OrderSettlement.findOne({ orderId: order._id })
+      .select("cancellationDetails.refundStatus cancellationDetails.refundAmount cancellationDetails.refundInitiatedAt cancellationDetails.refundProcessedAt cancellationDetails.razorpayRefundId")
+      .lean();
+
     const responseData = {
       success: true,
       data: {
         order,
         payment,
+        settlement,
       },
     };
 

@@ -271,7 +271,12 @@ export default function Orders() {
               deliveredAt: order.deliveredAt || null,
               deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
               deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
-              note: order.note || null
+              note: order.note || null,
+              refundStatus: order.refundStatus || null,
+              refundAmount: order.refundAmount ?? null,
+              refundInitiatedAt: order.refundInitiatedAt || null,
+              refundProcessedAt: order.refundProcessedAt || null,
+              razorpayRefundId: order.razorpayRefundId || null
             }
           })
           
@@ -599,6 +604,19 @@ Order again from this restaurant in the ${companyName} app.`
             // Payment failed only for online payments (razorpay) that actually failed
             // Don't show payment failed for COD/wallet or cancelled orders
             const isCancelled = order.status === 'cancelled' || order.status === 'restaurant_cancelled'
+            const isOnlinePayment =
+              order.payment?.method === 'razorpay' ||
+              order.payment?.method === 'upi' ||
+              order.payment?.method === 'card' ||
+              order.paymentMethod === 'razorpay' ||
+              order.paymentMethod === 'upi' ||
+              order.paymentMethod === 'card'
+            const hasRefundInfo =
+              isOnlinePayment &&
+              isCancelled &&
+              (order.refundStatus === 'initiated' || order.refundStatus === 'processed') &&
+              typeof order.refundAmount === 'number' &&
+              order.refundAmount > 0
             const paymentFailed = !isCodOrWallet && 
                                  !isCancelled && 
                                  (order.payment?.status === 'failed')
@@ -774,6 +792,19 @@ Order again from this restaurant in the ${companyName} app.`
                     {isUserCancelled && (
                       <p className="text-xs font-medium text-gray-500 mt-1">✗ Cancelled by you</p>
                     )}
+                    {hasRefundInfo && (
+                      <div className="mt-1">
+                        <p className="text-xs font-semibold text-blue-700">
+                          ₹{Number(order.refundAmount).toFixed(2)}{" "}
+                          {order.refundStatus === "processed"
+                            ? "Refunded"
+                            : "Refund initiated"}
+                        </p>
+                        <p className="text-[11px] text-blue-600/90">
+                          Amount should be settled within 24 hours
+                        </p>
+                      </div>
+                     )}
                     {isCancelled && !isRestaurantCancelled && !isUserCancelled && (
                       <p className="text-xs font-medium text-gray-500 mt-1">✗ Cancelled</p>
                     )}

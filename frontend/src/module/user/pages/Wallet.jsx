@@ -248,7 +248,7 @@ export default function Wallet() {
           {filteredTransactions.length > 0 ? (
             <div className="space-y-3 md:space-y-4">
               {filteredTransactions.map((transaction) => (
-                <Card key={transaction.id} className="py-0 border border-gray-100 dark:border-gray-800 shadow-sm dark:bg-[#1a1a1a] hover:shadow-md transition-all duration-200 cursor-pointer">
+                <Card key={transaction._id || transaction.id} className="py-0 border border-gray-100 dark:border-gray-800 shadow-sm dark:bg-[#1a1a1a] hover:shadow-md transition-all duration-200 cursor-pointer">
                   <CardContent className="p-4 md:p-5 lg:p-6">
                     <div className="flex items-center justify-between gap-4 md:gap-6">
                       <div className="flex items-center gap-4 md:gap-5 lg:gap-6 flex-1 min-w-0">
@@ -264,6 +264,11 @@ export default function Wallet() {
                           <p className="text-gray-900 dark:text-white font-semibold text-sm md:text-base lg:text-lg truncate mb-1">
                             {transaction.description}
                           </p>
+                          {transaction?.type === 'refund' && transaction?.metadata?.settlementText && (
+                            <p className="text-gray-500 dark:text-gray-400 text-xs md:text-sm lg:text-base">
+                              {transaction.metadata.settlementText}
+                            </p>
+                          )}
                           <p className="text-gray-500 dark:text-gray-400 text-xs md:text-sm lg:text-base">
                             {formatDate(transaction.date || transaction.createdAt)}
                           </p>

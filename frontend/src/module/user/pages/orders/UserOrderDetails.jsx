@@ -201,6 +201,23 @@ export default function UserOrderDetails() {
     window.location.href = `tel:${restaurantPhone}`
   }
 
+  const settlement = order?.settlement || null
+  const refundStatus = settlement?.cancellationDetails?.refundStatus || order?.refundStatus || null
+  const refundAmount = settlement?.cancellationDetails?.refundAmount ?? order?.refundAmount ?? null
+  const isCancelled =
+    order.status === "cancelled" ||
+    order.status === "restaurant_cancelled"
+  const isOnlinePayment =
+    order.payment?.method === "razorpay" ||
+    order.payment?.method === "upi" ||
+    order.payment?.method === "card"
+  const showRefundInfo =
+    isCancelled &&
+    isOnlinePayment &&
+    (refundStatus === "initiated" || refundStatus === "processed") &&
+    typeof refundAmount === "number" &&
+    refundAmount > 0
+
   const handleDownloadSummary = async () => {
     try {
       const companyName = await getCompanyNameAsync()
@@ -373,6 +390,13 @@ export default function UserOrderDetails() {
                 ? "Order was delivered"
                 : "Order status: " + (order.status || "Processing")}
             </h2>
+            {showRefundInfo && (
+              <p className="text-xs text-blue-600 font-medium mt-1">
+                ₹{Number(refundAmount).toFixed(2)}{" "}
+                {refundStatus === "processed" ? "Refunded" : "Refund initiated"} •
+                24 hours me account me settle ho jayega
+              </p>
+            )}
           </div>
         </div>
 

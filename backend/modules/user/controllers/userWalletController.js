@@ -58,7 +58,8 @@ export const getWallet = asyncHandler(async (req, res) => {
       orderId: t.orderId,
       paymentMethod: t.paymentMethod,
       paymentGateway: t.paymentGateway,
-      paymentId: t.paymentId
+      paymentId: t.paymentId,
+      metadata: t.metadata
     }));
 
     const walletData = {

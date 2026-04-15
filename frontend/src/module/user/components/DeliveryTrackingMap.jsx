@@ -7,6 +7,7 @@ import { extractPolylineFromDirections, findNearestPointOnPolyline } from '@/mod
 import { calculateBearingFromLocations } from '@/module/delivery/utils/bearingCalculation';
 import { snapToPolyline, detectOffRoute, PolylineAnimationController } from '@/module/delivery/utils/enhancedMapMatching';
 import { StrictPolylineController, calculateProgressOnPolyline, getPointOnPolylineByProgress, calculateBearingAtProgress } from '@/module/delivery/utils/strictPolylineTracking';
+import { preloadGoogleMaps } from '@/utils/mapsPreload';
 import './DeliveryTrackingMap.css';
 
 // Helper function to calculate Haversine distance
@@ -39,6 +40,7 @@ const DeliveryTrackingMap = ({
   const bikeMarkerRef = useRef(null);
   const userLocationMarkerRef = useRef(null);
   const userLocationCircleRef = useRef(null);
+  const restaurantCircleRef = useRef(null);
   const mapInstance = useRef(null);
   const socketRef = useRef(null);
   const directionsServiceRef = useRef(null);
@@ -91,6 +93,10 @@ const DeliveryTrackingMap = ({
   const lastLocationUpdateTsRef = useRef(0);
   const lastIncomingPosRef = useRef(null);
   const lastProcessedSocketTsRef = useRef(0);
+  const followRiderRef = useRef(true);
+  const lastCameraUpdateTsRef = useRef(0);
+
+  const [followRiderUI, setFollowRiderUI] = useState(true);
 
   const normalizeIncomingLatLng = useCallback((rawLat, rawLng) => {
     const lat = Number(rawLat);
@@ -147,7 +153,6 @@ const DeliveryTrackingMap = ({
   const isMountedRef = useRef(true); // Track if component is mounted
 
   const backendUrl = API_BASE_URL.replace('/api', '');
-  const [GOOGLE_MAPS_API_KEY, setGOOGLE_MAPS_API_KEY] = useState("");
 
   const effectiveTrackingIds = useMemo(() => {
     const ids = Array.isArray(trackingRoomIds) && trackingRoomIds.length > 0
@@ -181,14 +186,25 @@ const DeliveryTrackingMap = ({
     return [a, off, b];
   }, []);
 
-  // Load Google Maps API key from backend
+  // Kick off Google Maps script load ASAP (don't wait for coords/map init).
+  // This reduces the "blank map" time on the tracking screen.
+  const ensureGoogleMapsReady = useCallback(async () => {
+    try {
+      if (window.google?.maps?.Map) return true;
+      const { getGoogleMapsApiKey } = await import('@/lib/utils/googleMapsApiKey.js');
+      const apiKey = await getGoogleMapsApiKey();
+      if (!apiKey) return false;
+      await preloadGoogleMaps(apiKey);
+      return !!window.google?.maps?.Map;
+    } catch {
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
-    import('@/lib/utils/googleMapsApiKey.js').then(({ getGoogleMapsApiKey }) => {
-      getGoogleMapsApiKey().then(key => {
-        setGOOGLE_MAPS_API_KEY(key)
-      })
-    })
-  }, [])
+    // Fire-and-forget preload; actual init effect will await readiness when needed.
+    ensureGoogleMapsReady();
+  }, [ensureGoogleMapsReady]);
 
   // Track mount/unmount ONLY (do not flip this on dependency-change cleanups)
   useEffect(() => {
@@ -942,7 +958,30 @@ const DeliveryTrackingMap = ({
         }
 
         // DO NOT auto-pan map - keep it stable
-        // Map should remain at user's chosen view
+        // Map should remain stable unless follow mode is enabled
+      }
+
+      // Zomato-like camera follow: keep rider in view unless user interacted.
+      // Throttle camera updates to avoid jitter.
+      try {
+        const nowTs = Date.now();
+        const canFollow = followRiderRef.current && !userHasInteractedRef.current;
+        if (canFollow && mapInstance.current && nowTs - (lastCameraUpdateTsRef.current || 0) > 900) {
+          lastCameraUpdateTsRef.current = nowTs;
+          const target = { lat, lng };
+          isProgrammaticChangeRef.current = true;
+          mapInstance.current.panTo(target);
+          // Keep a reasonable zoom if user never touched the map
+          const z = mapInstance.current.getZoom();
+          if (typeof z === "number" && z < 16) {
+            mapInstance.current.setZoom(16);
+          }
+          setTimeout(() => {
+            isProgrammaticChangeRef.current = false;
+          }, 200);
+        }
+      } catch {
+        // ignore
       }
     } catch (error) {
       console.error('❌ Error moving bike:', error);
@@ -963,6 +1002,11 @@ const DeliveryTrackingMap = ({
 
     socketRef.current.on('connect', () => {
       console.log('✅ Socket connected for order:', orderId);
+      // When socket connects, default follow is ON (unless user already interacted)
+      if (!userHasInteractedRef.current) {
+        followRiderRef.current = true;
+        setFollowRiderUI(true);
+      }
       effectiveTrackingIds.forEach((id) => {
         socketRef.current.emit('join-order-tracking', id);
         socketRef.current.emit('request-current-location', id);
@@ -1188,38 +1232,25 @@ const DeliveryTrackingMap = ({
 
   // Initialize Google Map (only once - prevent re-initialization)
   useEffect(() => {
-    if (!mapRef.current || !restaurantCoords || !customerCoords || mapInitializedRef.current) return;
+    // Restaurant coords can be null (we don't want default/fake location).
+    // Map should still render based on customer coords, and restaurant marker will appear once coords arrive.
+    if (!mapRef.current || !customerCoords || mapInitializedRef.current) return;
 
     const loadGoogleMapsIfNeeded = async () => {
-      // Wait for Google Maps to load from main.jsx first
-      if (!window.google || !window.google.maps) {
-        console.log('⏳ Waiting for Google Maps API to load...');
-        let attempts = 0;
-        const maxAttempts = 50; // 5 seconds max wait
-
-        while (!window.google && attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          attempts++;
-        }
-
-        // If still not loaded, try loading it ourselves
-        if (!window.google || !window.google.maps) {
-          console.log('⏳ Google Maps not loaded from main.jsx, loading manually...');
+      // Ensure Google Maps is ready (preload-first; Loader fallback).
+      if (!window.google?.maps?.Map) {
+        const ready = await ensureGoogleMapsReady();
+        if (!ready) {
           try {
             const { getGoogleMapsApiKey } = await import('@/lib/utils/googleMapsApiKey.js');
             const { Loader } = await import('@googlemaps/js-api-loader');
             const apiKey = await getGoogleMapsApiKey();
-            if (apiKey) {
-              const loader = new Loader({
-                apiKey: apiKey,
-                version: "weekly"
-              });
-              await loader.load();
-              console.log('✅ Google Maps loaded manually');
-            } else {
+            if (!apiKey) {
               console.error('❌ No Google Maps API key found');
               return;
             }
+            const loader = new Loader({ apiKey, version: 'weekly' });
+            await loader.load();
           } catch (error) {
             console.error('❌ Error loading Google Maps:', error);
             return;
@@ -1279,29 +1310,26 @@ const DeliveryTrackingMap = ({
           return;
         }
 
-        // Verify coordinates are available
-        if (!restaurantCoords || !customerCoords) {
-          console.warn('⚠️ Restaurant or customer coordinates not available');
+        // Verify customer coordinates are available
+        if (!customerCoords) {
+          console.warn('⚠️ Customer coordinates not available');
           return;
         }
 
         // Normalize coordinates (avoid string concatenation -> NaN center on refresh)
-        const rLat = Number(restaurantCoords.lat);
-        const rLng = Number(restaurantCoords.lng);
         const cLat = Number(customerCoords.lat);
         const cLng = Number(customerCoords.lng);
 
-        if ([rLat, rLng, cLat, cLng].some((n) => Number.isNaN(n))) {
-          console.warn('⚠️ Invalid restaurant/customer coordinates for map init:', {
-            restaurantCoords,
+        if ([cLat, cLng].some((n) => Number.isNaN(n))) {
+          console.warn('⚠️ Invalid customer coordinates for map init:', {
             customerCoords,
           });
           return;
         }
 
-        // Calculate center point
-        const centerLng = (rLng + cLng) / 2;
-        const centerLat = (rLat + cLat) / 2;
+        // Center map on customer by default (restaurant may be unknown initially)
+        const centerLng = cLng;
+        const centerLat = cLat;
 
         // Get MapTypeId safely (default to terrain; fallback-safe if MapTypeId isn't ready)
         const mapTypeId = window.google.maps.MapTypeId?.TERRAIN || 'terrain';
@@ -1412,11 +1440,15 @@ const DeliveryTrackingMap = ({
         // Track user interaction to prevent automatic zoom/pan interference
         mapInstance.current.addListener('dragstart', () => {
           userHasInteractedRef.current = true;
+          followRiderRef.current = false;
+          setFollowRiderUI(false);
         });
 
         mapInstance.current.addListener('zoom_changed', () => {
           if (!isProgrammaticChangeRef.current) {
             userHasInteractedRef.current = true;
+            followRiderRef.current = false;
+            setFollowRiderUI(false);
           }
         });
 
@@ -1436,13 +1468,15 @@ const DeliveryTrackingMap = ({
         // Ensure viewport never changes automatically - map stays stable
         directionsRendererRef.current.setOptions({ preserveViewport: true });
 
-        // Restaurant marker: show only until order is delivered/completed
-        if (isOrderDelivered) {
-          if (mapInstance.current._restaurantMarker) {
-            mapInstance.current._restaurantMarker.setMap(null);
-            mapInstance.current._restaurantMarker = null;
-          }
-        } else if (!mapInstance.current._restaurantMarker) {
+        // Restaurant marker:
+        // Do NOT remove it from the map based on status, because delivery status can briefly jitter
+        // during refresh/socket updates and make the pin "disappear".
+        // Instead, keep the marker instance and just toggle visibility.
+        const maybeRestaurantLat = Number(restaurantCoords?.lat)
+        const maybeRestaurantLng = Number(restaurantCoords?.lng)
+        const hasRestaurantCoords = !Number.isNaN(maybeRestaurantLat) && !Number.isNaN(maybeRestaurantLng)
+
+        if (hasRestaurantCoords && !mapInstance.current._restaurantMarker) {
           const restaurantHomeIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
               <path d="M20 0 C9 0 0 9 0 20 C0 35 20 50 20 50 C20 50 40 35 40 20 C40 9 31 0 20 0 Z" fill="#22c55e" stroke="#ffffff" stroke-width="2"/>
@@ -1452,7 +1486,7 @@ const DeliveryTrackingMap = ({
           `);
 
           mapInstance.current._restaurantMarker = new window.google.maps.Marker({
-            position: { lat: rLat, lng: rLng },
+            position: { lat: maybeRestaurantLat, lng: maybeRestaurantLng },
             map: mapInstance.current,
             icon: {
               url: restaurantHomeIconUrl,
@@ -1462,6 +1496,13 @@ const DeliveryTrackingMap = ({
             },
             zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
           });
+        }
+        try {
+          if (mapInstance.current._restaurantMarker) {
+            mapInstance.current._restaurantMarker.setVisible(!isOrderDelivered && hasRestaurantCoords);
+          }
+        } catch {
+          // ignore
         }
 
         // Customer pin marker hide: customerCoords used for route calculations,
@@ -1518,6 +1559,99 @@ const DeliveryTrackingMap = ({
           }
           setMapLoadTimeoutError(false);
           setIsMapLoaded(true);
+
+          // Ensure restaurant marker is present (can get detached on some rerenders)
+          try {
+            if (!isOrderDelivered && restaurantCoords && restaurantCoords.lat && restaurantCoords.lng) {
+              const rrLat = Number(restaurantCoords.lat);
+              const rrLng = Number(restaurantCoords.lng);
+              if (!Number.isNaN(rrLat) && !Number.isNaN(rrLng)) {
+                if (!mapInstance.current._restaurantMarker) {
+                  const restaurantHomeIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
+                      <path d="M20 0 C9 0 0 9 0 20 C0 35 20 50 20 50 C20 50 40 35 40 20 C40 9 31 0 20 0 Z" fill="#22c55e" stroke="#ffffff" stroke-width="2"/>
+                      <path d="M20 12 L12 18 L12 28 L16 28 L16 24 L24 24 L24 28 L28 28 L28 18 Z" fill="white" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M16 24 L16 20 L20 17 L24 20 L24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  `);
+                  mapInstance.current._restaurantMarker = new window.google.maps.Marker({
+                    position: { lat: rrLat, lng: rrLng },
+                    map: mapInstance.current,
+                    icon: {
+                      url: restaurantHomeIconUrl,
+                      scaledSize: new window.google.maps.Size(40, 50),
+                      anchor: new window.google.maps.Point(20, 50),
+                      origin: new window.google.maps.Point(0, 0)
+                    },
+                    zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
+                  });
+                } else {
+                  if (mapInstance.current._restaurantMarker.getMap() == null) {
+                    mapInstance.current._restaurantMarker.setMap(mapInstance.current);
+                  }
+                  mapInstance.current._restaurantMarker.setPosition({ lat: rrLat, lng: rrLng });
+                }
+              }
+            }
+          } catch {
+            // ignore
+          }
+
+          // Initial focus: when user opens tracking from "Arriving in ..." we want to focus on user's live location.
+          // BUT if restaurant is far, the restaurant icon will be offscreen and user thinks it's missing.
+          // So: if restaurant is nearby -> focus user; else -> fit bounds to show both.
+          // Do it only once, and only if user hasn't interacted with the map yet.
+          try {
+            if (
+              userLiveCoords &&
+              typeof userLiveCoords.lat === 'number' &&
+              typeof userLiveCoords.lng === 'number' &&
+              !userHasInteractedRef.current
+            ) {
+              const rrLat = Number(restaurantCoords?.lat)
+              const rrLng = Number(restaurantCoords?.lng)
+              const hasRestaurant =
+                !Number.isNaN(rrLat) &&
+                !Number.isNaN(rrLng) &&
+                rrLat >= -90 &&
+                rrLat <= 90 &&
+                rrLng >= -180 &&
+                rrLng <= 180
+
+              let distanceToRestaurant = 0
+              if (hasRestaurant) {
+                distanceToRestaurant = calculateHaversineDistance(
+                  userLiveCoords.lat,
+                  userLiveCoords.lng,
+                  rrLat,
+                  rrLng,
+                )
+              }
+
+              isProgrammaticChangeRef.current = true;
+
+              // If restaurant is > ~1.2km away, show both points so restaurant icon is visible.
+              if (hasRestaurant && distanceToRestaurant > 1200 && window.google?.maps?.LatLngBounds) {
+                const bounds = new window.google.maps.LatLngBounds()
+                bounds.extend({ lat: userLiveCoords.lat, lng: userLiveCoords.lng })
+                bounds.extend({ lat: rrLat, lng: rrLng })
+                mapInstance.current.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 })
+              } else {
+                mapInstance.current.panTo({ lat: userLiveCoords.lat, lng: userLiveCoords.lng });
+                // A slightly closer zoom makes the blue dot + bike discoverable quickly.
+                const z = mapInstance.current.getZoom();
+                if (typeof z === 'number' && z < 16) {
+                  mapInstance.current.setZoom(16);
+                }
+              }
+
+              setTimeout(() => {
+                isProgrammaticChangeRef.current = false;
+              }, 250);
+            }
+          } catch {
+            // ignore
+          }
 
           // Hide Google Maps footer elements (Keyboard shortcuts, Map data, Terms)
           const hideGoogleFooter = () => {
@@ -1579,7 +1713,7 @@ const DeliveryTrackingMap = ({
         console.error('❌ Map initialization error:', error);
       }
     }
-  }, [restaurantCoords, customerCoords]); // Removed dependencies that cause re-initialization
+  }, [restaurantCoords, customerCoords, ensureGoogleMapsReady]); // Removed dependencies that cause re-initialization
 
   // Memoize restaurant and customer coordinates to avoid dependency issues
   const restaurantLat = restaurantCoords?.lat;
@@ -1806,22 +1940,16 @@ const DeliveryTrackingMap = ({
         moveBikeSmoothly(deliveryBoyLat, deliveryBoyLng, deliveryBoyHeading || 0);
       }
     } else {
-      // Remove bike marker if delivery partner is not assigned
+      // Do NOT remove the bike marker on transient status jitter.
+      // Keeping it avoids flicker when deliveryState/status toggles briefly during refresh.
+      // We'll only remove it when the order is delivered/cancelled (handled by page-level hiding).
       if (bikeMarkerRef.current) {
-        // Grace period: if we recently received any location update, keep bike visible.
-        const age = Date.now() - (lastLocationUpdateTsRef.current || 0);
-        if (age >= 0 && age < 20000) {
-          try {
-            bikeMarkerRef.current.setVisible(true);
-            if (bikeMarkerRef.current.getMap() == null) {
-              bikeMarkerRef.current.setMap(mapInstance.current);
-            }
-          } catch {}
-          return;
-        }
-        console.log('🗑️ Removing bike marker - no delivery partner');
-        bikeMarkerRef.current.setMap(null);
-        bikeMarkerRef.current = null;
+        try {
+          bikeMarkerRef.current.setVisible(true);
+          if (bikeMarkerRef.current.getMap() == null) {
+            bikeMarkerRef.current.setMap(mapInstance.current);
+          }
+        } catch {}
       }
     }
   }, [isMapLoaded, hasDeliveryPartner, deliveryBoyLat, deliveryBoyLng, deliveryBoyHeading, restaurantLat, restaurantLng, moveBikeSmoothly, order]);
@@ -1878,18 +2006,22 @@ const DeliveryTrackingMap = ({
     if (!isMapLoaded || !mapInstance.current) return;
     if (!restaurantCoords?.lat || !restaurantCoords?.lng) return;
 
-    // Hide marker once delivered/completed
-    if (isOrderDelivered) {
+    // Never detach the restaurant marker from the map (prevents "disappearing" on jitter).
+    // Just toggle visibility.
+    try {
       if (mapInstance.current._restaurantMarker) {
-        try { mapInstance.current._restaurantMarker.setMap(null) } catch {}
-        mapInstance.current._restaurantMarker = null
+        mapInstance.current._restaurantMarker.setVisible(!isOrderDelivered)
       }
-      return
-    }
+      if (restaurantCircleRef.current) {
+        restaurantCircleRef.current.setVisible(!isOrderDelivered)
+      }
+    } catch {}
 
     const lat = Number(restaurantCoords.lat)
     const lng = Number(restaurantCoords.lng)
     if (Number.isNaN(lat) || Number.isNaN(lng)) return
+
+    const effectivePos = { lat, lng }
 
     if (!mapInstance.current._restaurantMarker) {
       const restaurantHomeIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
@@ -1901,7 +2033,7 @@ const DeliveryTrackingMap = ({
       `);
 
       mapInstance.current._restaurantMarker = new window.google.maps.Marker({
-        position: { lat, lng },
+        position: effectivePos,
         map: mapInstance.current,
         icon: {
           url: restaurantHomeIconUrl,
@@ -1911,6 +2043,24 @@ const DeliveryTrackingMap = ({
         },
         zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
       });
+      // Also add a subtle ring so restaurant is visible even if bike overlaps exactly.
+      try {
+        if (restaurantCircleRef.current) {
+          restaurantCircleRef.current.setMap(null)
+          restaurantCircleRef.current = null
+        }
+        restaurantCircleRef.current = new window.google.maps.Circle({
+          strokeColor: "#22c55e",
+          strokeOpacity: 0.9,
+          strokeWeight: 3,
+          fillColor: "#22c55e",
+          fillOpacity: 0.08,
+          map: mapInstance.current,
+          center: effectivePos,
+          radius: 55,
+          zIndex: window.google.maps.Marker.MAX_ZINDEX
+        })
+      } catch {}
       return
     }
 
@@ -1923,7 +2073,24 @@ const DeliveryTrackingMap = ({
       // ignore
     }
 
-    mapInstance.current._restaurantMarker.setPosition({ lat, lng });
+    mapInstance.current._restaurantMarker.setPosition(effectivePos);
+    try {
+      if (restaurantCircleRef.current) {
+        restaurantCircleRef.current.setCenter(effectivePos)
+      } else {
+        restaurantCircleRef.current = new window.google.maps.Circle({
+          strokeColor: "#22c55e",
+          strokeOpacity: 0.9,
+          strokeWeight: 3,
+          fillColor: "#22c55e",
+          fillOpacity: 0.08,
+          map: mapInstance.current,
+          center: effectivePos,
+          radius: 55,
+          zIndex: window.google.maps.Marker.MAX_ZINDEX
+        })
+      }
+    } catch {}
   }, [isMapLoaded, isOrderDelivered, restaurantCoords?.lat, restaurantCoords?.lng]);
 
   // Periodic check to ensure bike marker is created if it should be visible
@@ -2003,6 +2170,48 @@ const DeliveryTrackingMap = ({
         </div>
       )}
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Recenter / Follow button (Zomato-like) */}
+      {isMapLoaded && (
+        <button
+          type="button"
+          onClick={() => {
+            followRiderRef.current = true;
+            setFollowRiderUI(true);
+            userHasInteractedRef.current = false;
+            try {
+              const p = bikeMarkerRef.current?.getPosition?.();
+              if (p && mapInstance.current) {
+                isProgrammaticChangeRef.current = true;
+                mapInstance.current.panTo({ lat: p.lat(), lng: p.lng() });
+                const z = mapInstance.current.getZoom();
+                if (typeof z === "number" && z < 16) mapInstance.current.setZoom(16);
+                setTimeout(() => {
+                  isProgrammaticChangeRef.current = false;
+                }, 200);
+              }
+            } catch {
+              // ignore
+            }
+          }}
+          style={{
+            position: "absolute",
+            right: 12,
+            bottom: 12,
+            zIndex: 50,
+            background: followRiderUI ? "#16a34a" : "#ffffff",
+            color: followRiderUI ? "#ffffff" : "#111827",
+            border: followRiderUI ? "1px solid rgba(0,0,0,0.05)" : "1px solid rgba(17,24,39,0.14)",
+            boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+            borderRadius: 14,
+            padding: "10px 12px",
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          {followRiderUI ? "Following" : "Recenter"}
+        </button>
+      )}
     </div>
   );
 };

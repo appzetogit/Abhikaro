@@ -515,6 +515,43 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
       throw new Error(`Failed to create Razorpay refund: ${razorpayError.message}`);
     }
 
+    // Add entry to user's wallet transaction history (without affecting wallet balance)
+    // Online refunds are settled by gateway; we track them as Pending with ETA.
+    try {
+      const userWallet = await UserWallet.findOrCreateByUserId(order.userId);
+
+      const alreadyExists = userWallet.transactions.find((t) => {
+        const sameOrder = t.orderId && t.orderId.toString() === order._id.toString();
+        const sameType = t.type === 'refund';
+        const sameGateway = (t.paymentGateway || '') === 'razorpay';
+        const sameRefundId = (t.paymentId || '') === razorpayRefund.id;
+        return sameOrder && sameType && (sameRefundId || sameGateway);
+      });
+
+      if (!alreadyExists) {
+        const expectedAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        userWallet.addTransaction({
+          amount: refundAmount,
+          type: 'refund',
+          status: 'Pending',
+          description: `Online payment refund initiated for order ${settlement.orderNumber}`,
+          orderId: order._id,
+          paymentGateway: 'razorpay',
+          paymentId: razorpayRefund.id,
+          metadata: {
+            settlementExpectedAt: expectedAt.toISOString(),
+            settlementText: '24 hours me account me settle ho jayega',
+            refundId: razorpayRefund.id,
+            razorpayPaymentId: order.payment.razorpayPaymentId
+          }
+        });
+        await userWallet.save();
+      }
+    } catch (walletHistoryErr) {
+      // Non-blocking: refund initiated successfully; history entry best-effort only
+      console.warn('⚠️ Failed to write user refund history (non-blocking):', walletHistoryErr?.message || walletHistoryErr);
+    }
+
     // Update Payment model with refund details
     const payment = await Payment.findOne({ 
       orderId: order._id,
@@ -591,7 +628,7 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
       refundId: razorpayRefund.id,
       refundAmount: refundAmount,
       razorpayRefund: razorpayRefund,
-      message: `Refund of ₹${refundAmount} initiated successfully. Amount will be credited to customer's account within 3-5 working days.`
+      message: `Refund of ₹${refundAmount} initiated successfully. Amount will be credited to customer's account within 24 hours.`
     };
   } catch (error) {
     console.error('Error processing Razorpay refund:', error);
