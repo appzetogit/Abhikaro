@@ -152,7 +152,36 @@ const DeliveryTrackingMap = ({
   const lastRouteRequestRef = useRef({ start: null, end: null, timestamp: 0 });
   const isMountedRef = useRef(true); // Track if component is mounted
 
-  const backendUrl = API_BASE_URL.replace('/api', '');
+  // Socket connection can be tricky in production depending on reverse-proxy rules.
+  // We'll try a small set of candidate (origin, path) combinations to make sure
+  // live rider marker works both locally and on the deployed server.
+  const socketCandidates = useMemo(() => {
+    try {
+      // Relative API base (e.g. "/api") => same origin, but socket may be proxied either at
+      // "/socket.io" (root) or "/api/socket.io" (API-prefixed).
+      if (API_BASE_URL.startsWith("/")) {
+        return [
+          { url: window.location.origin, path: "/socket.io" },
+          { url: window.location.origin, path: "/api/socket.io" },
+        ]
+      }
+
+      // Absolute API base (e.g. "https://example.com/api")
+      const u = new URL(API_BASE_URL)
+      const origin = `${u.protocol}//${u.host}`
+      const basePath = String(u.pathname || "").replace(/\/api\/?$/i, "")
+      const withBase = (p) => (basePath ? `${basePath}${p}` : p)
+      return [
+        { url: origin, path: withBase("/socket.io") },
+        { url: origin, path: withBase("/api/socket.io") },
+        { url: origin, path: "/socket.io" },
+      ]
+    } catch {
+      // Last resort: same origin default path
+      return [{ url: window.location.origin, path: "/socket.io" }]
+    }
+  }, [])
+  const socketCandidateIdxRef = useRef(0)
 
   const effectiveTrackingIds = useMemo(() => {
     const ids = Array.isArray(trackingRoomIds) && trackingRoomIds.length > 0
@@ -992,13 +1021,23 @@ const DeliveryTrackingMap = ({
   useEffect(() => {
     if (!orderId) return;
 
-    socketRef.current = io(backendUrl, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 500,
-      reconnectionAttempts: 5,
-      timeout: 5000
-    });
+    const connectWithCandidate = (idx) => {
+      const c = socketCandidates[idx]
+      if (!c) return null
+      socketCandidateIdxRef.current = idx
+      console.log("🔌 Connecting socket:", { url: c.url, path: c.path })
+      return io(c.url, {
+        path: c.path,
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 500,
+        reconnectionAttempts: 5,
+        timeout: 5000
+      })
+    }
+
+    socketRef.current = connectWithCandidate(0)
+    if (!socketRef.current) return
 
     socketRef.current.on('connect', () => {
       console.log('✅ Socket connected for order:', orderId);
@@ -1031,6 +1070,19 @@ const DeliveryTrackingMap = ({
     socketRef.current.on('disconnect', () => {
       console.log('❌ Socket disconnected');
     });
+
+    // If socket fails to connect in production (common with reverse proxies),
+    // retry with the next candidate path.
+    socketRef.current.on('connect_error', (err) => {
+      console.warn('⚠️ Socket connect_error:', err?.message || err)
+      const nextIdx = (socketCandidateIdxRef.current || 0) + 1
+      if (nextIdx >= socketCandidates.length) return
+      try {
+        socketRef.current?.removeAllListeners?.()
+        socketRef.current?.disconnect?.()
+      } catch {}
+      socketRef.current = connectWithCandidate(nextIdx)
+    })
 
     const handleLocationReceive = (data) => {
       console.log('📍📍📍 Received REAL-TIME location update via socket:', data);
@@ -1228,7 +1280,7 @@ const DeliveryTrackingMap = ({
         strictPolylineControllerRef.current.cancel();
       }
     };
-  }, [orderId, backendUrl, moveBikeSmoothly, effectiveTrackingIds]);
+  }, [orderId, moveBikeSmoothly, effectiveTrackingIds, socketCandidates]);
 
   // Initialize Google Map (only once - prevent re-initialization)
   useEffect(() => {
