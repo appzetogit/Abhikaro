@@ -1891,16 +1891,16 @@ export const confirmOrderId = asyncHandler(async (req, res) => {
             "order_status_update",
             {
               title: "Order Update",
-              message: "Your delivery partner is on the way! 🏍️",
-              status: "out_for_delivery",
+              message: "Your order is picked up! 🛵",
+              status: "picked_up",
               orderId: updatedOrder.orderId,
-              deliveryStartedAt: new Date(),
+              pickupAt: new Date(),
               estimatedDeliveryTime: routeData.duration || null,
             },
           );
 
           console.log(
-            `📢 Notified customer for order ${updatedOrder.orderId} - Delivery partner on the way`,
+            `📢 Notified customer for order ${updatedOrder.orderId} - Picked up`,
           );
         } else {
           console.warn(
@@ -1916,9 +1916,9 @@ export const confirmOrderId = asyncHandler(async (req, res) => {
     // Send push notification to user when order is out for delivery
     (async () => {
       try {
-        const { notifyUserOutForDelivery } = 
+        const { notifyUserOrderPickedUp } = 
           await import("../../fcm/services/pushNotificationService.js");
-        await notifyUserOutForDelivery(updatedOrder);
+        await notifyUserOrderPickedUp(updatedOrder);
       } catch (pushError) {
         console.error("❌ Error sending push notification:", pushError);
       }
@@ -2889,6 +2889,58 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       responseData,
     );
 
+    // Emit socket event + push notification to user (do not block response)
+    ;(async () => {
+      try {
+        const serverModule = await import("../../../server.js");
+        const getIO = serverModule.getIO;
+        const io = getIO ? getIO() : null;
+
+        if (io) {
+          const rooms = [
+            orderMongoId?.toString?.() || orderMongoId,
+            updatedOrder?._id?.toString?.(),
+            updatedOrder?.orderId,
+            orderIdForLog,
+            req?.params?.orderId,
+          ]
+            .filter(Boolean)
+            .map(String);
+
+          // emit to all known rooms for compatibility with different clients
+          rooms.forEach((rid) => {
+            io.to(`order:${rid}`).emit("order_status_update", {
+              title: "Order Update",
+              message: "Your order has been delivered. 🎉",
+              status: "delivered",
+              orderId: updatedOrder?.orderId || orderIdForLog || rid,
+              orderMongoId: updatedOrder?._id?.toString?.() || orderMongoId || null,
+              deliveredAt: updatedOrder?.deliveredAt || new Date(),
+            });
+          });
+
+          console.log(
+            `📢 Notified customer for order ${updatedOrder?.orderId || orderIdForLog} - Delivered (rooms: ${rooms.length})`,
+          );
+        }
+      } catch (e) {
+        console.warn("⚠️ Failed to emit delivered socket event:", e?.message || e);
+      }
+    })();
+
+    ;(async () => {
+      try {
+        const { notifyUserOrderDelivered } = await import(
+          "../../fcm/services/pushNotificationService.js"
+        );
+        if (notifyUserOrderDelivered) {
+          await notifyUserOrderDelivered(updatedOrder);
+        }
+      } catch (e) {
+        console.warn("⚠️ Failed to send delivered push:", e?.message || e);
+      }
+    })();
+
     // Handle notifications asynchronously (don't block response)
     const orderIdForNotification = orderMongoId?.toString
       ? orderMongoId.toString()
@@ -2910,11 +2962,11 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       // Notify user about delivery completion
       (async () => {
         try {
-          const { notifyUserOrderUpdate } =
-            await import("../../order/services/userNotificationService.js");
-          if (notifyUserOrderUpdate) {
-            await notifyUserOrderUpdate(orderIdForNotification, "delivered");
-          }
+          // Legacy hook; file may not exist in some deployments. Keep in try/catch.
+          const { notifyUserOrderUpdate } = await import(
+            "../../order/services/userNotificationService.js"
+          );
+          if (notifyUserOrderUpdate) await notifyUserOrderUpdate(orderIdForNotification, "delivered");
         } catch (notifError) {
           console.error("Error sending user notification:", notifError);
         }

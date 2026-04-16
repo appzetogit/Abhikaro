@@ -20,6 +20,7 @@ import { X, ChevronDown } from "lucide-react"
  * @param {boolean} backdropBlocksInteraction - Whether backdrop blocks pointer events (default: true)
  * @param {boolean} preventScroll - Prevent content scrolling (default: false)
  * @param {boolean} allowSwipeDown - Allow swipe down to close (default: true)
+ * @param {"collapse"|"close"} handleClickAction - Handle click behavior (default: "collapse")
  */
 export default function BottomPopup({
   isOpen,
@@ -37,6 +38,7 @@ export default function BottomPopup({
   backdropBlocksInteraction = true, // Whether backdrop blocks pointer events
   preventScroll = false, // Prevent content scrolling
   allowSwipeDown = true, // Allow swipe down to close
+  handleClickAction = "collapse", // "collapse" | "close"
   slideDownOffset = 0 // Optional: translate popup down by pixels (e.g. when chat overlay opens)
 }) {
   const popupRef = useRef(null)
@@ -305,10 +307,15 @@ export default function BottomPopup({
                 type="button"
                 className="flex flex-col items-center pt-3 pb-2 cursor-pointer select-none bg-white sticky top-0 z-10 w-full border-0 outline-none p-0"
                 onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+
+                  if (handleClickAction === "close") {
+                    handleClose()
+                    return
+                  }
+
                   if (allowSwipeDown) {
-                    // Handle clicked
-                    e.stopPropagation()
-                    e.preventDefault()
                     handleCollapseToggle(e)
                   } else {
                     // If swipe down is disabled, close on handle click
@@ -321,10 +328,15 @@ export default function BottomPopup({
                 }}
                 onTouchEnd={(e) => {
                   // Handle touch end for mobile collapse toggle or close
+                  e.stopPropagation()
+                  e.preventDefault()
+
+                  if (handleClickAction === "close") {
+                    handleClose()
+                    return
+                  }
+
                   if (allowSwipeDown) {
-                    // Handle touched
-                    e.stopPropagation()
-                    e.preventDefault()
                     handleCollapseToggle(e)
                   } else {
                     handleClose()

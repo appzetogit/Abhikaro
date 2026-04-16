@@ -113,7 +113,6 @@ export default function Cart() {
   const [orderProgress, setOrderProgress] = useState(0)
   const [showOrderSuccess, setShowOrderSuccess] = useState(false)
   const [placedOrderId, setPlacedOrderId] = useState(null)
-  const [advertiseBanner, setAdvertiseBanner] = useState(null)
 
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(-10)
 
@@ -126,22 +125,7 @@ export default function Cart() {
     }
   }, [showOrderSuccess])
 
-  // Load advertise banner for success screen (admin-controlled)
-  useEffect(() => {
-    const loadBanner = async () => {
-      if (!showOrderSuccess) return
-      try {
-        const res = await api.get("/advertise-banners/public", {
-          params: { placement: "order_placed" },
-        })
-        const banner = res?.data?.data?.banner || null
-        setAdvertiseBanner(banner?.imageUrl ? banner : null)
-      } catch {
-        setAdvertiseBanner(null)
-      }
-    }
-    loadBanner()
-  }, [showOrderSuccess])
+  // Note: order placed success screen no longer shows advertise banners.
   // Checkout-only contact draft:
   // - Initialize from sessionStorage if present
   // - Otherwise initialize once from profile (if fields empty)
@@ -2745,21 +2729,6 @@ export default function Cart() {
                 {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Delivery Address") : "Delivery Address"}
               </p>
             </div>
-
-            {/* Advertise Banner (Admin Controlled) */}
-            {advertiseBanner?.imageUrl && (
-              <div
-                className="mt-8 w-full max-w-md"
-                style={{ animation: 'slideUp 0.5s ease-out 0.7s both' }}
-              >
-                <img
-                  src={advertiseBanner.imageUrl}
-                  alt="Offer banner"
-                  className="w-full rounded-2xl shadow-lg object-cover"
-                  loading="lazy"
-                />
-              </div>
-            )}
 
             {/* Order Placed Message */}
             <div

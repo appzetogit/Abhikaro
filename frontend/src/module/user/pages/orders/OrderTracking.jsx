@@ -31,8 +31,7 @@ import { useOrders } from "../../context/OrdersContext"
 import { useProfile } from "../../context/ProfileContext"
 import { useSharedLocation } from "@/lib/context/LocationContext"
 import DeliveryTrackingMap from "../../components/DeliveryTrackingMap"
-import { orderAPI, restaurantAPI } from "@/lib/api"
-import circleIcon from "@/assets/circleicon.png"
+import api, { orderAPI, restaurantAPI } from "@/lib/api"
 import { preloadGoogleMaps } from "@/utils/mapsPreload"
 
 // Animated checkmark component
@@ -212,8 +211,12 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
   };
 
   const restaurantCoords = getRestaurantCoords();
-  const customerCoords = getCustomerCoords();
   const userLiveCoords = getUserLiveCoords();
+  // IMPORTANT:
+  // - Map should not disappear/re-mount while data is refreshing.
+  // - If order.address.coordinates aren't available yet, fall back to user's live location
+  //   so the map still renders and doesn't show a blank block.
+  const customerCoords = getCustomerCoords() || userLiveCoords || null;
 
   const deliveryPartnerName =
     order?.deliveryPartner?.name ||
@@ -242,17 +245,6 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     name: order.deliveryPartner.name || 'Delivery Partner',
     avatar: order.deliveryPartner.avatar || null
   } : null;
-
-  if (!isVisible || !orderId || !order || !customerCoords) {
-    return (
-      <motion.div
-        className="relative h-64 bg-gradient-to-b from-gray-100 to-gray-200"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5 }}
-      />
-    );
-  }
 
   return (
     <motion.div
@@ -284,6 +276,11 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
         deliveryBoyData={deliveryBoyData}
         order={order}
       />
+
+      {/* Lightweight loading overlay (keeps map mounted, prevents "blank" experience) */}
+      {!customerCoords && (
+        <div className="absolute inset-0 bg-gradient-to-b from-gray-100 to-gray-200 animate-pulse" />
+      )}
     </motion.div>
   );
 }
@@ -346,6 +343,7 @@ export default function OrderTracking() {
   const [instructionsText, setInstructionsText] = useState("")
   const [isSavingInstructions, setIsSavingInstructions] = useState(false)
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false)
+  const [advertiseBanner, setAdvertiseBanner] = useState(null)
 
   const defaultAddress = getDefaultAddress()
 
@@ -367,6 +365,22 @@ export default function OrderTracking() {
     }
   }, [])
 
+  // Load advertise banner for tracking screen (admin-controlled)
+  useEffect(() => {
+    const loadBanner = async () => {
+      try {
+        const res = await api.get("/advertise-banners/public", {
+          params: { placement: "order_placed" },
+        })
+        const banner = res?.data?.data?.banner || null
+        setAdvertiseBanner(banner?.imageUrl ? banner : null)
+      } catch {
+        setAdvertiseBanner(null)
+      }
+    }
+    loadBanner()
+  }, [])
+
   useEffect(() => {
     orderStatusRef.current = orderStatus
   }, [orderStatus])
@@ -383,6 +397,9 @@ export default function OrderTracking() {
     const rawStatus = normalize(o?.status)
     const deliveryStatus = normalize(o?.deliveryState?.status)
     const currentPhase = normalize(o?.deliveryState?.currentPhase)
+    const orderIdConfirmedAt = o?.deliveryState?.orderIdConfirmedAt
+      ? new Date(o.deliveryState.orderIdConfirmedAt)
+      : null
 
     const trackingDelivered =
       o?.tracking?.delivered?.status === true || o?.tracking?.delivered === true
@@ -409,15 +426,7 @@ export default function OrderTracking() {
       return { uiStatus: "delivered", estimatedTimeOverride: 0 }
     }
 
-    // Delivery phases (these are often the most reliable realtime signals)
-    if (["en_route_to_delivery", "at_delivery"].includes(currentPhase)) {
-      return { uiStatus: "on_way", estimatedTimeOverride: null }
-    }
-    if (["en_route_to_pickup", "at_pickup"].includes(currentPhase)) {
-      return { uiStatus: "pickup", estimatedTimeOverride: null }
-    }
-
-    // Common order status variants from backend
+    // Common order status variants from backend (restaurant side truth)
     if (
       ["preparing", "processing", "cooking", "confirmed", "accepted"].includes(
         rawStatus,
@@ -428,6 +437,16 @@ export default function OrderTracking() {
 
     if (["ready", "packed"].includes(rawStatus)) {
       return { uiStatus: "pickup", estimatedTimeOverride: null }
+    }
+
+    // Delivery phases (realtime signals) - but never claim "ready" unless restaurant marked ready/packed.
+    if (["en_route_to_delivery", "at_delivery"].includes(currentPhase)) {
+      return { uiStatus: "on_way", estimatedTimeOverride: null }
+    }
+    if (["en_route_to_pickup", "at_pickup"].includes(currentPhase)) {
+      // If restaurant hasn't marked READY yet, keep showing Preparing.
+      // Rider may still be heading to restaurant early, but the food isn't ready.
+      return { uiStatus: "preparing", estimatedTimeOverride: null }
     }
 
     if (
@@ -441,6 +460,18 @@ export default function OrderTracking() {
         "dispatched",
       ].includes(rawStatus)
     ) {
+      // Show a short "picked up" state right after rider confirms pickup,
+      // then switch to regular "on the way" view.
+      if (
+        currentPhase === "en_route_to_delivery" &&
+        orderIdConfirmedAt &&
+        !Number.isNaN(orderIdConfirmedAt.getTime())
+      ) {
+        const msSincePickup = Date.now() - orderIdConfirmedAt.getTime()
+        if (msSincePickup >= 0 && msSincePickup < 5 * 60 * 1000) {
+          return { uiStatus: "picked_up", estimatedTimeOverride: null }
+        }
+      }
       return { uiStatus: "on_way", estimatedTimeOverride: null }
     }
 
@@ -956,6 +987,7 @@ export default function OrderTracking() {
       const s = String(status || "").trim().toLowerCase().replace(/\s+/g, "_")
       if (["cancelled", "canceled"].includes(s)) setOrderStatus("cancelled")
       else if (["delivered", "completed"].includes(s)) setOrderStatus("delivered")
+      else if (["picked_up", "pickedup"].includes(s)) setOrderStatus("picked_up")
       else if (["ready", "packed"].includes(s)) setOrderStatus("pickup")
       else if (
         [
@@ -963,8 +995,6 @@ export default function OrderTracking() {
           "outfordelivery",
           "on_way",
           "on_the_way",
-          "picked_up",
-          "pickedup",
           "dispatched",
         ].includes(s)
       ) {
@@ -1465,8 +1495,16 @@ export default function OrderTracking() {
       subtitle: estimatedTime !== null && estimatedTime > 0 ? `Arriving in ${estimatedTime} mins` : "On the way",
       color: "bg-green-700"
     },
+    picked_up: {
+      title: "Order picked up",
+      subtitle:
+        estimatedTime !== null && estimatedTime > 0
+          ? `Arriving in ${estimatedTime} mins`
+          : "Your delivery partner is on the way",
+      color: "bg-green-700",
+    },
     on_way: {
-      title: "On the way",
+      title: "Food On the way",
       subtitle:
         estimatedTime !== null && estimatedTime > 0
           ? `Arriving in ${estimatedTime} mins`
@@ -1629,76 +1667,6 @@ export default function OrderTracking() {
 
       {/* Scrollable Content */}
       <div className="max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 space-y-4 md:space-y-6 pb-24 md:pb-32">
-        {/* Food Cooking Status - Show until delivery partner accepts pickup */}
-        {(() => {
-          const isDelivered =
-            orderStatus === 'delivered' ||
-            order?.status === 'delivered' ||
-            order?.status === 'completed' ||
-            order?.deliveryState?.status === 'delivered' ||
-            order?.deliveryState?.currentPhase === 'completed' ||
-            order?.tracking?.delivered?.status === true ||
-            order?.tracking?.delivered === true
-
-          // If order is already delivered/completed, hide cooking banner.
-          if (isDelivered) {
-            return null
-          }
-
-          const normalize = (v) =>
-            String(v || "")
-              .trim()
-              .toLowerCase()
-              .replace(/\s+/g, "_")
-
-          const raw = normalize(order?.status)
-          const deliveryStatus = normalize(order?.deliveryState?.status)
-          const phase = normalize(order?.deliveryState?.currentPhase)
-
-          // Once order moves beyond cooking/prep (ready / pickup assigned / on-way), hide cooking card.
-          const hasMovedForward =
-            ["ready", "packed"].includes(raw) ||
-            [
-              "out_for_delivery",
-              "outfordelivery",
-              "on_way",
-              "on_the_way",
-              "picked_up",
-              "pickedup",
-              "dispatched",
-            ].includes(raw) ||
-            order?.tracking?.outForDelivery?.status === true ||
-            order?.tracking?.out_for_delivery?.status === true ||
-            deliveryStatus === "accepted" ||
-            ["en_route_to_pickup", "at_pickup", "en_route_to_delivery", "at_delivery"].includes(phase)
-
-          // Show "Food is Cooking" only while truly in prep
-          if (!hasMovedForward && ["placed", "pending", "confirmed", "preparing", "processing", "cooking", ""].includes(raw)) {
-            return (
-              <motion.div
-                className="bg-white rounded-xl p-4 shadow-sm"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center overflow-hidden">
-                    <img
-                      src={circleIcon}
-                      alt="Food cooking"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <p className="font-semibold text-gray-900">Food is Cooking</p>
-                </div>
-              </motion.div>
-            )
-          }
-
-          // Don't show card if delivery partner has accepted pickup
-          return null
-        })()}
-
         {/* Delivery Partner Safety */}
         <motion.button
           className="w-full bg-white rounded-xl p-4 shadow-sm flex items-center gap-3"
@@ -1714,17 +1682,22 @@ export default function OrderTracking() {
           <ChevronRight className="w-5 h-5 text-gray-400" />
         </motion.button>
 
-        {/* Delivery Details Banner */}
-        <motion.div
-          className="bg-yellow-50 rounded-xl p-4 text-center"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.65 }}
-        >
-          <p className="text-yellow-800 font-medium">
-            All your delivery details in one place 👇
-          </p>
-        </motion.div>
+        {/* Advertise Banner (Admin Controlled) */}
+        {advertiseBanner?.imageUrl && (
+          <motion.div
+            className="w-full"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.65 }}
+          >
+            <img
+              src={advertiseBanner.imageUrl}
+              alt="Offer banner"
+              className="w-full rounded-xl shadow-sm object-cover"
+              loading="lazy"
+            />
+          </motion.div>
+        )}
 
         {/* Contact & Address Section */}
         <motion.div

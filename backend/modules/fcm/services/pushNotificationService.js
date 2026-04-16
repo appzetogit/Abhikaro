@@ -144,6 +144,33 @@ export async function notifyUserOutForDelivery(order) {
 }
 
 /**
+ * Send notification to user when order is picked up by delivery partner
+ */
+export async function notifyUserOrderPickedUp(order) {
+  try {
+    const userId = order.userId?._id || order.userId;
+    if (!userId) {
+      console.warn('⚠️ [Push Notification] Cannot notify user: order has no userId');
+      return;
+    }
+
+    const oid = order.orderId || order._id.toString();
+    await sendPushNotification(userId.toString(), 'user', {
+      title: 'Order picked up! 🛵',
+      body: `Your order #${order.orderId} has been picked up by your delivery partner.`,
+      data: {
+        type: 'picked_up',
+        orderId: oid,
+        status: 'picked_up',
+        tag: `picked_up_${oid}`,
+      }
+    });
+  } catch (error) {
+    console.error('❌ [Push Notification] Error notifying user about pickup:', error);
+  }
+}
+
+/**
  * Send notification to user when order is delivered
  */
 export async function notifyUserOrderDelivered(order) {
