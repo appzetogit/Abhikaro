@@ -6504,7 +6504,10 @@ export default function DeliveryHome() {
             const data = snapshot.val();
             const lat = data.lat;
             const lng = data.lng;
-            const heading = data.heading || null;
+            // Prefer heading from backend/Firebase if present, otherwise calculate from movement.
+            let heading =
+              (data.heading !== null && data.heading !== undefined ? data.heading : null) ??
+              (data.bearing !== null && data.bearing !== undefined ? data.bearing : null);
 
             if (typeof lat === 'number' && typeof lng === 'number' &&
               !isNaN(lat) && !isNaN(lng) &&
@@ -6516,7 +6519,17 @@ export default function DeliveryHome() {
                 const position = { lat, lng };
                 bikeMarkerRef.current.setPosition(position);
 
-                // Update heading if available
+                // If heading isn't provided, calculate it from last known location
+                if ((heading === null || heading === undefined) && lastLocationRef.current) {
+                  try {
+                    const [prevLat, prevLng] = lastLocationRef.current;
+                    heading = calculateHeading(prevLat, prevLng, lat, lng);
+                  } catch {
+                    // ignore
+                  }
+                }
+
+                // Update heading if available (including calculated fallback)
                 if (heading !== null && heading !== undefined) {
                   getRotatedBikeIcon(heading).then(rotatedIconUrl => {
                     if (bikeMarkerRef.current) {
@@ -9212,6 +9225,9 @@ export default function DeliveryHome() {
 
   // Cache for rotated icons to avoid recreating them
   const rotatedIconCache = useRef(new Map());
+  // Prevent unnecessary setIcon() churn (reduces flicker)
+  const lastAppliedHeadingStepRef = useRef(null);
+  const lastIconUpdateTsRef = useRef(0);
 
   // Function to rotate bike logo image based on heading
   const getRotatedBikeIcon = (heading = 0) => {
@@ -9281,10 +9297,14 @@ export default function DeliveryHome() {
     const position = { lat: latitude, lng: longitude };
     const map = window.deliveryMapInstance;
 
-    // Get rotated icon URL
-    const rotatedIconUrl = await getRotatedBikeIcon(heading || 0);
+    // Normalize + snap heading to a small step (matches getRotatedBikeIcon caching)
+    const rawHeading = heading !== null && heading !== undefined ? Number(heading) : 0;
+    const normalizedHeading = Number.isNaN(rawHeading) ? 0 : ((rawHeading % 360) + 360) % 360;
+    const headingStep = Math.round(normalizedHeading / 5) * 5;
 
     if (!bikeMarkerRef.current) {
+      // Get rotated icon URL (first render)
+      const rotatedIconUrl = await getRotatedBikeIcon(headingStep);
       // Create bike marker with rotated icon - exact position
       const bikeIcon = {
         url: rotatedIconUrl,
@@ -9300,6 +9320,8 @@ export default function DeliveryHome() {
         animation: window.google.maps.Animation.DROP, // Drop animation on first appearance
         zIndex: 1000 // High z-index to ensure it's above other markers
       });
+      lastAppliedHeadingStepRef.current = headingStep;
+      lastIconUpdateTsRef.current = Date.now();
 
 
       // Center map on bike location initially - preserve current zoom if user has zoomed in
@@ -9338,15 +9360,25 @@ export default function DeliveryHome() {
         return; // Don't update if coordinates are invalid
       }
 
-      // Update icon with rotation for smooth movement
-      const currentHeading = heading !== null && heading !== undefined ? heading : 0;
-      const rotatedIconUrl = await getRotatedBikeIcon(currentHeading);
-      const bikeIcon = {
-        url: rotatedIconUrl,
-        scaledSize: new window.google.maps.Size(60, 60),
-        anchor: new window.google.maps.Point(30, 30)
-      };
-      bikeMarkerRef.current.setIcon(bikeIcon);
+      // Update icon only when needed (step changed) and not too frequently (throttle)
+      const nowTs = Date.now();
+      const shouldUpdateIcon =
+        lastAppliedHeadingStepRef.current === null ||
+        headingStep !== lastAppliedHeadingStepRef.current;
+
+      // Throttle to avoid visible flicker on low-end devices
+      const throttleMs = 250;
+      if (shouldUpdateIcon && nowTs - (lastIconUpdateTsRef.current || 0) >= throttleMs) {
+        const rotatedIconUrl = await getRotatedBikeIcon(headingStep);
+        const bikeIcon = {
+          url: rotatedIconUrl,
+          scaledSize: new window.google.maps.Size(60, 60),
+          anchor: new window.google.maps.Point(30, 30)
+        };
+        bikeMarkerRef.current.setIcon(bikeIcon);
+        lastAppliedHeadingStepRef.current = headingStep;
+        lastIconUpdateTsRef.current = nowTs;
+      }
 
       // Ensure z-index is high
       bikeMarkerRef.current.setZIndex(1000);

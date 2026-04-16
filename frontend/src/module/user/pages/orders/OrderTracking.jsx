@@ -29,7 +29,6 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useOrders } from "../../context/OrdersContext"
 import { useProfile } from "../../context/ProfileContext"
-import { useSharedLocation } from "@/lib/context/LocationContext"
 import DeliveryTrackingMap from "../../components/DeliveryTrackingMap"
 import api, { orderAPI, restaurantAPI } from "@/lib/api"
 import { preloadGoogleMaps } from "@/utils/mapsPreload"
@@ -69,10 +68,8 @@ const AnimatedCheckmark = ({ delay = 0 }) => (
   </motion.svg>
 )
 
-// Real Delivery Map Component with User Live Location
+// Real Delivery Map Component (NO user live-location tracking on this screen)
 const DeliveryMap = ({ orderId, order, isVisible }) => {
-  const { location: userLocation } = useSharedLocation() // Get user's live location
-
   // Get coordinates from order or use defaults (Indore)
   const getRestaurantCoords = () => {
     const isValidLatLng = (lat, lng) => (
@@ -199,24 +196,10 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     return null;
   };
 
-  // Get user's live location coordinates
-  const getUserLiveCoords = () => {
-    if (userLocation?.latitude && userLocation?.longitude) {
-      return {
-        lat: userLocation.latitude,
-        lng: userLocation.longitude
-      };
-    }
-    return null;
-  };
-
   const restaurantCoords = getRestaurantCoords();
-  const userLiveCoords = getUserLiveCoords();
-  // IMPORTANT:
-  // - Map should not disappear/re-mount while data is refreshing.
-  // - If order.address.coordinates aren't available yet, fall back to user's live location
-  //   so the map still renders and doesn't show a blank block.
-  const customerCoords = getCustomerCoords() || userLiveCoords || null;
+  // Show ONLY the order's delivery coordinates (where the order was placed).
+  // No live tracking of the user's device location on this screen.
+  const customerCoords = getCustomerCoords() || null;
 
   const deliveryPartnerName =
     order?.deliveryPartner?.name ||
@@ -271,8 +254,6 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
         trackingRoomIds={[orderId, order?._id, order?.orderId].filter(Boolean)}
         restaurantCoords={restaurantCoords}
         customerCoords={customerCoords}
-        userLiveCoords={userLiveCoords}
-        userLocationAccuracy={userLocation?.accuracy}
         deliveryBoyData={deliveryBoyData}
         order={order}
       />

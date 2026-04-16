@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect, useState } from 'react'
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api'
 import { motion } from 'framer-motion'
 import { getGoogleMapsApiKey } from '@/lib/utils/googleMapsApiKey'
+import { calculateBearingFromLocations, lerpBearing } from '../utils/bearingCalculation'
 
 /**
  * GoogleMapsTracking Component
@@ -54,7 +55,10 @@ export default function GoogleMapsTracking({
   // Advanced Marker refs
   const customerMarkerRef = useRef(null)
   const deliveryMarkerRef = useRef(null)
+  const deliveryMarkerImgRef = useRef(null)
   const sellerMarkersRef = useRef([])
+  const lastDeliveryPosRef = useRef(null)
+  const lastDeliveryBearingRef = useRef(0)
 
   // Fetch API key from backend on mount
   useEffect(() => {
@@ -218,7 +222,8 @@ export default function GoogleMapsTracking({
   const createAdvancedMarker = useCallback((position, htmlContent, title, map) => {
     if (!window.google?.maps?.marker?.AdvancedMarkerElement) return null
     const pin = document.createElement('div')
-    pin.innerHTML = htmlContent
+    if (htmlContent instanceof HTMLElement) pin.appendChild(htmlContent)
+    else pin.innerHTML = htmlContent
     const marker = new window.google.maps.marker.AdvancedMarkerElement({
       position,
       map,
@@ -411,14 +416,63 @@ export default function GoogleMapsTracking({
       img.src = getDeliveryIconUrl()
       img.style.width = '60px'
       img.style.height = '60px'
+      img.style.transformOrigin = '50% 50%'
+      img.style.transition = 'transform 220ms linear'
+      img.style.willChange = 'transform'
+      deliveryMarkerImgRef.current = img
+
+      // Start facing "north"
+      img.style.transform = `rotate(${lastDeliveryBearingRef.current}deg)`
+
+      const wrapper = document.createElement('div')
+      wrapper.style.width = '60px'
+      wrapper.style.height = '60px'
+      wrapper.style.display = 'flex'
+      wrapper.style.alignItems = 'center'
+      wrapper.style.justifyContent = 'center'
+      wrapper.appendChild(img)
+
       deliveryMarkerRef.current = createAdvancedMarker(
         animatedDeliveryLocation,
-        img.outerHTML,
+        wrapper,
         'Delivery Partner',
         mapRef.current
       )
     }
   }, [isLoaded, animatedDeliveryLocation, createAdvancedMarker])
+
+  // Rotate delivery marker to face direction of travel (delivery app)
+  useEffect(() => {
+    if (!animatedDeliveryLocation) return
+    const img = deliveryMarkerImgRef.current
+    if (!img) return
+
+    const prev = lastDeliveryPosRef.current
+    const next = animatedDeliveryLocation
+
+    // Skip bearing updates if we don't have a previous point yet
+    if (!prev) {
+      lastDeliveryPosRef.current = next
+      return
+    }
+
+    // Ignore tiny moves (prevents jittery rotations)
+    const dLat = next.lat - prev.lat
+    const dLng = next.lng - prev.lng
+    const approxMeters = Math.sqrt(dLat * dLat + dLng * dLng) * 111000
+    if (approxMeters < 4) {
+      return
+    }
+
+    const target = calculateBearingFromLocations(prev, next)
+    const current = lastDeliveryBearingRef.current
+    // Smooth wrap-around
+    const smoothed = lerpBearing(current, target, 0.35)
+    lastDeliveryBearingRef.current = smoothed
+    lastDeliveryPosRef.current = next
+
+    img.style.transform = `rotate(${smoothed}deg)`
+  }, [animatedDeliveryLocation])
 
   // Cleanup markers on unmount
   useEffect(() => {

@@ -204,7 +204,7 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
       /* ignore */
     }
     const ordersWithPaymentMethod = orders.map((o) => {
-      let paymentMethod = o.payment?.method ?? "razorpay";
+      let paymentMethod = o.payment?.method ?? "";
       if (paymentMethod !== "cash" && codOrderIds.has(o._id?.toString()))
         paymentMethod = "cash";
 

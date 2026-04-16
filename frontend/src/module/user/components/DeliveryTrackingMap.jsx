@@ -41,6 +41,7 @@ const DeliveryTrackingMap = ({
   const userLocationMarkerRef = useRef(null);
   const userLocationCircleRef = useRef(null);
   const restaurantCircleRef = useRef(null);
+  const customerCircleRef = useRef(null);
   const mapInstance = useRef(null);
   const socketRef = useRef(null);
   const directionsServiceRef = useRef(null);
@@ -260,9 +261,31 @@ const DeliveryTrackingMap = ({
         const loc = { lat: Number(data.lat), lng: Number(data.lng), heading: Number(data.heading || 0) };
         setCurrentLocation(loc);
         setDeliveryBoyLocation(loc);
+        // Use restored location only for instant rendering after refresh/back.
+        // We still keep polling until real push updates arrive.
+        lastIncomingPosRef.current = { lat: loc.lat, lng: loc.lng };
+        lastLocationUpdateTsRef.current = Date.now();
+        if (data.ts) lastProcessedSocketTsRef.current = Number(data.ts) || 0;
       }
     } catch {}
   }, [orderId]);
+
+  // Allow using non-push ("current-location") updates for bike only when partner is actually assigned/accepted.
+  const allowPulledLocationForBike = useMemo(() => {
+    const currentPhase = order?.deliveryState?.currentPhase;
+    const deliveryStatus = order?.deliveryState?.status;
+    return (
+      deliveryStatus === 'accepted' ||
+      currentPhase === 'en_route_to_pickup' ||
+      currentPhase === 'at_pickup' ||
+      currentPhase === 'en_route_to_delivery' ||
+      currentPhase === 'at_delivery' ||
+      deliveryStatus === 'reached_pickup' ||
+      deliveryStatus === 'order_confirmed' ||
+      deliveryStatus === 'en_route_to_delivery' ||
+      String(order?.status || '').toLowerCase() === 'out_for_delivery'
+    );
+  }, [order?.deliveryState?.currentPhase, order?.deliveryState?.status, order?.status]);
 
   // Draw route using Google Maps Directions API with live updates
   // OPTIMIZED: Added caching to reduce API calls
@@ -967,7 +990,7 @@ const DeliveryTrackingMap = ({
           try {
             if (bikeMarkerRef.current) {
               bikeMarkerRef.current.setPosition({ lat, lng });
-              stableRotateBike(bearing || 0);
+              stableRotateBike(calculatedBearing || 0);
             }
           } catch {
             // ignore
@@ -1587,49 +1610,50 @@ const DeliveryTrackingMap = ({
         }
 
         // Customer pin marker hide: customerCoords used for route calculations,
-        // but we don't want a random blue pin to appear on the map.
-        if (mapInstance.current._customerMarker) {
-          mapInstance.current._customerMarker.setMap(null);
-          mapInstance.current._customerMarker = null;
-        }
+        // Customer marker (fixed): show where order was placed (NOT user's live device location)
+        try {
+          const ccLat = Number(customerCoords?.lat);
+          const ccLng = Number(customerCoords?.lng);
+          const hasCustomerCoords = !Number.isNaN(ccLat) && !Number.isNaN(ccLng);
 
-        // Add user's live location marker (blue dot) and radius circle if available
-        if (userLiveCoords && userLiveCoords.lat && userLiveCoords.lng) {
-          // Create blue dot marker for user's live location
-          userLocationMarkerRef.current = new window.google.maps.Marker({
-            position: { lat: userLiveCoords.lat, lng: userLiveCoords.lng },
-            map: mapInstance.current,
-            icon: {
-              path: window.google.maps.SymbolPath.CIRCLE,
-              scale: 12,
-              fillColor: '#4285F4', // Google blue
-              fillOpacity: 1,
-              strokeColor: '#FFFFFF',
-              strokeWeight: 3
-            },
-            zIndex: window.google.maps.Marker.MAX_ZINDEX + 2,
-            optimized: false,
-            title: "Your live location"
-          });
+          if (hasCustomerCoords && !mapInstance.current._customerMarker) {
+            mapInstance.current._customerMarker = new window.google.maps.Marker({
+              position: { lat: ccLat, lng: ccLng },
+              map: mapInstance.current,
+              icon: {
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 12,
+                fillColor: '#4285F4', // blue dot
+                fillOpacity: 1,
+                strokeColor: '#FFFFFF',
+                strokeWeight: 3
+              },
+              zIndex: window.google.maps.Marker.MAX_ZINDEX + 2,
+              optimized: false,
+              title: "Delivery location"
+            });
+          }
 
-          // Create radius circle around user's location
-          const radiusMeters = Math.max(userLocationAccuracy || 50, 20); // Minimum 20m
-          userLocationCircleRef.current = new window.google.maps.Circle({
-            strokeColor: '#4285F4',
-            strokeOpacity: 0.4,
-            strokeWeight: 2,
-            fillColor: '#4285F4',
-            fillOpacity: 0.15, // Light transparent blue
-            map: mapInstance.current,
-            center: { lat: userLiveCoords.lat, lng: userLiveCoords.lng },
-            radius: radiusMeters, // Meters
-            zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
-          });
-
-          console.log('✅ User live location marker and radius circle added:', {
-            position: userLiveCoords,
-            radius: radiusMeters
-          });
+          // Subtle radius ring (static) to make it discoverable on bright maps
+          if (hasCustomerCoords) {
+            if (customerCircleRef.current) {
+              customerCircleRef.current.setMap(null);
+              customerCircleRef.current = null;
+            }
+            customerCircleRef.current = new window.google.maps.Circle({
+              strokeColor: '#4285F4',
+              strokeOpacity: 0.35,
+              strokeWeight: 2,
+              fillColor: '#4285F4',
+              fillOpacity: 0.10,
+              map: mapInstance.current,
+              center: { lat: ccLat, lng: ccLng },
+              radius: 45,
+              zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
+            });
+          }
+        } catch {
+          // ignore
         }
 
         // Draw route based on order phase
@@ -1678,15 +1702,13 @@ const DeliveryTrackingMap = ({
             // ignore
           }
 
-          // Initial focus: when user opens tracking from "Arriving in ..." we want to focus on user's live location.
-          // BUT if restaurant is far, the restaurant icon will be offscreen and user thinks it's missing.
-          // So: if restaurant is nearby -> focus user; else -> fit bounds to show both.
+          // Initial focus: show fixed delivery location; if restaurant is present and far, fit bounds.
           // Do it only once, and only if user hasn't interacted with the map yet.
           try {
             if (
-              userLiveCoords &&
-              typeof userLiveCoords.lat === 'number' &&
-              typeof userLiveCoords.lng === 'number' &&
+              customerCoords &&
+              typeof customerCoords.lat === 'number' &&
+              typeof customerCoords.lng === 'number' &&
               !userHasInteractedRef.current
             ) {
               const rrLat = Number(restaurantCoords?.lat)
@@ -1698,27 +1720,25 @@ const DeliveryTrackingMap = ({
                 rrLat <= 90 &&
                 rrLng >= -180 &&
                 rrLng <= 180
-
-              let distanceToRestaurant = 0
-              if (hasRestaurant) {
-                distanceToRestaurant = calculateHaversineDistance(
-                  userLiveCoords.lat,
-                  userLiveCoords.lng,
-                  rrLat,
-                  rrLng,
-                )
-              }
+              const distanceToRestaurant = hasRestaurant
+                ? calculateHaversineDistance(
+                    customerCoords.lat,
+                    customerCoords.lng,
+                    rrLat,
+                    rrLng,
+                  )
+                : 0
 
               isProgrammaticChangeRef.current = true;
 
               // If restaurant is > ~1.2km away, show both points so restaurant icon is visible.
               if (hasRestaurant && distanceToRestaurant > 1200 && window.google?.maps?.LatLngBounds) {
                 const bounds = new window.google.maps.LatLngBounds()
-                bounds.extend({ lat: userLiveCoords.lat, lng: userLiveCoords.lng })
+                bounds.extend({ lat: customerCoords.lat, lng: customerCoords.lng })
                 bounds.extend({ lat: rrLat, lng: rrLng })
                 mapInstance.current.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 })
               } else {
-                mapInstance.current.panTo({ lat: userLiveCoords.lat, lng: userLiveCoords.lng });
+                mapInstance.current.panTo({ lat: customerCoords.lat, lng: customerCoords.lng });
                 // A slightly closer zoom makes the blue dot + bike discoverable quickly.
                 const z = mapInstance.current.getZoom();
                 if (typeof z === 'number' && z < 16) {
@@ -1896,23 +1916,24 @@ const DeliveryTrackingMap = ({
     if (isMapLoaded && currentLocation && currentLocation.lat && currentLocation.lng) {
       console.log('🔄🔄🔄 Updating bike to REAL location:', currentLocation);
       // Always update to real location - this takes priority over restaurant location
-      // Important: ignore stale pull updates (request-current-location)
-      if (hasLivePushRef.current) {
+      // Important: ignore stale pull updates (request-current-location) until rider is actually assigned,
+      // but once assigned (or we restored a recent location), keep the marker stable.
+      if (hasLivePushRef.current || allowPulledLocationForBike) {
         moveBikeSmoothly(currentLocation.lat, currentLocation.lng, currentLocation.heading || 0);
       }
     }
-  }, [isMapLoaded, currentLocation?.lat, currentLocation?.lng, currentLocation?.heading, moveBikeSmoothly]);
+  }, [isMapLoaded, currentLocation?.lat, currentLocation?.lng, currentLocation?.heading, moveBikeSmoothly, allowPulledLocationForBike]);
 
   // Create bike marker when map loads if we have stored location
   useEffect(() => {
     if (isMapLoaded && mapInstance.current && currentLocation && !bikeMarkerRef.current) {
-      // Only create bike after we received real rider push update.
-      if (!hasLivePushRef.current) return;
+      // If we restored a recent location from storage (or already have push), create bike immediately.
+      if (!hasLivePushRef.current && !allowPulledLocationForBike) return;
 
-      console.log('🚴 Creating bike marker from stored location on map load (live push):', currentLocation);
+      console.log('🚴 Creating bike marker from stored/current location on map load:', currentLocation);
       moveBikeSmoothly(currentLocation.lat, currentLocation.lng, currentLocation.heading || 0);
     }
-  }, [isMapLoaded, currentLocation, moveBikeSmoothly]);
+  }, [isMapLoaded, currentLocation, moveBikeSmoothly, allowPulledLocationForBike]);
 
   // Show bike marker when delivery partner is assigned (even without location yet)
   useEffect(() => {
@@ -2082,6 +2103,58 @@ const DeliveryTrackingMap = ({
     }
   }, [isMapLoaded, userLiveCoords, userLocationAccuracy]);
 
+  // Keep customer (fixed delivery location) marker in sync when coordinates arrive/change
+  useEffect(() => {
+    if (!isMapLoaded || !mapInstance.current) return;
+    const ccLat = Number(customerCoords?.lat);
+    const ccLng = Number(customerCoords?.lng);
+    if (Number.isNaN(ccLat) || Number.isNaN(ccLng)) return;
+
+    const pos = { lat: ccLat, lng: ccLng };
+    try {
+      if (!mapInstance.current._customerMarker) {
+        mapInstance.current._customerMarker = new window.google.maps.Marker({
+          position: pos,
+          map: mapInstance.current,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 12,
+            fillColor: '#4285F4',
+            fillOpacity: 1,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 3
+          },
+          zIndex: window.google.maps.Marker.MAX_ZINDEX + 2,
+          optimized: false,
+          title: "Delivery location"
+        });
+      } else {
+        if (mapInstance.current._customerMarker.getMap() == null) {
+          mapInstance.current._customerMarker.setMap(mapInstance.current);
+        }
+        mapInstance.current._customerMarker.setPosition(pos);
+      }
+    } catch {}
+
+    try {
+      if (customerCircleRef.current) {
+        customerCircleRef.current.setCenter(pos);
+      } else {
+        customerCircleRef.current = new window.google.maps.Circle({
+          strokeColor: '#4285F4',
+          strokeOpacity: 0.35,
+          strokeWeight: 2,
+          fillColor: '#4285F4',
+          fillOpacity: 0.10,
+          map: mapInstance.current,
+          center: pos,
+          radius: 45,
+          zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
+        });
+      }
+    } catch {}
+  }, [isMapLoaded, customerCoords?.lat, customerCoords?.lng]);
+
   // Keep restaurant marker position in sync when coordinates change (and ensure it exists after refresh)
   useEffect(() => {
     if (!isMapLoaded || !mapInstance.current) return;
@@ -2222,6 +2295,14 @@ const DeliveryTrackingMap = ({
       if (animationControllerRef.current) {
         animationControllerRef.current.destroy();
         animationControllerRef.current = null;
+      }
+      try {
+        if (customerCircleRef.current) {
+          customerCircleRef.current.setMap(null);
+          customerCircleRef.current = null;
+        }
+      } catch {
+        // ignore
       }
     };
   }, []);

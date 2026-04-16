@@ -71,33 +71,85 @@ export function updateMarkerIconRotation(marker, bearing) {
   try {
     const currentIcon = marker.getIcon();
     if (typeof currentIcon === 'object' && currentIcon.url) {
-      // Use canvas to rotate icon
+      // NOTE: Frequent setIcon() with a new dataURL can cause visible flicker on some devices.
+      // We reduce churn by:
+      // - rounding bearing to small steps
+      // - caching rotated dataURLs per marker instance
+      // - reusing the base image element per marker
+
+      const step = 5; // degrees (lower = smoother, higher = less churn)
+      const rounded = Math.round((((bearing % 360) + 360) % 360) / step) * step;
+
+      // Per-marker cache
+      const cache = (marker.__rotCache = marker.__rotCache || {
+        baseUrl: null,
+        img: null,
+        urlsByBearing: new Map(),
+        lastBearing: null,
+        pending: false,
+      });
+
+      // If the base icon changed (e.g. fallback icon), reset cache.
+      if (cache.baseUrl !== currentIcon.url) {
+        cache.baseUrl = currentIcon.url;
+        cache.img = null;
+        cache.urlsByBearing.clear();
+        cache.lastBearing = null;
+        cache.pending = false;
+      }
+
+      // Skip tiny/no-op rotations
+      if (cache.lastBearing === rounded) return;
+      cache.lastBearing = rounded;
+
+      const cachedUrl = cache.urlsByBearing.get(rounded);
+      if (cachedUrl) {
+        marker.setIcon({
+          ...currentIcon,
+          url: cachedUrl,
+          scaledSize: currentIcon.scaledSize || new window.google.maps.Size(60, 60),
+          anchor: currentIcon.anchor || new window.google.maps.Point(30, 30),
+        });
+        return;
+      }
+
+      // Don't queue multiple image loads at once
+      if (cache.pending) return;
+      cache.pending = true;
+
       const canvas = document.createElement('canvas');
       canvas.width = 60;
       canvas.height = 60;
       const ctx = canvas.getContext('2d');
-      
-      const img = new Image();
+
+      const img = cache.img || new Image();
       img.crossOrigin = 'anonymous';
       img.src = currentIcon.url;
-      
+
       img.onload = () => {
+        cache.img = img;
         ctx.clearRect(0, 0, 60, 60);
         ctx.save();
         ctx.translate(30, 30);
-        ctx.rotate((bearing * Math.PI) / 180);
+        ctx.rotate((rounded * Math.PI) / 180);
         ctx.drawImage(img, -30, -30, 60, 60);
         ctx.restore();
-        
+
+        const url = canvas.toDataURL();
+        cache.urlsByBearing.set(rounded, url);
+        cache.pending = false;
+
         marker.setIcon({
-          url: canvas.toDataURL(),
+          ...currentIcon,
+          url,
           scaledSize: currentIcon.scaledSize || new window.google.maps.Size(60, 60),
-          anchor: currentIcon.anchor || new window.google.maps.Point(30, 30)
+          anchor: currentIcon.anchor || new window.google.maps.Point(30, 30),
         });
       };
-      
+
       img.onerror = () => {
-        // If image fails to load, try to keep current icon
+        cache.pending = false;
+        // If image fails to load, keep current icon
         console.warn('Failed to load icon for rotation');
       };
     }

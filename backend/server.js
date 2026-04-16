@@ -119,6 +119,8 @@ const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 const allowedSocketOrigins = [
   process.env.CORS_ORIGIN,
   'https://foods.abhikaro.in',
+  'https://www.foods.abhikaro.in',
+  'https://api.foods.abhikaro.in',
   'http://localhost:5173',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
@@ -135,7 +137,11 @@ const io = new Server(httpServer, {
       }
 
       // Check if origin is in allowed list
-      if (allowedSocketOrigins.includes(origin)) {
+      const isTrustedAkhOrigin =
+        typeof origin === "string" &&
+        (origin.endsWith(".abhikaro.in") || origin.includes("localhost") || origin.includes("127.0.0.1"))
+
+      if (allowedSocketOrigins.includes(origin) || isTrustedAkhOrigin) {
         console.log(`✅ Socket.IO: Allowing connection from: ${origin}`);
         callback(null, true);
       } else {
@@ -436,6 +442,8 @@ app.use(helmet({
 const allowedOrigins = [
   process.env.CORS_ORIGIN,
   'https://foods.abhikaro.in',
+  'https://www.foods.abhikaro.in',
+  'https://api.foods.abhikaro.in',
   'http://foods.abhikaro.in',
   'http://localhost:3000',
   'http://localhost:5173',
@@ -459,7 +467,11 @@ app.use(cors({
     }
 
     // In production, strictly enforce allowed origins
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    const isTrustedAkhOrigin =
+      typeof origin === "string" &&
+      (origin.endsWith(".abhikaro.in") || origin.includes("localhost") || origin.includes("127.0.0.1"))
+
+    if (allowedOrigins.indexOf(origin) !== -1 || isTrustedAkhOrigin) {
       callback(null, true);
     } else {
       console.error(`❌ CORS blocked origin in production: ${origin}`);
