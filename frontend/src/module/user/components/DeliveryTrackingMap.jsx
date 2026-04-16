@@ -1088,7 +1088,22 @@ const DeliveryTrackingMap = ({
       console.log('📍📍📍 Received REAL-TIME location update via socket:', data);
       const incomingTs = Number(data?.timestamp || 0);
       if (incomingTs && incomingTs <= lastProcessedSocketTsRef.current) return;
-      const norm = normalizeIncomingLatLng(data?.lat, data?.lng);
+      // Production payloads sometimes use latitude/longitude or nested location fields
+      const rawLat =
+        data?.lat ??
+        data?.latitude ??
+        data?.location?.lat ??
+        data?.location?.latitude ??
+        data?.coords?.lat ??
+        data?.coords?.latitude
+      const rawLng =
+        data?.lng ??
+        data?.longitude ??
+        data?.location?.lng ??
+        data?.location?.longitude ??
+        data?.coords?.lng ??
+        data?.coords?.longitude
+      const norm = normalizeIncomingLatLng(rawLat, rawLng);
       if (norm) {
         if (incomingTs) lastProcessedSocketTsRef.current = incomingTs;
         hasLivePushRef.current = true; // We got actual rider push update
@@ -1151,7 +1166,21 @@ const DeliveryTrackingMap = ({
       console.log('📍📍📍 Received CURRENT location via socket:', data);
       const incomingTs = Number(data?.timestamp || 0);
       if (incomingTs && incomingTs <= lastProcessedSocketTsRef.current) return;
-      const norm = normalizeIncomingLatLng(data?.lat, data?.lng);
+      const rawLat =
+        data?.lat ??
+        data?.latitude ??
+        data?.location?.lat ??
+        data?.location?.latitude ??
+        data?.coords?.lat ??
+        data?.coords?.latitude
+      const rawLng =
+        data?.lng ??
+        data?.longitude ??
+        data?.location?.lng ??
+        data?.location?.longitude ??
+        data?.coords?.lng ??
+        data?.coords?.longitude
+      const norm = normalizeIncomingLatLng(rawLat, rawLng);
       if (norm) {
         const currentPhase = orderRef.current?.deliveryState?.currentPhase;
         const deliveryStatus = orderRef.current?.deliveryState?.status;
