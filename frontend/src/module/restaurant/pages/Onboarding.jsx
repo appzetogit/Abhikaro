@@ -785,8 +785,11 @@ export default function RestaurantOnboarding() {
       }
     }
 
-    if (!step3.fssaiNumber?.trim()) {
+    const fssaiDigits = String(step3.fssaiNumber || "").replace(/\D/g, "")
+    if (!fssaiDigits) {
       errors.push("FSSAI number is required")
+    } else if (fssaiDigits.length !== 14) {
+      errors.push("FSSAI number must be 14 digits")
     }
     if (!step3.fssaiExpiry?.trim()) {
       errors.push("FSSAI expiry date is required")
@@ -814,13 +817,21 @@ export default function RestaurantOnboarding() {
       }
     }
 
-    if (!step3.accountNumber?.trim()) {
+    const accountDigits = String(step3.accountNumber || "").replace(/\D/g, "")
+    const confirmAccountDigits = String(step3.confirmAccountNumber || "").replace(/\D/g, "")
+    if (!accountDigits) {
       errors.push("Account number is required")
     }
-    if (!step3.confirmAccountNumber?.trim()) {
+    if (!confirmAccountDigits) {
       errors.push("Please confirm your account number")
     }
-    if (step3.accountNumber && step3.confirmAccountNumber && step3.accountNumber !== step3.confirmAccountNumber) {
+    if (accountDigits && (accountDigits.length < 9 || accountDigits.length > 18)) {
+      errors.push("Account number must be 9 to 18 digits")
+    }
+    if (confirmAccountDigits && (confirmAccountDigits.length < 9 || confirmAccountDigits.length > 18)) {
+      errors.push("Confirmation account number must be 9 to 18 digits")
+    }
+    if (accountDigits && confirmAccountDigits && accountDigits !== confirmAccountDigits) {
       errors.push("Account number and confirmation do not match")
     }
     if (!step3.ifscCode?.trim()) {
@@ -1680,9 +1691,16 @@ export default function RestaurantOnboarding() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             value={step3.fssaiNumber || ""}
-            onChange={(e) => setStep3({ ...step3, fssaiNumber: e.target.value })}
+            onChange={(e) =>
+              setStep3({
+                ...step3,
+                fssaiNumber: e.target.value.replace(/\D/g, "").slice(0, 14),
+              })
+            }
             className="bg-white text-sm"
             placeholder="FSSAI number"
+            inputMode="numeric"
+            pattern="[0-9]*"
           />
           <div>
             <Label className="text-xs text-gray-700 mb-1 block">FSSAI expiry date</Label>
@@ -1824,18 +1842,28 @@ export default function RestaurantOnboarding() {
           <Input
             value={step3.accountNumber || ""}
             onChange={(e) =>
-              setStep3({ ...step3, accountNumber: e.target.value.trim() })
+              setStep3({
+                ...step3,
+                accountNumber: e.target.value.replace(/\D/g, "").slice(0, 18),
+              })
             }
             className="bg-white text-sm"
             placeholder="Account number"
+            inputMode="numeric"
+            pattern="[0-9]*"
           />
           <Input
             value={step3.confirmAccountNumber || ""}
             onChange={(e) =>
-              setStep3({ ...step3, confirmAccountNumber: e.target.value.trim() })
+              setStep3({
+                ...step3,
+                confirmAccountNumber: e.target.value.replace(/\D/g, "").slice(0, 18),
+              })
             }
             className="bg-white text-sm"
             placeholder="Re-enter account number"
+            inputMode="numeric"
+            pattern="[0-9]*"
           />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
