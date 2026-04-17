@@ -49,7 +49,6 @@ export default function ItemDetailsPage() {
   const groupId = location.state?.groupId
   const defaultCategory = location.state?.category || "Varieties"
   const fileInputRef = useRef(null)
-  const cameraInputRef = useRef(null)
 
   // Initialize state with empty values - will be populated from API
   const [itemData, setItemData] = useState(null) // Store the full item data for saving
@@ -433,71 +432,39 @@ export default function ItemDetailsPage() {
       return
     }
 
-    // Timeout fallback: if bridge doesn't respond, use native capture input
-    const timeoutId = setTimeout(() => {
-      document.getElementById('image-upload-camera')?.click()
-    }, 3000)
-
     window.flutter_inappwebview.callHandler('openCamera').then((result) => {
-      clearTimeout(timeoutId)
+      if (result && result.success && result.base64) {
+        try {
+          const file = base64ToFile(
+            result.base64,
+            result.mimeType || 'image/jpeg',
+            result.fileName || `camera_${Date.now()}.jpg`
+          )
 
-      try {
-        if (!result || !result.success) {
-          document.getElementById('image-upload-camera')?.click()
-          return
+          // Create preview URL and store
+          const previewUrl = URL.createObjectURL(file)
+          const newImageFilesMap = new Map(imageFiles)
+          newImageFilesMap.set(previewUrl, file)
+          
+          // Store base64 for upload - CRITICAL: Store raw base64 without any modifications
+          const newBase64DataMap = new Map(imageBase64Data)
+          newBase64DataMap.set(previewUrl, {
+            base64: result.base64, // Store raw base64 string
+            mimeType: result.mimeType || 'image/jpeg',
+            fileName: result.fileName || file.name
+          })
+          
+          setImages(prev => [...prev, previewUrl])
+          setImageFiles(newImageFilesMap)
+          setImageBase64Data(newBase64DataMap)
+          toast.success('Image captured successfully')
+        } catch (error) {
+          toast.error('Failed to process image')
         }
-
-        // Support multiple possible payload shapes from Flutter:
-        // 1) { success, base64, mimeType, fileName }
-        // 2) { success, images: [{ base64, mimeType, fileName }, ...] }
-        // 3) { success, files: [...] }
-        // 4) [ { base64, ... }, ... ]
-        const entries = []
-        if (Array.isArray(result.images)) entries.push(...result.images)
-        else if (Array.isArray(result.files)) entries.push(...result.files)
-        else if (Array.isArray(result)) entries.push(...result)
-        else if (result.base64) entries.push(result)
-
-        if (!entries.length || !entries[0]?.base64) {
-          // If Flutter didn't return base64, fall back to native camera capture
-          document.getElementById('image-upload-camera')?.click()
-          return
-        }
-
-        const entry = entries[0]
-        const file = base64ToFile(
-          entry.base64,
-          entry.mimeType || result.mimeType || 'image/jpeg',
-          entry.fileName || result.fileName || `camera_${Date.now()}.jpg`
-        )
-
-        // Create preview URL and store
-        const previewUrl = URL.createObjectURL(file)
-        const newImageFilesMap = new Map(imageFiles)
-        newImageFilesMap.set(previewUrl, file)
-
-        // Store base64 for upload
-        const newBase64DataMap = new Map(imageBase64Data)
-        newBase64DataMap.set(previewUrl, {
-          base64: entry.base64,
-          mimeType: entry.mimeType || result.mimeType || 'image/jpeg',
-          fileName: entry.fileName || result.fileName || file.name
-        })
-
-        setImages(prev => [...prev, previewUrl])
-        setImageFiles(newImageFilesMap)
-        setImageBase64Data(newBase64DataMap)
-        toast.success('Image captured successfully')
-      } catch (error) {
-        document.getElementById('image-upload-camera')?.click()
       }
     }).catch((error) => {
-      clearTimeout(timeoutId)
-      // Fallback to native camera input on any bridge failure
-      document.getElementById('image-upload-camera')?.click()
-
       // Only show error if it's not a cancellation
-      if (!error?.message || !String(error.message).includes('cancel')) {
+      if (!error.message || !error.message.includes('cancel')) {
         toast.error('Failed to capture image from camera')
       }
     })
@@ -527,64 +494,43 @@ export default function ItemDetailsPage() {
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
       clearTimeout(timeoutId)
       
-      try {
-        if (!result || !result.success) {
-          // User cancelled or bridge returned invalid result
-          return
-        }
-
-        // Support multiple possible payload shapes from Flutter:
-        // 1) { success, base64, mimeType, fileName }
-        // 2) { success, images: [{ base64, mimeType, fileName }, ...] }
-        // 3) { success, files: [...] }
-        // 4) [ { base64, ... }, ... ]
-        const entries = []
-        if (Array.isArray(result.images)) entries.push(...result.images)
-        else if (Array.isArray(result.files)) entries.push(...result.files)
-        else if (Array.isArray(result)) entries.push(...result)
-        else if (result.base64) entries.push(result)
-
-        if (!entries.length) {
-          // Fallback to native if response is unexpected
-          document.getElementById('image-upload-gallery')?.click()
-          return
-        }
-
-        const newImageFilesMap = new Map(imageFiles)
-        const newBase64DataMap = new Map(imageBase64Data)
-        const newPreviewUrls = []
-
-        entries.forEach((entry, index) => {
-          if (!entry?.base64) return
+      if (result && result.success && result.base64) {
+        try {
           const file = base64ToFile(
-            entry.base64,
-            entry.mimeType || result.mimeType || 'image/jpeg',
-            entry.fileName || result.fileName || `gallery_${Date.now()}_${index}.jpg`
+            result.base64,
+            result.mimeType || 'image/jpeg',
+            result.fileName || `gallery_${Date.now()}.jpg`
           )
 
+          // Create preview URL and store
           const previewUrl = URL.createObjectURL(file)
-          newPreviewUrls.push(previewUrl)
+          const newImageFilesMap = new Map(imageFiles)
           newImageFilesMap.set(previewUrl, file)
+          
+          // Store base64 for upload - CRITICAL: Store raw base64 without any modifications
+          const newBase64DataMap = new Map(imageBase64Data)
           newBase64DataMap.set(previewUrl, {
-            base64: entry.base64,
-            mimeType: entry.mimeType || result.mimeType || 'image/jpeg',
-            fileName: entry.fileName || result.fileName || file.name
+            base64: result.base64, // Store raw base64 string - EXACTLY as received
+            mimeType: result.mimeType || 'image/jpeg',
+            fileName: result.fileName || file.name
           })
-        })
-
-        if (newPreviewUrls.length === 0) {
-          document.getElementById('image-upload-gallery')?.click()
-          return
+          
+          setImages(prev => [...prev, previewUrl])
+          setImageFiles(newImageFilesMap)
+          setImageBase64Data(newBase64DataMap)
+          
+          toast.success('Image selected successfully')
+        } catch (error) {
+          toast.error('Failed to process image')
         }
-
-        setImages(prev => [...prev, ...newPreviewUrls])
-        setImageFiles(newImageFilesMap)
-        setImageBase64Data(newBase64DataMap)
-
-        toast.success('Image selected successfully')
-      } catch (error) {
-        // Fallback if processing fails
-        document.getElementById('image-upload-gallery')?.click()
+      } else if (result && result.success === false) {
+        // User cancelled - don't show error
+      } else {
+        // Fallback to native if response is unexpected
+        const galleryInput = document.getElementById('image-upload-gallery')
+        if (galleryInput) {
+          galleryInput.click()
+        }
       }
     }).catch((error) => {
       clearTimeout(timeoutId)
@@ -603,15 +549,10 @@ export default function ItemDetailsPage() {
     const files = Array.from(e.target.files)
 
     // Validate file types
-    // NOTE: Some Android camera pickers return empty mimeType (""), and some devices return HEIC/HEIF.
-    // We treat unknown/empty types as images and let upload API validate further if needed.
-    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/heic", "image/heif"]
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"]
     const validFiles = files.filter(file => {
-      const mimeType = String(file.type || "").toLowerCase()
-      const isImageLike = mimeType === "" || mimeType.startsWith("image/")
-      const isAllowed = mimeType === "" || allowedTypes.includes(mimeType)
-      if (!isImageLike || !isAllowed) {
-        toast.error(`${file.name}: Invalid file type. Please upload an image.`)
+      if (!allowedTypes.includes(file.type)) {
+        toast.error(`${file.name}: Invalid file type. Please upload PNG, JPG, JPEG, or WEBP.`)
         return false
       }
       // Validate file size (max 5MB)
@@ -640,9 +581,6 @@ export default function ItemDetailsPage() {
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
-    }
-    if (cameraInputRef.current) {
-      cameraInputRef.current.value = ""
     }
   }
 
@@ -1430,7 +1368,6 @@ export default function ItemDetailsPage() {
 
             {/* Camera Input */}
             <input
-              ref={cameraInputRef}
               type="file"
               accept="image/*"
               capture="environment"
