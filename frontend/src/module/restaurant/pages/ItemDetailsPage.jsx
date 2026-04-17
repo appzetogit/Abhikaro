@@ -433,39 +433,71 @@ export default function ItemDetailsPage() {
       return
     }
 
-    window.flutter_inappwebview.callHandler('openCamera').then((result) => {
-      if (result && result.success && result.base64) {
-        try {
-          const file = base64ToFile(
-            result.base64,
-            result.mimeType || 'image/jpeg',
-            result.fileName || `camera_${Date.now()}.jpg`
-          )
+    // Timeout fallback: if bridge doesn't respond, use native capture input
+    const timeoutId = setTimeout(() => {
+      document.getElementById('image-upload-camera')?.click()
+    }, 3000)
 
-          // Create preview URL and store
-          const previewUrl = URL.createObjectURL(file)
-          const newImageFilesMap = new Map(imageFiles)
-          newImageFilesMap.set(previewUrl, file)
-          
-          // Store base64 for upload - CRITICAL: Store raw base64 without any modifications
-          const newBase64DataMap = new Map(imageBase64Data)
-          newBase64DataMap.set(previewUrl, {
-            base64: result.base64, // Store raw base64 string
-            mimeType: result.mimeType || 'image/jpeg',
-            fileName: result.fileName || file.name
-          })
-          
-          setImages(prev => [...prev, previewUrl])
-          setImageFiles(newImageFilesMap)
-          setImageBase64Data(newBase64DataMap)
-          toast.success('Image captured successfully')
-        } catch (error) {
-          toast.error('Failed to process image')
+    window.flutter_inappwebview.callHandler('openCamera').then((result) => {
+      clearTimeout(timeoutId)
+
+      try {
+        if (!result || !result.success) {
+          document.getElementById('image-upload-camera')?.click()
+          return
         }
+
+        // Support multiple possible payload shapes from Flutter:
+        // 1) { success, base64, mimeType, fileName }
+        // 2) { success, images: [{ base64, mimeType, fileName }, ...] }
+        // 3) { success, files: [...] }
+        // 4) [ { base64, ... }, ... ]
+        const entries = []
+        if (Array.isArray(result.images)) entries.push(...result.images)
+        else if (Array.isArray(result.files)) entries.push(...result.files)
+        else if (Array.isArray(result)) entries.push(...result)
+        else if (result.base64) entries.push(result)
+
+        if (!entries.length || !entries[0]?.base64) {
+          // If Flutter didn't return base64, fall back to native camera capture
+          document.getElementById('image-upload-camera')?.click()
+          return
+        }
+
+        const entry = entries[0]
+        const file = base64ToFile(
+          entry.base64,
+          entry.mimeType || result.mimeType || 'image/jpeg',
+          entry.fileName || result.fileName || `camera_${Date.now()}.jpg`
+        )
+
+        // Create preview URL and store
+        const previewUrl = URL.createObjectURL(file)
+        const newImageFilesMap = new Map(imageFiles)
+        newImageFilesMap.set(previewUrl, file)
+
+        // Store base64 for upload
+        const newBase64DataMap = new Map(imageBase64Data)
+        newBase64DataMap.set(previewUrl, {
+          base64: entry.base64,
+          mimeType: entry.mimeType || result.mimeType || 'image/jpeg',
+          fileName: entry.fileName || result.fileName || file.name
+        })
+
+        setImages(prev => [...prev, previewUrl])
+        setImageFiles(newImageFilesMap)
+        setImageBase64Data(newBase64DataMap)
+        toast.success('Image captured successfully')
+      } catch (error) {
+        document.getElementById('image-upload-camera')?.click()
       }
     }).catch((error) => {
+      clearTimeout(timeoutId)
+      // Fallback to native camera input on any bridge failure
+      document.getElementById('image-upload-camera')?.click()
+
       // Only show error if it's not a cancellation
-      if (!error.message || !error.message.includes('cancel')) {
+      if (!error?.message || !String(error.message).includes('cancel')) {
         toast.error('Failed to capture image from camera')
       }
     })
