@@ -10,6 +10,9 @@ import {
   Coffee,
   Trash2,
 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { restaurantAPI } from "@/lib/api"
 import OptimizedImage from "@/components/OptimizedImage"
 import { ImageIcon } from "lucide-react"
@@ -17,6 +20,11 @@ import { ImageIcon } from "lucide-react"
 export default function ContactDetails() {
   const navigate = useNavigate()
   const [invitedUsers, setInvitedUsers] = useState([])
+  const [restaurantDisplayName, setRestaurantDisplayName] = useState("")
+  const [restaurantContact, setRestaurantContact] = useState("")
+  const [editContactOpen, setEditContactOpen] = useState(false)
+  const [editContactValue, setEditContactValue] = useState("")
+  const [savingContact, setSavingContact] = useState(false)
   
   // Owner data - Load from backend
   const STORAGE_KEY = "restaurant_owner_contact"
@@ -37,6 +45,13 @@ export default function ContactDetails() {
         const response = await restaurantAPI.getCurrentRestaurant()
         const data = response?.data?.data?.restaurant || response?.data?.restaurant
         if (data) {
+          setRestaurantDisplayName(data.onboarding?.step1?.restaurantName || data.name || "")
+          setRestaurantContact(
+            data.onboarding?.step1?.primaryContactNumber ||
+              data.primaryContactNumber ||
+              data.phone ||
+              "",
+          )
           setOwnerData({
             // CRITICAL: Check onboarding.step1 FIRST, as it has the correct data
             // data.ownerName might be "Restaurant 6911" (wrong), so we must prefer onboarding
@@ -82,6 +97,27 @@ export default function ContactDetails() {
       window.removeEventListener("ownerDataUpdated", handleOwnerDataUpdate)
     }
   }, [])
+
+  const openEditContact = () => {
+    setEditContactValue(restaurantContact || "")
+    setEditContactOpen(true)
+  }
+
+  const saveContact = async () => {
+    const v = String(editContactValue || "").trim()
+    setSavingContact(true)
+    try {
+      await restaurantAPI.updateProfile({ primaryContactNumber: v })
+      setRestaurantContact(v)
+      setEditContactOpen(false)
+      window.dispatchEvent(new Event("ownerDataUpdated"))
+    } catch (e) {
+      const msg = e?.response?.data?.message || e?.message || "Failed to update contact number"
+      alert(msg)
+    } finally {
+      setSavingContact(false)
+    }
+  }
 
   // Lenis smooth scrolling
   useEffect(() => {
@@ -195,6 +231,31 @@ export default function ContactDetails() {
 
       {/* Content */}
       <div className=" bg-gray-100 space-y-6">
+        {/* Restaurant Section */}
+        <div>
+          <h2 className="px-4 text-base font-bold text-gray-900 my-3">Restaurant</h2>
+          <div className="bg-white rounded-0 p-4 flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center shrink-0 overflow-hidden">
+              <ImageIcon className="w-6 h-6 text-blue-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-base font-bold text-gray-900 mb-1">
+                {loading ? "Loading..." : (restaurantDisplayName || "N/A")}
+              </p>
+              <p className="text-sm text-gray-900 font-normal">
+                {loading ? "Loading..." : (restaurantContact || "N/A")}
+              </p>
+            </div>
+            <button
+              onClick={openEditContact}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+              aria-label="Edit restaurant contact"
+            >
+              <Edit className="w-5 h-5 text-blue-600" />
+            </button>
+          </div>
+        </div>
+
         {/* Owner Section */}
         <div>
           <h2 className="px-4 text-base font-bold text-gray-900 my-3">Owner</h2>
@@ -369,6 +430,30 @@ export default function ContactDetails() {
         <Plus className="w-5 h-5" />
         <span>Add user</span>
       </motion.button>
+
+      <Dialog open={editContactOpen} onOpenChange={setEditContactOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit restaurant contact</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              value={editContactValue}
+              onChange={(e) => setEditContactValue(e.target.value)}
+              placeholder="Enter contact number"
+              inputMode="tel"
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button variant="outline" onClick={() => setEditContactOpen(false)} disabled={savingContact}>
+              Cancel
+            </Button>
+            <Button onClick={saveContact} disabled={savingContact}>
+              {savingContact ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )

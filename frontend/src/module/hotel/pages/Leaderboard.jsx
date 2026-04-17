@@ -150,7 +150,7 @@ export default function HotelLeaderboard() {
               onClick={() => navigate("/hotel/leaderboard/past")}
               className="w-24 text-right text-xs font-semibold text-white/90 underline underline-offset-4"
             >
-              Past
+              Past Winners
             </button>
           </div>
 

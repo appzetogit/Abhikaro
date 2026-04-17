@@ -1042,7 +1042,17 @@ export const createRestaurantFromOnboarding = async (onboardingData, restaurantI
 export const updateRestaurantProfile = asyncHandler(async (req, res) => {
   try {
     const restaurantId = req.restaurant._id;
-    const { profileImage, menuImages, name, cuisines, location, ownerName, ownerEmail, ownerPhone } = req.body;
+    const {
+      profileImage,
+      menuImages,
+      name,
+      cuisines,
+      location,
+      ownerName,
+      ownerEmail,
+      ownerPhone,
+      deliveryTimings,
+    } = req.body;
 
     const restaurant = await Restaurant.findById(restaurantId);
 
@@ -1120,6 +1130,27 @@ export const updateRestaurantProfile = asyncHandler(async (req, res) => {
       updateData.ownerPhone = ownerPhone;
     }
 
+    // Update delivery timings if provided
+    if (deliveryTimings !== undefined) {
+      const openingTime =
+        deliveryTimings?.openingTime != null ? String(deliveryTimings.openingTime).trim() : '';
+      const closingTime =
+        deliveryTimings?.closingTime != null ? String(deliveryTimings.closingTime).trim() : '';
+
+      updateData.deliveryTimings = {
+        openingTime,
+        closingTime,
+      };
+
+      // Keep onboarding.step2 in sync if it exists
+      if (restaurant.onboarding?.step2) {
+        restaurant.onboarding.step2.deliveryTimings = {
+          openingTime,
+          closingTime,
+        };
+      }
+    }
+
     // Update restaurant
     Object.assign(restaurant, updateData);
     await restaurant.save();
@@ -1137,6 +1168,7 @@ export const updateRestaurantProfile = asyncHandler(async (req, res) => {
         ownerName: restaurant.ownerName,
         ownerEmail: restaurant.ownerEmail,
         ownerPhone: restaurant.ownerPhone,
+        deliveryTimings: restaurant.deliveryTimings,
       }
     });
   } catch (error) {

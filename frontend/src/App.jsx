@@ -57,8 +57,6 @@ const RestaurantStatus = lazy(() => import("@/module/restaurant/pages/Restaurant
 const ExploreMore = lazy(() => import("@/module/restaurant/pages/ExploreMore"))
 const DeliverySettings = lazy(() => import("@/module/restaurant/pages/DeliverySettings"))
 const RushHour = lazy(() => import("@/module/restaurant/pages/RushHour"))
-const OutletTimings = lazy(() => import("@/module/restaurant/pages/OutletTimings"))
-const DaySlots = lazy(() => import("@/module/restaurant/pages/DaySlots"))
 const OutletInfo = lazy(() => import("@/module/restaurant/pages/OutletInfo"))
 const RatingsReviews = lazy(() => import("@/module/restaurant/pages/RatingsReviews"))
 const ContactDetails = lazy(() => import("@/module/restaurant/pages/ContactDetails"))
@@ -600,7 +598,7 @@ export default function App() {
           path="/restaurant/outlet-timings"
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <OutletTimings />
+              <Navigate to="/restaurant/outlet-info" replace />
             </ProtectedRoute>
           }
         />
@@ -608,7 +606,7 @@ export default function App() {
           path="/restaurant/outlet-timings/:day"
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <DaySlots />
+              <Navigate to="/restaurant/outlet-info" replace />
             </ProtectedRoute>
           }
         />
@@ -624,7 +622,7 @@ export default function App() {
           path="/restaurant/ratings-reviews"
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <RatingsReviews />
+              <Navigate to="/restaurant/outlet-info" replace />
             </ProtectedRoute>
           }
         />

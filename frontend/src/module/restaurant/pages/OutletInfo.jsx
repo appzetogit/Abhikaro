@@ -42,6 +42,10 @@ export default function OutletInfo() {
   const [bannerFailed, setBannerFailed] = useState(false)
   const [showEditNameDialog, setShowEditNameDialog] = useState(false)
   const [editNameValue, setEditNameValue] = useState("")
+  const [showEditTimingsDialog, setShowEditTimingsDialog] = useState(false)
+  const [openingTimeValue, setOpeningTimeValue] = useState("")
+  const [closingTimeValue, setClosingTimeValue] = useState("")
+  const [savingTimings, setSavingTimings] = useState(false)
   const [restaurantId, setRestaurantId] = useState("")
   const [restaurantMongoId, setRestaurantMongoId] = useState("")
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -53,6 +57,13 @@ export default function OutletInfo() {
   // Format address from location object
   const formatAddress = (location) => {
     if (!location) return ""
+
+    // Prefer full formatted address if available (most reliable)
+    const formatted =
+      (typeof location.formattedAddress === "string" && location.formattedAddress.trim()) ||
+      (typeof location.address === "string" && location.address.trim()) ||
+      ""
+    if (formatted) return formatted
     
     const parts = []
     if (location.addressLine1) parts.push(location.addressLine1.trim())
@@ -65,6 +76,8 @@ export default function OutletInfo() {
         parts.push(city)
       }
     }
+    if (location.state) parts.push(location.state.trim())
+    if (location.pincode) parts.push(String(location.pincode).trim())
     if (location.landmark) parts.push(location.landmark.trim())
     
     return parts.join(", ") || ""
@@ -504,6 +517,93 @@ export default function OutletInfo() {
     setShowEditNameDialog(true)
   }
 
+  const formatTime12Hour = (time24) => {
+    const t = String(time24 || "").trim()
+    if (!t) return ""
+    const [hStr, mStr] = t.split(":")
+    const h = Number(hStr)
+    const m = Number(mStr)
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return t
+    const period = h >= 12 ? "pm" : "am"
+    const h12 = h % 12 || 12
+    return `${h12}:${String(m).padStart(2, "0")} ${period}`
+  }
+
+  const getCurrentTimings = () => {
+    const primary = restaurantData?.deliveryTimings || null
+    const secondary = restaurantData?.onboarding?.step2?.deliveryTimings || null
+    return {
+      openingTime:
+        primary?.openingTime != null && String(primary.openingTime).trim()
+          ? String(primary.openingTime)
+          : secondary?.openingTime != null
+            ? String(secondary.openingTime)
+            : "",
+      closingTime:
+        primary?.closingTime != null && String(primary.closingTime).trim()
+          ? String(primary.closingTime)
+          : secondary?.closingTime != null
+            ? String(secondary.closingTime)
+            : "",
+    }
+  }
+
+  const validateTimings = (open, close) => {
+    const o = (open || "").trim()
+    const c = (close || "").trim()
+    if (!o || !c) return "Please select both opening and closing time."
+    if (o === c) return "Opening time should not be same as closing time."
+    // HH:MM strings from <input type="time"> compare correctly
+    if (o > c) return "Opening time should not be after closing time."
+    return null
+  }
+
+  const handleOpenTimingsDialog = () => {
+    const t = getCurrentTimings()
+    setOpeningTimeValue(t.openingTime)
+    setClosingTimeValue(t.closingTime)
+    setShowEditTimingsDialog(true)
+  }
+
+  const handleSaveTimings = async () => {
+    const open = openingTimeValue
+    const close = closingTimeValue
+    const err = validateTimings(open, close)
+    if (err) {
+      toast.error(err)
+      return
+    }
+
+    try {
+      setSavingTimings(true)
+      const res = await restaurantAPI.updateProfile({
+        deliveryTimings: { openingTime: open, closingTime: close },
+      })
+
+      if (res?.data && res.data.success === false) {
+        throw new Error(res.data.message || "Failed to update timings")
+      }
+
+      toast.success("Timings updated")
+      setShowEditTimingsDialog(false)
+
+      const refreshResponse = await restaurantAPI.getCurrentRestaurant()
+      const data = refreshResponse?.data?.data?.restaurant || refreshResponse?.data?.restaurant
+      if (data) {
+        setRestaurantData(data)
+      }
+    } catch (error) {
+      console.error("Error updating timings:", error)
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to update timings. Please try again.",
+      )
+    } finally {
+      setSavingTimings(false)
+    }
+  }
+
   const handleSaveName = async () => {
     const newName = editNameValue.trim()
     if (!newName) {
@@ -632,30 +732,18 @@ export default function OutletInfo() {
      
           {/* Reviews Section - Left Aligned */}
           <div className="flex flex-col gap-2">
-            {/* Delivery Reviews */}
-            <button
-              onClick={() => navigate("/restaurant/ratings-reviews")}
-              className="flex items-center gap-2 text-left w-full"
-            >
+            {/* Delivery Reviews (display only) */}
+            <div className="flex items-center gap-2 text-left w-full">
               <div className="bg-green-700 px-2.5 py-1.5 rounded flex items-center gap-1 shrink-0">
                 <span className="text-white text-sm font-bold">
-                  {restaurantData?.rating?.toFixed(1) || "0.0"}
+                  {(() => {
+                    const v = Number(restaurantData?.ratings?.average ?? restaurantData?.rating ?? 0)
+                    return Number.isFinite(v) ? v.toFixed(1) : "0.0"
+                  })()}
                 </span>
                 <Star className="w-3.5 h-3.5 text-white fill-white" />
               </div>
-              <span className="text-gray-800 text-sm font-normal">
-                {restaurantData?.totalRatings || 0} DELIVERY REVIEWS
-              </span>
-              <ChevronRight className="w-4 h-4 text-gray-400 shrink-0 ml-auto" />
-            </button>
-
-            {/* Dining Reviews */}
-            <div className="flex items-center gap-2">
-              <div className="bg-gray-300 px-2.5 py-1.5 rounded flex items-center gap-1 shrink-0">
-                <span className="text-white text-sm font-normal">-</span>
-                <Star className="w-3.5 h-3.5 text-white" />
-              </div>
-              <span className="text-gray-800 text-sm font-normal">NOT ENOUGH DINING REVIEWS</span>
+              <span className="text-gray-800 text-sm font-normal">Your restaurant&apos;s rating</span>
             </div>
           </div>
         </div>
@@ -691,29 +779,6 @@ export default function OutletInfo() {
           </div>
         </motion.div>
 
-        {/* Cuisine Tags Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.05 }}
-          className="bg-blue-100/50 rounded-lg p-4 border border-blue-300"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 font-normal mb-1">Cuisine tags</p>
-              <p className="text-base font-semibold text-gray-900">
-                {loading ? "Loading..." : (cuisineTags || "No cuisines selected")}
-              </p>
-            </div>
-            <button
-              onClick={() => navigate("/restaurant/edit-cuisines")}
-              className="text-blue-600 text-sm font-normal hover:text-blue-700 transition-colors ml-4 shrink-0 self-start"
-            >
-              Edit
-            </button>
-          </div>
-        </motion.div>
-
         {/* Address Card */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -733,6 +798,37 @@ export default function OutletInfo() {
             </div>
             <button
               onClick={() => navigate("/restaurant/edit-address")}
+              className="text-blue-600 text-sm font-normal hover:text-blue-700 transition-colors ml-4 shrink-0 self-start"
+            >
+              Edit
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Timings Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.12 }}
+          className="bg-blue-100/50 rounded-lg p-4 border border-blue-300"
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-500 font-normal mb-1">Opening & Closing timing</p>
+              <p className="text-base font-semibold text-gray-900">
+                {loading
+                  ? "Loading..."
+                  : (() => {
+                      const { openingTime: open, closingTime: close } = getCurrentTimings()
+                      if (open || close)
+                        return `${open ? formatTime12Hour(open) : "—"} - ${close ? formatTime12Hour(close) : "—"}`
+                      return "Not set"
+                    })()}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenTimingsDialog}
               className="text-blue-600 text-sm font-normal hover:text-blue-700 transition-colors ml-4 shrink-0 self-start"
             >
               Edit
@@ -791,6 +887,52 @@ export default function OutletInfo() {
               className="bg-black text-white"
             >
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Outlet Timings Dialog */}
+      <Dialog open={showEditTimingsDialog} onOpenChange={setShowEditTimingsDialog}>
+        <DialogContent className="sm:max-w-md p-4 w-[90%]">
+          <DialogHeader>
+            <DialogTitle className="text-left">Edit Timings</DialogTitle>
+            <DialogDescription className="text-left">
+              Set your opening and closing timing.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-3">
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Opening timing</p>
+              <Input
+                type="time"
+                value={openingTimeValue}
+                onChange={(e) => setOpeningTimeValue(e.target.value)}
+                className="w-full focus-visible:border-black focus-visible:ring-0"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Closing timing</p>
+              <Input
+                type="time"
+                value={closingTimeValue}
+                onChange={(e) => setClosingTimeValue(e.target.value)}
+                className="w-full focus-visible:border-black focus-visible:ring-0"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditTimingsDialog(false)} disabled={savingTimings}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveTimings}
+              disabled={savingTimings || !!validateTimings(openingTimeValue, closingTimeValue)}
+              className="bg-black text-white"
+            >
+              {savingTimings ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

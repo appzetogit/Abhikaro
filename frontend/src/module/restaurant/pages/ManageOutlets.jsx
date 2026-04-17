@@ -22,7 +22,7 @@ export default function ManageOutlets() {
     // Navigate based on option selected
     switch (option) {
       case "Timings":
-        navigate("/restaurant/outlet-timings")
+        navigate("/restaurant/outlet-info")
         break
       case "Contacts":
         navigate("/restaurant/contact-details")

@@ -90,6 +90,18 @@ export default function RestaurantsList() {
     return true
   }
 
+  const formatTime12Hour = (time24) => {
+    const t = String(time24 || "").trim()
+    if (!t) return ""
+    const [hStr, mStr] = t.split(":")
+    const h = Number(hStr)
+    const m = Number(mStr)
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return t
+    const period = h >= 12 ? "pm" : "am"
+    const h12 = h % 12 || 12
+    return `${h12}:${String(m).padStart(2, "0")} ${period}`
+  }
+
   // Fetch available zones for dropdown
   useEffect(() => {
     const fetchZones = async () => {
@@ -1176,15 +1188,6 @@ export default function RestaurantsList() {
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-1">
                                 <p className="text-xs text-slate-500">Address</p>
-                                {!editingZone && (
-                                  <button
-                                    onClick={() => handleEditZone(selectedRestaurant)}
-                                    className="p-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                                    title="Edit Zone"
-                                  >
-                                    <Edit className="w-3 h-3" />
-                                  </button>
-                                )}
                               </div>
                               {editingZone && editingZone.restaurantId === (restaurantDetails._id || selectedRestaurant._id || selectedRestaurant.id) ? (
                                 <div className="flex items-center gap-2">
@@ -1232,11 +1235,37 @@ export default function RestaurantsList() {
                                 </div>
                               ) : (
                                 <p className="text-sm font-medium text-slate-900">
-                                  {restaurantDetails.location.addressLine1 || ""}
-                                  {restaurantDetails.location.addressLine2 && `, ${restaurantDetails.location.addressLine2}`}
-                                  {restaurantDetails.location.area && `, ${restaurantDetails.location.area}`}
-                                  {restaurantDetails.location.city && `, ${restaurantDetails.location.city}`}
-                                  {!restaurantDetails.location.addressLine1 && !restaurantDetails.location.area && !restaurantDetails.location.city && selectedRestaurant.zone}
+                                  {(() => {
+                                    const loc =
+                                      restaurantDetails?.location ||
+                                      restaurantDetails?.onboarding?.step1?.location ||
+                                      selectedRestaurant?.originalData?.location ||
+                                      selectedRestaurant?.originalData?.onboarding?.step1?.location ||
+                                      null
+
+                                    const formatted =
+                                      (typeof loc?.formattedAddress === "string" && loc.formattedAddress.trim()) ||
+                                      (typeof loc?.address === "string" && loc.address.trim()) ||
+                                      ""
+
+                                    if (formatted) return formatted
+
+                                    const parts = []
+                                    if (loc?.addressLine1) parts.push(loc.addressLine1)
+                                    if (loc?.addressLine2) parts.push(loc.addressLine2)
+                                    if (loc?.area) parts.push(loc.area)
+                                    if (loc?.city) parts.push(loc.city)
+                                    if (loc?.state) parts.push(loc.state)
+                                    const joined = parts.filter(Boolean).join(", ")
+                                    if (joined) return joined
+
+                                    const zoneFallback =
+                                      restaurantDetails?.location?.area ||
+                                      restaurantDetails?.location?.city ||
+                                      selectedRestaurant?.zone ||
+                                      ""
+                                    return zoneFallback || "N/A"
+                                  })()}
                                 </p>
                               )}
                               {restaurantDetails.location.area && (
@@ -1277,17 +1306,35 @@ export default function RestaurantsList() {
                         <div>
                           <p className="text-xs text-slate-500 mb-1">Cuisines</p>
                           <div className="flex flex-wrap gap-2">
-                            {restaurantDetails?.cuisines && Array.isArray(restaurantDetails.cuisines) && restaurantDetails.cuisines.length > 0 ? (
-                              restaurantDetails.cuisines.map((cuisine, idx) => (
-                                <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
-                                  {cuisine}
+                            {(() => {
+                              const arr =
+                                (Array.isArray(restaurantDetails?.cuisines) && restaurantDetails.cuisines.length > 0
+                                  ? restaurantDetails.cuisines
+                                  : null) ||
+                                (Array.isArray(restaurantDetails?.onboarding?.step2?.cuisines) && restaurantDetails.onboarding.step2.cuisines.length > 0
+                                  ? restaurantDetails.onboarding.step2.cuisines
+                                  : null) ||
+                                (Array.isArray(selectedRestaurant?.originalData?.cuisines) && selectedRestaurant.originalData.cuisines.length > 0
+                                  ? selectedRestaurant.originalData.cuisines
+                                  : null) ||
+                                (Array.isArray(selectedRestaurant?.originalData?.onboarding?.step2?.cuisines) && selectedRestaurant.originalData.onboarding.step2.cuisines.length > 0
+                                  ? selectedRestaurant.originalData.onboarding.step2.cuisines
+                                  : null) ||
+                                null
+
+                              if (arr) {
+                                return arr.map((cuisine, idx) => (
+                                  <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                                    {cuisine}
+                                  </span>
+                                ))
+                              }
+                              return (
+                                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                                  {restaurantDetails?.cuisine || selectedRestaurant.cuisine || "N/A"}
                                 </span>
-                              ))
-                            ) : (
-                              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
-                                {restaurantDetails?.cuisine || selectedRestaurant.cuisine || "N/A"}
-                              </span>
-                            )}
+                              )
+                            })()}
                           </div>
                         </div>
                         {restaurantDetails?.offer && (
@@ -1308,7 +1355,13 @@ export default function RestaurantsList() {
                             <div>
                               <p className="text-xs text-slate-500">Delivery Timings</p>
                               <p className="text-sm font-medium text-slate-900">
-                                {restaurantDetails.deliveryTimings.openingTime || "N/A"} - {restaurantDetails.deliveryTimings.closingTime || "N/A"}
+                                {restaurantDetails.deliveryTimings.openingTime
+                                  ? formatTime12Hour(restaurantDetails.deliveryTimings.openingTime)
+                                  : "N/A"}{" "}
+                                -{" "}
+                                {restaurantDetails.deliveryTimings.closingTime
+                                  ? formatTime12Hour(restaurantDetails.deliveryTimings.closingTime)
+                                  : "N/A"}
                               </p>
                             </div>
                           </div>
@@ -1470,11 +1523,19 @@ export default function RestaurantsList() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                             <div>
                               <p className="text-xs text-slate-500 mb-1">Opening Time (at registration)</p>
-                              <p className="font-medium text-slate-900">{restaurantDetails.onboarding.step2.deliveryTimings.openingTime || "N/A"}</p>
+                              <p className="font-medium text-slate-900">
+                                {restaurantDetails.onboarding.step2.deliveryTimings.openingTime
+                                  ? formatTime12Hour(restaurantDetails.onboarding.step2.deliveryTimings.openingTime)
+                                  : "N/A"}
+                              </p>
                             </div>
                             <div>
                               <p className="text-xs text-slate-500 mb-1">Closing Time (at registration)</p>
-                              <p className="font-medium text-slate-900">{restaurantDetails.onboarding.step2.deliveryTimings.closingTime || "N/A"}</p>
+                              <p className="font-medium text-slate-900">
+                                {restaurantDetails.onboarding.step2.deliveryTimings.closingTime
+                                  ? formatTime12Hour(restaurantDetails.onboarding.step2.deliveryTimings.closingTime)
+                                  : "N/A"}
+                              </p>
                             </div>
                           </div>
                         )}

@@ -302,7 +302,7 @@ export default function RestaurantStatus() {
   // Handle dialog close and navigate to outlet timings
   const handleGoToOutletTimings = () => {
     setShowOutletClosedDialog(false)
-    navigate("/restaurant/outlet-timings")
+    navigate("/restaurant/outlet-info")
   }
 
   // Format time from 24-hour to 12-hour format
@@ -542,11 +542,11 @@ export default function RestaurantStatus() {
             <Button
               onClick={() => {
                 setShowOutsideTimingsDialog(false)
-                navigate("/restaurant/outlet-timings")
+                navigate("/restaurant/outlet-info")
               }}
               className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
             >
-              Change Outlet Timings
+              View Outlet Info
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from "react"
 import { 
   Search, Filter, Eye, Check, X, UtensilsCrossed, ArrowUpDown, Loader2,
-  FileText, Image as ImageIcon, ExternalLink, CreditCard, Calendar, Star, Building2, User, Phone, Mail, MapPin, Clock
+  FileText, Image as ImageIcon, ExternalLink, CreditCard, Calendar, Star, Building2, User, Phone, Mail, MapPin, Clock, Trash2
 } from "lucide-react"
 import { adminAPI, restaurantAPI } from "../../../../lib/api"
+import { toast } from "sonner"
 
 export default function JoiningRequest() {
   const [activeTab, setActiveTab] = useState("pending")
@@ -191,6 +192,28 @@ export default function JoiningRequest() {
     } catch (err) {
       console.error("Error rejecting request:", err)
       alert(err.response?.data?.message || "Failed to reject request. Please try again.")
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleDeleteRequest = async (request) => {
+    if (!request?._id) return
+    const label = request.restaurantName ? `"${request.restaurantName}"` : "this request"
+    const ok = window.confirm(
+      `Are you sure you want to permanently delete ${label} from the database? This cannot be undone.`,
+    )
+    if (!ok) return
+
+    try {
+      setProcessing(true)
+      // Join requests are stored as Restaurant docs (pending/rejected). We reuse the existing delete endpoint.
+      await adminAPI.deleteRestaurant(request._id)
+      await fetchAllRequests()
+      toast.success("Request deleted")
+    } catch (err) {
+      console.error("Error deleting request:", err)
+      toast.error(err?.response?.data?.message || "Failed to delete request. Please try again.")
     } finally {
       setProcessing(false)
     }
@@ -457,6 +480,14 @@ export default function JoiningRequest() {
                             title="View Details"
                           >
                             <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRequest(request)}
+                            disabled={processing}
+                            className="p-1.5 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Delete (permanent)"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                           {activeTab === "pending" && (
                             <>
