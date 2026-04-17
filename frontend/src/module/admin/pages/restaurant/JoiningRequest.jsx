@@ -144,6 +144,101 @@ export default function JoiningRequest() {
     })
   }
 
+  const isRealEmail = (email) => {
+    if (!email || typeof email !== "string") return false
+    const e = email.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false
+    if (e.endsWith("@restaurant.local")) return false
+    return true
+  }
+
+  const getBestEmail = (d) => {
+    const candidates = [
+      d?.onboarding?.step1?.ownerEmail,
+      d?.ownerEmail,
+      d?.email,
+      d?.contactEmail,
+    ]
+    for (const c of candidates) {
+      if (isRealEmail(c)) return String(c).trim()
+    }
+    return ""
+  }
+
+  const isPlaceholderRestaurantName = (name) => {
+    const n = String(name || "").trim()
+    if (!n) return true
+    // Backend sometimes defaults to "Restaurant 6911" etc
+    return /^restaurant\s+\d+$/i.test(n)
+  }
+
+  const getBestRestaurantName = (d, fallback) => {
+    const candidates = [
+      d?.onboarding?.step1?.restaurantName,
+      d?.onboarding?.step1?.name,
+      d?.name,
+      fallback,
+    ]
+    for (const c of candidates) {
+      const v = String(c || "").trim()
+      if (!v) continue
+      if (isPlaceholderRestaurantName(v)) continue
+      return v
+    }
+    // If all we have is placeholder, return it (better than N/A)
+    const firstNonEmpty = candidates.map((c) => String(c || "").trim()).find(Boolean)
+    return firstNonEmpty || "N/A"
+  }
+
+  const getBestOwnerName = (d, fallback) => {
+    const candidates = [
+      d?.onboarding?.step1?.ownerName,
+      d?.ownerName,
+      fallback,
+    ]
+    for (const c of candidates) {
+      const v = String(c || "").trim()
+      if (!v) continue
+      if (isPlaceholderRestaurantName(v)) continue
+      return v
+    }
+    const firstNonEmpty = candidates.map((c) => String(c || "").trim()).find(Boolean)
+    return firstNonEmpty || "N/A"
+  }
+
+  const formatTime12Hour = (time24) => {
+    const t = String(time24 || "").trim()
+    if (!t) return ""
+    const [hStr, mStr] = t.split(":")
+    const h = Number(hStr)
+    const m = Number(mStr)
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return t
+    const period = h >= 12 ? "pm" : "am"
+    const h12 = h % 12 || 12
+    return `${h12}:${String(m).padStart(2, "0")} ${period}`
+  }
+
+  const formatAddress = (location) => {
+    if (!location || typeof location !== "object") return ""
+
+    const formatted =
+      (typeof location.formattedAddress === "string" && location.formattedAddress.trim()) ||
+      (typeof location.address === "string" && location.address.trim()) ||
+      ""
+    if (formatted) return formatted
+
+    const parts = []
+    if (location.addressLine1) parts.push(String(location.addressLine1).trim())
+    if (location.addressLine2) parts.push(String(location.addressLine2).trim())
+    if (location.area) parts.push(String(location.area).trim())
+    if (location.city) parts.push(String(location.city).trim())
+    if (location.state) parts.push(String(location.state).trim())
+    if (location.pincode) parts.push(String(location.pincode).trim())
+    if (location.landmark) parts.push(String(location.landmark).trim())
+
+    return parts.filter(Boolean).join(", ")
+  }
+
   const hasActiveFilters = filters.zone || filters.businessModel || filters.dateFrom || filters.dateTo
 
   const handleApprove = async (request) => {
@@ -448,12 +543,16 @@ export default function JoiningRequest() {
                               }}
                             />
                           </div>
-                          <span className="text-sm font-medium text-slate-900">{request.restaurantName}</span>
+                          <span className="text-sm font-medium text-slate-900">
+                            {getBestRestaurantName(request.fullData, request.restaurantName)}
+                          </span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="text-sm font-medium text-slate-900">{request.ownerName}</span>
+                          <span className="text-sm font-medium text-slate-900">
+                            {getBestOwnerName(request.fullData, request.ownerName)}
+                          </span>
                           <span className="text-xs text-slate-500">{formatPhone(request.ownerPhone)}</span>
                         </div>
                       </td>
@@ -700,7 +799,9 @@ export default function JoiningRequest() {
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10">
-              <h2 className="text-2xl font-bold text-slate-900">Restaurant Details - {selectedRequest.restaurantName || "N/A"}</h2>
+              <h2 className="text-2xl font-bold text-slate-900">
+                Restaurant Details - {getBestRestaurantName(selectedRequest?.fullData, selectedRequest?.restaurantName)}
+              </h2>
               <button
                 onClick={closeDetailsModal}
                 className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
@@ -724,7 +825,7 @@ export default function JoiningRequest() {
                     <div className="w-24 h-24 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0">
                       <img
                         src={restaurantDetails?.profileImage?.url || restaurantDetails?.profileImageUrl?.url || selectedRequest?.restaurantImage || "https://via.placeholder.com/96"}
-                        alt={restaurantDetails?.name || selectedRequest?.restaurantName || "Restaurant"}
+                        alt={getBestRestaurantName(restaurantDetails, selectedRequest?.restaurantName)}
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           e.target.src = "https://via.placeholder.com/96"
@@ -733,7 +834,7 @@ export default function JoiningRequest() {
                     </div>
                     <div className="flex-1">
                       <h3 className="text-2xl font-bold text-slate-900 mb-2">
-                        {restaurantDetails?.name || selectedRequest?.restaurantName || "N/A"}
+                        {getBestRestaurantName(restaurantDetails, selectedRequest?.restaurantName)}
                       </h3>
                       <div className="flex items-center gap-4 flex-wrap">
                         {restaurantDetails?.rating && (
@@ -767,7 +868,7 @@ export default function JoiningRequest() {
                           <div>
                             <p className="text-xs text-slate-500">Owner Name</p>
                             <p className="text-sm font-medium text-slate-900">
-                              {restaurantDetails?.ownerName || selectedRequest?.ownerName || "N/A"}
+                              {getBestOwnerName(restaurantDetails, selectedRequest?.ownerName)}
                             </p>
                           </div>
                         </div>
@@ -785,7 +886,9 @@ export default function JoiningRequest() {
                             <Mail className="w-5 h-5 text-slate-400" />
                             <div>
                               <p className="text-xs text-slate-500">Email</p>
-                              <p className="text-sm font-medium text-slate-900">{restaurantDetails.ownerEmail || restaurantDetails.email}</p>
+                              <p className="text-sm font-medium text-slate-900">
+                                {getBestEmail(restaurantDetails) || "N/A"}
+                              </p>
                             </div>
                           </div>
                         )}
@@ -802,13 +905,10 @@ export default function JoiningRequest() {
                             <div>
                               <p className="text-xs text-slate-500">Address</p>
                               <p className="text-sm font-medium text-slate-900">
-                                {restaurantDetails.location?.addressLine1 || restaurantDetails.onboarding?.step1?.location?.addressLine1 || ""}
-                                {restaurantDetails.location?.addressLine2 && `, ${restaurantDetails.location.addressLine2}`}
-                                {restaurantDetails.location?.area && `, ${restaurantDetails.location.area}`}
-                                {restaurantDetails.location?.city && `, ${restaurantDetails.location.city}`}
-                                {restaurantDetails.onboarding?.step1?.location?.area && `, ${restaurantDetails.onboarding.step1.location.area}`}
-                                {restaurantDetails.onboarding?.step1?.location?.city && `, ${restaurantDetails.onboarding.step1.location.city}`}
-                                {selectedRequest?.zone && !restaurantDetails?.location && !restaurantDetails?.onboarding?.step1?.location && selectedRequest.zone}
+                                {formatAddress(restaurantDetails.location) ||
+                                  formatAddress(restaurantDetails.onboarding?.step1?.location) ||
+                                  selectedRequest?.zone ||
+                                  "N/A"}
                               </p>
                             </div>
                           </div>
@@ -872,7 +972,17 @@ export default function JoiningRequest() {
                             <div>
                               <p className="text-xs text-slate-500">Delivery Timings</p>
                               <p className="text-sm font-medium text-slate-900">
-                                {restaurantDetails.deliveryTimings?.openingTime || restaurantDetails.onboarding?.step2?.deliveryTimings?.openingTime || "N/A"} - {restaurantDetails.deliveryTimings?.closingTime || restaurantDetails.onboarding?.step2?.deliveryTimings?.closingTime || "N/A"}
+                                {(() => {
+                                  const open =
+                                    restaurantDetails.deliveryTimings?.openingTime ||
+                                    restaurantDetails.onboarding?.step2?.deliveryTimings?.openingTime ||
+                                    ""
+                                  const close =
+                                    restaurantDetails.deliveryTimings?.closingTime ||
+                                    restaurantDetails.onboarding?.step2?.deliveryTimings?.closingTime ||
+                                    ""
+                                  return `${open ? formatTime12Hour(open) : "N/A"} - ${close ? formatTime12Hour(close) : "N/A"}`
+                                })()}
                               </p>
                             </div>
                           </div>
@@ -943,57 +1053,6 @@ export default function JoiningRequest() {
                                   >
                                     <ImageIcon className="w-4 h-4" />
                                     <span>View PAN Document</span>
-                                    <ExternalLink className="w-3 h-3" />
-                                  </a>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* GST Details */}
-                        {restaurantDetails.onboarding.step3.gst && (
-                          <div className="bg-slate-50 rounded-lg p-4">
-                            <h5 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                              <FileText className="w-4 h-4" />
-                              GST Details
-                            </h5>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <p className="text-xs text-slate-500 mb-1">GST Registered</p>
-                                <p className="font-medium text-slate-900">
-                                  {restaurantDetails.onboarding.step3.gst.isRegistered ? "Yes" : "No"}
-                                </p>
-                              </div>
-                              {restaurantDetails.onboarding.step3.gst.gstNumber && (
-                                <div>
-                                  <p className="text-xs text-slate-500 mb-1">GST Number</p>
-                                  <p className="font-medium text-slate-900">{restaurantDetails.onboarding.step3.gst.gstNumber}</p>
-                                </div>
-                              )}
-                              {restaurantDetails.onboarding.step3.gst.legalName && (
-                                <div>
-                                  <p className="text-xs text-slate-500 mb-1">Legal Name</p>
-                                  <p className="font-medium text-slate-900">{restaurantDetails.onboarding.step3.gst.legalName}</p>
-                                </div>
-                              )}
-                              {restaurantDetails.onboarding.step3.gst.address && (
-                                <div className="md:col-span-2">
-                                  <p className="text-xs text-slate-500 mb-1">GST Address</p>
-                                  <p className="font-medium text-slate-900">{restaurantDetails.onboarding.step3.gst.address}</p>
-                                </div>
-                              )}
-                              {restaurantDetails.onboarding.step3.gst.image?.url && (
-                                <div className="md:col-span-2">
-                                  <p className="text-xs text-slate-500 mb-2">GST Document</p>
-                                  <a
-                                    href={restaurantDetails.onboarding.step3.gst.image.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700"
-                                  >
-                                    <ImageIcon className="w-4 h-4" />
-                                    <span>View GST Document</span>
                                     <ExternalLink className="w-3 h-3" />
                                   </a>
                                 </div>
@@ -1091,7 +1150,6 @@ export default function JoiningRequest() {
                   {/* Menu Images */}
                   {(restaurantDetails?.menuImages || restaurantDetails?.onboarding?.step2?.menuImageUrls) && (
                     <div className="pt-6 border-t border-slate-200">
-                      <h4 className="text-lg font-semibold text-slate-900 mb-4">Menu Images</h4>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         {(restaurantDetails.menuImages || restaurantDetails.onboarding?.step2?.menuImageUrls || []).map((menuImg, idx) => {
                           const imgUrl = menuImg.url || menuImg

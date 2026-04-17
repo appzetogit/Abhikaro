@@ -1877,6 +1877,19 @@ export default function OrdersMain() {
     }
   }
 
+  // Prevent brief flash of Orders screen when user is still being redirected to onboarding
+  if (restaurantStatus.isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center px-6">
+        <div className="flex flex-col items-center text-center">
+          <Loader2 className="w-7 h-7 animate-spin text-gray-700" />
+          <div className="mt-3 text-sm font-semibold text-gray-900">Loading...</div>
+          <div className="mt-1 text-xs text-gray-500">Please wait</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
       {/* Restaurant Navbar - Sticky at top */}

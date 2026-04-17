@@ -135,6 +135,7 @@ export default function RestaurantOnboarding() {
   const [searchParams] = useSearchParams()
   const formContainerRef = useRef(null)
   const [step, setStep] = useState(1)
+  const hasLocalDraftRef = useRef(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
@@ -191,6 +192,109 @@ export default function RestaurantOnboarding() {
     featuredPrice: "",
     offer: "",
   })
+
+  const loadLocalDraft = () => {
+    try {
+      const rawStep = window.localStorage.getItem("restaurant_onboarding_step")
+      const raw1 = window.localStorage.getItem("restaurant_onboarding_step1")
+      const raw2 = window.localStorage.getItem("restaurant_onboarding_step2")
+      const raw3 = window.localStorage.getItem("restaurant_onboarding_step3")
+      const raw4 = window.localStorage.getItem("restaurant_onboarding_step4")
+
+      const parsedStep = rawStep ? Number(rawStep) : NaN
+      if (Number.isFinite(parsedStep) && parsedStep >= 1 && parsedStep <= 4) {
+        setStep(parsedStep)
+      }
+
+      if (raw1) {
+        const d1 = JSON.parse(raw1)
+        if (d1 && typeof d1 === "object") {
+          setStep1((prev) => ({
+            ...prev,
+            ...d1,
+            location: { ...prev.location, ...(d1.location || {}) },
+          }))
+        }
+      }
+
+      if (raw2) {
+        const d2 = JSON.parse(raw2)
+        if (d2 && typeof d2 === "object") {
+          setStep2((prev) => ({
+            ...prev,
+            ...d2,
+          }))
+        }
+      }
+
+      if (raw3) {
+        const d3 = JSON.parse(raw3)
+        if (d3 && typeof d3 === "object") {
+          setStep3((prev) => ({
+            ...prev,
+            ...d3,
+            // Never restore File objects from localStorage
+            panImage: null,
+            fssaiImage: null,
+          }))
+        }
+      }
+
+      if (raw4) {
+        const d4 = JSON.parse(raw4)
+        if (d4 && typeof d4 === "object") {
+          setStep4((prev) => ({
+            ...prev,
+            ...d4,
+          }))
+        }
+      }
+
+      // Mark as draft only if any draft key exists
+      if (rawStep || raw1 || raw2 || raw3 || raw4) {
+        hasLocalDraftRef.current = true
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const persistLocalDraft = (nextStep) => {
+    try {
+      window.localStorage.setItem("restaurant_onboarding_step", String(nextStep))
+      window.localStorage.setItem("restaurant_onboarding_step1", JSON.stringify(step1))
+
+      // Avoid trying to serialize File objects
+      const step2Safe = {
+        ...step2,
+        profileImage:
+          typeof step2.profileImage === "string"
+            ? step2.profileImage
+            : step2.profileImage?.url
+              ? step2.profileImage
+              : null,
+      }
+      window.localStorage.setItem("restaurant_onboarding_step2", JSON.stringify(step2Safe))
+
+      const step3Safe = {
+        ...step3,
+        // strip non-serializable fields
+        panImage: null,
+        fssaiImage: null,
+        // GST removed from UI, keep it off by default
+        gstRegistered: false,
+        gstNumber: "",
+        gstLegalName: "",
+        gstAddress: "",
+        gstImage: null,
+        gstImagePreviewUrl: "",
+      }
+      window.localStorage.setItem("restaurant_onboarding_step3", JSON.stringify(step3Safe))
+      window.localStorage.setItem("restaurant_onboarding_step4", JSON.stringify(step4))
+    } catch {
+      // ignore
+    }
+  }
 
 
   // Helper function to convert base64 to File object
@@ -385,14 +489,18 @@ export default function RestaurantOnboarding() {
     });
   };
 
-  // On mount, only respect URL step param or backend onboarding data (no localStorage)
+  // On mount, restore local draft first so refresh stays on current step
   useEffect(() => {
-    // Check if step is specified in URL (from OTP login redirect)
-    const stepParam = searchParams.get("step")
-    if (stepParam) {
-      const stepNum = parseInt(stepParam, 10)
-      if (stepNum >= 1 && stepNum <= 3) {
-        setStep(stepNum)
+    loadLocalDraft()
+
+    // If no local draft, fall back to URL step param (e.g. OTP redirect)
+    if (!hasLocalDraftRef.current) {
+      const stepParam = searchParams.get("step")
+      if (stepParam) {
+        const stepNum = parseInt(stepParam, 10)
+        if (stepNum >= 1 && stepNum <= 4) {
+          setStep(stepNum)
+        }
       }
     }
   }, [searchParams])
@@ -404,6 +512,11 @@ export default function RestaurantOnboarding() {
         const res = await api.get("/restaurant/onboarding")
         const data = res?.data?.data?.onboarding
         if (data) {
+          // If user has a local draft (e.g. refreshed mid-onboarding), do not wipe it.
+          // We only hydrate from backend when there is no local draft.
+          if (hasLocalDraftRef.current) {
+            return
+          }
           if (data.step1) {
             setStep1((prev) => ({
               restaurantName: data.step1.restaurantName || "",
@@ -485,6 +598,13 @@ export default function RestaurantOnboarding() {
     }
     fetchData()
   }, [])
+
+  // Persist draft on any change so refresh restores same step/details
+  useEffect(() => {
+    if (loading) return
+    persistLocalDraft(step)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, step1, step2, step3, step4, loading])
 
   // Track if phone is verified (OTP verified) - should not be editable
   const [isPhoneVerified, setIsPhoneVerified] = useState(false)
@@ -607,8 +727,10 @@ export default function RestaurantOnboarding() {
       const openMinutes = openHour * 60 + openMin
       const closeMinutes = closeHour * 60 + closeMin
       
-      if (closeMinutes <= openMinutes) {
-        errors.push("closing time should not be less than opening time and both cant be same")
+      if (closeMinutes === openMinutes) {
+        errors.push("Opening time should not be same as closing time")
+      } else if (openMinutes > closeMinutes) {
+        errors.push("Opening time should not be after closing time")
       }
     }
     
@@ -689,31 +811,6 @@ export default function RestaurantOnboarding() {
         (typeof step3.fssaiImage === 'string' && step3.fssaiImage.startsWith('http'))
       if (!isValidFssaiImage) {
         errors.push("Please upload a valid FSSAI image")
-      }
-    }
-
-    // Validate GST details if GST registered
-    if (step3.gstRegistered) {
-      if (!step3.gstNumber?.trim()) {
-        errors.push("GST number is required when GST registered")
-      }
-      if (!step3.gstLegalName?.trim()) {
-        errors.push("GST legal name is required when GST registered")
-      }
-      if (!step3.gstAddress?.trim()) {
-        errors.push("GST registered address is required when GST registered")
-      }
-      // Validate GST image if GST registered
-      if (!step3.gstImage) {
-        errors.push("GST image is required when GST registered")
-      } else {
-        const isValidGstImage =
-          step3.gstImage instanceof File ||
-          (step3.gstImage?.url && typeof step3.gstImage.url === 'string') ||
-          (typeof step3.gstImage === 'string' && step3.gstImage.startsWith('http'))
-        if (!isValidGstImage) {
-          errors.push("Please upload a valid GST image")
-        }
       }
     }
 
@@ -969,34 +1066,6 @@ export default function RestaurantOnboarding() {
           throw new Error('PAN image must be uploaded')
         }
 
-        // Upload GST image if it's a File object (only if GST registered)
-        let gstImageUpload = null
-        if (step3.gstRegistered) {
-          if (step3.gstImage instanceof File) {
-            try {
-              gstImageUpload = await handleUpload(step3.gstImage, "restaurant/gst")
-              // Verify upload was successful and has valid URL
-              if (!gstImageUpload || !gstImageUpload.url) {
-                throw new Error('Failed to upload GST image')
-              }
-            } catch (uploadError) {
-              console.error('GST image upload error:', uploadError)
-              throw new Error(`Failed to upload GST image: ${uploadError.message}`)
-            }
-          } else if (step3.gstImage?.url) {
-            // If gstImage already has a URL (from previous save), use it
-            gstImageUpload = step3.gstImage
-          } else if (typeof step3.gstImage === 'string' && step3.gstImage.startsWith('http')) {
-            // If it's a direct URL string
-            gstImageUpload = { url: step3.gstImage }
-          }
-
-          // Verify GST image is present if GST registered
-          if (!gstImageUpload || !gstImageUpload.url) {
-            throw new Error('GST image must be uploaded when GST registered')
-          }
-        }
-
         // Upload FSSAI image if it's a File object
         let fssaiImageUpload = null
         if (step3.fssaiImage instanceof File) {
@@ -1031,11 +1100,7 @@ export default function RestaurantOnboarding() {
               image: panImageUpload,
             },
             gst: {
-              isRegistered: step3.gstRegistered || false,
-              gstNumber: step3.gstNumber || "",
-              legalName: step3.gstLegalName || "",
-              address: step3.gstAddress || "",
-              image: gstImageUpload,
+              isRegistered: false,
             },
             fssai: {
               registrationNumber: step3.fssaiNumber || "",
@@ -1611,158 +1676,6 @@ export default function RestaurantOnboarding() {
       </section>
 
       <section className="bg-white p-4 sm:p-6 rounded-md space-y-4">
-        <h2 className="text-lg font-semibold text-black">GST details</h2>
-        <div className="flex gap-4 items-center text-sm">
-          <span className="text-gray-700">GST registered?</span>
-          <button
-            type="button"
-            onClick={() => setStep3({ ...step3, gstRegistered: true })}
-            className={`px-3 py-1.5 text-xs rounded-full ${step3.gstRegistered ? "bg-black text-white" : "bg-gray-100 text-gray-800"
-              }`}
-          >
-            Yes
-          </button>
-          <button
-            type="button"
-            onClick={() => setStep3({ ...step3, gstRegistered: false })}
-            className={`px-3 py-1.5 text-xs rounded-full ${!step3.gstRegistered ? "bg-black text-white" : "bg-gray-100 text-gray-800"
-              }`}
-          >
-            No
-          </button>
-        </div>
-        {step3.gstRegistered && (
-          <div className="space-y-3">
-            <Input
-              value={step3.gstNumber || ""}
-              onChange={(e) => setStep3({ ...step3, gstNumber: e.target.value })}
-              className="bg-white text-sm"
-              placeholder="GST number"
-            />
-            <Input
-              value={step3.gstLegalName || ""}
-              onChange={(e) => setStep3({ ...step3, gstLegalName: e.target.value })}
-              className="bg-white text-sm"
-              placeholder="Legal name"
-            />
-            <Input
-              value={step3.gstAddress || ""}
-              onChange={(e) => setStep3({ ...step3, gstAddress: e.target.value })}
-              className="bg-white text-sm"
-              placeholder="Registered address"
-            />
-            <div>
-              <Label className="text-xs text-gray-700">GST image</Label>
-              {/* GST image preview (if selected or already uploaded) */}
-              {step3.gstImage && (
-                <div className="mt-2 w-28 h-16 rounded-md overflow-hidden bg-gray-100 border border-gray-200 flex items-center justify-center">
-                  {(() => {
-                    let imageSrc = null
-
-                    if (step3.gstImagePreviewUrl) {
-                      imageSrc = step3.gstImagePreviewUrl
-                    } else if (step3.gstImage instanceof File) {
-                      imageSrc = URL.createObjectURL(step3.gstImage)
-                    } else if (step3.gstImage?.url) {
-                      imageSrc = step3.gstImage.url
-                    } else if (typeof step3.gstImage === "string") {
-                      imageSrc = step3.gstImage
-                    }
-
-                    return imageSrc ? (
-                      <img
-                        src={imageSrc}
-                        alt="GST preview"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-[10px] text-gray-500 px-2 text-center">
-                        Preview not available
-                      </span>
-                    )
-                  })()}
-                </div>
-              )}
-
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isFlutterApp()) {
-                      handleFlutterCamera('gstImage', false);
-                    } else {
-                      document.getElementById('gstImageCameraInput')?.click();
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
-                >
-                  <ImageIcon className="w-4 h-4" />
-                  <span>Camera</span>
-                </button>
-                <input
-                  id="gstImageCameraInput"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null
-                    if (file) {
-                      const reader = new FileReader()
-                      reader.onloadend = () => {
-                        setStep3((prev) => ({
-                          ...prev,
-                          gstImage: file,
-                          gstImagePreviewUrl: typeof reader.result === "string" ? reader.result : "",
-                        }))
-                      }
-                      reader.readAsDataURL(file)
-                    } else {
-                      setStep3((prev) => ({ ...prev, gstImage: null, gstImagePreviewUrl: "" }))
-                    }
-                    e.target.value = ""
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFileInputFallback('gstImage', { source: 'gallery' });
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white text-black border border-black text-xs font-medium cursor-pointer"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>Gallery</span>
-                </button>
-                <input
-                  id="gstImageInput"
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null
-                    if (file) {
-                      const reader = new FileReader()
-                      reader.onloadend = () => {
-                        setStep3((prev) => ({
-                          ...prev,
-                          gstImage: file,
-                          gstImagePreviewUrl: typeof reader.result === "string" ? reader.result : "",
-                        }))
-                      }
-                      reader.readAsDataURL(file)
-                    } else {
-                      setStep3((prev) => ({ ...prev, gstImage: null, gstImagePreviewUrl: "" }))
-                    }
-                    e.target.value = ""
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="bg-white p-4 sm:p-6 rounded-md space-y-4">
         <h2 className="text-lg font-semibold text-black">FSSAI details</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
@@ -2031,15 +1944,7 @@ export default function RestaurantOnboarding() {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <div ref={formContainerRef} className="min-h-screen bg-gray-100 flex flex-col">
-        <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white border-b border-gray-100 flex items-center justify-between">
-          {/* Clean header without debug labels / auto-fill in production */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-              <Store className="w-4 h-4 text-white" aria-hidden />
-            </div>
-          </div>
-          {/* Auto-fill dev button removed as per request */}
-        </header>
+        <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white border-b border-gray-100" />
 
         <main className="flex-1 px-4 sm:px-6 py-8 max-w-3xl mx-auto w-full">
           <StepIndicator />

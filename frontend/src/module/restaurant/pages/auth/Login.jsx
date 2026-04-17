@@ -1,40 +1,8 @@
 import { useState, useRef, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { ChevronDown } from "lucide-react"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { restaurantAPI } from "@/lib/api"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
-
-// Common country codes
-const countryCodes = [
-  { code: "+1", country: "US/CA", flag: "🇺🇸" },
-  { code: "+44", country: "UK", flag: "🇬🇧" },
-  { code: "+91", country: "IN", flag: "🇮🇳" },
-  { code: "+86", country: "CN", flag: "🇨🇳" },
-  { code: "+81", country: "JP", flag: "🇯🇵" },
-  { code: "+49", country: "DE", flag: "🇩🇪" },
-  { code: "+33", country: "FR", flag: "🇫🇷" },
-  { code: "+39", country: "IT", flag: "🇮🇹" },
-  { code: "+34", country: "ES", flag: "🇪🇸" },
-  { code: "+61", country: "AU", flag: "🇦🇺" },
-  { code: "+7", country: "RU", flag: "🇷🇺" },
-  { code: "+55", country: "BR", flag: "🇧🇷" },
-  { code: "+52", country: "MX", flag: "🇲🇽" },
-  { code: "+82", country: "KR", flag: "🇰🇷" },
-  { code: "+65", country: "SG", flag: "🇸🇬" },
-  { code: "+971", country: "AE", flag: "🇦🇪" },
-  { code: "+966", country: "SA", flag: "🇸🇦" },
-  { code: "+27", country: "ZA", flag: "🇿🇦" },
-  { code: "+31", country: "NL", flag: "🇳🇱" },
-  { code: "+46", country: "SE", flag: "🇸🇪" },
-]
 
 export default function RestaurantLogin() {
   const companyName = useCompanyName()
@@ -42,7 +10,6 @@ export default function RestaurantLogin() {
   const [loginMethod, setLoginMethod] = useState("phone") // "phone" or "email"
   const [formData, setFormData] = useState({
     phone: "",
-    countryCode: "+91",
     email: "",
   })
   const [errors, setErrors] = useState({
@@ -64,13 +31,10 @@ export default function RestaurantLogin() {
       if (stored) {
         const data = JSON.parse(stored)
         if (data.phone) {
-          const match = data.phone.match(/(\+\d+)\s*(.+)/)
-          if (match) {
-            const countryCode = match[1]
-            const digits = (match[2] || "").replace(/\D/g, "").slice(0, 10)
+          const digits = String(data.phone).replace(/\D/g, "").slice(-10)
+          if (digits) {
             setFormData((prev) => ({
               ...prev,
-              countryCode,
               phone: digits,
             }))
           }
@@ -81,11 +45,8 @@ export default function RestaurantLogin() {
     }
   }, [])
 
-  // Get selected country details dynamically
-  const selectedCountry = countryCodes.find(c => c.code === formData.countryCode) || countryCodes[2] // Default to India (+91)
-
   // Phone number validation
-  const validatePhone = (phone, countryCode) => {
+  const validatePhone = (phone) => {
     if (!phone || phone.trim() === "") {
       return "Phone number is required"
     }
@@ -93,34 +54,12 @@ export default function RestaurantLogin() {
     // Remove any non-digit characters for validation
     const digitsOnly = phone.replace(/\D/g, "")
 
-    if (
-      countryCode !== "+91" &&
-      digitsOnly.length === 10 &&
-      /^[6-9]\d{9}$/.test(digitsOnly)
-    ) {
-      return "This number looks Indian. Select +91 or enter a valid number for the selected country."
+    if (digitsOnly.length !== 10) {
+      return "Phone number must be 10 digits"
     }
-
-    // Minimum length check (at least 7 digits)
-    if (digitsOnly.length < 10) {
-      return "Phone number must be at least 10 digits"
-    }
-
-    // Maximum length check (typically 15 digits for international numbers)
-    if (digitsOnly.length > 15) {
-      return "Phone number is too long"
-    }
-
-    // Country-specific validation (India +91)
-    if (countryCode === "+91") {
-      if (digitsOnly.length !== 10) {
-        return "Indian phone number must be 10 digits"
-      }
-      // Check if it starts with valid Indian mobile prefixes
-      const firstDigit = digitsOnly[0]
-      if (!["6", "7", "8", "9"].includes(firstDigit)) {
-        return "Invalid Indian mobile number"
-      }
+    const firstDigit = digitsOnly[0]
+    if (!["6", "7", "8", "9"].includes(firstDigit)) {
+      return "Invalid mobile number"
     }
 
     return ""
@@ -139,7 +78,7 @@ export default function RestaurantLogin() {
     setApiError("")
 
     // Validate
-    const phoneError = validatePhone(formData.phone, formData.countryCode)
+    const phoneError = validatePhone(formData.phone)
 
     if (phoneError) {
       setErrors({ phone: phoneError })
@@ -150,7 +89,7 @@ export default function RestaurantLogin() {
     setErrors({ phone: "" })
 
     // Build full phone in E.164-ish format (e.g. +91xxxxxxxxxx)
-    const fullPhone = `${formData.countryCode} ${formData.phone}`.trim()
+    const fullPhone = `+91 ${formData.phone}`.trim()
 
     try {
       setIsSending(true)
@@ -274,8 +213,7 @@ export default function RestaurantLogin() {
 
   const handlePhoneChange = (e) => {
     const raw = e.target.value.replace(/\D/g, "")
-    const maxLen = formData.countryCode === "+91" ? 10 : 15
-    const value = raw.slice(0, maxLen)
+    const value = raw.slice(0, 10)
     const newFormData = {
       ...formData,
       phone: value,
@@ -283,7 +221,7 @@ export default function RestaurantLogin() {
     setFormData(newFormData)
 
     // Real-time validation
-    const error = validatePhone(value, formData.countryCode)
+    const error = validatePhone(value)
     setErrors({ ...errors, phone: error })
 
     // Mark as touched when user starts typing
@@ -298,22 +236,8 @@ export default function RestaurantLogin() {
       setTouched({ ...touched, phone: true })
     }
     // Re-validate on blur
-    const error = validatePhone(formData.phone, formData.countryCode)
+    const error = validatePhone(formData.phone)
     setErrors({ ...errors, phone: error })
-  }
-
-  const handleCountryCodeChange = (value) => {
-    const newFormData = {
-      ...formData,
-      countryCode: value,
-    }
-    setFormData(newFormData)
-
-    // Re-validate phone if it's been touched
-    if (touched.phone) {
-      const error = validatePhone(formData.phone, value)
-      setErrors({ ...errors, phone: error })
-    }
   }
 
   const isValidPhone = !errors.phone && formData.phone.trim().length > 0
@@ -363,53 +287,24 @@ export default function RestaurantLogin() {
           {/* Phone Number Input */}
           {loginMethod === "phone" && (
             <div className="space-y-4">
-              <div className="flex gap-2 items-stretch w-full">
-                {/* Country Code Selector */}
-                <Select
-                  value={formData.countryCode}
-                  onValueChange={handleCountryCodeChange}
-                >
-                  <SelectTrigger className="w-[100px] h-12 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 flex items-center shrink-0" style={{ height: '48px' }}>
-                    <SelectValue>
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-base">{selectedCountry.flag}</span>
-                        <span className="text-sm font-medium text-gray-900">{selectedCountry.code}</span>
-                        <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
-                      </span>
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[300px] overflow-y-auto">
-                    {countryCodes.map((country) => (
-                      <SelectItem key={country.code} value={country.code}>
-                        <span className="flex items-center gap-2">
-                          <span>{country.flag}</span>
-                          <span>{country.code}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Phone Number Input */}
-                <div className="flex-1 flex flex-col">
-                  <input
-                    type="tel"
-                    placeholder="Enter phone number"
-                    value={formData.phone}
-                    onChange={handlePhoneChange}
-                    onBlur={handlePhoneBlur}
-                    maxLength={formData.countryCode === "+91" ? 10 : 15}
-                    pattern="[0-9]*"
-                    className={`w-full px-4 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 text-base border rounded-lg min-w-0 bg-white ${errors.phone && (formData.phone.length > 0 || touched.phone)
-                      ? "border-red-500 focus:ring-red-500 focus:border-red-500"
-                      : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
-                      }`}
-                    style={{ height: '48px' }}
-                  />
-                  {errors.phone && (formData.phone.length > 0 || touched.phone) && (
-                    <p className="text-red-500 text-xs mt-1 ml-1">{errors.phone}</p>
-                  )}
-                </div>
+              <div className="flex flex-col">
+                <input
+                  type="tel"
+                  placeholder="Enter phone number"
+                  value={formData.phone}
+                  onChange={handlePhoneChange}
+                  onBlur={handlePhoneBlur}
+                  maxLength={10}
+                  pattern="[0-9]*"
+                  className={`w-full px-4 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 text-base border rounded-lg bg-white ${errors.phone && (formData.phone.length > 0 || touched.phone)
+                    ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                    : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                    }`}
+                  style={{ height: '48px' }}
+                />
+                {errors.phone && (formData.phone.length > 0 || touched.phone) && (
+                  <p className="text-red-500 text-xs mt-1 ml-1">{errors.phone}</p>
+                )}
               </div>
 
               {/* API error */}

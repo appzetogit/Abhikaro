@@ -15,6 +15,10 @@ const networkErrorState = {
   TOAST_COOLDOWN_PERIOD: 60000, // 60 seconds cooldown for toast notifications
 };
 
+// Prevent repeated API error toasts (per message)
+const apiErrorToastState = new Map();
+const API_ERROR_TOAST_COOLDOWN_PERIOD = 15000; // 15 seconds
+
 // Validate API base URL on import
 if (import.meta.env.DEV) {
   const backendUrl = API_BASE_URL.replace("/api", "");
@@ -858,10 +862,19 @@ apiClient.interceptors.response.use(
 
       // Show beautiful error toast for each remaining error message
       errorMessages.forEach((errorMessage, index) => {
+        const now = Date.now();
+        const key = String(errorMessage || "").trim();
+        const last = apiErrorToastState.get(key) || 0;
+        if (key && now - last < API_ERROR_TOAST_COOLDOWN_PERIOD) {
+          return;
+        }
+        if (key) apiErrorToastState.set(key, now);
+
         // Add slight delay for multiple toasts to appear sequentially
         setTimeout(() => {
           toast.error(errorMessage, {
             duration: 5000,
+            id: `api-error-${encodeURIComponent(key).slice(0, 120)}`,
             style: {
               background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
               color: "#ffffff",
