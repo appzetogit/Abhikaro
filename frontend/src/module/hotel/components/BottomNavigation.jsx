@@ -14,10 +14,10 @@ export default function BottomNavigation() {
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-      <div className="flex items-center justify-around py-2 px-4">
+      <div className="flex w-full items-center justify-between py-2 px-2">
         <button
           onClick={() => navigate("/hotel/dashboard")}
-          className={`flex flex-col items-center gap-1 p-2 transition-colors ${isActive("/hotel/dashboard") ? "text-[#ff8100]" : "text-gray-600"
+          className={`flex flex-1 flex-col items-center justify-center gap-1 p-2 text-center transition-colors ${isActive("/hotel/dashboard") ? "text-[#ff8100]" : "text-gray-600"
             }`}
         >
           <Home className="w-6 h-6" />
@@ -25,7 +25,7 @@ export default function BottomNavigation() {
         </button>
         <button
           onClick={() => navigate("/hotel/orders")}
-          className={`flex flex-col items-center gap-1 p-2 transition-colors ${isActive("/hotel/orders") ? "text-[#ff8100]" : "text-gray-600"
+          className={`flex flex-1 flex-col items-center justify-center gap-1 p-2 text-center transition-colors ${isActive("/hotel/orders") ? "text-[#ff8100]" : "text-gray-600"
             }`}
         >
           <FileText className="w-6 h-6" />
@@ -33,15 +33,15 @@ export default function BottomNavigation() {
         </button>
         <button
           onClick={() => navigate("/hotel/leaderboard")}
-          className={`flex flex-col items-center gap-1 p-2 transition-colors ${isActive("/hotel/leaderboard") ? "text-[#ff8100]" : "text-gray-600"
+          className={`flex flex-1 flex-col items-center justify-center gap-1 p-2 text-center transition-colors ${isActive("/hotel/leaderboard") ? "text-[#ff8100]" : "text-gray-600"
             }`}
         >
-          <Trophy className="w-6 h-6" />
+          <Trophy className="w-6 h-6 text-yellow-400" />
           <span className="text-xs">Leaderboard</span>
         </button>
         <button
           onClick={() => navigate("/hotel/wallet")}
-          className={`flex flex-col items-center gap-1 p-2 transition-colors ${isActive("/hotel/wallet") ? "text-[#ff8100]" : "text-gray-600"
+          className={`flex flex-1 flex-col items-center justify-center gap-1 p-2 text-center transition-colors ${isActive("/hotel/wallet") ? "text-[#ff8100]" : "text-gray-600"
             }`}
         >
           <Wallet className="w-6 h-6" />
@@ -49,7 +49,7 @@ export default function BottomNavigation() {
         </button>
         <button
           onClick={() => navigate("/hotel/profile")}
-          className={`flex flex-col items-center gap-1 p-2 transition-colors ${isActive("/hotel/profile") ? "text-[#ff8100]" : "text-gray-600"
+          className={`flex flex-1 flex-col items-center justify-center gap-1 p-2 text-center transition-colors ${isActive("/hotel/profile") ? "text-[#ff8100]" : "text-gray-600"
             }`}
         >
           <User className="w-6 h-6" />

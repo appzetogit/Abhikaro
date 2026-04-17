@@ -25,7 +25,7 @@ function getBadge(rank) {
   return null
 }
 
-function LeaderboardTable({ data = [], isLoading, rewards, periodKey }) {
+function LeaderboardTable({ data = [], isLoading, rewards, periodKey, onOpenWinner }) {
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
@@ -81,8 +81,20 @@ function LeaderboardTable({ data = [], isLoading, rewards, periodKey }) {
         {data.map((row) => {
           const badge = getBadge(row.rank)
           const reward = getRewardForRank(row.rank)
+          const top3Style =
+            row.rank === 1
+              ? "mx-3 my-2 rounded-2xl border border-yellow-200 bg-gradient-to-r from-yellow-100 via-amber-50 to-white shadow-sm ring-1 ring-yellow-100"
+              : row.rank === 2
+                ? "mx-3 my-2 rounded-2xl border-2 border-slate-300 bg-gradient-to-r from-slate-200 via-gray-50 to-white shadow-md ring-1 ring-slate-200"
+                : row.rank === 3
+                  ? "mx-3 my-2 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-100 via-amber-50 to-white shadow-sm ring-1 ring-orange-100"
+                  : ""
+          const top3NoDivider = row.rank === 1 || row.rank === 2 || row.rank === 3
           return (
-            <div key={row.hotelMongoId || row.hotelId || row.hotelName} className="grid grid-cols-12 px-4 py-3">
+            <div
+              key={row.hotelMongoId || row.hotelId || row.hotelName}
+              className={cn("grid grid-cols-12 px-4 py-3", top3Style, top3NoDivider && "border-b-0")}
+            >
               <div className="col-span-2 flex items-center gap-2">
                 <span className="w-8 text-sm font-semibold text-neutral-900">{row.rank}</span>
                 {badge && (
@@ -100,6 +112,27 @@ function LeaderboardTable({ data = [], isLoading, rewards, periodKey }) {
                 <p className="truncate text-xs text-neutral-500">
                   {row.hotelId ? `ID: ${row.hotelId}` : "ID: —"}
                 </p>
+                {row.rank === 1 ? (
+                  <div className="mt-2 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenWinner?.({
+                          periodKey,
+                          rank: row.rank,
+                          hotelName: row.hotelName || "Unknown Hotel",
+                          hotelId: row.hotelId || "",
+                          orders: Number(row.orders || 0),
+                          rewardLabel: reward?.name || "",
+                        })
+                      }
+                      className="rounded-full bg-yellow-400 px-4 py-1 text-[11px] font-extrabold text-neutral-900 shadow-sm ring-1 ring-yellow-300 hover:bg-yellow-300"
+                      title="Upload winner profile photo (shown in hotel app)"
+                    >
+                      WINNER
+                    </button>
+                  </div>
+                ) : null}
               </div>
               <div className="col-span-2 flex items-center">
                 {reward ? (
@@ -144,6 +177,9 @@ export default function HotelLeaderboard() {
   const [rewardsOpen, setRewardsOpen] = useState(false)
   const [bannerOpen, setBannerOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [winnerOpen, setWinnerOpen] = useState(false)
+  const [winnerPeriodKey, setWinnerPeriodKey] = useState("month") // month | 6months
+  const [winnerSummary, setWinnerSummary] = useState(null)
   const [rewardsLoading, setRewardsLoading] = useState(false)
   const [rewardsSaving, setRewardsSaving] = useState(false)
   const [rewardsError, setRewardsError] = useState(null)
@@ -279,6 +315,12 @@ export default function HotelLeaderboard() {
 
   const uploadBannerImage = async (file) => {
     const res = await uploadAPI.uploadMedia(file, { folder: "leaderboard/banner" })
+    const payload = res?.data?.data
+    return { url: payload?.url || "", publicId: payload?.publicId || "" }
+  }
+
+  const uploadWinnerImage = async (file) => {
+    const res = await uploadAPI.uploadMedia(file, { folder: "leaderboard/winner" })
     const payload = res?.data?.data
     return { url: payload?.url || "", publicId: payload?.publicId || "" }
   }
@@ -421,6 +463,11 @@ export default function HotelLeaderboard() {
                       isLoading={monthly.loading}
                       rewards={rewards}
                       periodKey="month"
+                      onOpenWinner={(info) => {
+                        setWinnerPeriodKey(info?.periodKey === "6months" ? "6months" : "month")
+                        setWinnerSummary(info || null)
+                        setWinnerOpen(true)
+                      }}
                     />
                   )}
                 </CardContent>
@@ -446,6 +493,11 @@ export default function HotelLeaderboard() {
                       isLoading={sixMonths.loading}
                       rewards={rewards}
                       periodKey="6months"
+                      onOpenWinner={(info) => {
+                        setWinnerPeriodKey(info?.periodKey === "6months" ? "6months" : "month")
+                        setWinnerSummary(info || null)
+                        setWinnerOpen(true)
+                      }}
                     />
                   )}
                 </CardContent>
@@ -961,6 +1013,139 @@ export default function HotelLeaderboard() {
               >
                 Close
               </button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={winnerOpen} onOpenChange={setWinnerOpen}>
+        <DialogContent className="max-w-lg max-h-[82vh] overflow-y-auto p-0">
+          <DialogHeader>
+            <div className="px-6 pt-6">
+              <DialogTitle className="text-xl">Winner profile</DialogTitle>
+              <DialogDescription className="mt-1">
+                Upload profile photo for Rank #1 winner shown in hotel app ({winnerPeriodKey === "6months" ? "6 months" : "Monthly"}).
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+
+          <div className="px-6 pb-36 pt-4">
+            {rewardsError ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {rewardsError}
+              </div>
+            ) : null}
+
+            {winnerSummary ? (
+              <div className="mb-4 rounded-2xl border border-neutral-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-neutral-900">{winnerSummary.hotelName}</p>
+                    <p className="truncate text-xs text-neutral-500">{winnerSummary.hotelId ? `ID: ${winnerSummary.hotelId}` : ""}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-yellow-100 px-2 py-1 text-[11px] font-extrabold text-yellow-900 ring-1 ring-yellow-200">
+                    Rank #{winnerSummary.rank || 1}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
+                    <p className="text-[11px] font-semibold text-neutral-500">Orders</p>
+                    <p className="mt-1 text-sm font-extrabold text-neutral-900">
+                      {Number(winnerSummary.orders || 0).toLocaleString("en-IN")}
+                    </p>
+                  </div>
+                  <div className="col-span-2 rounded-xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
+                    <p className="text-[11px] font-semibold text-neutral-500">Reward</p>
+                    <p className="mt-1 text-sm font-extrabold text-neutral-900 line-clamp-2" title={winnerSummary.rewardLabel || ""}>
+                      {winnerSummary.rewardLabel ? winnerSummary.rewardLabel : "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-neutral-900">Profile photo</p>
+                <span className="rounded-full bg-neutral-100 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                  Rank #1
+                </span>
+              </div>
+
+              <div className="mt-3 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+                {(() => {
+                  const url =
+                    winnerPeriodKey === "6months"
+                      ? rewards?.winnerProfiles?.sixMonths?.url
+                      : rewards?.winnerProfiles?.month?.url
+                  return url ? (
+                    <img src={url} alt="Winner profile" className="h-44 w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-44 items-center justify-center text-sm text-neutral-500">
+                      No profile photo uploaded
+                    </div>
+                  )
+                })()}
+              </div>
+
+              <div className="mt-3">
+                <FilePickerRow
+                  helper="Square image recommended (JPG/PNG)"
+                  onPick={async (file) => {
+                    try {
+                      const image = await uploadWinnerImage(file)
+                      setRewards((prev) => {
+                        const next = structuredClone(prev || {})
+                        if (!next.winnerProfiles) next.winnerProfiles = { month: { url: "", publicId: "" }, sixMonths: { url: "", publicId: "" } }
+                        if (winnerPeriodKey === "6months") next.winnerProfiles.sixMonths = image
+                        else next.winnerProfiles.month = image
+                        // keep existing structures if missing
+                        if (!next.monthly) next.monthly = { gifts: [], discounts: [] }
+                        if (!next.sixMonths) next.sixMonths = { gifts: [] }
+                        if (!Array.isArray(next.banners)) next.banners = []
+                        return next
+                      })
+                    } catch (err) {
+                      setRewardsError(err?.message || "Image upload failed")
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="sticky bottom-0 border-t border-neutral-200 bg-white/90 backdrop-blur px-6 py-4">
+            <DialogFooter className="sm:justify-end">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWinnerOpen(false)}
+                  className="inline-flex items-center justify-center rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                  disabled={rewardsSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!rewards) return
+                    setRewardsSaving(true)
+                    setRewardsError(null)
+                    try {
+                      await adminAPI.updateHotelLeaderboardRewards(rewards)
+                      setWinnerOpen(false)
+                    } catch (e) {
+                      setRewardsError(e?.response?.data?.message || e?.message || "Failed to save winner profile")
+                    } finally {
+                      setRewardsSaving(false)
+                    }
+                  }}
+                  className="inline-flex items-center justify-center rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                  disabled={rewardsSaving || rewardsLoading || !rewards}
+                >
+                  {rewardsSaving ? "Saving..." : "Save"}
+                </button>
+              </div>
             </DialogFooter>
           </div>
         </DialogContent>

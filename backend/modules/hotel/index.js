@@ -10,6 +10,7 @@ import hotelQRRoutes from "./routes/hotelQRRoutes.js";
 import hotelOrderRoutes from "./routes/hotelOrderRoutes.js";
 import hotelLeaderboardRoutes from "./routes/hotelLeaderboardRoutes.js";
 import hotelLeaderboardRewardsRoutes from "./routes/hotelLeaderboardRewardsRoutes.js";
+import hotelLeaderboardHistoryRoutes from "./routes/hotelLeaderboardHistoryRoutes.js";
 
 const router = express.Router();
 
@@ -27,5 +28,6 @@ router.use("/qr", hotelQRRoutes);
 router.use("/orders", hotelOrderRoutes);
 router.use("/leaderboard", hotelLeaderboardRoutes);
 router.use("/leaderboard-rewards", hotelLeaderboardRewardsRoutes);
+router.use("/leaderboard-history", hotelLeaderboardHistoryRoutes);
 
 export default router;

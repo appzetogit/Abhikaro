@@ -957,6 +957,9 @@ export const hotelAPI = {
   getLeaderboardRewards: () => {
     return apiClient.get("/hotel/leaderboard-rewards");
   },
+  getLeaderboardHistory: (params = {}) => {
+    return apiClient.get("/hotel/leaderboard-history", { params });
+  },
 
   // Wallet
   getWallet: () => {

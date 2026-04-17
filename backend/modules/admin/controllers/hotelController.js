@@ -1809,6 +1809,13 @@ function normalizeBanner(input) {
   };
 }
 
+function normalizeWinnerProfiles(input) {
+  return {
+    month: normalizeBanner(input?.month),
+    sixMonths: normalizeBanner(input?.sixMonths),
+  };
+}
+
 function normalizeBanners(input) {
   const arr = Array.isArray(input) ? input : [];
   const out = [];
@@ -1833,6 +1840,7 @@ export const getHotelLeaderboardRewards = asyncHandler(async (req, res) => {
 
   const normalized = {
     banners: normalizeBanners(payload?.banners?.length ? payload.banners : (payload?.banner?.url ? [payload.banner] : [])),
+    winnerProfiles: normalizeWinnerProfiles(payload?.winnerProfiles),
     monthly: {
       gifts: normalizeGifts(payload?.monthly?.gifts, [1, 2, 3, 4, 5]),
       discounts: normalizeDiscounts(payload?.monthly?.discounts, [6, 7, 8, 9, 10]),
@@ -1856,11 +1864,13 @@ export const updateHotelLeaderboardRewards = asyncHandler(async (req, res) => {
   const nextDoc = await HotelLeaderboardRewards.getSettings();
 
   const banners = normalizeBanners(body?.banners);
+  const winnerProfiles = normalizeWinnerProfiles(body?.winnerProfiles);
   const monthlyGifts = normalizeGifts(body?.monthly?.gifts, [1, 2, 3, 4, 5]);
   const monthlyDiscounts = normalizeDiscounts(body?.monthly?.discounts, [6, 7, 8, 9, 10]);
   const sixMonthsGifts = normalizeGifts(body?.sixMonths?.gifts, [1, 2, 3]);
 
   nextDoc.banners = banners;
+  nextDoc.winnerProfiles = winnerProfiles;
   nextDoc.monthly = { gifts: monthlyGifts, discounts: monthlyDiscounts };
   nextDoc.sixMonths = { gifts: sixMonthsGifts };
   if (req.admin?._id) {
@@ -1871,6 +1881,7 @@ export const updateHotelLeaderboardRewards = asyncHandler(async (req, res) => {
 
   return successResponse(res, 200, "Hotel leaderboard rewards updated successfully", {
     banners: nextDoc.banners,
+    winnerProfiles: nextDoc.winnerProfiles,
     monthly: nextDoc.monthly,
     sixMonths: nextDoc.sixMonths,
     updatedAt: nextDoc.updatedAt,

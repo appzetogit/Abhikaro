@@ -32,6 +32,11 @@ const hotelLeaderboardRewardsSchema = new mongoose.Schema(
     banners: { type: [imageSchema], default: [] },
     // Backward-compat: previously used single banner
     banner: { type: imageSchema, default: () => ({}) },
+    // Winner profile photo shown on hotel leaderboard header
+    winnerProfiles: {
+      month: { type: imageSchema, default: () => ({}) },
+      sixMonths: { type: imageSchema, default: () => ({}) },
+    },
     monthly: {
       gifts: { type: [giftSchema], default: [] }, // positions 1-5
       discounts: { type: [discountSchema], default: [] }, // positions 6-10

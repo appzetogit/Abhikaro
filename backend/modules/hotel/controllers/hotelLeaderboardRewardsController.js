@@ -40,6 +40,13 @@ function normalizeBanner(input) {
   };
 }
 
+function normalizeWinnerProfiles(input) {
+  return {
+    month: normalizeBanner(input?.month),
+    sixMonths: normalizeBanner(input?.sixMonths),
+  };
+}
+
 function normalizeBanners(input) {
   const arr = Array.isArray(input) ? input : [];
   const out = [];
@@ -65,6 +72,7 @@ export const getHotelLeaderboardRewards = asyncHandler(async (req, res) => {
 
   const normalized = {
     banners: normalizeBanners(payload?.banners?.length ? payload.banners : (payload?.banner?.url ? [payload.banner] : [])),
+    winnerProfiles: normalizeWinnerProfiles(payload?.winnerProfiles),
     monthly: {
       gifts: normalizeGifts(payload?.monthly?.gifts, [1, 2, 3, 4, 5]),
       discounts: normalizeDiscounts(payload?.monthly?.discounts, [6, 7, 8, 9, 10]),
