@@ -527,43 +527,64 @@ export default function ItemDetailsPage() {
     window.flutter_inappwebview.callHandler('openGallery').then((result) => {
       clearTimeout(timeoutId)
       
-      if (result && result.success && result.base64) {
-        try {
+      try {
+        if (!result || !result.success) {
+          // User cancelled or bridge returned invalid result
+          return
+        }
+
+        // Support multiple possible payload shapes from Flutter:
+        // 1) { success, base64, mimeType, fileName }
+        // 2) { success, images: [{ base64, mimeType, fileName }, ...] }
+        // 3) { success, files: [...] }
+        // 4) [ { base64, ... }, ... ]
+        const entries = []
+        if (Array.isArray(result.images)) entries.push(...result.images)
+        else if (Array.isArray(result.files)) entries.push(...result.files)
+        else if (Array.isArray(result)) entries.push(...result)
+        else if (result.base64) entries.push(result)
+
+        if (!entries.length) {
+          // Fallback to native if response is unexpected
+          document.getElementById('image-upload-gallery')?.click()
+          return
+        }
+
+        const newImageFilesMap = new Map(imageFiles)
+        const newBase64DataMap = new Map(imageBase64Data)
+        const newPreviewUrls = []
+
+        entries.forEach((entry, index) => {
+          if (!entry?.base64) return
           const file = base64ToFile(
-            result.base64,
-            result.mimeType || 'image/jpeg',
-            result.fileName || `gallery_${Date.now()}.jpg`
+            entry.base64,
+            entry.mimeType || result.mimeType || 'image/jpeg',
+            entry.fileName || result.fileName || `gallery_${Date.now()}_${index}.jpg`
           )
 
-          // Create preview URL and store
           const previewUrl = URL.createObjectURL(file)
-          const newImageFilesMap = new Map(imageFiles)
+          newPreviewUrls.push(previewUrl)
           newImageFilesMap.set(previewUrl, file)
-          
-          // Store base64 for upload - CRITICAL: Store raw base64 without any modifications
-          const newBase64DataMap = new Map(imageBase64Data)
           newBase64DataMap.set(previewUrl, {
-            base64: result.base64, // Store raw base64 string - EXACTLY as received
-            mimeType: result.mimeType || 'image/jpeg',
-            fileName: result.fileName || file.name
+            base64: entry.base64,
+            mimeType: entry.mimeType || result.mimeType || 'image/jpeg',
+            fileName: entry.fileName || result.fileName || file.name
           })
-          
-          setImages(prev => [...prev, previewUrl])
-          setImageFiles(newImageFilesMap)
-          setImageBase64Data(newBase64DataMap)
-          
-          toast.success('Image selected successfully')
-        } catch (error) {
-          toast.error('Failed to process image')
+        })
+
+        if (newPreviewUrls.length === 0) {
+          document.getElementById('image-upload-gallery')?.click()
+          return
         }
-      } else if (result && result.success === false) {
-        // User cancelled - don't show error
-      } else {
-        // Fallback to native if response is unexpected
-        const galleryInput = document.getElementById('image-upload-gallery')
-        if (galleryInput) {
-          galleryInput.click()
-        }
+
+        setImages(prev => [...prev, ...newPreviewUrls])
+        setImageFiles(newImageFilesMap)
+        setImageBase64Data(newBase64DataMap)
+
+        toast.success('Image selected successfully')
+      } catch (error) {
+        // Fallback if processing fails
+        document.getElementById('image-upload-gallery')?.click()
       }
     }).catch((error) => {
       clearTimeout(timeoutId)
