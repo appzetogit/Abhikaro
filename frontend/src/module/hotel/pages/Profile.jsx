@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Building2, Phone, Mail, MapPin, Upload, X, LogOut, QrCode, Download, Loader2, ChevronDown, ChevronUp } from "lucide-react"
+import { Building2, Phone, Mail, MapPin, Upload, X, LogOut, QrCode, Download, Loader2, ChevronDown, ChevronUp, Trophy, ChevronRight } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
@@ -1160,6 +1160,26 @@ export default function HotelProfile() {
               </div>
             </>
           )}
+        </div>
+
+        {/* Leaderboard shortcut (below KYC card) */}
+        <div
+          className="bg-white rounded-lg shadow-sm p-6 mb-6 cursor-pointer hover:bg-gray-50 transition"
+          onClick={() => navigate("/hotel/leaderboard")}
+          role="button"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gray-900 text-white flex items-center justify-center">
+                <Trophy className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Leaderboard</h2>
+                <p className="text-sm text-gray-600">View 1 month and 6 months ranking</p>
+              </div>
+            </div>
+            <ChevronRight className="h-5 w-5 text-gray-500" />
+          </div>
         </div>
 
         {/* QR Code Section */}

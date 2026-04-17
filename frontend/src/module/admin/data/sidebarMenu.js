@@ -9,6 +9,13 @@ export const sidebarMenuData = [
   },
   {
     type: "link",
+    label: "Hotel Leaderboard",
+    path: "/admin/hotel-leaderboard",
+    icon: "Award",
+    permissionId: "hotels.view",
+  },
+  {
+    type: "link",
     label: "Point of Sale",
     path: "/admin/point-of-sale",
     icon: "CreditCard",

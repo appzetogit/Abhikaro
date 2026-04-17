@@ -10,6 +10,9 @@ import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotificatio
 export default function HotelDashboard() {
   const navigate = useNavigate()
   const [hotel, setHotel] = useState(null)
+  const [leaderboardBanners, setLeaderboardBanners] = useState([])
+  const [leaderboardBannerIndex, setLeaderboardBannerIndex] = useState(0)
+  const [touchStartX, setTouchStartX] = useState(null)
   const [stats, setStats] = useState({
     totalRequests: 0,
     pendingRequests: 0,
@@ -143,6 +146,20 @@ export default function HotelDashboard() {
             remainingSettlement: 0,
           })
         }
+
+        // Fetch leaderboard banner (optional)
+        try {
+          const res = await hotelAPI.getLeaderboardRewards()
+          const banners = res?.data?.data?.banners
+          const urls = (Array.isArray(banners) ? banners : [])
+            .map((b) => (typeof b?.url === "string" ? b.url.trim() : ""))
+            .filter(Boolean)
+          setLeaderboardBanners(urls)
+          setLeaderboardBannerIndex(0)
+        } catch {
+          setLeaderboardBanners([])
+          setLeaderboardBannerIndex(0)
+        }
       } catch (error) {
         console.error("Error fetching hotel data:", error)
         // If unauthorized or forbidden, redirect to login
@@ -156,6 +173,25 @@ export default function HotelDashboard() {
 
     fetchData()
   }, [navigate])
+
+  // Auto-slide leaderboard banner every 15 seconds
+  useEffect(() => {
+    if (!Array.isArray(leaderboardBanners) || leaderboardBanners.length <= 1) return
+    const id = setInterval(() => {
+      setLeaderboardBannerIndex((prev) => (prev + 1) % leaderboardBanners.length)
+    }, 15000)
+    return () => clearInterval(id)
+  }, [leaderboardBanners])
+
+  const goNextBanner = () => {
+    if (!Array.isArray(leaderboardBanners) || leaderboardBanners.length <= 1) return
+    setLeaderboardBannerIndex((prev) => (prev + 1) % leaderboardBanners.length)
+  }
+
+  const goPrevBanner = () => {
+    if (!Array.isArray(leaderboardBanners) || leaderboardBanners.length <= 1) return
+    setLeaderboardBannerIndex((prev) => (prev - 1 + leaderboardBanners.length) % leaderboardBanners.length)
+  }
 
   if (loading) {
     return (
@@ -195,6 +231,41 @@ export default function HotelDashboard() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Leaderboard Banner (above Overview) */}
+        {leaderboardBanners.length > 0 ? (
+          <div
+            className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm cursor-pointer select-none"
+            onClick={() => navigate("/hotel/leaderboard")}
+            role="button"
+            onTouchStart={(e) => {
+              if (!leaderboardBanners || leaderboardBanners.length <= 1) return
+              setTouchStartX(e.touches?.[0]?.clientX ?? null)
+            }}
+            onTouchEnd={(e) => {
+              if (!leaderboardBanners || leaderboardBanners.length <= 1) return
+              const endX = e.changedTouches?.[0]?.clientX
+              if (touchStartX == null || endX == null) return
+              const dx = endX - touchStartX
+              const threshold = 40
+              if (dx > threshold) {
+                // swipe right -> previous
+                goPrevBanner()
+              } else if (dx < -threshold) {
+                // swipe left -> next
+                goNextBanner()
+              }
+              setTouchStartX(null)
+            }}
+          >
+            <img
+              src={leaderboardBanners[Math.min(leaderboardBannerIndex, leaderboardBanners.length - 1)]}
+              alt="Leaderboard banner"
+              className="h-32 w-full object-cover"
+              loading="lazy"
+            />
+          </div>
+        ) : null}
+
         {/* Overview Section */}
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">Overview</h2>

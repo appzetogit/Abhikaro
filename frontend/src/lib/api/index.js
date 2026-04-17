@@ -950,6 +950,14 @@ export const hotelAPI = {
     return apiClient.get(API_ENDPOINTS.HOTEL.QR_CODE);
   },
 
+  // Hotel leaderboard (QR orders ranking)
+  getLeaderboard: (params = {}) => {
+    return apiClient.get("/hotel/leaderboard", { params });
+  },
+  getLeaderboardRewards: () => {
+    return apiClient.get("/hotel/leaderboard-rewards");
+  },
+
   // Wallet
   getWallet: () => {
     return apiClient.get(API_ENDPOINTS.HOTEL.WALLET);
@@ -1594,6 +1602,24 @@ export const adminAPI = {
   // Get QR-scan orders for a specific hotel with user & split
   getHotelQrOrders: (hotelId, params = {}) => {
     return apiClient.get(`/admin/hotels/${hotelId}/qr-orders`, { params });
+  },
+
+  // Hotel Leaderboard (QR orders count)
+  getHotelLeaderboard: (params = {}) => {
+    return apiClient.get("/admin/hotels/leaderboard", { params });
+  },
+
+  // Hotel Leaderboard rewards config
+  getHotelLeaderboardRewards: () => {
+    return apiClient.get("/admin/hotels/leaderboard-rewards");
+  },
+  updateHotelLeaderboardRewards: (payload) => {
+    return apiClient.put("/admin/hotels/leaderboard-rewards", payload);
+  },
+
+  // Hotel Leaderboard history (month / 6months / year)
+  getHotelLeaderboardHistory: (params = {}) => {
+    return apiClient.get("/admin/hotels/leaderboard-history", { params });
   },
 
   // Admin payment history

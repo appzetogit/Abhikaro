@@ -8,6 +8,8 @@ import hotelWalletRoutes from "./routes/hotelWalletRoutes.js";
 import hotelPublicRoutes from "./routes/hotelPublicRoutes.js";
 import hotelQRRoutes from "./routes/hotelQRRoutes.js";
 import hotelOrderRoutes from "./routes/hotelOrderRoutes.js";
+import hotelLeaderboardRoutes from "./routes/hotelLeaderboardRoutes.js";
+import hotelLeaderboardRewardsRoutes from "./routes/hotelLeaderboardRewardsRoutes.js";
 
 const router = express.Router();
 
@@ -23,5 +25,7 @@ router.use("/profile", hotelProfileRoutes);
 router.use("/wallet", hotelWalletRoutes);
 router.use("/qr", hotelQRRoutes);
 router.use("/orders", hotelOrderRoutes);
+router.use("/leaderboard", hotelLeaderboardRoutes);
+router.use("/leaderboard-rewards", hotelLeaderboardRewardsRoutes);
 
 export default router;

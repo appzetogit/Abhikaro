@@ -58,7 +58,11 @@ import {
   updateHotelCashCollected,
   getHotelWalletOrderEarnings,
   getHotelQROrders,
+  getHotelLeaderboard,
+  getHotelLeaderboardRewards,
+  updateHotelLeaderboardRewards,
 } from "../controllers/hotelController.js";
+import { getHotelLeaderboardHistory } from "../controllers/hotelLeaderboardHistoryController.js";
 import {
   getBusinessSettings,
   updateBusinessSettings,
@@ -505,6 +509,26 @@ router.delete(
 
 // Hotel Management
 router.get("/hotels", requirePermissions("hotels.view"), getHotels);
+router.get(
+  "/hotels/leaderboard",
+  requirePermissions("hotels.view"),
+  getHotelLeaderboard,
+);
+router.get(
+  "/hotels/leaderboard-rewards",
+  requirePermissions("hotels.view"),
+  getHotelLeaderboardRewards,
+);
+router.put(
+  "/hotels/leaderboard-rewards",
+  requirePermissions("hotels.edit"),
+  updateHotelLeaderboardRewards,
+);
+router.get(
+  "/hotels/leaderboard-history",
+  requirePermissions("hotels.view"),
+  getHotelLeaderboardHistory,
+);
 router.get(
   "/hotels/requests",
   requirePermissions("hotels.view"),

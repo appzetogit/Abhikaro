@@ -121,6 +121,7 @@ const HotelProfile = lazy(() => import("@/module/hotel/pages/Profile"))
 const HotelWallet = lazy(() => import("@/module/hotel/pages/Wallet"))
 const HotelSettlement = lazy(() => import("@/module/hotel/pages/HotelSettlement"))
 const ViewHotel = lazy(() => import("@/module/hotel/pages/ViewHotel"))
+const HotelLeaderboard = lazy(() => import("@/module/hotel/pages/Leaderboard"))
 
 function UserPathRedirect() {
   const location = useLocation()
@@ -964,6 +965,14 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
               <HotelSettlement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hotel/leaderboard"
+          element={
+            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
+              <HotelLeaderboard />
             </ProtectedRoute>
           }
         />

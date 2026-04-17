@@ -7,6 +7,7 @@ import Hotel from "../../hotel/models/Hotel.js";
 import HotelWallet from "../../hotel/models/HotelWallet.js";
 import mongoose from "mongoose";
 import { getHotelCommissionFromOrder } from "../../order/utils/hotelCommissionBase.js";
+import HotelLeaderboardRewards from "../models/HotelLeaderboardRewards.js";
 
 /**
  * GET /api/admin/hotels
@@ -1651,5 +1652,227 @@ export const approveHotelStandRequest = asyncHandler(async (req, res) => {
       standRequestedAt: hotel.standRequestedAt,
       standApprovedAt: hotel.standApprovedAt,
     },
+  });
+});
+
+/**
+ * Hotel Leaderboard (QR orders count)
+ * GET /api/admin/hotels/leaderboard?period=month|6months
+ */
+export const getHotelLeaderboard = asyncHandler(async (req, res) => {
+  const { period = "month" } = req.query;
+
+  // Build time window
+  const now = new Date();
+  let startDate = null;
+  let endDate = now;
+  let periodLabel = "";
+
+  if (period === "6months") {
+    // Fixed 6-month window (resets every 6 months): Jan-Jun or Jul-Dec (current window to date)
+    const isFirstHalf = now.getMonth() < 6; // 0-5 => Jan-Jun
+    const startMonth = isFirstHalf ? 0 : 6;
+    startDate = new Date(now.getFullYear(), startMonth, 1, 0, 0, 0, 0);
+    periodLabel = isFirstHalf ? `Jan–Jun ${now.getFullYear()}` : `Jul–Dec ${now.getFullYear()}`;
+  } else {
+    // Default: current calendar month
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    startDate = start;
+    periodLabel = "This month";
+  }
+
+  const Order = (await import("../../order/models/Order.js")).default;
+
+  // Include ALL hotels (even with 0 orders), ranked by QR orders in the window.
+  const Hotel = (await import("../../hotel/models/Hotel.js")).default;
+
+  const rows = await Hotel.aggregate([
+    {
+      $project: {
+        _id: 1,
+        hotelId: 1,
+        hotelName: 1,
+        isActive: 1,
+      },
+    },
+    {
+      $lookup: {
+        from: Order.collection.name,
+        let: { hid: "$_id", hcode: "$hotelId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $gte: ["$createdAt", startDate] },
+                  { $lte: ["$createdAt", endDate] },
+                  { $ne: ["$status", "cancelled"] },
+                  {
+                    $or: [
+                      { $eq: ["$payment.status", "completed"] },
+                      {
+                        $and: [
+                          { $in: ["$payment.method", ["pay_at_hotel", "cash"]] },
+                          { $eq: ["$status", "delivered"] },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    $or: [
+                      { $eq: ["$orderType", "QR"] },
+                      { $ne: ["$hotelReference", null] },
+                      { $ne: ["$hotelId", null] },
+                      { $ne: ["$roomNumber", null] },
+                    ],
+                  },
+                  {
+                    $or: [
+                      { $eq: ["$hotelId", "$$hid"] },
+                      { $eq: ["$hotelReference", "$$hcode"] },
+                      { $eq: ["$hotelReference", { $toString: "$$hid" }] },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          { $project: { _id: 1 } },
+        ],
+        as: "qrOrders",
+      },
+    },
+    {
+      $addFields: {
+        orders: { $size: "$qrOrders" },
+      },
+    },
+    { $project: { qrOrders: 0 } },
+    { $sort: { orders: -1, hotelName: 1 } },
+  ]);
+
+  const leaderboard = rows.map((r, idx) => ({
+    rank: idx + 1,
+    hotelMongoId: r._id,
+    hotelId: r.hotelId || null,
+    hotelName: r.hotelName || "Unknown Hotel",
+    isActive: r.isActive !== false,
+    orders: Number(r.orders) || 0,
+  }));
+
+  return successResponse(res, 200, "Hotel leaderboard fetched successfully", {
+    period: period === "6months" ? "6months" : "month",
+    periodLabel,
+    range: {
+      start: startDate,
+      end: endDate,
+    },
+    leaderboard,
+  });
+});
+
+function normalizeGifts(input, allowedPositions) {
+  const map = new Map();
+  (Array.isArray(input) ? input : []).forEach((g) => {
+    const pos = Number(g?.position);
+    if (!allowedPositions.includes(pos)) return;
+    map.set(pos, {
+      position: pos,
+      name: typeof g?.name === "string" ? g.name.trim() : "",
+      image: {
+        url: typeof g?.image?.url === "string" ? g.image.url : "",
+        publicId: typeof g?.image?.publicId === "string" ? g.image.publicId : "",
+      },
+    });
+  });
+  return allowedPositions.map((pos) => map.get(pos) || { position: pos, name: "", image: { url: "", publicId: "" } });
+}
+
+function normalizeDiscounts(input, allowedPositions) {
+  const map = new Map();
+  (Array.isArray(input) ? input : []).forEach((d) => {
+    const pos = Number(d?.position);
+    if (!allowedPositions.includes(pos)) return;
+    const amt = Number(d?.rupeesOff);
+    map.set(pos, {
+      position: pos,
+      rupeesOff: Number.isFinite(amt) && amt > 0 ? amt : 0,
+    });
+  });
+  return allowedPositions.map((pos) => map.get(pos) || { position: pos, rupeesOff: 0 });
+}
+
+function normalizeBanner(input) {
+  return {
+    url: typeof input?.url === "string" ? input.url : "",
+    publicId: typeof input?.publicId === "string" ? input.publicId : "",
+  };
+}
+
+function normalizeBanners(input) {
+  const arr = Array.isArray(input) ? input : [];
+  const out = [];
+  arr.forEach((b) => {
+    const url = typeof b?.url === "string" ? b.url : "";
+    if (!url.trim()) return;
+    out.push({
+      url,
+      publicId: typeof b?.publicId === "string" ? b.publicId : "",
+    });
+  });
+  return out;
+}
+
+/**
+ * Get leaderboard rewards configuration (admin)
+ * GET /api/admin/hotels/leaderboard-rewards
+ */
+export const getHotelLeaderboardRewards = asyncHandler(async (req, res) => {
+  const doc = await HotelLeaderboardRewards.getSettings();
+  const payload = doc?.toObject ? doc.toObject() : doc;
+
+  const normalized = {
+    banners: normalizeBanners(payload?.banners?.length ? payload.banners : (payload?.banner?.url ? [payload.banner] : [])),
+    monthly: {
+      gifts: normalizeGifts(payload?.monthly?.gifts, [1, 2, 3, 4, 5]),
+      discounts: normalizeDiscounts(payload?.monthly?.discounts, [6, 7, 8, 9, 10]),
+    },
+    sixMonths: {
+      gifts: normalizeGifts(payload?.sixMonths?.gifts, [1, 2, 3]),
+    },
+    updatedAt: payload?.updatedAt || null,
+  };
+
+  return successResponse(res, 200, "Hotel leaderboard rewards fetched successfully", normalized);
+});
+
+/**
+ * Update leaderboard rewards configuration (admin)
+ * PUT /api/admin/hotels/leaderboard-rewards
+ */
+export const updateHotelLeaderboardRewards = asyncHandler(async (req, res) => {
+  const body = req.body || {};
+
+  const nextDoc = await HotelLeaderboardRewards.getSettings();
+
+  const banners = normalizeBanners(body?.banners);
+  const monthlyGifts = normalizeGifts(body?.monthly?.gifts, [1, 2, 3, 4, 5]);
+  const monthlyDiscounts = normalizeDiscounts(body?.monthly?.discounts, [6, 7, 8, 9, 10]);
+  const sixMonthsGifts = normalizeGifts(body?.sixMonths?.gifts, [1, 2, 3]);
+
+  nextDoc.banners = banners;
+  nextDoc.monthly = { gifts: monthlyGifts, discounts: monthlyDiscounts };
+  nextDoc.sixMonths = { gifts: sixMonthsGifts };
+  if (req.admin?._id) {
+    nextDoc.updatedBy = req.admin._id;
+  }
+
+  await nextDoc.save();
+
+  return successResponse(res, 200, "Hotel leaderboard rewards updated successfully", {
+    banners: nextDoc.banners,
+    monthly: nextDoc.monthly,
+    sixMonths: nextDoc.sixMonths,
+    updatedAt: nextDoc.updatedAt,
   });
 });
