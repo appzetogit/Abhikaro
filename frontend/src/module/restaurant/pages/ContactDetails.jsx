@@ -5,7 +5,6 @@ import Lenis from "lenis"
 import {
   ArrowLeft,
   Edit,
-  User,
   Plus,
   Coffee,
   Trash2,
@@ -14,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { restaurantAPI } from "@/lib/api"
-import OptimizedImage from "@/components/OptimizedImage"
 import { ImageIcon } from "lucide-react"
 
 export default function ContactDetails() {
@@ -27,7 +25,6 @@ export default function ContactDetails() {
   const [savingContact, setSavingContact] = useState(false)
   
   // Owner data - Load from backend
-  const STORAGE_KEY = "restaurant_owner_contact"
   const [ownerData, setOwnerData] = useState({
     name: "",
     phone: "",
@@ -259,18 +256,7 @@ export default function ContactDetails() {
         {/* Owner Section */}
         <div>
           <h2 className="px-4 text-base font-bold text-gray-900 my-3">Owner</h2>
-          <div className="bg-white rounded-0 p-4 flex items-center gap-4">
-            <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center shrink-0 overflow-hidden">
-              {ownerData.photo ? (
-                <OptimizedImage
-                  src={ownerData.photo}
-                  alt="Owner profile"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <User className="w-6 h-6 text-gray-500" />
-              )}
-            </div>
+          <div className="bg-white rounded-0 p-4 flex items-center">
             <div className="flex-1 min-w-0">
               <p className="text-base font-bold text-gray-900 mb-1">
                 {loading ? "Loading..." : (ownerData.name || "N/A")}

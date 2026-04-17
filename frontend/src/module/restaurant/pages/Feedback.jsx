@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bell, HelpCircle, Menu, Search, SlidersHorizontal, Calendar, ChevronLeft, X, Loader2, ChevronRight } from "lucide-react"
+import { Bell, HelpCircle, Menu, Search, Calendar, ChevronLeft, X, Loader2, ChevronRight } from "lucide-react"
 import { DateRangeCalendar } from "@/components/ui/date-range-calendar"
 import BottomNavOrders from "../components/BottomNavOrders"
 import { restaurantAPI } from "@/lib/api"
@@ -822,12 +822,6 @@ export default function Feedback() {
                       className="flex-1 text-sm text-gray-900 placeholder-gray-400 bg-transparent focus:outline-none"
                     />
                   </div>
-                  <button 
-                    className="w-14 self-stretch rounded-md bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
-                    onClick={() => setIsFilterOpen(true)}
-                  >
-                    <SlidersHorizontal className="w-4 h-4 text-gray-800" />
-                  </button>
                 </div>
 
                 {/* Reviews heading + info */}

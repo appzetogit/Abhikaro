@@ -49,6 +49,7 @@ export default function ItemDetailsPage() {
   const groupId = location.state?.groupId
   const defaultCategory = location.state?.category || "Varieties"
   const fileInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
 
   // Initialize state with empty values - will be populated from API
   const [itemData, setItemData] = useState(null) // Store the full item data for saving
@@ -549,10 +550,15 @@ export default function ItemDetailsPage() {
     const files = Array.from(e.target.files)
 
     // Validate file types
-    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"]
+    // NOTE: Some Android camera pickers return empty mimeType (""), and some devices return HEIC/HEIF.
+    // We treat unknown/empty types as images and let upload API validate further if needed.
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/heic", "image/heif"]
     const validFiles = files.filter(file => {
-      if (!allowedTypes.includes(file.type)) {
-        toast.error(`${file.name}: Invalid file type. Please upload PNG, JPG, JPEG, or WEBP.`)
+      const mimeType = String(file.type || "").toLowerCase()
+      const isImageLike = mimeType === "" || mimeType.startsWith("image/")
+      const isAllowed = mimeType === "" || allowedTypes.includes(mimeType)
+      if (!isImageLike || !isAllowed) {
+        toast.error(`${file.name}: Invalid file type. Please upload an image.`)
         return false
       }
       // Validate file size (max 5MB)
@@ -581,6 +587,9 @@ export default function ItemDetailsPage() {
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
+    }
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = ""
     }
   }
 
@@ -1368,6 +1377,7 @@ export default function ItemDetailsPage() {
 
             {/* Camera Input */}
             <input
+              ref={cameraInputRef}
               type="file"
               accept="image/*"
               capture="environment"
