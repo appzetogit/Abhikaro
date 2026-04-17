@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import goldBadge from "@/assets/gold.png"
 import silverBadge from "@/assets/silver.png"
 import brownBadge from "@/assets/brown.png"
+import couponIcon from "@/assets/coupon.png"
 import { Trophy } from "lucide-react"
 
 function formatRangeLabel(range) {
@@ -272,7 +273,6 @@ export default function HotelLeaderboard() {
                       top3Style,
                     )}
                   >
-                    <div className="w-8 shrink-0 text-center text-sm font-extrabold text-gray-900">{r.rank}</div>
                     <div className="w-12 shrink-0">
                       {badge ? (
                         <img src={badge} alt={`Rank ${r.rank}`} className="h-11 w-11" />
@@ -283,33 +283,43 @@ export default function HotelLeaderboard() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-gray-900">{r.hotelName || "Unknown Hotel"}</div>
+                      <div className="text-sm font-semibold text-gray-900 leading-snug whitespace-normal break-words">
+                        {r.hotelName || "Unknown Hotel"}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-gray-600">
+                        {Number(r.orders || 0).toLocaleString("en-IN")} orders
+                      </div>
+                    </div>
+                    <div className="shrink-0">
                       {reward ? (
-                        <div className="mt-1 flex min-w-0 items-center gap-2">
+                        <div className="flex w-[140px] flex-col items-end gap-1">
                           {reward.type === "gift" && reward.imageUrl ? (
                             <img
                               src={reward.imageUrl}
                               alt={reward.label}
-                              className="h-6 w-6 rounded-lg object-cover ring-1 ring-gray-200"
+                              className="h-12 w-12 rounded-2xl object-cover ring-1 ring-gray-200"
                               loading="lazy"
                             />
                           ) : reward.type === "discount" ? (
-                            <div className="h-6 w-6 rounded-lg bg-emerald-50 ring-1 ring-emerald-200" />
+                            <img
+                              src={couponIcon}
+                              alt="Coupon"
+                              className="h-12 w-12 rounded-2xl object-contain bg-emerald-50 p-2 ring-1 ring-emerald-200"
+                              loading="lazy"
+                            />
                           ) : (
-                            <div className="h-6 w-6 rounded-lg bg-gray-100 ring-1 ring-gray-200" />
+                            <div className="h-12 w-12 rounded-2xl bg-gray-100 ring-1 ring-gray-200" />
                           )}
-                          <span className="text-xs font-semibold text-gray-600 whitespace-normal break-words leading-snug" title={reward.label}>
+                          <div
+                            className="max-w-[140px] text-right text-[11px] font-extrabold text-gray-700 leading-snug"
+                            title={reward.label}
+                          >
                             {reward.label}
-                          </span>
+                          </div>
                         </div>
                       ) : (
-                        <div className="mt-1 text-xs text-gray-400">No reward set</div>
+                        <div className="text-xs font-semibold text-gray-400">—</div>
                       )}
-                    </div>
-                    <div className="shrink-0">
-                      <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                        {Number(r.orders || 0).toLocaleString("en-IN")} orders
-                      </div>
                     </div>
                   </div>
                 )
