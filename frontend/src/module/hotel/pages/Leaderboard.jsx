@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import goldBadge from "@/assets/gold.png"
 import silverBadge from "@/assets/silver.png"
 import brownBadge from "@/assets/brown.png"
-import { ChevronLeft, RefreshCw, Trophy } from "lucide-react"
+import { Trophy } from "lucide-react"
 
 function formatRangeLabel(range) {
   if (!range?.start || !range?.end) return ""
@@ -128,43 +128,24 @@ export default function HotelLeaderboard() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-white border-b">
-        <div className="mx-auto max-w-3xl px-4 py-4">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => navigate(-1)}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Back
-            </button>
-            <button
-              onClick={() => fetchData(tab)}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800"
-              disabled={active.loading}
-            >
-              <RefreshCw className={cn("h-4 w-4", active.loading && "animate-spin")} />
-              Refresh
-            </button>
-          </div>
-
-          <div className="mt-4 flex items-center gap-3">
+        <div className="mx-auto max-w-3xl px-4 py-3">
+          <div className="flex flex-col items-center justify-center text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gray-900 text-white">
               <Trophy className="h-5 w-5" />
             </div>
-            <div>
+            <div className="mt-2">
               <div className="text-xs uppercase tracking-[0.2em] text-gray-500">Leaderboard</div>
               <div className="text-xl font-bold text-gray-900">Hotels Ranking</div>
-              <div className="text-sm text-gray-500">QR-scan orders (top → down)</div>
             </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-2">
+          <div className="mt-3 flex items-center justify-center gap-2">
             <div className="inline-flex rounded-xl bg-gray-100 p-1">
               <button
                 className={cn("rounded-lg px-3 py-2 text-sm font-semibold", tab === "month" ? "bg-white shadow" : "text-gray-600")}
                 onClick={() => setTab("month")}
               >
-                1 month
+                This month
               </button>
               <button
                 className={cn("rounded-lg px-3 py-2 text-sm font-semibold", tab === "6months" ? "bg-white shadow" : "text-gray-600")}
@@ -173,8 +154,6 @@ export default function HotelLeaderboard() {
                 6 months
               </button>
             </div>
-
-            <div />
           </div>
         </div>
       </div>

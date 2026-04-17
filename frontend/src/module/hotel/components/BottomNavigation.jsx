@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from "react-router-dom"
-import { Home, FileText, User, Wallet } from "lucide-react"
+import { Home, FileText, User, Wallet, Trophy } from "lucide-react"
 
 export default function BottomNavigation() {
   const navigate = useNavigate()
@@ -30,6 +30,14 @@ export default function BottomNavigation() {
         >
           <FileText className="w-6 h-6" />
           <span className="text-xs">Orders</span>
+        </button>
+        <button
+          onClick={() => navigate("/hotel/leaderboard")}
+          className={`flex flex-col items-center gap-1 p-2 transition-colors ${isActive("/hotel/leaderboard") ? "text-[#ff8100]" : "text-gray-600"
+            }`}
+        >
+          <Trophy className="w-6 h-6" />
+          <span className="text-xs">Leaderboard</span>
         </button>
         <button
           onClick={() => navigate("/hotel/wallet")}
