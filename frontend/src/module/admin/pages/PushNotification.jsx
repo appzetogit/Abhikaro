@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Search, Download, ChevronDown, Bell, Edit, Trash2, Upload, Settings } from "lucide-react"
 import { adminAPI, uploadAPI } from "@/lib/api"
 import { toast } from "sonner"
@@ -15,6 +15,35 @@ export default function PushNotification() {
   const [notifications, setNotifications] = useState([])
   const [bannerPreview, setBannerPreview] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const loadHistory = async () => {
+    try {
+      const res = await adminAPI.getNotificationHistory({ page: 1, limit: 200 })
+      const list = res?.data?.data?.notifications || res?.data?.notifications || []
+      if (Array.isArray(list)) {
+        setNotifications(
+          list.map((n, idx) => ({
+            id: n._id || n.id,
+            sl: idx + 1,
+            title: n.title || "",
+            description: n.body || "",
+            image: n.image || n.data?.image || null,
+            target: n.target || "user",
+            status: n.status !== false,
+            createdAt: n.createdAt,
+          })),
+        )
+      }
+    } catch (e) {
+      // If history API fails, keep empty; don't block sending.
+    }
+  }
+
+  // Load history on mount (DB-backed)
+  useEffect(() => {
+    loadHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const filteredNotifications = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -91,18 +120,8 @@ export default function PushNotification() {
 
       toast.success("Notification sent successfully")
 
-      // Optimistically add to local list (for recent history)
-      setNotifications((prev) => [
-        {
-          sl: prev.length + 1,
-          title: formData.title.trim(),
-          description: formData.description.trim(),
-          image: imageUrl,
-          target: formData.sendTo,
-          status: true,
-        },
-        ...prev,
-      ])
+      // Reload from DB so refresh always shows history
+      await loadHistory()
 
       handleReset()
     } catch (error) {
@@ -143,20 +162,23 @@ export default function PushNotification() {
     }
   }
 
-  const handleToggleStatus = (sl) => {
-    // This currently only toggles local state (no backend persistence)
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        notification.sl === sl
-          ? { ...notification, status: !notification.status }
-          : notification,
-      ),
-    )
+  const handleToggleStatus = async (id) => {
+    try {
+      await adminAPI.toggleNotificationHistoryStatus(id)
+      await loadHistory()
+    } catch (e) {
+      toast.error("Failed to update status")
+    }
   }
 
-  const handleDelete = (sl) => {
+  const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this notification?")) {
-      setNotifications(notifications.filter(notification => notification.sl !== sl))
+      try {
+        await adminAPI.deleteNotificationHistory(id)
+        await loadHistory()
+      } catch (e) {
+        toast.error("Failed to delete notification")
+      }
     }
   }
 
@@ -314,7 +336,7 @@ export default function PushNotification() {
               <tbody className="bg-white divide-y divide-slate-100">
                 {filteredNotifications.map((notification) => (
                   <tr
-                    key={notification.sl}
+                    key={notification.id || notification.sl}
                     className="hover:bg-slate-50 transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -349,7 +371,7 @@ export default function PushNotification() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <button
-                        onClick={() => handleToggleStatus(notification.sl)}
+                        onClick={() => handleToggleStatus(notification.id)}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                           notification.status ? "bg-blue-600" : "bg-slate-300"
                         }`}
@@ -370,7 +392,7 @@ export default function PushNotification() {
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(notification.sl)}
+                          onClick={() => handleDelete(notification.id)}
                           className="p-1.5 rounded text-red-600 hover:bg-red-50 transition-colors"
                           title="Delete"
                         >

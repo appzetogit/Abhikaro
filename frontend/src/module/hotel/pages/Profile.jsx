@@ -50,6 +50,30 @@ export default function HotelProfile() {
   })
   const [documentsExpanded, setDocumentsExpanded] = useState(false)
 
+  const normalizeHotelQrValue = (rawValue, hotelId) => {
+    const origin = window.location.origin
+    const fallback = hotelId ? `${origin}/hotel-menu?ref=${encodeURIComponent(hotelId)}` : `${origin}/hotel-menu`
+
+    if (!rawValue || typeof rawValue !== "string") return fallback
+    if (rawValue.startsWith("data:image/")) return fallback
+    if (rawValue.includes("/hotel-menu") && rawValue.includes("ref=")) return rawValue
+
+    try {
+      const url = new URL(rawValue, origin)
+      const ref =
+        url.searchParams.get("ref") ||
+        url.searchParams.get("hotelRef") ||
+        url.pathname.match(/\/hotel\/view\/([^/?]+)/)?.[1] ||
+        hotelId ||
+        null
+      if (ref) return `${origin}/hotel-menu?ref=${encodeURIComponent(ref)}`
+    } catch {
+      // ignore
+    }
+
+    return fallback
+  }
+
   // QR code is generated only once and stored in database
 
   // Load business settings (title and favicon)
@@ -1207,7 +1231,7 @@ export default function HotelProfile() {
                   className="bg-white p-4 rounded-lg border-2 border-gray-200"
                 >
                   <QRCodeSVG
-                    value={qrCodeData}
+                    value={normalizeHotelQrValue(qrCodeData, hotel?.hotelId || hotel?._id)}
                     size={200}
                     level="H"
                     includeMargin={true}

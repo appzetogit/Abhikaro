@@ -37,7 +37,7 @@ export default function ConversationListPage() {
   const customerConversations = [
     {
       id: 1,
-      name: "StackFood",
+      name: "Admin",
       lastMessage: "Hi",
       date: "08 Sep 2024",
       role: "Admin",

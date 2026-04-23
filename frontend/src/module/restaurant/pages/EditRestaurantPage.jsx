@@ -48,17 +48,17 @@ export default function EditRestaurantPage() {
     const savedData = getRestaurantData()
     return {
       restaurantName: savedData.restaurantName || {
-        english: "Hungry Puppets",
+        english: "",
         bengali: "",
         arabic: "",
         spanish: ""
       },
-      phoneNumber: savedData.phoneNumber || "+101747410000",
-      address: savedData.address || "House: 00, Road: 00, Test City",
+      phoneNumber: savedData.phoneNumber || "",
+      address: savedData.address || "",
       logo: savedData.logo || null,
       cover: savedData.cover || null,
-      metaTitle: savedData.metaTitle || "Hungry Puppets Restaurant: Where Fla",
-      metaDescription: savedData.metaDescription || "Satisfy your cravings and indulge in a culinary adventure at Hungry Puppets Restaurant. Our menu is a symphony of taste, offering a delightful fusion of flavors that excite both palate and",
+      metaTitle: savedData.metaTitle || "",
+      metaDescription: savedData.metaDescription || "",
       metaImage: savedData.metaImage || null
     }
   })
@@ -69,17 +69,17 @@ export default function EditRestaurantPage() {
       const savedData = getRestaurantData()
       setFormData({
         restaurantName: savedData.restaurantName || {
-          english: "Hungry Puppets",
+          english: "",
           bengali: "",
           arabic: "",
           spanish: ""
         },
-        phoneNumber: savedData.phoneNumber || "+101747410000",
-        address: savedData.address || "House: 00, Road: 00, Test City",
+        phoneNumber: savedData.phoneNumber || "",
+        address: savedData.address || "",
         logo: savedData.logo || null,
         cover: savedData.cover || null,
-        metaTitle: savedData.metaTitle || "Hungry Puppets Restaurant: Where Fla",
-        metaDescription: savedData.metaDescription || "Satisfy your cravings and indulge in a culinary adventure at Hungry Puppets Restaurant. Our menu is a symphony of taste, offering a delightful fusion of flavors that excite both palate and",
+        metaTitle: savedData.metaTitle || "",
+        metaDescription: savedData.metaDescription || "",
         metaImage: savedData.metaImage || null
       })
     }
@@ -156,7 +156,7 @@ export default function EditRestaurantPage() {
 
     try {
       updateRestaurantData(formData)
-      navigate("/restaurant/details")
+      navigate("/restaurant/settings")
     } catch (error) {
       console.error("Error saving restaurant data:", error)
       alert("Error saving restaurant data. Please try again.")
@@ -169,7 +169,7 @@ export default function EditRestaurantPage() {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
           <button 
-            onClick={() => navigate("/restaurant/details")}
+            onClick={() => navigate("/restaurant/settings")}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />

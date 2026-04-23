@@ -8,7 +8,6 @@ const AdminHome = lazy(() => import("../pages/AdminHome"));
 const PointOfSale = lazy(() => import("../pages/PointOfSale"));
 const AdminProfile = lazy(() => import("../pages/AdminProfile"));
 const AdminSettings = lazy(() => import("../pages/AdminSettings"));
-const CommissionManagement = lazy(() => import("../pages/CommissionManagement"));
 const FoodApproval = lazy(() => import("../pages/restaurant/FoodApproval"));
 const OrdersPage = lazy(() => import("../pages/orders/OrdersPage"));
 const OrderDetectDelivery = lazy(() => import("../pages/OrderDetectDelivery"));
@@ -50,6 +49,12 @@ const AdvertiseBanner = lazy(() => import("../pages/AdvertiseBanner"));
 const CustomerContactUs = lazy(() => import("../pages/CustomerContactUs"));
 const ContactMessages = lazy(() => import("../pages/ContactMessages"));
 const SafetyEmergencyReports = lazy(() => import("../pages/SafetyEmergencyReports"));
+const RestaurantTermsAndCondition = lazy(() =>
+  import("../pages/help-support/RestaurantTermsAndCondition"),
+);
+const RestaurantPrivacyPolicy = lazy(() =>
+  import("../pages/help-support/RestaurantPrivacyPolicy"),
+);
 // Customer Management
 const Customers = lazy(() => import("../pages/Customers"));
 // Deliveryman Management
@@ -131,14 +136,6 @@ export default function AdminRouter() {
             element={
               <ProtectedRoute requiredPermission="menu.settings">
                 <AdminSettings />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/commission-management"
-            element={
-              <ProtectedRoute requiredPermission="settings.commission_manage">
-                <CommissionManagement />
               </ProtectedRoute>
             }
           />
@@ -237,6 +234,8 @@ export default function AdminRouter() {
           <Route path="customer-contact-us" element={<CustomerContactUs />} />
           <Route path="contact-messages" element={<ContactMessages />} />
           <Route path="safety-emergency-reports" element={<SafetyEmergencyReports />} />
+          <Route path="restaurant-terms" element={<RestaurantTermsAndCondition />} />
+          <Route path="restaurant-privacy" element={<RestaurantPrivacyPolicy />} />
 
           {/* CUSTOMER MANAGEMENT */}
           <Route path="customers" element={<Customers />} />

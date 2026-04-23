@@ -198,12 +198,19 @@ import {
   sendNotificationToRestaurant,
   sendNotificationToDelivery,
   broadcastNotification,
+  listAdminNotificationHistory,
+  toggleAdminNotificationStatus,
+  deleteAdminNotificationHistory,
 } from "../controllers/notificationController.js";
 import { getAbout, updateAbout } from "../controllers/aboutController.js";
 import {
   getTerms,
   updateTerms,
 } from "../controllers/termsAndConditionController.js";
+import {
+  getRestaurantTerms,
+  updateRestaurantTerms,
+} from "../controllers/restaurantTermsAndConditionController.js";
 import {
   getCommissionSettings,
   updateCommissionSettings,
@@ -212,6 +219,10 @@ import {
   getPrivacy,
   updatePrivacy,
 } from "../controllers/privacyPolicyController.js";
+import {
+  getRestaurantPrivacy,
+  updateRestaurantPrivacy,
+} from "../controllers/restaurantPrivacyPolicyController.js";
 import {
   getRefund,
   updateRefund,
@@ -739,9 +750,17 @@ router.put("/about", updateAbout);
 router.get("/terms", getTerms);
 router.put("/terms", updateTerms);
 
+// Restaurant Terms and Condition Management
+router.get("/restaurant-terms", getRestaurantTerms);
+router.put("/restaurant-terms", updateRestaurantTerms);
+
 // Privacy Policy Management
 router.get("/privacy", getPrivacy);
 router.put("/privacy", updatePrivacy);
+
+// Restaurant Privacy Policy Management
+router.get("/restaurant-privacy", getRestaurantPrivacy);
+router.put("/restaurant-privacy", updateRestaurantPrivacy);
 
 // Refund Policy Management
 router.get("/refund", getRefund);
@@ -987,6 +1006,9 @@ router.post("/notifications/send-to-user", sendNotificationToUser);
 router.post("/notifications/send-to-restaurant", sendNotificationToRestaurant);
 router.post("/notifications/send-to-delivery", sendNotificationToDelivery);
 router.post("/notifications/broadcast", broadcastNotification);
+router.get("/notifications/history", listAdminNotificationHistory);
+router.patch("/notifications/history/:id/status", toggleAdminNotificationStatus);
+router.delete("/notifications/history/:id", deleteAdminNotificationHistory);
 
 // Advertise Banners (Admin)
 router.get("/advertise-banners", listAdminAdvertiseBanners);

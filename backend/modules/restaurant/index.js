@@ -21,6 +21,7 @@ import restaurantOrderRoutes from './routes/restaurantOrderRoutes.js';
 import outletTimingsRoutes from './routes/outletTimingsRoutes.js';
 import complaintRoutes from './routes/complaintRoutes.js';
 import { getOutletTimingsByRestaurantId } from './controllers/outletTimingsController.js';
+import restaurantLegalPublicRoutes from "./routes/restaurantLegalPublicRoutes.js";
 import {
   getDiningConfig,
   updateDiningConfig,
@@ -37,6 +38,9 @@ const router = express.Router();
 
 // Restaurant authentication routes
 router.use('/auth', restaurantAuthRoutes);
+
+// Public routes (no auth)
+router.use("/public", restaurantLegalPublicRoutes);
 
 // Onboarding routes for restaurant (authenticated)
 router.get('/onboarding', authenticate, getOnboarding);

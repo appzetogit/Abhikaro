@@ -11,6 +11,7 @@ import User from '../../auth/models/User.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import Delivery from '../../delivery/models/Delivery.js';
 import Hotel from '../../hotel/models/Hotel.js';
+import AdminNotification from '../models/AdminNotification.js';
 
 /**
  * Send notification to user(s) from admin
@@ -134,6 +135,26 @@ export const broadcastNotification = asyncHandler(async (req, res) => {
 
   try {
     const payload = { title, body, data: data || {} };
+    // Persist to DB for history (best-effort)
+    try {
+      const image =
+        payload?.data?.image ||
+        payload?.data?.banner ||
+        payload?.data?.imageUrl ||
+        null;
+      await AdminNotification.create({
+        target,
+        title,
+        body,
+        image,
+        data: payload.data || {},
+        createdBy: req.user?._id || null
+      });
+    } catch (e) {
+      // Do not block sending if history save fails
+      console.error("Failed to save admin notification history:", e);
+    }
+
     let results = [];
 
     if (target === 'all' || target === 'user') {
@@ -206,4 +227,57 @@ export const broadcastNotification = asyncHandler(async (req, res) => {
     console.error('Error broadcasting notification:', error);
     return errorResponse(res, 500, 'Failed to broadcast notification');
   }
+});
+
+/**
+ * List admin notification history
+ * GET /api/admin/notifications/history
+ */
+export const listAdminNotificationHistory = asyncHandler(async (req, res) => {
+  const { page = 1, limit = 50, target } = req.query;
+
+  const q = {};
+  if (target && ["user", "restaurant", "delivery", "hotel", "admin", "all"].includes(target)) {
+    q.target = target;
+  }
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const [items, total] = await Promise.all([
+    AdminNotification.find(q).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+    AdminNotification.countDocuments(q)
+  ]);
+
+  return successResponse(res, 200, "Admin notification history retrieved", {
+    notifications: items,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / parseInt(limit))
+    }
+  });
+});
+
+/**
+ * Toggle admin notification status
+ * PATCH /api/admin/notifications/history/:id/status
+ */
+export const toggleAdminNotificationStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const doc = await AdminNotification.findById(id);
+  if (!doc) return errorResponse(res, 404, "Notification not found");
+  doc.status = !doc.status;
+  await doc.save();
+  return successResponse(res, 200, "Notification status updated", { notification: doc });
+});
+
+/**
+ * Delete admin notification from history
+ * DELETE /api/admin/notifications/history/:id
+ */
+export const deleteAdminNotificationHistory = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const doc = await AdminNotification.findByIdAndDelete(id);
+  if (!doc) return errorResponse(res, 404, "Notification not found");
+  return successResponse(res, 200, "Notification deleted");
 });

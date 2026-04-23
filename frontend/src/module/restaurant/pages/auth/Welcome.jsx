@@ -309,7 +309,7 @@ export default function RestaurantWelcome() {
             By continuing, you agree to our
           </p>
           <p className="text-white/70 text-xs md:text-sm underline mt-1">
-            Terms of Service | Privacy Policy | Code of Conduct
+            Terms of Service | Privacy Policy
           </p>
         </div>
       </div>

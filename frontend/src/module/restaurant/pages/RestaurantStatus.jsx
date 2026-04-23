@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import Lenis from "lenis"
 import { ArrowLeft, Settings } from "lucide-react"
@@ -20,12 +20,15 @@ export default function RestaurantStatus() {
   const [deliveryStatus, setDeliveryStatus] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [deliveryStatusLoaded, setDeliveryStatusLoaded] = useState(false)
+  const [suppressSwitchAnimation, setSuppressSwitchAnimation] = useState(true)
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [isWithinTimings, setIsWithinTimings] = useState(null) // null = not calculated yet
   const [showOutletClosedDialog, setShowOutletClosedDialog] = useState(false)
   const [showOutsideTimingsDialog, setShowOutsideTimingsDialog] = useState(false)
   const [isDayClosed, setIsDayClosed] = useState(false)
   const [outletTimings, setOutletTimings] = useState(null)
+  const hasAutoSyncedRef = useRef(false)
 
   // Update current date/time every minute
   useEffect(() => {
@@ -266,11 +269,36 @@ export default function RestaurantStatus() {
             detail: { isOnline: false } 
           }))
         }
+      } finally {
+        setDeliveryStatusLoaded(true)
+        // Allow animations after initial state is stable (prevents flicker on mount)
+        setTimeout(() => setSuppressSwitchAnimation(false), 150)
       }
     }
 
     loadDeliveryStatus()
   }, [])
+
+  // Auto-turn ON delivery when restaurant is "online" (within timings / open slot).
+  // Avoid repeated toggles to prevent switch animation/flicker.
+  useEffect(() => {
+    if (!deliveryStatusLoaded) return
+    if (hasAutoSyncedRef.current) return
+    if (loading) return
+    if (isWithinTimings !== true) return
+    if (isDayClosed) return
+    if (deliveryStatus) {
+      hasAutoSyncedRef.current = true
+      return
+    }
+
+    hasAutoSyncedRef.current = true
+    setSuppressSwitchAnimation(true)
+    Promise.resolve(handleDeliveryStatusChange(true)).finally(() => {
+      setTimeout(() => setSuppressSwitchAnimation(false), 200)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliveryStatusLoaded, loading, isWithinTimings, isDayClosed, deliveryStatus])
 
   // Handle delivery status change - FULL MANUAL CONTROL (no automatic restrictions)
   const handleDeliveryStatusChange = async (checked) => {
@@ -422,21 +450,11 @@ export default function RestaurantStatus() {
                   )}
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  // Navigate to restaurant settings
-                  navigate("/restaurant/explore")
-                }}
-                className="ml-3 p-2 bg-gray-200 hover:bg-gray-300 rounded-full transition-colors shrink-0"
-                aria-label="Explore more"
-              >
-                <Settings className="w-5 h-5 text-gray-600" />
-              </button>
             </div>
 
             <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-base font-bold text-gray-900 mb-1.5">Delivery status</p>
+              <p className="text-base font-bold text-gray-900 mb-1.5">Restaurant On/Off</p>
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${deliveryStatus ? 'bg-green-500' : 'bg-gray-600'}`}></div>
                 <p className="text-sm text-gray-500">
@@ -447,7 +465,11 @@ export default function RestaurantStatus() {
             <Switch
               checked={deliveryStatus}
               onCheckedChange={handleDeliveryStatusChange}
-              className="ml-4 data-[state=unchecked]:bg-gray-300 data-[state=checked]:bg-green-600"
+              disabled={!deliveryStatusLoaded}
+              className={[
+                "ml-4 data-[state=unchecked]:bg-gray-300 data-[state=checked]:bg-green-600",
+                suppressSwitchAnimation ? "transition-none [&_[data-slot=switch-thumb]]:transition-none" : "",
+              ].join(" ")}
             />
           </div>
 

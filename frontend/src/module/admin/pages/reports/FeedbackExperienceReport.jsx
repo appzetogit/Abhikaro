@@ -63,12 +63,23 @@ export default function FeedbackExperienceReport() {
         feedback.userName?.toLowerCase().includes(query) ||
         feedback.userEmail?.toLowerCase().includes(query) ||
         feedback.userPhone?.includes(query) ||
+        feedback.metadata?.restaurantName?.toLowerCase?.().includes(query) ||
+        feedback.restaurantId?.name?.toLowerCase?.().includes(query) ||
         feedback._id?.toString().includes(query)
       )
     }
 
     return result
   }, [feedbackExperiences, searchQuery])
+
+  const getRestaurantName = (fb) => {
+    return (
+      fb?.metadata?.restaurantName ||
+      fb?.restaurantId?.name ||
+      fb?.restaurantName ||
+      "N/A"
+    )
+  }
 
   const handleReset = () => {
     setFilters({
@@ -91,6 +102,7 @@ export default function FeedbackExperienceReport() {
       { key: "userName", label: "User Name" },
       { key: "userEmail", label: "Email" },
       { key: "userPhone", label: "Phone" },
+      { key: "restaurantName", label: "Restaurant" },
       { key: "rating", label: "Rating" },
       { key: "experience", label: "Experience" },
       { key: "module", label: "Module" },
@@ -101,6 +113,7 @@ export default function FeedbackExperienceReport() {
       userName: fb.userName || 'N/A',
       userEmail: fb.userEmail || 'N/A',
       userPhone: fb.userPhone || 'N/A',
+      restaurantName: getRestaurantName(fb),
       rating: fb.rating,
       experience: fb.experience || 'N/A',
       module: fb.module || 'N/A',
@@ -405,6 +418,7 @@ export default function FeedbackExperienceReport() {
                   <tr>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">User</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Restaurant</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Rating</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Experience</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Module</th>
@@ -415,7 +429,7 @@ export default function FeedbackExperienceReport() {
                 <tbody className="bg-white divide-y divide-slate-100">
                   {filteredFeedback.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-20 text-center">
+                      <td colSpan={8} className="px-6 py-20 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                           <p className="text-sm text-slate-500">No feedback experiences match your search</p>
@@ -438,6 +452,9 @@ export default function FeedbackExperienceReport() {
                               <span className="text-xs text-slate-500">{feedback.userPhone}</span>
                             )}
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-slate-800">{getRestaurantName(feedback)}</span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRatingColor(feedback.rating)}`}>
@@ -507,6 +524,10 @@ export default function FeedbackExperienceReport() {
                   <div>
                     <label className="text-sm font-semibold text-slate-700 mb-1 block">Experience</label>
                     <p className="text-sm text-slate-900 mt-1">{getExperienceLabel(selectedFeedback.experience)}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700 mb-1 block">Restaurant</label>
+                    <p className="text-sm text-slate-900 mt-1">{getRestaurantName(selectedFeedback)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-semibold text-slate-700 mb-1 block">Date</label>

@@ -15,10 +15,9 @@ const HotelMenuLanding = lazy(() => import("@/module/user/pages/HotelMenuLanding
 
 
 // Restaurant Module
-const RestaurantOrdersPage = lazy(() => import("@/module/restaurant/pages/OrdersPage"))
 const AllOrdersPage = lazy(() => import("@/module/restaurant/pages/AllOrdersPage"))
-const RestaurantDetailsPage = lazy(() => import("@/module/restaurant/pages/RestaurantDetailsPage"))
 const EditRestaurantPage = lazy(() => import("@/module/restaurant/pages/EditRestaurantPage"))
+const RestaurantSettingsPage = lazy(() => import("@/module/restaurant/pages/SettingsPage"))
 const FoodDetailsPage = lazy(() => import("@/module/restaurant/pages/FoodDetailsPage"))
 const EditFoodPage = lazy(() => import("@/module/restaurant/pages/EditFoodPage"))
 const AllFoodPage = lazy(() => import("@/module/restaurant/pages/AllFoodPage"))
@@ -44,7 +43,6 @@ const AddCouponPage = lazy(() => import("@/module/restaurant/pages/AddCouponPage
 const EditCouponPage = lazy(() => import("@/module/restaurant/pages/EditCouponPage"))
 const ReviewsPage = lazy(() => import("@/module/restaurant/pages/ReviewsPage"))
 const UpdateReplyPage = lazy(() => import("@/module/restaurant/pages/UpdateReplyPage"))
-const SettingsPage = lazy(() => import("@/module/restaurant/pages/SettingsPage"))
 const PrivacyPolicyPage = lazy(() => import("@/module/restaurant/pages/PrivacyPolicyPage"))
 const TermsAndConditionsPage = lazy(() => import("@/module/restaurant/pages/TermsAndConditionsPage"))
 const RestaurantConfigPage = lazy(() => import("@/module/restaurant/pages/RestaurantConfigPage"))
@@ -55,7 +53,6 @@ const ConversationListPage = lazy(() => import("@/module/restaurant/pages/Conver
 const ChatDetailPage = lazy(() => import("@/module/restaurant/pages/ChatDetailPage"))
 const RestaurantStatus = lazy(() => import("@/module/restaurant/pages/RestaurantStatus"))
 const ExploreMore = lazy(() => import("@/module/restaurant/pages/ExploreMore"))
-const DeliverySettings = lazy(() => import("@/module/restaurant/pages/DeliverySettings"))
 const RushHour = lazy(() => import("@/module/restaurant/pages/RushHour"))
 const OutletInfo = lazy(() => import("@/module/restaurant/pages/OutletInfo"))
 const RatingsReviews = lazy(() => import("@/module/restaurant/pages/RatingsReviews"))
@@ -344,11 +341,7 @@ export default function App() {
         />
         <Route
           path="/restaurant/orders"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <RestaurantOrdersPage />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/restaurant/orders/all" replace />}
         />
         <Route
           path="/restaurant/orders/all"
@@ -363,14 +356,6 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
               <OrderDetails />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/restaurant/details"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <RestaurantDetailsPage />
             </ProtectedRoute>
           }
         />
@@ -492,18 +477,12 @@ export default function App() {
           path="/restaurant/settings"
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <SettingsPage />
+              <RestaurantSettingsPage />
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/restaurant/delivery-settings"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <DeliverySettings />
-            </ProtectedRoute>
-          }
-        />
+        {/* Delivery settings removed */}
+        <Route path="/restaurant/delivery-settings" element={<Navigate to="/restaurant/to-hub" replace />} />
         <Route
           path="/restaurant/rush-hour"
           element={

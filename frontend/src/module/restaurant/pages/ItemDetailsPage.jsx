@@ -94,6 +94,18 @@ export default function ItemDetailsPage() {
   const [hasVariants, setHasVariants] = useState(false)
   const [variants, setVariants] = useState([]) // Array of variants: [{ id, name, price, stock }]
 
+  // Keep base price in sync with variants (minimum variant price)
+  useEffect(() => {
+    if (!hasVariants) return
+
+    const prices = (Array.isArray(variants) ? variants : [])
+      .map((v) => Number(v?.price) || 0)
+      .filter((p) => p > 0)
+
+    const nextBase = prices.length > 0 ? String(Math.min(...prices)) : ""
+    setBasePrice(nextBase)
+  }, [hasVariants, variants])
+
   // Commission model for profit preview - fetched from admin settings via restaurant API
   const [restaurantSharePercent, setRestaurantSharePercent] = useState(70)
   const [platformSharePercent, setPlatformSharePercent] = useState(30)
@@ -695,7 +707,7 @@ export default function ItemDetailsPage() {
     const newVariant = {
       id: `variant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: "",
-      price: 0,
+      price: "",
       stock: "Unlimited",
     }
     setVariants([...variants, newVariant])
@@ -1498,10 +1510,11 @@ export default function ItemDetailsPage() {
                   } else {
                     // Enabling variants - add first variant
                     setHasVariants(true)
+                    setBasePrice("")
                     setVariants([{
                       id: `variant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                       name: "",
-                      price: 0,
+                      price: "",
                       stock: "Unlimited",
                     }])
                   }
@@ -1569,6 +1582,11 @@ export default function ItemDetailsPage() {
                             type="number"
                             step="0.01"
                             value={variant.price}
+                            onFocus={() => {
+                              if (String(variant.price).trim() === "0" || String(variant.price).trim() === "0.0" || String(variant.price).trim() === "0.00") {
+                                handleUpdateVariant(variant.id, "price", "")
+                              }
+                            }}
                             onChange={(e) =>
                               handleUpdateVariant(variant.id, "price", parseFloat(e.target.value) || 0)
                             }
@@ -1620,6 +1638,22 @@ export default function ItemDetailsPage() {
                       // Remove rupee symbol when focused for easier editing
                       if (e.target.value.startsWith('₹')) {
                         e.target.value = e.target.value.replace(/₹\s*/g, '')
+                      }
+                      // If value is 0, replace it on first edit (avoid "0664" style inputs)
+                      if (!hasVariants) {
+                        const v = String(basePrice ?? "").trim()
+                        if (v === "0" || v === "0.0" || v === "0.00") {
+                          setBasePrice("")
+                          // Ensure caret is positioned correctly after state update
+                          requestAnimationFrame(() => {
+                            try {
+                              e.target.setSelectionRange(0, e.target.value.length)
+                            } catch {
+                              // ignore
+                            }
+                          })
+                          return
+                        }
                       }
                     }}
                     placeholder="Enter price"

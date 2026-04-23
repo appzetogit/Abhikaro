@@ -377,6 +377,20 @@ export const sidebarMenuData = [
       },
       {
         type: "link",
+        label: "Restaurant Terms & Conditions",
+        path: "/admin/restaurant-terms",
+        icon: "FileText",
+        permissionId: "menu.customers",
+      },
+      {
+        type: "link",
+        label: "Restaurant Privacy Policy",
+        path: "/admin/restaurant-privacy",
+        icon: "FileText",
+        permissionId: "menu.customers",
+      },
+      {
+        type: "link",
         label: "Safety Emergency Reports",
         path: "/admin/safety-emergency-reports",
         icon: "AlertTriangle",

@@ -326,7 +326,6 @@ export default function ToHub() {
     { id: "reviews", label: "Reviews", icon: FaStar, route: "/restaurant/feedback" },
     { id: "feedback", label: "Share your feedback", icon: FaCommentDots, route: "/restaurant/share-feedback" },
     { id: "zone-setup", label: "Zone Setup", icon: MapPin, route: "/restaurant/zone-setup" },
-    { id: "settings", label: "Settings", icon: FaCog, route: "/restaurant/delivery-settings" },
     { id: "show-all", label: "Show all", icon: FaThLarge, route: "/restaurant/explore" },
   ]
 
@@ -343,6 +342,14 @@ export default function ToHub() {
   const [totalSales, setTotalSales] = useState("₹ 0")
   const [totalOrders, setTotalOrders] = useState("0")
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [salesInsights, setSalesInsights] = useState({
+    netSales: 0,
+    netSalesChangePct: 0,
+    ordersDelivered: 0,
+    ordersChangePct: 0,
+    aov: 0,
+    aovChangePct: 0,
+  })
   const [mealtimeMetrics, setMealtimeMetrics] = useState([
     { title: "Breakfast", window: "7:00 am - 11:00 am", value: "0", change: "- 0%", color: "#111827" },
     { title: "Lunch", window: "11:00 am - 4:00 pm", value: "0", change: "- 0%", color: "#ef4444" },
@@ -503,7 +510,8 @@ export default function ToHub() {
   ])
   const [isDateSelectorOpen, setIsDateSelectorOpen] = useState(false)
   const [isCustomDateOpen, setIsCustomDateOpen] = useState(false)
-  const [selectedDateRange, setSelectedDateRange] = useState("yesterday")
+  // Default to this month so most restaurants see non-zero insights immediately.
+  const [selectedDateRange, setSelectedDateRange] = useState("thisMonth")
   const [customDateRange, setCustomDateRange] = useState({ start: null, end: null })
   const [isDateLoading, setIsDateLoading] = useState(false)
   
@@ -567,9 +575,60 @@ export default function ToHub() {
     const end = new Date(endDate)
     end.setHours(23, 59, 59, 999)
     
-    const filteredOrders = orders.filter(order => {
-      if (!order.createdAt) return false
-      const orderDate = new Date(order.createdAt)
+    const isDeliveredOrder = (order) => {
+      const status = (order?.status || order?.deliveryStatus || "").toString().toLowerCase()
+      const deliveredAt =
+        order?.deliveredAt ||
+        order?.delivered_on ||
+        order?.deliveredOn ||
+        order?.delivered_on_at ||
+        order?.tracking?.deliveredAt ||
+        order?.tracking?.delivered_at ||
+        order?.tracking?.delivered_on ||
+        order?.deliveryState?.deliveredAt ||
+        null
+      const trackingDelivered =
+        order?.tracking?.delivered === true ||
+        order?.tracking?.delivered?.status === true ||
+        order?.deliveryState?.status === "delivered" ||
+        order?.deliveryState?.currentPhase === "completed"
+
+      return (
+        status === "delivered" ||
+        status === "completed" ||
+        trackingDelivered ||
+        (deliveredAt !== null && deliveredAt !== undefined && deliveredAt !== "")
+      )
+    }
+
+    const getOrderTimestamp = (order) => {
+      const deliveredAt =
+        order?.deliveredAt ||
+        order?.delivered_on ||
+        order?.deliveredOn ||
+        order?.delivered_on_at ||
+        order?.tracking?.deliveredAt ||
+        order?.tracking?.delivered_at ||
+        order?.tracking?.delivered_on ||
+        order?.deliveryState?.deliveredAt ||
+        null
+      return (
+        deliveredAt ||
+        order?.createdAt ||
+        order?.created_on ||
+        order?.createdOn ||
+        // As a last resort, for delivered/completed orders only, use updatedAt
+        order?.updatedAt ||
+        null
+      )
+    }
+
+    const filteredOrders = orders.filter((order) => {
+      const ts = getOrderTimestamp(order)
+      if (!ts) return false
+      const orderDate = new Date(ts)
+      if (Number.isNaN(orderDate.getTime())) return false
+      if (!isDeliveredOrder(order)) return false
       return orderDate >= start && orderDate <= end
     })
     
@@ -579,7 +638,7 @@ export default function ToHub() {
     
     // Group orders by hour
     filteredOrders.forEach(order => {
-      const orderDate = new Date(order.createdAt)
+      const orderDate = new Date(getOrderTimestamp(order) || order.createdAt)
       const hour = orderDate.getHours()
       
       // Determine hour bucket
@@ -591,7 +650,7 @@ export default function ToHub() {
       else if (hour >= 16 && hour < 20) hourLabel = "4pm"
       else hourLabel = "8pm" // 20-23
       
-      const orderAmount = order.pricing?.total || 0
+      const orderAmount = Number(order?.pricing?.total ?? order?.total ?? 0) || 0
       
       hourBuckets[hourLabel].orders += 1
       hourBuckets[hourLabel].sales += orderAmount
@@ -616,6 +675,24 @@ export default function ToHub() {
       totalOrders: totalOrdersCount
     }
   }
+
+  const formatPct = (value) => {
+    if (!Number.isFinite(value)) return "0%"
+    const rounded = Math.round(value * 10) / 10
+    const sign = rounded > 0 ? "+" : ""
+    return `${sign}${rounded}%`
+  }
+
+  const computeRangeStats = (orders, startDate, endDate) => {
+    const { totalSales: netSales, totalOrders: ordersDelivered } =
+      calculateChartDataFromOrders(orders, startDate, endDate)
+    const aov = ordersDelivered ? netSales / ordersDelivered : 0
+    return {
+      netSales,
+      ordersDelivered,
+      aov,
+    }
+  }
   
   // Calculate mealtime data from orders
   const calculateMealtimeData = (orders, startDate, endDate) => {
@@ -634,15 +711,58 @@ export default function ToHub() {
     const end = new Date(endDate)
     end.setHours(23, 59, 59, 999)
     
-    const filteredOrders = orders.filter(order => {
-      if (!order.createdAt) return false
-      const orderDate = new Date(order.createdAt)
+    const isDeliveredOrder = (order) => {
+      const status = (order?.status || order?.deliveryStatus || "").toString().toLowerCase()
+      const deliveredAt =
+        order?.deliveredAt ||
+        order?.delivered_on ||
+        order?.deliveredOn ||
+        order?.delivered_on_at ||
+        order?.tracking?.deliveredAt ||
+        order?.tracking?.delivered_at ||
+        order?.tracking?.delivered_on ||
+        order?.deliveryState?.deliveredAt ||
+        null
+      const trackingDelivered =
+        order?.tracking?.delivered === true ||
+        order?.tracking?.delivered?.status === true ||
+        order?.deliveryState?.status === "delivered" ||
+        order?.deliveryState?.currentPhase === "completed"
+
+      return (
+        status === "delivered" ||
+        status === "completed" ||
+        trackingDelivered ||
+        (deliveredAt !== null && deliveredAt !== undefined && deliveredAt !== "")
+      )
+    }
+
+    const getOrderTimestamp = (order) => {
+      const deliveredAt =
+        order?.deliveredAt ||
+        order?.delivered_on ||
+        order?.deliveredOn ||
+        order?.delivered_on_at ||
+        order?.tracking?.deliveredAt ||
+        order?.tracking?.delivered_at ||
+        order?.tracking?.delivered_on ||
+        order?.deliveryState?.deliveredAt ||
+        null
+      return deliveredAt || order?.createdAt || order?.created_on || order?.createdOn || order?.updatedAt || null
+    }
+
+    const filteredOrders = orders.filter((order) => {
+      const ts = getOrderTimestamp(order)
+      if (!ts) return false
+      if (!isDeliveredOrder(order)) return false
+      const orderDate = new Date(ts)
+      if (Number.isNaN(orderDate.getTime())) return false
       return orderDate >= start && orderDate <= end
     })
     
     // Group orders by mealtime
     filteredOrders.forEach(order => {
-      const orderDate = new Date(order.createdAt)
+      const orderDate = new Date(getOrderTimestamp(order) || order.createdAt)
       const hour = orderDate.getHours()
       const minute = orderDate.getMinutes()
       const timeInMinutes = hour * 60 + minute
@@ -836,6 +956,33 @@ export default function ToHub() {
         setTotalSales(`₹ ${newTotalSales.toLocaleString("en-IN")}`)
         setTotalOrders(newTotalOrders.toString())
         setMealtimeMetrics(mealtimeData)
+
+        // Compute insights + % change vs previous comparable period
+        const start0 = new Date(startDate)
+        start0.setHours(0, 0, 0, 0)
+        const end0 = new Date(endDate)
+        end0.setHours(23, 59, 59, 999)
+        const rangeMs = end0.getTime() - start0.getTime() + 1
+        const prevEnd = new Date(start0.getTime() - 1)
+        const prevStart = new Date(prevEnd.getTime() - rangeMs + 1)
+
+        const currentStats = computeRangeStats(allOrders, start0, end0)
+        const prevStats = computeRangeStats(allOrders, prevStart, prevEnd)
+
+        const pctChange = (current, prev) => {
+          if (!prev) return current ? 100 : 0
+          return ((current - prev) / prev) * 100
+        }
+
+        setSalesInsights({
+          netSales: currentStats.netSales,
+          netSalesChangePct: pctChange(currentStats.netSales, prevStats.netSales),
+          ordersDelivered: currentStats.ordersDelivered,
+          ordersChangePct: pctChange(currentStats.ordersDelivered, prevStats.ordersDelivered),
+          aov: currentStats.aov,
+          aovChangePct: pctChange(currentStats.aov, prevStats.aov),
+        })
+
         setLastUpdated(new Date())
       } else {
         // No orders found
@@ -851,6 +998,14 @@ export default function ToHub() {
         ])
         setTotalSales("₹ 0")
         setTotalOrders("0")
+        setSalesInsights({
+          netSales: 0,
+          netSalesChangePct: 0,
+          ordersDelivered: 0,
+          ordersChangePct: 0,
+          aov: 0,
+          aovChangePct: 0,
+        })
         // Reset mealtime metrics to zero
         setMealtimeMetrics([
           { title: "Breakfast", window: "7:00 am - 11:00 am", value: "0", change: "- 0%", color: "#111827" },
@@ -1205,7 +1360,9 @@ export default function ToHub() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-base font-bold text-gray-900">Sales</p>
-              <p className="text-xs text-gray-500">Last updated: few seconds ago</p>
+              <p className="text-xs text-gray-500">
+                {lastUpdated ? `Last updated: ${formatTimeAgo(lastUpdated)}` : "Last updated: -"}
+              </p>
             </div>
             <div className="relative">
               <button 
@@ -1233,9 +1390,24 @@ export default function ToHub() {
           </div>
 
           {[
-            { title: "Net sales", value: "₹0 • 0%", dataKey: "sales", color: "#f97316" },
-            { title: "Orders delivered", value: "0 • 0%", dataKey: "orders", color: "#f97316" },
-            { title: "Avg. order value", value: "₹0 • 0%", dataKey: "sales", color: "#f97316" },
+            {
+              title: "Net sales",
+              value: `₹${salesInsights.netSales.toLocaleString("en-IN")} • ${formatPct(salesInsights.netSalesChangePct)}`,
+              dataKey: "sales",
+              color: "#f97316",
+            },
+            {
+              title: "Orders delivered",
+              value: `${salesInsights.ordersDelivered.toLocaleString("en-IN")} • ${formatPct(salesInsights.ordersChangePct)}`,
+              dataKey: "orders",
+              color: "#f97316",
+            },
+            {
+              title: "Avg. order value",
+              value: `₹${Math.round(salesInsights.aov).toLocaleString("en-IN")} • ${formatPct(salesInsights.aovChangePct)}`,
+              dataKey: "sales",
+              color: "#f97316",
+            },
           ].map((section, idx) => (
             <div key={section.title} className={idx < 2 ? "pb-3 border-b border-dashed border-gray-200 space-y-2" : "space-y-2"}>
               <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
@@ -1539,7 +1711,9 @@ export default function ToHub() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-bold text-gray-900">Sales</p>
-                <p className="text-xs text-gray-500">Last updated: few seconds ago</p>
+                <p className="text-xs text-gray-500">
+                  {lastUpdated ? `Last updated: ${formatTimeAgo(lastUpdated)}` : "Last updated: -"}
+                </p>
               </div>
               <div className="relative">
                 <button 
@@ -1566,9 +1740,24 @@ export default function ToHub() {
             </div>
 
             {[
-              { title: "Net sales", value: "₹0 • 0%", dataKey: "sales", color: "#f97316" },
-              { title: "Orders delivered", value: "0 • 0%", dataKey: "orders", color: "#f97316" },
-              { title: "Avg. order value", value: "₹0 • 0%", dataKey: "sales", color: "#f97316" },
+              {
+                title: "Net sales",
+                value: `₹${salesInsights.netSales.toLocaleString("en-IN")} • ${formatPct(salesInsights.netSalesChangePct)}`,
+                dataKey: "sales",
+                color: "#f97316",
+              },
+              {
+                title: "Orders delivered",
+                value: `${salesInsights.ordersDelivered.toLocaleString("en-IN")} • ${formatPct(salesInsights.ordersChangePct)}`,
+                dataKey: "orders",
+                color: "#f97316",
+              },
+              {
+                title: "Avg. order value",
+                value: `₹${Math.round(salesInsights.aov).toLocaleString("en-IN")} • ${formatPct(salesInsights.aovChangePct)}`,
+                dataKey: "sales",
+                color: "#f97316",
+              },
             ].map((section, idx) => (
               <div key={section.title} className={idx < 2 ? "pb-3 border-b border-dashed border-gray-200 space-y-2" : "space-y-2"}>
                 <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
@@ -1610,7 +1799,9 @@ export default function ToHub() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-bold text-gray-900">Sales & orders</p>
-                <p className="text-xs text-gray-500">Last updated: few seconds ago</p>
+                <p className="text-xs text-gray-500">
+                  {lastUpdated ? `Last updated: ${formatTimeAgo(lastUpdated)}` : "Last updated: -"}
+                </p>
               </div>
               <div className="relative">
                 <button 
@@ -1639,13 +1830,17 @@ export default function ToHub() {
             <div className="grid grid-cols-2 gap-4 text-sm font-semibold text-gray-900 text-center items-center">
               <div className="space-y-1 flex flex-col items-center">
                 <p className="text-xs text-gray-500">Net sales</p>
-                <p className="text-lg font-bold text-gray-900">{totalSales || "₹0"}</p>
-                <p className="text-xs text-gray-500">- 0%</p>
+                <p className="text-lg font-bold text-gray-900">
+                  ₹{salesInsights.netSales.toLocaleString("en-IN")}
+                </p>
+                <p className="text-xs text-gray-500">{formatPct(salesInsights.netSalesChangePct)}</p>
               </div>
               <div className="space-y-1 flex flex-col items-center">
                 <p className="text-xs text-gray-500">Orders delivered</p>
-                <p className="text-lg font-bold text-gray-900">{totalOrders || "0"}</p>
-                <p className="text-xs text-gray-500">- 0%</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {salesInsights.ordersDelivered.toLocaleString("en-IN")}
+                </p>
+                <p className="text-xs text-gray-500">{formatPct(salesInsights.ordersChangePct)}</p>
               </div>
             </div>
 
@@ -1729,7 +1924,9 @@ export default function ToHub() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-bold text-gray-900">Average order value</p>
-                <p className="text-xs text-gray-500">Last updated: few seconds ago</p>
+                <p className="text-xs text-gray-500">
+                  {lastUpdated ? `Last updated: ${formatTimeAgo(lastUpdated)}` : "Last updated: -"}
+                </p>
               </div>
               <div className="relative">
                 <button 
@@ -1758,7 +1955,10 @@ export default function ToHub() {
             <div className="space-y-1">
               <p className="text-xs text-gray-500">AOV</p>
               <p className="text-lg font-bold text-gray-900">
-                ₹0 <span className="text-xs font-normal text-gray-500">- 0%</span>
+                ₹{Math.round(salesInsights.aov).toLocaleString("en-IN")}{" "}
+                <span className="text-xs font-normal text-gray-500">
+                  {formatPct(salesInsights.aovChangePct)}
+                </span>
               </p>
             </div>
 

@@ -83,11 +83,11 @@ export default function ChatDetailPage() {
         </button>
         <div className="flex-1 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-[#ff8100] flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-semibold text-sm">SF</span>
+            <span className="text-white font-semibold text-sm">AD</span>
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-base md:text-lg font-semibold text-gray-900 truncate">
-              StackFood
+              Admin
             </h2>
             <p className="text-xs text-gray-500">Admin</p>
           </div>

@@ -166,8 +166,11 @@ export default function ZoneSetup() {
       // Wait for mapRef to be available (retry mechanism)
       // NOTE: We no longer block on mapRef here; initializeMap will resolve the container
 
-      // Use window.google only if the full Maps API is ready (Map must be a constructor)
-      const googleReady = window.google?.maps && typeof window.google.maps.Map === "function"
+      // Use window.google only if the full Maps API is ready *and* Places is available (for search/autocomplete)
+      const googleReady =
+        window.google?.maps &&
+        typeof window.google.maps.Map === "function" &&
+        Boolean(window.google.maps.places)
       if (googleReady) {
         console.log("✅ Google Maps already loaded from main.jsx, initializing map...")
         try {
@@ -183,7 +186,8 @@ export default function ZoneSetup() {
         console.log("📍 Loading Google Maps with Loader...")
         const loader = new Loader({
           apiKey: apiKey,
-          version: "weekly"
+          version: "weekly",
+          libraries: ["places"],
         })
 
         const google = await loader.load()
@@ -481,6 +485,12 @@ export default function ZoneSetup() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <style>{`
+        /* Ensure Google Places suggestions dropdown is visible above fixed navbars/modals */
+        .pac-container {
+          z-index: 10000 !important;
+        }
+      `}</style>
       <RestaurantNavbar />
       <div className="p-4 md:p-6 max-w-7xl mx-auto">
         {/* Header */}
@@ -531,7 +541,7 @@ export default function ZoneSetup() {
               ) : (
                 <>
                   <Save className="w-5 h-5" />
-                  <span>Save Location</span>
+                  <span>Save</span>
                 </>
               )}
             </button>

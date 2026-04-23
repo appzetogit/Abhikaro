@@ -679,13 +679,17 @@ export default function Customers() {
                           <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
                             <span className="text-sm">👤</span>
                           </div>
-                          <span className="text-xs font-medium text-slate-900">{customer.name}</span>
+                          <span className="text-xs font-medium text-slate-900">{customer.name || ""}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="text-xs text-slate-700">{customer.email}</span>
-                          <span className="text-[11px] text-slate-500">{customer.phone}</span>
+                          {customer.email && String(customer.email).trim().toLowerCase() !== "n/a" ? (
+                            <span className="text-xs text-slate-700">{customer.email}</span>
+                          ) : null}
+                          {customer.phone && String(customer.phone).trim().toLowerCase() !== "n/a" ? (
+                            <span className="text-[11px] text-slate-500">{customer.phone}</span>
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

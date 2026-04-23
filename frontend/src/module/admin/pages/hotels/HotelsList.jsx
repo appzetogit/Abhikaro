@@ -12,6 +12,36 @@ import qrPosterTemplate from "@/assets/qrcode.png"
 
 const ITEMS_PER_PAGE = 15
 
+function normalizeHotelQrValue(rawValue, hotelId) {
+  const origin = window.location.origin
+  const fallback = hotelId ? `${origin}/hotel-menu?ref=${encodeURIComponent(hotelId)}` : `${origin}/hotel-menu`
+
+  if (!rawValue || typeof rawValue !== "string") return fallback
+
+  // If DB accidentally stored a QR image data URL, never encode that into another QR.
+  if (rawValue.startsWith("data:image/")) return fallback
+
+  // Already correct
+  if (rawValue.includes("/hotel-menu") && rawValue.includes("ref=")) return rawValue
+
+  // Legacy /hotel/view/:id?hotelRef=...
+  try {
+    const url = new URL(rawValue, origin)
+    const ref =
+      url.searchParams.get("ref") ||
+      url.searchParams.get("hotelRef") ||
+      url.pathname.match(/\/hotel\/view\/([^/?]+)/)?.[1] ||
+      hotelId ||
+      null
+
+    if (ref) return `${origin}/hotel-menu?ref=${encodeURIComponent(ref)}`
+  } catch {
+    // ignore
+  }
+
+  return fallback
+}
+
 export default function HotelsList() {
   const [searchQuery, setSearchQuery] = useState("")
   const [hotels, setHotels] = useState([])
@@ -1788,7 +1818,7 @@ export default function HotelsList() {
                 className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm mx-auto w-fit"
               >
                 <QRCodeSVG
-                  value={qrCodeDialog.qrCode}
+                  value={normalizeHotelQrValue(qrCodeDialog.qrCode, qrCodeDialog.hotelId || qrCodeDialog._id)}
                   size={180}
                   level="H"
                   includeMargin={true}

@@ -37,7 +37,7 @@ export const getRefund = asyncHandler(async (req, res) => {
     if (!refund) {
       refund = await RefundPolicy.create({
         title: 'Refund Policy',
-        content: '<p>Stack Food is a complete Multi-vendor Food products delivery system developed with powerful admin panel will help you to control your business smartly.</p>',
+        content: '<p>No refund policy available at the moment.</p>',
         updatedBy: req.admin._id
       });
     }

@@ -1,5 +1,5 @@
 /**
- * Script to update all hotel QR codes from localhost to production URL
+ * Script to normalize all hotel QR codes to the public landing URL.
  * Run with: node scripts/updateHotelQRCodes.js
  */
 
@@ -16,9 +16,9 @@ const updateHotelQRCodes = async () => {
     await connectDB();
     console.log('✅ Connected to database');
 
-    // Get production URL
-    const productionUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://foods.abhikaro.in';
-    console.log('🔗 Using production URL:', productionUrl);
+    // Get desired frontend URL (default to production)
+    const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://foods.abhikaro.in';
+    console.log('🔗 Using frontend URL:', frontendUrl);
 
     // Find all hotels with QR codes
     const hotels = await Hotel.find({ qrCode: { $exists: true, $ne: null } });
@@ -32,44 +32,28 @@ const updateHotelQRCodes = async () => {
       let needsUpdate = false;
       const hotelId = hotel.hotelId || hotel._id.toString();
 
-      // Check if QR code contains localhost
+      // Normalize stored qrCode string into `${frontendUrl}/hotel-menu?ref=<hotelId>`
       if (qrCode && typeof qrCode === 'string') {
-        if (qrCode.includes('localhost') || qrCode.includes('127.0.0.1') || qrCode.includes('localhost:5173')) {
-          // Extract hotel ID from existing URL
-          const hotelIdMatch = qrCode.match(/\/hotel\/view\/([^/?]+)/);
-          if (hotelIdMatch) {
-            const extractedHotelId = hotelIdMatch[1];
-            qrCode = `${productionUrl}/hotel/view/${extractedHotelId}?hotelRef=${extractedHotelId}`;
-            needsUpdate = true;
-          } else {
-            // Try to extract from hotelRef parameter
-            const hotelRefMatch = qrCode.match(/hotelRef=([^&]+)/);
-            if (hotelRefMatch) {
-              const extractedHotelId = hotelRefMatch[1];
-              qrCode = `${productionUrl}/hotel/view/${extractedHotelId}?hotelRef=${extractedHotelId}`;
-              needsUpdate = true;
-            } else {
-              // Use hotel ID from database
-              qrCode = `${productionUrl}/hotel/view/${hotelId}?hotelRef=${hotelId}`;
-              needsUpdate = true;
-            }
+        // Extract possible hotelId from various legacy formats
+        const idFromPath = qrCode.match(/\/hotel\/view\/([^/?]+)/)?.[1] || null;
+        const idFromHotelRef = qrCode.match(/hotelRef=([^&]+)/)?.[1] || null;
+        const idFromRef = qrCode.match(/[?&]ref=([^&]+)/)?.[1] || null;
+
+        // JSON legacy format: {"type":"hotel","hotelId":"..."}
+        let idFromJson = null;
+        try {
+          const parsed = JSON.parse(qrCode);
+          if (parsed && parsed.type === "hotel" && parsed.hotelId) {
+            idFromJson = parsed.hotelId;
           }
-        } else {
-          // Check if it's JSON format
-          try {
-            const parsed = JSON.parse(qrCode);
-            if (parsed.type === "hotel" && parsed.hotelId) {
-              qrCode = `${productionUrl}/hotel/view/${parsed.hotelId}?hotelRef=${parsed.hotelId}`;
-              needsUpdate = true;
-            }
-          } catch (e) {
-            // Not JSON, check if it already has production URL
-            if (!qrCode.includes('foods.abhikaro.in') && !qrCode.includes(productionUrl)) {
-              // Doesn't have production URL, update it
-              qrCode = `${productionUrl}/hotel/view/${hotelId}?hotelRef=${hotelId}`;
-              needsUpdate = true;
-            }
-          }
+        } catch (_) {}
+
+        const derivedHotelId = idFromRef || idFromPath || idFromHotelRef || idFromJson || hotelId;
+        const normalized = `${frontendUrl}/hotel-menu?ref=${derivedHotelId}`;
+
+        if (qrCode !== normalized) {
+          qrCode = normalized;
+          needsUpdate = true;
         }
       }
 
@@ -80,7 +64,7 @@ const updateHotelQRCodes = async () => {
         console.log(`   New URL: ${qrCode}`);
         updatedCount++;
       } else {
-        console.log(`⏭️  Skipped hotel: ${hotel.hotelName || hotelId} (already has production URL)`);
+        console.log(`⏭️  Skipped hotel: ${hotel.hotelName || hotelId} (already normalized)`);
         skippedCount++;
       }
     }

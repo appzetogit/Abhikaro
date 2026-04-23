@@ -39,7 +39,7 @@ export const getPrivacy = asyncHandler(async (req, res) => {
       // Create default privacy policy if it doesn't exist
       privacy = await PrivacyPolicy.create({
         title: 'Privacy Policy',
-        content: '<p>StackFood is a complete Multi-vendor Food delivery system developed with powerful admin panel will help you to control your business smartly.</p>',
+        content: '<p>No privacy policy available at the moment.</p>',
         updatedBy: req.admin._id
       });
     }

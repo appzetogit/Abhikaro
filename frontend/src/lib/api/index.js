@@ -1763,6 +1763,22 @@ export const adminAPI = {
     );
   },
 
+  getNotificationHistory: (params = {}) => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.NOTIFICATIONS_HISTORY, { params });
+  },
+
+  toggleNotificationHistoryStatus: (id) => {
+    return apiClient.patch(
+      API_ENDPOINTS.ADMIN.NOTIFICATIONS_HISTORY_STATUS.replace(":id", id),
+    );
+  },
+
+  deleteNotificationHistory: (id) => {
+    return apiClient.delete(
+      API_ENDPOINTS.ADMIN.NOTIFICATIONS_HISTORY_BY_ID.replace(":id", id),
+    );
+  },
+
   /**
    * Send notification to specific user by ID
    */

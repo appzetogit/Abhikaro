@@ -391,7 +391,6 @@ export default function AdminHome() {
               helper="Restaurant commission"
               icon={<ArrowUpRight className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
-              onClick={() => navigate("/admin/commission-management")}
             />
             <MetricCard
               title="Orders processed"
@@ -407,7 +406,6 @@ export default function AdminHome() {
               helper="Total platform fees"
               icon={<CreditCard className="h-5 w-5 text-purple-600" />}
               accent="bg-purple-200/40"
-              onClick={() => navigate("/admin/commission-management")}
             />
             <MetricCard
               title="Delivery fee"
@@ -415,7 +413,6 @@ export default function AdminHome() {
               helper="Total delivery fees"
               icon={<Truck className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
-              onClick={() => navigate("/admin/orders/delivered")}
             />
             <MetricCard
               title="GST"
@@ -423,7 +420,6 @@ export default function AdminHome() {
               helper="Total GST collected"
               icon={<Receipt className="h-5 w-5 text-orange-600" />}
               accent="bg-orange-200/40"
-              onClick={() => navigate("/admin/commission-management")}
             />
             <MetricCard
               title="Total revenue"
@@ -431,7 +427,7 @@ export default function AdminHome() {
               helper={`Commission ₹${commissionTotal.toFixed(2)} + Platform ₹${platformFeeTotal.toFixed(2)} + Delivery ₹${deliveryFeeTotal.toFixed(2)} + GST ₹${gstTotal.toFixed(2)}`}
               icon={<DollarSign className="h-5 w-5 text-green-600" />}
               accent="bg-green-200/40"
-              onClick={() => navigate("/admin/commission-management")}
+              onClick={() => navigate("/admin/restaurants/commission")}
             />
             <MetricCard
               title="Total restaurants"
@@ -527,7 +523,6 @@ export default function AdminHome() {
               helper="Admin commission from dining"
               icon={<DollarSign className="h-5 w-5 text-rose-600" />}
               accent="bg-rose-200/40"
-              onClick={() => navigate("/admin/dining-earnings")}
             />
             <MetricCard
               title="Restaurant dining earnings"
@@ -535,7 +530,6 @@ export default function AdminHome() {
               helper="Total restaurant earnings"
               icon={<TrendingUp className="h-5 w-5 text-violet-600" />}
               accent="bg-violet-200/40"
-              onClick={() => navigate("/admin/dining-earnings")}
             />
           </div>
 

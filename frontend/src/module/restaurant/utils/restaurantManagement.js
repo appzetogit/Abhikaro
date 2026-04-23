@@ -3,25 +3,6 @@
  * Centralized management for restaurant details across the restaurant module
  */
 
-// Default restaurant data
-const DEFAULT_RESTAURANT_DATA = {
-  restaurantName: {
-    english: "Hungry Puppets",
-    bengali: "",
-    arabic: "",
-    spanish: ""
-  },
-  phoneNumber: "+101747410000",
-  address: "House: 00, Road: 00, Test City",
-  logo: null,
-  cover: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800&h=400&fit=crop",
-  metaTitle: "Hungry Puppets Restaurant: Where Fla",
-  metaDescription: "Satisfy your cravings and indulge in a culinary adventure at Hungry Puppets Restaurant. Our menu is a symphony of taste, offering a delightful fusion of flavors that excite both palate and",
-  metaImage: null,
-  rating: 4.7,
-  totalRatings: 3
-}
-
 const RESTAURANT_STORAGE_KEY = 'restaurant_data'
 
 /**
@@ -34,11 +15,9 @@ export const getRestaurantData = () => {
     if (saved) {
       return JSON.parse(saved)
     }
-    // Initialize with default data
-    setRestaurantData(DEFAULT_RESTAURANT_DATA)
-    return DEFAULT_RESTAURANT_DATA
+    return {}
   } catch (error) {
-    return DEFAULT_RESTAURANT_DATA
+    return {}
   }
 }
 

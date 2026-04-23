@@ -211,6 +211,21 @@ export default function Home() {
   // -----------------------------
   // Delivered-order rating popup
   // -----------------------------
+  const getAllOrderIdsForDedupe = useCallback((order) => {
+    const ids = new Set()
+    const candidates = [
+      order?.orderId,
+      order?.id,
+      order?._id?.toString?.() || order?._id,
+      order?.mongoId?.toString?.() || order?.mongoId,
+    ]
+      .filter(Boolean)
+      .map((v) => String(v))
+
+    for (const v of candidates) ids.add(v)
+    return Array.from(ids)
+  }, [])
+
   const normalizeOrderForRating = useCallback((order) => {
     const id =
       order?.orderId ||
@@ -261,9 +276,9 @@ export default function Home() {
     // If user dismisses (X), don't show again for the same order.
     // They can still rate later from Orders page if needed.
     try {
-      const orderId = ratingModal?.order?.id
-      if (orderId) {
-        setShownRatingForOrders((prev) => new Set([...prev, orderId]))
+      const ids = getAllOrderIdsForDedupe(ratingModal?.order)
+      if (ids.length) {
+        setShownRatingForOrders((prev) => new Set([...prev, ...ids]))
       }
     } catch {
       // ignore
@@ -272,7 +287,7 @@ export default function Home() {
     setRatingModal({ open: false, order: null })
     setSelectedRating(null)
     setFeedbackText("")
-  }, [ratingModal?.order?.id])
+  }, [ratingModal?.order, getAllOrderIdsForDedupe])
 
   const handleSubmitRating = useCallback(async () => {
     if (!ratingModal.order || selectedRating === null) {
@@ -301,7 +316,8 @@ export default function Home() {
 
       // Persist only rated orders (not merely shown), so unrated delivered
       // orders are never permanently suppressed due to stale local storage.
-      setShownRatingForOrders((prev) => new Set([...prev, order.id]))
+      const ratedIds = getAllOrderIdsForDedupe(order)
+      setShownRatingForOrders((prev) => new Set([...prev, ...ratedIds]))
 
       // Close modal & allow next order popup in future (for other orders)
       toast.success("Thanks for rating your order! 🎉")
@@ -362,17 +378,22 @@ export default function Home() {
       return rating !== null && rating !== undefined && Number(rating) > 0
     }
 
-    const getOrderId = (order) => {
+    const getPrimaryOrderId = (order) => {
       return order?.orderId || order?._id?.toString?.() || order?.id
+    }
+
+    const isSuppressed = (order) => {
+      const ids = getAllOrderIdsForDedupe(order)
+      if (!ids.length) return false
+      return ids.some((id) => shownRatingForOrdersRef.current.has(id))
     }
 
     const computeEarliestCandidate = (orders) => {
       const candidates = (orders || [])
         .filter((order) => {
-          const orderId = getOrderId(order)
+          const orderId = getPrimaryOrderId(order)
           if (!orderId) return false
-
-          if (shownRatingForOrdersRef.current.has(orderId)) return false
+          if (isSuppressed(order)) return false
           if (!isDelivered(order)) return false
           if (hasRated(order)) return false
 
@@ -380,7 +401,7 @@ export default function Home() {
         })
         .map((order) => ({
           order,
-          orderId: getOrderId(order),
+          orderId: getPrimaryOrderId(order),
           deliveredTs: getDeliveredAtValue(order)
             ? new Date(getDeliveredAtValue(order)).getTime()
             : 0,

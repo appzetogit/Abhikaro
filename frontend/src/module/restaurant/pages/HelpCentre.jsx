@@ -1,26 +1,18 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
-import { 
-  ChevronLeft, 
-  Search, 
-  Power, 
-  Utensils, 
-  Building2, 
-  FileText, 
+import {
+  ChevronLeft,
+  Search,
+  Utensils,
+  Building2,
+  FileText,
   Wallet,
-  ChevronRight
+  ChevronRight,
 } from "lucide-react"
 import BottomNavOrders from "../components/BottomNavOrders"
 
 const helpTopics = [
-  {
-    id: 1,
-    icon: Power,
-    title: "Outlet online / offline status",
-    subtitle: "Current status & details",
-    path: "/restaurant/delivery-settings"
-  },
   {
     id: 2,
     icon: Utensils,

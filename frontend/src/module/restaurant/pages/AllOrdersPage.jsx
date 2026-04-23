@@ -48,7 +48,6 @@ const mockOrders = [
   {
     id: "7560307359",
     status: "CANCELLED",
-    tags: ["VEG ONLY"],
     date: "12 Dec",
     time: "04:27 AM",
     restaurant: "Kadhai Chammach Restaurant",
@@ -329,14 +328,11 @@ export default function AllOrdersPage() {
       reason = 'Cancelled by customer'
     }
     
-    // Determine tags based on order properties
+    // Determine tags based on order properties.
+    // NOTE: Customer-facing modifiers like cutlery / veg-only are intentionally not shown in this UI.
     const tags = []
-    if (order.sendCutlery) tags.push('CUTLERY')
     if (order.deliveryFleet === 'express') tags.push('EXPRESS DELIVERY')
     if (order.deliveryFleet === 'self') tags.push('SELF DELIVERY')
-    // Check if all items are veg
-    const allVeg = items.every(item => item.isVeg !== false)
-    if (allVeg && items.length > 0) tags.push('VEG ONLY')
     
     return {
       id: order.orderId || order._id?.toString() || '',
@@ -714,11 +710,22 @@ export default function AllOrdersPage() {
                 <span className={`px-2.5 py-1 rounded text-xs font-bold ${getStatusColor(order.status)}`}>
                   {order.status}
                 </span>
-                {order.tags && order.tags.map((tag, idx) => (
-                  <span key={idx} className="px-2.5 py-1 rounded text-xs font-bold bg-green-600 text-white">
-                    {tag}
-                  </span>
-                ))}
+                {order.tags &&
+                  order.tags
+                    .filter(
+                      (tag) =>
+                        !["CUTLERY", "VEG ONLY"].includes(
+                          String(tag || "").trim().toUpperCase(),
+                        ),
+                    )
+                    .map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2.5 py-1 rounded text-xs font-bold bg-green-600 text-white"
+                      >
+                        {tag}
+                      </span>
+                    ))}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500">{order.date}, {order.time}</span>

@@ -2822,6 +2822,7 @@ function OrderCard({
   timePlaced,
   eta,
   itemsSummary,
+  note,
   photoUrl,
   photoAlt,
   deliveryPartnerId,
@@ -2872,7 +2873,7 @@ function OrderCard({
       <button
         type="button"
         onClick={handlePrint}
-        className="absolute top-18 right-10 p-2 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors z-10"
+        className="absolute top-15 right-10 p-2 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors z-10"
         title="Print receipt"
       >
         <Printer className="w-6 h-6" />
@@ -2888,6 +2889,7 @@ function OrderCard({
             timePlaced,
             eta,
             itemsSummary,
+            note,
             paymentMethod,
             paymentStatus,
           })
@@ -2931,6 +2933,11 @@ function OrderCard({
             <p className="text-xs text-gray-600 line-clamp-1">
               {itemsSummary}
             </p>
+            {note ? (
+              <p className="mt-1 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 line-clamp-2">
+                {note}
+              </p>
+            ) : null}
           </div>
 
           {/* Bottom row */}
@@ -3034,6 +3041,7 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders, getCachedOrd
         initialETA,
         preparingTimestamp,
         itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
+        note: order.note || '',
         photoUrl: order.items?.[0]?.image || null,
         photoAlt: order.items?.[0]?.name || 'Order',
         deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null,
@@ -3327,6 +3335,7 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders, getCachedOrd
                 timePlaced={order.timePlaced}
                 eta={etaDisplay}
                 itemsSummary={order.itemsSummary}
+                note={order.note}
                 photoUrl={order.photoUrl}
                 photoAlt={order.photoAlt}
                 deliveryPartnerId={order.deliveryPartnerId}
@@ -3360,6 +3369,7 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders, getCachedOrders }) {
       timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       eta: null,
       itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
+      note: order.note || '',
       photoUrl: order.items?.[0]?.image || null,
       photoAlt: order.items?.[0]?.name || 'Order',
       deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null,
@@ -3554,6 +3564,7 @@ const OutForDeliveryOrders = ({ onSelectOrder, fetchAllOrders }) => {
             timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
             eta: null,
             itemsSummary: order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ') || 'No items',
+            note: order.note || '',
             photoUrl: order.items?.[0]?.image || null,
             photoAlt: order.items?.[0]?.name || 'Order',
             deliveryPartnerId: order.deliveryPartnerId?._id || order.deliveryPartnerId || null, // Handle both populated object and ObjectId

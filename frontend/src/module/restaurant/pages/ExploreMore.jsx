@@ -1207,17 +1207,6 @@ export default function ExploreMore() {
                   >
                     Privacy Policy
                   </button>
-                  <span className="text-gray-400">|</span>
-                  <button
-                    type="button"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400 bg-transparent p-0 text-sm"
-                    onClick={() => {
-                      setProfileOpen(false)
-                      navigate("/restaurant/help-centre")
-                    }}
-                  >
-                    Code of Conduct
-                  </button>
                 </div>
               </div>
             </motion.div>

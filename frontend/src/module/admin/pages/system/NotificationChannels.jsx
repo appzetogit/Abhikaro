@@ -404,7 +404,7 @@ export default function NotificationChannels() {
             <h1 className="text-lg font-bold text-slate-900">Notification Channels Setup</h1>
           </div>
           <p className="text-xs text-slate-600 ml-9">
-            From here you setup who can see what types of notification from StackFood
+            From here you setup who can see what types of notification
           </p>
         </div>
 

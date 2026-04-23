@@ -18,6 +18,19 @@ export default function Orders() {
   const [feedbackText, setFeedbackText] = useState("")
   const [submittingRating, setSubmittingRating] = useState(false)
   const [countdowns, setCountdowns] = useState({})
+  const getAllOrderIdsForDedupe = (order) => {
+    const ids = new Set()
+    const candidates = [
+      order?.orderId,
+      order?.id,
+      order?._id?.toString?.() || order?._id,
+      order?.mongoId?.toString?.() || order?.mongoId,
+    ]
+      .filter(Boolean)
+      .map((v) => String(v))
+    for (const v of candidates) ids.add(v)
+    return Array.from(ids)
+  }
   // Track orders that have shown rating popup - persist in localStorage
   const [shownRatingForOrders, setShownRatingForOrders] = useState(() => {
     try {
@@ -120,7 +133,7 @@ export default function Orders() {
       const hasRating = Number.isFinite(normalizedRating) && normalizedRating > 0
       
       const orderId = order.id || order._id || order.mongoId
-      const hasShownPopup = shownRatingForOrders.has(orderId)
+      const hasShownPopup = getAllOrderIdsForDedupe(order).some((id) => shownRatingForOrders.has(id))
       
       // Also check if order has deliveredAt timestamp (indicates it was delivered)
       const hasDeliveredAt = order.deliveredAt !== null && order.deliveredAt !== undefined
@@ -459,9 +472,9 @@ Order again from this restaurant in the ${companyName} app.`
     // (They can still rate later from order actions if needed.)
     try {
       const o = ratingModal?.order
-      const orderId = o?.id || o?._id || o?.mongoId
-      if (orderId) {
-        setShownRatingForOrders(prev => new Set([...prev, orderId]))
+      const ids = getAllOrderIdsForDedupe(o)
+      if (ids.length) {
+        setShownRatingForOrders(prev => new Set([...prev, ...ids]))
       }
     } catch {
       // ignore
@@ -511,8 +524,8 @@ Order again from this restaurant in the ${companyName} app.`
       toast.success("Thanks for rating your order! 🎉")
       
       // Mark this order as rated so popup doesn't show again
-      const orderId = order.id || order._id || order.mongoId
-      setShownRatingForOrders(prev => new Set([...prev, orderId]))
+      const ids = getAllOrderIdsForDedupe(order)
+      setShownRatingForOrders(prev => new Set([...prev, ...ids]))
       
       handleCloseRating()
     } catch (error) {
