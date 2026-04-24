@@ -22,7 +22,7 @@ const logger = winston.createLogger({
  */
 const signupDetailsSchema = Joi.object({
   name: Joi.string().trim().min(2).max(100).required(),
-  email: Joi.string().email().lowercase().trim().optional().allow(null, ''),
+  email: Joi.string().email().lowercase().trim().required(),
   address: Joi.string().trim().required(),
   city: Joi.string().trim().required(),
   state: Joi.string().trim().required(),
@@ -58,7 +58,7 @@ export const submitSignupDetails = asyncHandler(async (req, res) => {
     // Update delivery profile with signup details
     const updateData = {
       name: name.trim(),
-      email: email ? email.trim().toLowerCase() : null,
+      email: email.trim().toLowerCase(),
       location: {
         addressLine1: address.trim(),
         city: city.trim(),

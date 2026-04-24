@@ -158,7 +158,10 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
 
       // Check if signup needs to be completed (missing required fields)
-      const needsSignup = !delivery.location?.city || 
+      const needsSignup = !delivery.name ||
+                         delivery.name === 'Delivery Partner' ||
+                         !delivery.email ||
+                         !delivery.location?.city || 
                          !delivery.vehicle?.number || 
                          !delivery.documents?.pan?.number ||
                          !delivery.documents?.aadhar?.number ||

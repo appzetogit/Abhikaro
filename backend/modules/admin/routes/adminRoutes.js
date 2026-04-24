@@ -208,6 +208,14 @@ import {
   updateTerms,
 } from "../controllers/termsAndConditionController.js";
 import {
+  getDeliveryTerms,
+  updateDeliveryTerms,
+} from "../controllers/deliveryTermsAndConditionController.js";
+import {
+  getDeliveryPrivacy,
+  updateDeliveryPrivacy,
+} from "../controllers/deliveryPrivacyPolicyController.js";
+import {
   getRestaurantTerms,
   updateRestaurantTerms,
 } from "../controllers/restaurantTermsAndConditionController.js";
@@ -749,6 +757,14 @@ router.put("/about", updateAbout);
 // Terms and Condition Management
 router.get("/terms", getTerms);
 router.put("/terms", updateTerms);
+
+// Delivery Terms and Condition Management
+router.get("/delivery-terms", getDeliveryTerms);
+router.put("/delivery-terms", updateDeliveryTerms);
+
+// Delivery Privacy Policy Management
+router.get("/delivery-privacy", getDeliveryPrivacy);
+router.put("/delivery-privacy", updateDeliveryPrivacy);
 
 // Restaurant Terms and Condition Management
 router.get("/restaurant-terms", getRestaurantTerms);

@@ -15,7 +15,7 @@ router.use(authenticate);
 // Signup routes
 router.post('/signup/details', validate(Joi.object({
   name: Joi.string().trim().min(2).max(100).required(),
-  email: Joi.string().email().lowercase().trim().optional().allow(null, ''),
+  email: Joi.string().email().lowercase().trim().required(),
   address: Joi.string().trim().required(),
   city: Joi.string().trim().required(),
   state: Joi.string().trim().required(),

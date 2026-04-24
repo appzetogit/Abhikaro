@@ -1,54 +1,46 @@
 import { motion } from "framer-motion"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { 
   ArrowLeft
 } from "lucide-react"
+import api from "@/lib/api"
+import { API_ENDPOINTS } from "@/lib/api/config"
 
 export default function PrivacyPolicy() {
   const navigate = useNavigate()
+  const [loading, setLoading] = useState(true)
+  const [policyData, setPolicyData] = useState({ title: "Privacy Policy", content: "" })
+  const [error, setError] = useState("")
 
-  const sections = [
-    {
-      title: "1. Information We Collect",
-      content: "We collect information you provide directly to us, such as when you create an account, place an order, or contact us. This includes your name, email address, phone number, delivery address, and payment information."
-    },
-    {
-      title: "2. How We Use Your Information",
-      content: "We use the information we collect to provide, maintain, and improve our services, process transactions, send you updates, and respond to your inquiries."
-    },
-    {
-      title: "3. Information Sharing",
-      content: "We do not sell your personal information. We may share your information with restaurants and delivery partners to fulfill your orders, and with service providers who assist us in operating our platform."
-    },
-    {
-      title: "4. Location Information",
-      content: "We collect location information to provide delivery services, estimate delivery times, and improve our services. You can control location permissions through your device settings."
-    },
-    {
-      title: "5. Data Security",
-      content: "We implement appropriate security measures to protect your personal information. However, no method of transmission over the internet is 100% secure."
-    },
-    {
-      title: "6. Your Rights",
-      content: "You have the right to access, update, or delete your personal information. You can also opt-out of certain communications from us."
-    },
-    {
-      title: "7. Cookies and Tracking",
-      content: "We use cookies and similar tracking technologies to track activity on our service and hold certain information to improve user experience."
-    },
-    {
-      title: "8. Children's Privacy",
-      content: "Our service is not intended for children under 13. We do not knowingly collect personal information from children under 13."
-    },
-    {
-      title: "9. Changes to This Policy",
-      content: "We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page."
-    },
-    {
-      title: "10. Contact Us",
-      content: "If you have any questions about this Privacy Policy, please contact us at privacy@fooddelivery.com"
+  useEffect(() => {
+    const fetchPrivacy = async () => {
+      try {
+        setLoading(true)
+        setError("")
+        const response = await api.get(API_ENDPOINTS.ADMIN.DELIVERY_PRIVACY_PUBLIC)
+        if (response.data?.success) {
+          setPolicyData({
+            title: response.data.data?.title || "Privacy Policy",
+            content: response.data.data?.content || "",
+          })
+        } else {
+          setError("Unable to load privacy policy.")
+        }
+      } catch (e) {
+        console.error("Error fetching delivery privacy:", e)
+        setError("Unable to load privacy policy.")
+      } finally {
+        setLoading(false)
+      }
     }
-  ]
+
+    fetchPrivacy()
+  }, [])
+
+  const hasContent = useMemo(() => {
+    return Boolean(policyData.content && policyData.content.replace(/<[^>]*>/g, "").trim())
+  }, [policyData.content])
 
   return (
     <div className="min-h-screen bg-[#f6e9dc] overflow-x-hidden">
@@ -60,33 +52,35 @@ export default function PrivacyPolicy() {
         >
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
-        <h1 className="text-lg md:text-xl font-bold text-gray-900">Privacy Policy</h1>
+        <h1 className="text-lg md:text-xl font-bold text-gray-900">{policyData.title || "Privacy Policy"}</h1>
       </div>
 
       {/* Main Content */}
       <div className="w-full px-4 py-6 pb-24 md:pb-6">
         <div className="w-full max-w-none">
-          <p className="text-gray-600 text-sm md:text-base mb-6">
-            Last updated: January 1, 2024
-          </p>
-          
-          <div className="space-y-6">
-            {sections.map((section, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.1 }}
-              >
-                <h3 className="text-gray-900 font-bold text-base md:text-lg mb-2">
-                  {section.title}
-                </h3>
-                <p className="text-gray-600 text-sm md:text-base leading-relaxed">
-                  {section.content}
-                </p>
-              </motion.div>
-            ))}
-          </div>
+          {loading ? (
+            <div className="py-10 text-center text-gray-600">Loading...</div>
+          ) : error ? (
+            <div className="py-10 text-center text-gray-600">{error}</div>
+          ) : !hasContent ? (
+            <div className="py-10 text-center text-gray-600">No privacy policy published yet.</div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+              className="prose prose-slate max-w-none
+                prose-headings:text-gray-900
+                prose-p:text-gray-700
+                prose-strong:text-gray-900
+                prose-ul:text-gray-700
+                prose-ol:text-gray-700
+                prose-li:text-gray-700
+                prose-a:text-blue-700
+                prose-a:no-underline hover:prose-a:underline"
+              dangerouslySetInnerHTML={{ __html: policyData.content }}
+            />
+          )}
         </div>
       </div>
 

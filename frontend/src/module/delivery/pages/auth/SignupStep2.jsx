@@ -232,6 +232,7 @@ export default function SignupStep2() {
   const DocumentUpload = ({ docType, label, required = true }) => {
     const galleryInputRef = useRef(null)
     const cameraInputRef = useRef(null)
+    const galleryDomId = `delivery-signup-gallery-${docType}`
     const file = documents[docType]
     const uploaded = uploadedDocs[docType]
     const isUploading = uploading[docType]

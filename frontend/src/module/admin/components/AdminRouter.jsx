@@ -74,6 +74,12 @@ const EarningAddon = lazy(() => import("../pages/delivery-partners/EarningAddon"
 const EarningAddonHistory = lazy(() => import("../pages/delivery-partners/EarningAddonHistory"));
 const DeliveryEarnings = lazy(() => import("../pages/delivery-partners/DeliveryEarnings"));
 const DeliveryHistory = lazy(() => import("../pages/delivery-partners/DeliveryHistory"));
+const DeliveryTermsAndCondition = lazy(() =>
+  import("../pages/delivery-partners/DeliveryTermsAndCondition"),
+);
+const DeliveryPrivacyPolicy = lazy(() =>
+  import("../pages/delivery-partners/DeliveryPrivacyPolicy"),
+);
 // Report Management
 const TransactionReport = lazy(() => import("../pages/reports/TransactionReport"));
 const RegularOrderReport = lazy(() => import("../pages/reports/RegularOrderReport"));
@@ -258,6 +264,8 @@ export default function AdminRouter() {
           <Route path="delivery-partners/earning-addon-history" element={<EarningAddonHistory />} />
           <Route path="delivery-partners/earnings" element={<DeliveryEarnings />} />
           <Route path="delivery-partners/history" element={<DeliveryHistory />} />
+          <Route path="delivery-partners/terms" element={<DeliveryTermsAndCondition />} />
+          <Route path="delivery-partners/privacy" element={<DeliveryPrivacyPolicy />} />
 
 
           {/* REPORT MANAGEMENT */}

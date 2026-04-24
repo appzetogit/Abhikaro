@@ -16,7 +16,7 @@ export default function HotelMenuLanding() {
         const validateQR = async () => {
             try {
                 // Get hotel reference from URL parameter
-                const hotelRef = searchParams.get('ref');
+                const hotelRef = searchParams.get('ref') || searchParams.get('hotelId') || searchParams.get('id');
 
                 if (!hotelRef) {
                     setError('Invalid QR code. No hotel reference found.');
@@ -39,6 +39,35 @@ export default function HotelMenuLanding() {
                     sessionStorage.setItem('hotelReference', hotelData.hotelId);
                     sessionStorage.setItem('hotelReferenceName', hotelData.hotelName);
                     sessionStorage.setItem('isHotelOrder', 'true');
+
+                    // Set user location to hotel location so Home can load restaurants without GPS permission.
+                    // Treat as manual override so GPS watcher doesn't instantly overwrite it.
+                    try {
+                        const loc = hotelData.location || {};
+                        const latitude = Number(loc.latitude);
+                        const longitude = Number(loc.longitude);
+                        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+                            const userLocation = {
+                                latitude,
+                                longitude,
+                                city: loc.city || "",
+                                state: loc.state || "",
+                                area: loc.area || "",
+                                address: loc.address || hotelData.address || hotelData.hotelName || "Hotel",
+                                formattedAddress:
+                                    loc.formattedAddress ||
+                                    loc.address ||
+                                    hotelData.address ||
+                                    hotelData.hotelName ||
+                                    "Hotel",
+                                timestamp: Date.now(),
+                            };
+                            localStorage.setItem("userLocation", JSON.stringify(userLocation));
+                            localStorage.setItem("userLocation_manualOverride", "true");
+                        }
+                    } catch {
+                        // ignore storage errors
+                    }
 
                     toast.success(`Welcome to ${hotelData.hotelName}!`);
 

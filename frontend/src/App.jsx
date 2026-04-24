@@ -105,6 +105,7 @@ const DeliverySignupStep1 = lazy(() => import("@/module/delivery/pages/auth/Sign
 const DeliverySignupStep2 = lazy(() => import("@/module/delivery/pages/auth/SignupStep2"))
 const DeliveryWelcome = lazy(() => import("@/module/delivery/pages/auth/Welcome"))
 const DeliveryTermsPublic = lazy(() => import("@/module/delivery/pages/TermsAndConditions"))
+const DeliveryPrivacyPublic = lazy(() => import("@/module/delivery/pages/PrivacyPolicy"))
 
 // Hotel Module
 const HotelSignup = lazy(() => import("@/module/hotel/pages/auth/Signup"))
@@ -896,6 +897,14 @@ export default function App() {
           element={
             <Suspense fallback={<Loader />}>
               <DeliveryTermsPublic />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/delivery/legal/privacy"
+          element={
+            <Suspense fallback={<Loader />}>
+              <DeliveryPrivacyPublic />
             </Suspense>
           }
         />

@@ -13,10 +13,10 @@ export const getTermsPublic = asyncHandler(async (req, res) => {
       .lean();
 
     if (!terms) {
-      // Return default data if no terms exists
+      // No default/fallback content: return empty content when not published yet
       return successResponse(res, 200, 'Terms and conditions retrieved successfully', {
         title: 'Terms and Conditions',
-        content: '<p>No terms and conditions available at the moment.</p>'
+        content: ''
       });
     }
 
@@ -33,14 +33,13 @@ export const getTermsPublic = asyncHandler(async (req, res) => {
  */
 export const getTerms = asyncHandler(async (req, res) => {
   try {
-    let terms = await TermsAndCondition.findOne({ isActive: true }).lean();
+    const terms = await TermsAndCondition.findOne({ isActive: true }).lean();
 
     if (!terms) {
-      // Create default terms if it doesn't exist
-      terms = await TermsAndCondition.create({
+      // No auto-create: admin must explicitly save/publish content
+      return successResponse(res, 200, 'Terms and conditions retrieved successfully', {
         title: 'Terms and Conditions',
-        content: '<p>This is a test Terms & Conditions</p><p><strong>Terms of Use</strong></p><p>This Terms of Use ("Terms") applies to your access to and use of the website and the mobile application (collectively, the "Platform"). Please read these Terms carefully.</p>',
-        updatedBy: req.admin._id
+        content: ''
       });
     }
 

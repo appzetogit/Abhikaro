@@ -352,6 +352,16 @@ export const sidebarMenuData = [
             path: "/admin/delivery-partners/history",
             permissionId: "menu.delivery",
           },
+          {
+            label: "Delivery Terms & Condition",
+            path: "/admin/delivery-partners/terms",
+            permissionId: "menu.delivery",
+          },
+          {
+            label: "Delivery Privacy Policy",
+            path: "/admin/delivery-partners/privacy",
+            permissionId: "menu.delivery",
+          },
         ],
       },
     ],

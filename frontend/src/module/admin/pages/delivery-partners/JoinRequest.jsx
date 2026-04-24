@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Search, Filter, Eye, Check, X, Package, ArrowUpDown, FileText, FileSpreadsheet, Loader2, Download, ExternalLink, Calendar, MapPin, CreditCard, User, Mail, Phone, Bike, FileCheck } from "lucide-react"
+import { Search, Filter, Eye, Check, X, Package, ArrowUpDown, FileText, FileSpreadsheet, Loader2, ExternalLink, Calendar, MapPin, CreditCard, User, Mail, Phone, Bike, FileCheck, Trash2 } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { exportJoinRequestsToExcel, exportJoinRequestsToPDF } from "../../components/deliveryman/joinRequestExportUtils"
@@ -12,6 +12,7 @@ export default function JoinRequest() {
   const [error, setError] = useState(null)
   const [isApproveOpen, setIsApproveOpen] = useState(false)
   const [isDenyOpen, setIsDenyOpen] = useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [isViewOpen, setIsViewOpen] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [viewDetails, setViewDetails] = useState(null)
@@ -152,6 +153,11 @@ export default function JoinRequest() {
     setIsDenyOpen(true)
   }
 
+  const handleDelete = (request) => {
+    setSelectedRequest(request)
+    setIsDeleteOpen(true)
+  }
+
   const confirmDeny = async () => {
     if (!selectedRequest) return
 
@@ -177,6 +183,27 @@ export default function JoinRequest() {
     } catch (err) {
       console.error("Error rejecting request:", err)
       alert(err.response?.data?.message || "Failed to reject request. Please try again.")
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!selectedRequest) return
+
+    try {
+      setProcessing(true)
+      await adminAPI.deleteDeliveryPartner(selectedRequest._id)
+
+      await fetchJoinRequests()
+
+      setIsDeleteOpen(false)
+      setSelectedRequest(null)
+
+      alert("Request deleted successfully.")
+    } catch (err) {
+      console.error("Error deleting request:", err)
+      alert(err.response?.data?.message || "Failed to delete request. Please try again.")
     } finally {
       setProcessing(false)
     }
@@ -449,6 +476,14 @@ export default function JoinRequest() {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
+                            <button
+                              onClick={() => handleDelete(request)}
+                              disabled={processing}
+                              className="p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Delete Request"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                             {activeTab === "pending" && (
                               <>
                                 <button
@@ -557,6 +592,40 @@ export default function JoinRequest() {
             >
               {processing && <Loader2 className="w-4 h-4 animate-spin" />}
               Deny
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <DialogContent className="max-w-md bg-white p-0 opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:scale-100 data-[state=closed]:scale-100">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle className="text-red-700">Delete Request</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-6 space-y-2">
+            <p className="text-sm text-slate-700">
+              Are you sure you want to permanently delete "{selectedRequest?.name}"'s join request?
+            </p>
+            <p className="text-xs text-red-600">
+              This will remove the delivery partner record from the database.
+            </p>
+          </div>
+          <DialogFooter className="px-6 pb-6">
+            <button
+              onClick={() => setIsDeleteOpen(false)}
+              disabled={processing}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDelete}
+              disabled={processing}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+            >
+              {processing && <Loader2 className="w-4 h-4 animate-spin" />}
+              Delete
             </button>
           </DialogFooter>
         </DialogContent>

@@ -1,0 +1,31 @@
+import mongoose from "mongoose";
+
+const deliveryPrivacyPolicySchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      default: "Delivery Privacy Policy",
+      trim: true,
+    },
+    content: {
+      type: String,
+      required: true,
+      default: "",
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+    },
+  },
+  { timestamps: true },
+);
+
+deliveryPrivacyPolicySchema.index({ isActive: 1 });
+
+export default mongoose.model("DeliveryPrivacyPolicy", deliveryPrivacyPolicySchema);
+

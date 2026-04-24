@@ -95,7 +95,9 @@ export default function SignupStep1() {
       newErrors.name = "Name is required"
     }
 
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required"
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       newErrors.email = "Wrong email address"
     }
 
@@ -142,7 +144,18 @@ export default function SignupStep1() {
     e.preventDefault()
 
     if (!validate()) {
-      toast.error("Please fill all required fields correctly")
+      // Prefer showing the most helpful, specific validation error
+      const firstError =
+        errors.email ||
+        errors.name ||
+        errors.address ||
+        errors.city ||
+        errors.state ||
+        errors.vehicleNumber ||
+        errors.panNumber ||
+        errors.aadharNumber ||
+        "Please fill all required fields correctly"
+      toast.error(firstError)
       return
     }
 
@@ -151,7 +164,7 @@ export default function SignupStep1() {
     try {
       const response = await deliveryAPI.submitSignupDetails({
         name: formData.name.trim(),
-        email: formData.email.trim() || null,
+        email: formData.email.trim().toLowerCase(),
         address: formData.address.trim(),
         city: formData.city.trim(),
         state: formData.state.trim(),
@@ -217,7 +230,7 @@ export default function SignupStep1() {
           {/* Email */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email (Optional)
+              Email <span className="text-red-500">*</span>
             </label>
             <input
               type="email"

@@ -284,24 +284,33 @@ export default function ProfilePage() {
                   <ArrowRight className="w-5 h-5 text-gray-400" />
                 </CardContent>
               </Card>
+              <div className="h-px bg-gray-200"></div>
+              <Card
+                onClick={() => navigate("/delivery/legal/terms")}
+                className="bg-white py-0 border-0 shadow-none rounded-none first:rounded-t-lg last:rounded-b-lg cursor-pointer hover:bg-gray-200 transition-colors"
+              >
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5" />
+                    <span className="text-sm font-medium">Terms &amp; Conditions</span>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-400" />
+                </CardContent>
+              </Card>
+              <div className="h-px bg-gray-200"></div>
+              <Card
+                onClick={() => navigate("/delivery/legal/privacy")}
+                className="bg-white py-0 border-0 shadow-none rounded-none first:rounded-t-lg last:rounded-b-lg cursor-pointer hover:bg-gray-200 transition-colors"
+              >
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5" />
+                    <span className="text-sm font-medium">Privacy Policy</span>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-400" />
+                </CardContent>
+              </Card>
             </div>
-          </div>
-
-          {/* Partner options Section */}
-          <div>
-            <h3 className="text-base font-medium mb-3 px-1">Partner options</h3>
-            <Card 
-              onClick={() => setShowAlertSoundPopup(true)}
-              className="bg-white py-0 border-0 shadow-none rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
-            >
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Bell className="w-5 h-5" />
-                  <span className="text-sm font-medium">Order alert sound</span>
-                </div>
-                <ArrowRight className="w-5 h-5 text-gray-400" />
-              </CardContent>
-            </Card>
           </div>
 
           {/* Logout Section */}
