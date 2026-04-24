@@ -135,7 +135,7 @@ export default function ContactUs() {
                   value={form.message}
                   onChange={(e) => handleChange("message", e.target.value)}
                   placeholder="Type your message..."
-                  className="w-full min-h-[140px] resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full min-h-[140px] resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100 dark:placeholder:text-gray-500"
                 />
               </div>
 
@@ -160,7 +160,7 @@ export default function ContactUs() {
                 onClick={() => {
                   window.location.href = "tel:6001756001";
                 }}
-                className="w-full border-gray-300 text-gray-800 hover:bg-gray-50"
+                className="w-full border-gray-300 text-gray-800 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-100 dark:hover:bg-gray-800"
               >
                 Call: 6001756001
               </Button>

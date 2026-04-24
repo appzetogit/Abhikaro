@@ -19,6 +19,11 @@ export default function TableBooking() {
     const [activeTimeOfDay, setActiveTimeOfDay] = useState("Lunch")
     const [selectedSlot, setSelectedSlot] = useState(null)
 
+    // If user changes date or tab, previously-selected slot may become invalid (past/closing)
+    useEffect(() => {
+        setSelectedSlot(null)
+    }, [selectedDate, activeTimeOfDay])
+
     useEffect(() => {
         const fetchRestaurant = async () => {
             if (!slug) return
@@ -177,6 +182,20 @@ export default function TableBooking() {
         return slotMinutes > closingMinutes
     }
 
+    const isTodaySelected = useMemo(() => {
+        const today = new Date()
+        return selectedDate?.toDateString?.() === today.toDateString()
+    }, [selectedDate])
+
+    const isSlotInPast = (slotTime) => {
+        if (!isTodaySelected) return false
+        const slotMinutes = parseTimeToMinutes(slotTime)
+        if (slotMinutes == null) return false
+        const now = new Date()
+        const nowMinutes = now.getHours() * 60 + now.getMinutes()
+        return slotMinutes <= nowMinutes
+    }
+
     if (loading) return <Loader />
     if (!restaurant) return <div>Restaurant not found</div>
 
@@ -193,6 +212,9 @@ export default function TableBooking() {
 
     const handleProceed = () => {
         if (!selectedSlot) return
+        if (isSlotInPast(selectedSlot.time)) {
+            return
+        }
         if (isSlotAfterClosing(selectedSlot.time)) {
             // Guard: do not allow proceeding with a slot beyond closing time
             return
@@ -299,7 +321,7 @@ export default function TableBooking() {
                     {/* Slots Grid */}
                     <div className="grid grid-cols-3 gap-3">
                         {slots[activeTimeOfDay].map((slot, idx) => {
-                            const disabled = isSlotAfterClosing(slot.time)
+                            const disabled = isSlotAfterClosing(slot.time) || isSlotInPast(slot.time)
                             const isSelected = selectedSlot?.time === slot.time && !disabled
 
                             return (

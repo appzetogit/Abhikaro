@@ -82,25 +82,6 @@ export default function ReportSafetyEmergency() {
 
         {!isSubmitted ? (
           <>
-            {/* Info Card */}
-            <Card className="bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm border-0 dark:border-gray-800 mb-4 md:mb-5 lg:mb-6">
-              <CardContent className="p-4 md:p-5 lg:p-6">
-                <div className="flex items-start gap-3 md:gap-4">
-                  <div className="bg-gray-100 dark:bg-gray-800 rounded-full p-2 md:p-3 mt-0.5">
-                    <Shield className="h-5 w-5 md:h-6 md:w-6 text-gray-700 dark:text-gray-300" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base md:text-lg lg:text-xl font-semibold text-gray-900 dark:text-white mb-1 md:mb-2">
-                      Safety is our priority
-                    </h3>
-                    <p className="text-sm md:text-base text-gray-600 dark:text-gray-400">
-                      Report any safety concerns, incidents, or emergencies related to your order or delivery experience.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Report Form */}
             <Card className="bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm border-0 dark:border-gray-800 mb-4 md:mb-5 lg:mb-6">
               <CardContent className="p-4 md:p-5 lg:p-6">
@@ -111,7 +92,7 @@ export default function ReportSafetyEmergency() {
                   placeholder="Please provide details about the safety issue..."
                   value={report}
                   onChange={(e) => setReport(e.target.value)}
-                  className="min-h-[150px] md:min-h-[200px] lg:min-h-[250px] w-full resize-y text-sm md:text-base leading-relaxed"
+                  className="min-h-[150px] md:min-h-[200px] lg:min-h-[250px] w-full resize-y rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm md:text-base leading-relaxed text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100 dark:placeholder:text-gray-500"
                   dir="ltr"
                   style={{
                     direction: 'ltr',

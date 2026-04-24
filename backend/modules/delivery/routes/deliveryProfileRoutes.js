@@ -40,6 +40,8 @@ router.put('/profile', validate(Joi.object({
     publicId: Joi.string().trim().optional().allow(null, '')
   }).optional(),
   documents: Joi.object({
+    photo: Joi.string().uri().optional().allow(null, ''),
+    profilePhoto: Joi.string().uri().optional().allow(null, ''),
     bankDetails: Joi.object({
       accountHolderName: Joi.string().trim().min(2).max(100).optional().allow(null, ''),
       accountNumber: Joi.string().trim().min(9).max(18).optional().allow(null, ''),

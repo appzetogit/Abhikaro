@@ -1476,6 +1476,10 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
     const filterItemsUnder250 = (items) => {
       return items.filter(item => {
         if (item.isAvailable === false) return false;
+        // Only show approved dishes on user-facing surfaces.
+        // If approvalStatus is missing (legacy items), treat as approved.
+        const approvalStatus = String(item.approvalStatus || 'approved').toLowerCase();
+        if (approvalStatus !== 'approved') return false;
         const finalPrice = getFinalPrice(item);
         return finalPrice <= MAX_PRICE;
       });

@@ -20,7 +20,8 @@ import {
   AlertTriangle,
   Power,
   ShoppingCart,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Trash2
 } from "lucide-react"
 
 import AnimatedPage from "../../components/AnimatedPage"
@@ -39,11 +40,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { authAPI } from "@/lib/api"
+import { userAPI } from "@/lib/api"
 import { firebaseAuth } from "@/lib/firebase"
 import { clearModuleAuth } from "@/lib/utils/auth"
 
 export default function Profile() {
-  const { userProfile, vegMode, setVegMode } = useProfile()
+  const { userProfile, vegMode, setVegMode, updateUserProfile } = useProfile()
   const cartContext = useCart()
   const navigate = useNavigate()
   const companyName = useCompanyName()
@@ -77,6 +79,15 @@ export default function Profile() {
   // Only show email if it exists and is valid, otherwise show phone or "Not available"
   const hasValidEmail = userProfile?.email && userProfile.email.trim() !== '' && userProfile.email.includes('@')
   const displayEmail = hasValidEmail ? userProfile.email : (userProfile?.phone || 'Not available')
+
+  // Profile image presence check (used by UI + completion calc)
+  const hasImage = !!(
+    userProfile?.profileImage &&
+    typeof userProfile.profileImage === "string" &&
+    userProfile.profileImage.trim() !== "" &&
+    userProfile.profileImage !== "null" &&
+    userProfile.profileImage !== "undefined"
+  )
 
   // Calculate profile completion percentage
   const calculateProfileCompletion = () => {
@@ -180,6 +191,26 @@ export default function Profile() {
   const profileCompletion = calculateProfileCompletion()
   const isComplete = profileCompletion === 100
 
+  const handleRemoveProfilePhoto = async () => {
+    try {
+      await userAPI.updateProfile({ profileImage: null })
+
+      updateUserProfile({ profileImage: "" })
+      try {
+        const stored = localStorage.getItem("user_profile")
+        const parsed = stored ? JSON.parse(stored) : {}
+        localStorage.setItem("user_profile", JSON.stringify({ ...(parsed || {}), profileImage: "" }))
+      } catch {
+        // ignore storage errors
+      }
+
+      window.dispatchEvent(new Event("userAuthChanged"))
+    } catch (e) {
+      // keep silent; existing UI handles errors elsewhere
+      console.error("Failed to remove profile photo:", e)
+    }
+  }
+
   // Handle logout
   const handleLogout = async () => {
     if (isLoggingOut) return // Prevent multiple clicks
@@ -259,17 +290,30 @@ export default function Profile() {
                 whileHover={{ scale: 1.1, rotate: 5 }}
                 transition={{ duration: 0.3, type: "spring", stiffness: 300 }}
               >
-                <Avatar className="h-16 w-16 bg-blue-300 border-0">
-                  {userProfile?.profileImage && (
-                    <AvatarImage
-                      src={userProfile.profileImage && userProfile.profileImage.trim() ? userProfile.profileImage : undefined}
-                      alt={displayName}
-                    />
+                <div className="relative inline-block">
+                  <Avatar className="h-16 w-16 bg-blue-300 border-0">
+                    {hasImage && (
+                      <AvatarImage
+                        src={userProfile.profileImage.trim()}
+                        alt={displayName}
+                      />
+                    )}
+                    <AvatarFallback className="bg-blue-300 text-white text-2xl font-semibold">
+                      {avatarInitial}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  {hasImage && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveProfilePhoto}
+                      className="absolute -bottom-1 -right-1 w-7 h-7 bg-red-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-red-700 transition-colors"
+                      title="Remove photo"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-white" />
+                    </button>
                   )}
-                  <AvatarFallback className="bg-blue-300 text-white text-2xl font-semibold">
-                    {avatarInitial}
-                  </AvatarFallback>
-                </Avatar>
+                </div>
               </motion.div>
               <div className="flex-1 pt-1">
                 <h2 className="text-xl font-bold text-black dark:text-white mb-1">{displayName}</h2>

@@ -51,6 +51,68 @@ export default function Customers() {
     return `₹${Number(amount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }, [])
 
+  const getInitials = useCallback((name) => {
+    const n = String(name || "").trim()
+    if (!n) return "U"
+    const parts = n.split(/\s+/).filter(Boolean)
+    const first = parts[0]?.[0] || "U"
+    const second = parts.length > 1 ? parts[parts.length - 1]?.[0] : ""
+    return (first + second).toUpperCase()
+  }, [])
+
+  const getOrderStatusPill = useCallback((status) => {
+    const s = String(status || "").toLowerCase()
+    if (s === "delivered") return "bg-emerald-50 text-emerald-700 border-emerald-200"
+    if (s === "cancelled") return "bg-red-50 text-red-700 border-red-200"
+    if (s === "out_for_delivery") return "bg-blue-50 text-blue-700 border-blue-200"
+    if (s === "ready" || s === "preparing" || s === "confirmed") return "bg-amber-50 text-amber-700 border-amber-200"
+    return "bg-slate-50 text-slate-700 border-slate-200"
+  }, [])
+
+  const userOrders = useMemo(() => {
+    const orders = Array.isArray(userDetails?.orders) ? userDetails.orders : []
+    const byKey = new Map()
+    for (const o of orders) {
+      const key = o?.orderId ?? o?.id ?? o?._id
+      // If we can't determine a stable key, keep the item but don't let it collide
+      const mapKey = key != null ? String(key) : `__idx_${byKey.size}`
+      if (!byKey.has(mapKey)) byKey.set(mapKey, o)
+    }
+    return Array.from(byKey.values())
+  }, [userDetails?.orders])
+
+  const derivedTotalOrders = useMemo(() => {
+    const apiCount = Number(userDetails?.totalOrders)
+    if (Number.isFinite(apiCount)) return apiCount
+
+    // Fallback (API didn't send totals): count delivered within available list
+    return userOrders.reduce((acc, order) => {
+      const status = String(order?.status || "").toLowerCase()
+      return status === "delivered" ? acc + 1 : acc
+    }, 0)
+  }, [userDetails?.totalOrders, userOrders])
+
+  const derivedDeliveredSpent = useMemo(() => {
+    const apiAmount = Number(userDetails?.totalOrderAmount)
+    if (Number.isFinite(apiAmount)) return apiAmount
+
+    const sum = userOrders.reduce((acc, order) => {
+      const status = String(order?.status || "").toLowerCase()
+      if (status !== "delivered") return acc
+
+      const raw =
+        order?.total ??
+        order?.totalAmount ??
+        order?.grandTotal ??
+        order?.payableAmount ??
+        0
+
+      const value = Number(raw)
+      return acc + (Number.isFinite(value) ? value : 0)
+    }, 0)
+    return sum
+  }, [userDetails?.totalOrderAmount, userOrders])
+
   // Wallet adjust OTP gate (admin phone)
   const [isWalletOtpOpen, setIsWalletOtpOpen] = useState(false)
   const [walletOtpCustomer, setWalletOtpCustomer] = useState(null)
@@ -217,7 +279,7 @@ export default function Customers() {
       setShowUserDetails(true)
       setSelectedCustomer(customerId)
 
-      const response = await adminAPI.getUserById(customerId)
+      const response = await adminAPI.getUserById(customerId, { ordersLimit: 2000 })
       const data = response?.data?.data || response?.data
       
       if (data?.user) {
@@ -768,9 +830,12 @@ export default function Customers() {
 
       {/* User Details Modal */}
       <Dialog open={showUserDetails} onOpenChange={setShowUserDetails}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto mx-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto mx-auto p-0">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-slate-900">User Details</DialogTitle>
+            <div className="px-6 pt-5 pb-4 border-b border-slate-200 bg-white sticky top-0 z-10">
+              <DialogTitle className="text-lg md:text-xl font-bold text-slate-900">User Details</DialogTitle>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">Customer profile, spend, and recent orders</p>
+            </div>
           </DialogHeader>
           
           {loadingDetails ? (
@@ -778,15 +843,15 @@ export default function Customers() {
               <div className="text-sm text-slate-500">Loading user details...</div>
             </div>
           ) : userDetails ? (
-            <div className="space-y-4">
+            <div className="space-y-4 px-6 py-5">
               {/* Profile Section */}
               <div className="bg-slate-50 rounded-lg p-4">
                 <div className="flex items-start gap-4">
-                  <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
+                  <div className="w-16 h-16 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
                     {userDetails.profileImage ? (
                       <img src={userDetails.profileImage} alt={userDetails.name} className="w-full h-full rounded-full object-cover" />
                     ) : (
-                      <User className="w-8 h-8 text-slate-400" />
+                      <span className="text-lg font-bold text-slate-700">{getInitials(userDetails.name)}</span>
                     )}
                   </div>
                   <div className="flex-1">
@@ -836,15 +901,20 @@ export default function Customers() {
                     <Package className="w-4 h-4 text-blue-600" />
                     <span className="text-xs font-semibold text-slate-700">Total Orders</span>
                   </div>
-                  <p className="text-xl font-bold text-blue-600">{userDetails.totalOrders || 0}</p>
+                  <p className="text-xl font-bold text-blue-600">
+                    {Number(userDetails.totalAllOrders ?? 0)}
+                  </p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <DollarSign className="w-4 h-4 text-green-600" />
-                    <span className="text-xs font-semibold text-slate-700">Total Spent</span>
+                    <span className="text-xs font-semibold text-slate-700">Delivered Orders</span>
                   </div>
                   <p className="text-xl font-bold text-green-600">
-                    ${(userDetails.totalOrderAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {derivedTotalOrders}
+                  </p>
+                  <p className="text-xs font-semibold text-slate-600 mt-1">
+                    {formatCurrency(derivedDeliveredSpent)}
                   </p>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-3">
@@ -894,16 +964,21 @@ export default function Customers() {
                     <Package className="w-4 h-4" />
                     Recent Orders
                   </h4>
-                  <div className="space-y-2">
-                    {userDetails.orders.slice(0, 5).map((order, index) => (
-                      <div key={index} className="bg-slate-50 rounded-lg p-3 border border-slate-200 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{order.orderId}</p>
-                          <p className="text-xs text-slate-600">{order.restaurantName}</p>
+                  <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                    {userDetails.orders.map((order, index) => (
+                      <div key={index} className="bg-white rounded-lg p-3 border border-slate-200 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">{order.orderId}</p>
+                          <p className="text-xs text-slate-600 truncate">{order.restaurantName || "Restaurant"}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {order.createdAt ? new Date(order.createdAt).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : ""}
+                          </p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-slate-900">${(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                          <p className="text-xs text-slate-600 capitalize">{order.status}</p>
+                        <div className="text-right flex flex-col items-end gap-1 shrink-0">
+                          <p className="text-sm font-semibold text-slate-900">{formatCurrency(order.total || 0)}</p>
+                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border capitalize ${getOrderStatusPill(order.status)}`}>
+                            {String(order.status || "unknown").replace(/_/g, " ")}
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -943,81 +1018,105 @@ export default function Customers() {
 
       {/* Edit Customer Modal */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-lg mx-auto">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-slate-900">Edit Customer</DialogTitle>
+        <DialogContent className="max-w-lg mx-auto p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-5 pb-4 border-b border-slate-200 bg-white">
+            <DialogTitle className="text-base md:text-lg font-bold text-slate-900">
+              Edit Customer
+            </DialogTitle>
+            <p className="text-xs md:text-sm text-slate-500 mt-1">
+              Update customer profile details.
+            </p>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Name</label>
-              <input
-                value={editForm.name}
-                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                placeholder="Customer name"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Email</label>
-              <input
-                value={editForm.email}
-                onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                placeholder="Email"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Phone</label>
-              <input
-                value={editForm.phone}
-                onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                placeholder="Phone"
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Gender</label>
-                <select
-                  value={editForm.gender}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, gender: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-                >
-                  <option value="">N/A</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                  <option value="prefer-not-to-say">Prefer not to say</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Date of Birth</label>
+          <div className="px-6 py-5">
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs md:text-sm font-semibold text-slate-700">
+                  Name
+                </label>
                 <input
-                  type="date"
-                  value={editForm.dateOfBirth}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, dateOfBirth: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Customer name"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs md:text-sm font-semibold text-slate-700">
+                  Email
+                </label>
+                <input
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                  className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Email"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs md:text-sm font-semibold text-slate-700">
+                  Phone
+                </label>
+                <input
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Phone"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs md:text-sm font-semibold text-slate-700">
+                    Gender
+                  </label>
+                  <select
+                    value={editForm.gender}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, gender: e.target.value }))}
+                    className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                    <option value="prefer-not-to-say">Prefer not to say</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs md:text-sm font-semibold text-slate-700">
+                    Date of Birth
+                  </label>
+                  <input
+                    type="date"
+                    value={editForm.dateOfBirth}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, dateOfBirth: e.target.value }))}
+                    className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-5 flex items-center justify-end gap-2">
-            <button
+          <div className="px-6 pb-5 pt-3 border-t border-slate-200 bg-white flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => setIsEditOpen(false)}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50"
               disabled={savingEdit}
+              className="h-10"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
               onClick={handleSaveEdit}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
               disabled={savingEdit}
+              className="h-10 bg-blue-600 hover:bg-blue-700"
             >
-              {savingEdit ? "Saving..." : "Save"}
-            </button>
+              {savingEdit ? "Saving..." : "Save Changes"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

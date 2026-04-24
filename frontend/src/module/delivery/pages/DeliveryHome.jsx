@@ -334,6 +334,43 @@ export default function DeliveryHome() {
     activeOrder?._id ||
     null
 
+  // When customer updates delivery instructions, show it + update active order in-place
+  useEffect(() => {
+    const onNoteUpdated = (e) => {
+      const payload = e?.detail || null
+      if (!payload) return
+
+      const oid = payload?.orderId || payload?.orderMongoId || null
+      if (!oid) return
+
+      const matchesActive =
+        String(activeOrderId || "") === String(oid) ||
+        String(activeOrder?.orderMongoId || "") === String(payload?.orderMongoId || "") ||
+        String(activeOrder?.orderId || "") === String(payload?.orderId || "")
+
+      if (!matchesActive) return
+
+      const note = String(payload?.note || "").trim()
+      if (note) toast.success("Customer updated delivery instructions", { description: note })
+      else toast.success("Customer cleared delivery instructions")
+
+      setActiveOrder((prev) => (prev ? { ...prev, note } : prev))
+      setSelectedRestaurant((prev) => (prev ? { ...prev, note } : prev))
+      try {
+        const stored = localStorage.getItem("activeOrder")
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          localStorage.setItem("activeOrder", JSON.stringify({ ...parsed, note }))
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    window.addEventListener("deliveryOrderNoteUpdated", onNoteUpdated)
+    return () => window.removeEventListener("deliveryOrderNoteUpdated", onNoteUpdated)
+  }, [activeOrderId, activeOrder?.orderMongoId, activeOrder?.orderId])
+
   useFirebaseLocationUpdate(
     deliveryBoyId,
     riderLat,
@@ -7389,22 +7426,18 @@ export default function DeliveryHome() {
             restaurantMarkerRef.current.setMap(map);
           }
 
-          // Add custom Bike Marker (Delivery Boy)
-          if (!directionsBikeMarkerRef.current) {
-            directionsBikeMarkerRef.current = new window.google.maps.Marker({
-              position: { lat: currentLocation[0], lng: currentLocation[1] },
-              map: map,
-              icon: {
-                url: bikeLogo,
-                scaledSize: new window.google.maps.Size(50, 50),
-                anchor: new window.google.maps.Point(25, 25)
-              },
-              title: 'Your Location',
-              zIndex: 100 // Bike marker should be on top
-            });
-          } else {
-            directionsBikeMarkerRef.current.setPosition({ lat: currentLocation[0], lng: currentLocation[1] });
-            directionsBikeMarkerRef.current.setMap(map);
+          // Reuse the main bike marker on the map.
+          // Creating a second bike marker here causes two bikes to appear.
+          try {
+            // Hide the old directions-specific marker if it exists from earlier sessions.
+            if (directionsBikeMarkerRef.current) {
+              directionsBikeMarkerRef.current.setMap(null);
+              directionsBikeMarkerRef.current = null;
+            }
+            // Keep marker without auto-centering (Directions map controls viewport).
+            createOrUpdateBikeMarker(currentLocation[0], currentLocation[1], null, false);
+          } catch (e) {
+            // ignore marker failures
           }
 
         } else {
@@ -8419,6 +8452,8 @@ export default function DeliveryHome() {
                 order.additionalAddress ||
                 selectedRestaurant.customerAdditionalAddress ||
                 null,
+              // Customer delivery instructions (note)
+              note: (typeof order.note === 'string' ? order.note : (typeof order.deliveryInstructions === 'string' ? order.deliveryInstructions : selectedRestaurant.note)) || selectedRestaurant.note || '',
             }
 
             if (customerLat && customerLng) {
@@ -8842,16 +8877,51 @@ export default function DeliveryHome() {
     // compute a best-effort distance/time so UI doesn't stay stuck on "Calculating...".
     if (totalDistance <= 0 || totalTime <= 0) {
       try {
-        const restLat = Number(selectedRestaurant?.lat ?? selectedRestaurant?.restaurantLat)
-        const restLng = Number(selectedRestaurant?.lng ?? selectedRestaurant?.restaurantLng)
-        const custLat = Number(selectedRestaurant?.customerLat ?? selectedRestaurant?.deliveryLat)
-        const custLng = Number(selectedRestaurant?.customerLng ?? selectedRestaurant?.deliveryLng)
+        // Robust coordinate fallbacks (delivery payloads vary across socket/API paths)
+        const restLatRaw =
+          selectedRestaurant?.pickupLat ??
+          selectedRestaurant?.restaurantLat ??
+          selectedRestaurant?.restaurantLocation?.latitude ??
+          selectedRestaurant?.restaurantLocation?.lat ??
+          selectedRestaurant?.restaurant?.location?.latitude ??
+          selectedRestaurant?.lat
+
+        const restLngRaw =
+          selectedRestaurant?.pickupLng ??
+          selectedRestaurant?.restaurantLng ??
+          selectedRestaurant?.restaurantLocation?.longitude ??
+          selectedRestaurant?.restaurantLocation?.lng ??
+          selectedRestaurant?.restaurant?.location?.longitude ??
+          selectedRestaurant?.lng
+
+        const custLatRaw =
+          selectedRestaurant?.dropLat ??
+          selectedRestaurant?.customerLat ??
+          selectedRestaurant?.deliveryLat ??
+          selectedRestaurant?.customerLocation?.latitude ??
+          selectedRestaurant?.customerLocation?.lat
+
+        const custLngRaw =
+          selectedRestaurant?.dropLng ??
+          selectedRestaurant?.customerLng ??
+          selectedRestaurant?.deliveryLng ??
+          selectedRestaurant?.customerLocation?.longitude ??
+          selectedRestaurant?.customerLocation?.lng
+
+        const restLat = Number(restLatRaw)
+        const restLng = Number(restLngRaw)
+        const custLat = Number(custLatRaw)
+        const custLng = Number(custLngRaw)
 
         const hasCoords =
           Number.isFinite(restLat) &&
           Number.isFinite(restLng) &&
           Number.isFinite(custLat) &&
-          Number.isFinite(custLng)
+          Number.isFinite(custLng) &&
+          Math.abs(restLat) <= 90 &&
+          Math.abs(custLat) <= 90 &&
+          Math.abs(restLng) <= 180 &&
+          Math.abs(custLng) <= 180
 
         if (hasCoords) {
           // Haversine in meters
@@ -9303,45 +9373,76 @@ export default function DeliveryHome() {
     const headingStep = Math.round(normalizedHeading / 5) * 5;
 
     if (!bikeMarkerRef.current) {
-      // Get rotated icon URL (first render)
-      const rotatedIconUrl = await getRotatedBikeIcon(headingStep);
-      // Create bike marker with rotated icon - exact position
-      const bikeIcon = {
-        url: rotatedIconUrl,
-        scaledSize: new window.google.maps.Size(60, 60), // Larger size for better visibility
-        anchor: new window.google.maps.Point(30, 30) // Center point
-      };
-
-      bikeMarkerRef.current = new window.google.maps.Marker({
-        position: position,
-        map: map,
-        icon: bikeIcon,
-        optimized: false, // Disable optimization for exact positioning
-        animation: window.google.maps.Animation.DROP, // Drop animation on first appearance
-        zIndex: 1000 // High z-index to ensure it's above other markers
-      });
-      lastAppliedHeadingStepRef.current = headingStep;
-      lastIconUpdateTsRef.current = Date.now();
-
-
-      // Center map on bike location initially - preserve current zoom if user has zoomed in
-      // Only center if not already centered initially (prevents map jumping after initial setup)
-      if (shouldCenterMap && !hasInitiallyCenteredOnBike) {
-        const currentZoom = map.getZoom();
-        map.setCenter(position);
-        // Only set zoom to 18 if current zoom is less than 18 (don't reduce user's zoom)
-        if (currentZoom < 18) {
-          map.setZoom(18); // Full zoom in for better visibility
+      // IMPORTANT:
+      // This function is async (icon rotation). If multiple location updates arrive quickly,
+      // two concurrent calls can both see `!bikeMarkerRef.current` and create TWO markers.
+      // We lock marker creation so only one marker instance is ever created.
+      const existingCreatePromise = bikeMarkerRef.__createInFlightPromise;
+      if (existingCreatePromise) {
+        try {
+          await existingCreatePromise;
+        } catch {
+          // ignore - next block may recreate if needed
         }
-        setHasInitiallyCenteredOnBike(true)
       }
 
-      // Remove animation after drop completes
-      setTimeout(() => {
-        if (bikeMarkerRef.current) {
-          bikeMarkerRef.current.setAnimation(null);
+      if (!bikeMarkerRef.current) {
+        const createPromise = (async () => {
+          // Double-check inside lock in case another call created it.
+          if (bikeMarkerRef.current) return;
+
+          // Get rotated icon URL (first render)
+          const rotatedIconUrl = await getRotatedBikeIcon(headingStep);
+          // Create bike marker with rotated icon - exact position
+          const bikeIcon = {
+            url: rotatedIconUrl,
+            scaledSize: new window.google.maps.Size(60, 60), // Larger size for better visibility
+            anchor: new window.google.maps.Point(30, 30) // Center point
+          };
+
+          const marker = new window.google.maps.Marker({
+            position: position,
+            map: map,
+            icon: bikeIcon,
+            optimized: false, // Disable optimization for exact positioning
+            animation: window.google.maps.Animation.DROP, // Drop animation on first appearance
+            zIndex: 1000 // High z-index to ensure it's above other markers
+          });
+
+          bikeMarkerRef.current = marker;
+          lastAppliedHeadingStepRef.current = headingStep;
+          lastIconUpdateTsRef.current = Date.now();
+
+          // Center map on bike location initially - preserve current zoom if user has zoomed in
+          // Only center if not already centered initially (prevents map jumping after initial setup)
+          if (shouldCenterMap && !hasInitiallyCenteredOnBike) {
+            const currentZoom = map.getZoom();
+            map.setCenter(position);
+            // Only set zoom to 18 if current zoom is less than 18 (don't reduce user's zoom)
+            if (currentZoom < 18) {
+              map.setZoom(18); // Full zoom in for better visibility
+            }
+            setHasInitiallyCenteredOnBike(true)
+          }
+
+          // Remove animation after drop completes
+          setTimeout(() => {
+            if (bikeMarkerRef.current) {
+              bikeMarkerRef.current.setAnimation(null);
+            }
+          }, 2000);
+        })();
+
+        bikeMarkerRef.__createInFlightPromise = createPromise;
+        try {
+          await createPromise;
+        } finally {
+          // Clear only if we still point to the same promise
+          if (bikeMarkerRef.__createInFlightPromise === createPromise) {
+            bikeMarkerRef.__createInFlightPromise = null;
+          }
         }
-      }, 2000);
+      }
     } else {
       // ALWAYS ensure marker is on the map (prevent it from disappearing)
       const currentMap = bikeMarkerRef.current.getMap();
@@ -11868,6 +11969,19 @@ export default function DeliveryHome() {
                 // No additional address found
                 return null;
               }
+            })()}
+            {/* Delivery instructions (order note) */}
+            {(() => {
+              const note = selectedRestaurant?.note;
+              if (note && typeof note === 'string' && note.trim()) {
+                return (
+                  <div className="mt-2 mb-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-amber-800">Delivery instructions</p>
+                    <p className="text-sm text-amber-900 leading-relaxed">{note.trim()}</p>
+                  </div>
+                );
+              }
+              return null;
             })()}
             <p className="text-gray-500 text-sm font-medium mt-1">
               Order ID: {selectedRestaurant?.orderId || ""}

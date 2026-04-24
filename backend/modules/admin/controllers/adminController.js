@@ -1403,6 +1403,11 @@ export const changeAdminPassword = asyncHandler(async (req, res) => {
  */
 export const getUsers = asyncHandler(async (req, res) => {
   try {
+    // Admin list should never be served from cache (prevents stale totals via 304/ETag)
+    res.set("Cache-Control", "no-store");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+
     const {
       limit = 100,
       offset = 0,
@@ -1466,7 +1471,10 @@ export const getUsers = asyncHandler(async (req, res) => {
       walletBalanceMap.set(String(w.userId), Number(w.balance) || 0);
     });
 
-    // Get order statistics for each user
+    // Get order statistics for each user:
+    // - totalOrder: COUNT ONLY delivered orders
+    // - totalOrderAmount: SUM ONLY delivered orders' totals
+    //   (so cancelled/failed/non-delivered never add to spent)
     const orderStats = await Order.aggregate([
       {
         $match: {
@@ -1476,8 +1484,35 @@ export const getUsers = asyncHandler(async (req, res) => {
       {
         $group: {
           _id: "$userId",
-          totalOrders: { $sum: 1 },
-          totalAmount: { $sum: "$pricing.total" },
+          totalOrders: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "delivered"] }, 1, 0],
+            },
+          },
+          totalAmount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$status", "delivered"] },
+                    {
+                      $or: [
+                        { $eq: ["$payment.status", "completed"] },
+                        {
+                          $in: [
+                            "$payment.method",
+                            ["cash", "pay_at_hotel"],
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                "$pricing.total",
+                0,
+              ],
+            },
+          },
         },
       },
     ]);
@@ -1566,7 +1601,18 @@ export const getUsers = asyncHandler(async (req, res) => {
  */
 export const getUserById = asyncHandler(async (req, res) => {
   try {
+    // User details should never be served from cache (prevents stale totals via 304/ETag)
+    res.set("Cache-Control", "no-store");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+
     const { id } = req.params;
+    const ordersLimitRaw = req.query?.ordersLimit;
+    const ordersLimitParsed = Number(ordersLimitRaw);
+    const ordersLimit =
+      Number.isFinite(ordersLimitParsed) && ordersLimitParsed > 0
+        ? Math.min(2000, Math.floor(ordersLimitParsed))
+        : 500;
     const User = (await import("../../auth/models/User.js")).default;
 
     const user = await User.findById(id).select("-password -__v").lean();
@@ -1575,34 +1621,96 @@ export const getUserById = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "User not found");
     }
 
-    // Get order statistics
-    const orderStats = await Order.aggregate([
+    // Get order statistics:
+    // - totals:
+    //   - totalAllOrders: COUNT all orders (all statuses)
+    //   - totalOrders: COUNT delivered + paid/collected orders only
+    //   - totalAmount: SUM delivered + paid/collected orders' totals only
+    // - recent orders: latest N orders (all statuses) for the modal list
+    const orderAgg = await Order.aggregate([
+      { $match: { userId: user._id } },
       {
-        $match: { userId: user._id },
-      },
-      {
-        $group: {
-          _id: null,
-          totalOrders: { $sum: 1 },
-          totalAmount: { $sum: "$pricing.total" },
-          orders: {
-            $push: {
-              orderId: "$orderId",
-              status: "$status",
-              total: "$pricing.total",
-              createdAt: "$createdAt",
-              restaurantName: "$restaurantName",
+        $facet: {
+          totals: [
+            {
+              $group: {
+                _id: null,
+                totalAllOrders: { $sum: 1 },
+                totalOrders: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $eq: ["$status", "delivered"] },
+                          {
+                            $or: [
+                              { $eq: ["$payment.status", "completed"] },
+                              {
+                                $and: [
+                                  { $in: ["$payment.method", ["cash", "pay_at_hotel"]] },
+                                  { $eq: ["$cashCollected", true] },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                totalAmount: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $eq: ["$status", "delivered"] },
+                          {
+                            $or: [
+                              { $eq: ["$payment.status", "completed"] },
+                              {
+                                $and: [
+                                  { $in: ["$payment.method", ["cash", "pay_at_hotel"]] },
+                                  { $eq: ["$cashCollected", true] },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                      "$pricing.total",
+                      0,
+                    ],
+                  },
+                },
+              },
             },
-          },
+          ],
+          recentOrders: [
+            { $sort: { createdAt: -1 } },
+            { $limit: ordersLimit },
+            {
+              $project: {
+                _id: 0,
+                orderId: 1,
+                status: 1,
+                total: "$pricing.total",
+                createdAt: 1,
+                restaurantName: 1,
+              },
+            },
+          ],
         },
       },
     ]);
 
-    const stats = orderStats[0] || {
+    const totals = orderAgg?.[0]?.totals?.[0] || {
+      totalAllOrders: 0,
       totalOrders: 0,
       totalAmount: 0,
-      orders: [],
     };
+    const recentOrders = orderAgg?.[0]?.recentOrders || [];
 
     // Format joining date
     const joiningDate = new Date(user.createdAt);
@@ -1631,9 +1739,10 @@ export const getUserById = asyncHandler(async (req, res) => {
         gender: user.gender || null,
         joiningDate: formattedDate,
         createdAt: user.createdAt,
-        totalOrders: stats.totalOrders,
-        totalOrderAmount: stats.totalAmount,
-        orders: stats.orders.slice(0, 10), // Last 10 orders
+        totalAllOrders: totals.totalAllOrders,
+        totalOrders: totals.totalOrders,
+        totalOrderAmount: totals.totalAmount,
+        orders: recentOrders, // Latest N orders (all statuses)
       },
     });
   } catch (error) {

@@ -160,7 +160,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         // Proxy /api to backend - use VITE_API_BASE_URL=/api for mobile testing on same network
         "/api": {
-          target: "http://localhost:5000",
+          // Backend port may vary in dev (e.g. nodemon fallback). Keep in env or default to 5001.
+          target: process.env.VITE_BACKEND_URL || "http://localhost:5001",
           changeOrigin: true,
         },
       },

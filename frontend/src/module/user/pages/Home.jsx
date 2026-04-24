@@ -1139,6 +1139,35 @@ export default function Home() {
             return 0
           })()
 
+          const categories = (() => {
+            const collected = []
+
+            if (Array.isArray(restaurant?.categories)) {
+              collected.push(
+                ...restaurant.categories
+                  .map((c) => (typeof c === "string" ? c : (c?.name || c?.title || "")))
+                  .map((s) => String(s || "").trim())
+                  .filter(Boolean)
+              )
+            }
+
+            const menuSections =
+              (Array.isArray(restaurant?.menuSections) && restaurant.menuSections) ||
+              (Array.isArray(restaurant?.menu?.sections) && restaurant.menu.sections) ||
+              []
+
+            if (menuSections.length > 0) {
+              collected.push(
+                ...menuSections
+                  .map((s) => String(s?.name || s?.title || "").trim())
+                  .filter(Boolean)
+              )
+            }
+
+            const unique = Array.from(new Set(collected.map((s) => s.replace(/\s+/g, " ").trim())))
+            return unique.slice(0, 3)
+          })()
+
           return {
             id: restaurant.restaurantId || restaurant._id,
             // Prefer onboarding.step1.restaurantName if available (more accurate)
@@ -1152,6 +1181,7 @@ export default function Home() {
             images: allImages, // Array of images for carousel (menu only)
             menuImages: menuImages, // Preserve menuImages for components that prefer food photos
             priceRange: restaurant.priceRange || "$$", // Use from API or default
+            categories,
             featuredDish: restaurant.featuredDish || (restaurant.cuisines && restaurant.cuisines.length > 0
               ? `${restaurant.cuisines[0]} Special`
               : "Special Dish"),
@@ -1181,6 +1211,79 @@ export default function Home() {
             const bDistance = b.distanceInKm !== null ? b.distanceInKm : Infinity
             return aDistance - bDistance
           })
+        }
+
+        // Enrich restaurant cards with dynamic menu categories (Combo, Burger, etc.)
+        // The restaurant listing endpoint often doesn't include menu sections, so derive from bulk menus.
+        // Also hide restaurants that have 0 menu items (0 dishes).
+        try {
+          const ids = transformedRestaurants
+            .map((r) => r?.restaurantId || r?.id)
+            .filter(Boolean)
+            .map((v) => String(v))
+
+          if (ids.length > 0) {
+            const bulkMenusResponse = await restaurantAPI.getBulkMenus(ids)
+            const menus = bulkMenusResponse?.data?.data?.menus
+
+            if (bulkMenusResponse?.data?.success && Array.isArray(menus) && menus.length > 0) {
+              const menuByRestaurantId = new Map()
+              for (const m of menus) {
+                const key = String(m?.restaurantId || m?.restaurant || m?._id || "")
+                if (key) menuByRestaurantId.set(key, m)
+              }
+
+              const countMenuItems = (menu) => {
+                if (!menu) return 0
+                const sections = Array.isArray(menu?.sections) ? menu.sections : []
+                let count = 0
+                for (const section of sections) {
+                  if (Array.isArray(section?.items)) count += section.items.length
+                  const subsections = Array.isArray(section?.subsections) ? section.subsections : []
+                  for (const sub of subsections) {
+                    if (Array.isArray(sub?.items)) count += sub.items.length
+                  }
+                }
+                return count
+              }
+
+              const cleanCategory = (name) =>
+                String(name || "")
+                  .replace(/\s+/g, " ")
+                  .trim()
+
+              const nextRestaurants = transformedRestaurants
+                .map((r) => {
+                  const menu = menuByRestaurantId.get(String(r?.restaurantId || r?.id))
+                  const menuItemCount = countMenuItems(menu)
+
+                  // Keep existing categories if already present; otherwise derive from menu sections.
+                  if (Array.isArray(r?.categories) && r.categories.length > 0) {
+                    return { ...r, menuItemCount }
+                  }
+
+                  const sections = Array.isArray(menu?.sections) ? menu.sections : []
+                  const derived = Array.from(
+                    new Set(
+                      sections
+                        .map((s) => cleanCategory(s?.name || s?.title))
+                        .filter((v) => v && !/recommended for you/i.test(v))
+                    )
+                  ).slice(0, 3)
+
+                  if (derived.length > 0) return { ...r, categories: derived, menuItemCount }
+                  return { ...r, menuItemCount }
+                })
+                // If a restaurant has no dishes/items, do not show it on the user home page.
+                .filter((r) => Number(r?.menuItemCount || 0) > 0)
+
+              setRestaurantsData(nextRestaurants)
+              setLoadingRestaurants(false)
+              return
+            }
+          }
+        } catch (e) {
+          // Non-blocking enrichment; show base listing even if bulk menus fail.
         }
 
         setRestaurantsData(transformedRestaurants)
@@ -2102,7 +2205,8 @@ export default function Home() {
                       deliveryTime: restaurant.deliveryTime,
                       distance: restaurant.distance,
                       priceRange: restaurant.priceRange,
-                      image: restaurant.image
+                      image: restaurant.image,
+                      categories: restaurant.categories,
                     })
                     setShowToast(true)
                     setTimeout(() => {
@@ -2187,6 +2291,11 @@ export default function Home() {
                                   <h3 className="text-md sm:text-md lg:text-xl font-bold text-gray-900 dark:text-white line-clamp-1 lg:line-clamp-2 transition-colors duration-300 group-hover:text-green-600">
                                     {restaurant.name}
                                   </h3>
+                                  {Array.isArray(restaurant.categories) && restaurant.categories.length > 0 && (
+                                    <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-400 font-medium line-clamp-1">
+                                      {restaurant.categories.join(" · ")}
+                                    </p>
+                                  )}
                                 </div>
                                 <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 lg:px-3 lg:py-1.5 rounded-lg flex items-center gap-1 transform transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
                                   <span className="text-sm lg:text-base font-bold">{restaurant.rating}</span>
@@ -2276,6 +2385,11 @@ export default function Home() {
                                     <h3 className="text-md sm:text-md lg:text-xl font-bold text-gray-900 dark:text-white line-clamp-1 lg:line-clamp-2 transition-colors duration-300 group-hover:text-green-600">
                                       {restaurant.name}
                                     </h3>
+                                    {Array.isArray(restaurant.categories) && restaurant.categories.length > 0 && (
+                                      <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-400 font-medium line-clamp-1">
+                                        {restaurant.categories.join(" · ")}
+                                      </p>
+                                    )}
                                   </div>
                                   <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 lg:px-3 lg:py-1.5 rounded-lg flex items-center gap-1 transform transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
                                     <span className="text-sm lg:text-base font-bold">{restaurant.rating}</span>

@@ -80,7 +80,8 @@ export default function RestaurantDetails() {
   const [expandedSections, setExpandedSections] = useState(new Set([0])) // Default: Recommended section is expanded
   const [filters, setFilters] = useState({
     sortBy: null, // "low-to-high" | "high-to-low"
-    vegNonVeg: null, // "veg" | "non-veg"
+    priceMin: null, // number | null
+    priceMax: null, // number | null
   })
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [variantError, setVariantError] = useState(false)
@@ -684,7 +685,8 @@ export default function RestaurantDetails() {
   const getActiveFilterCount = () => {
     let count = 0
     if (filters.sortBy) count++
-    if (filters.vegNonVeg) count++
+    if (typeof filters.priceMin === "number") count++
+    if (typeof filters.priceMax === "number") count++
     return count
   }
 
@@ -954,9 +956,10 @@ export default function RestaurantDetails() {
     // When vegMode is false/null/undefined, show all items (Veg and Non-Veg)
     if (vegMode === true && item.foodType !== "Veg") return false
 
-    // Veg/Non-veg filter (local filter override)
-    if (filters.vegNonVeg === "veg" && item.foodType !== "Veg") return false
-    if (filters.vegNonVeg === "non-veg" && item.foodType !== "Non-Veg") return false
+    // Price range filter
+    const finalPrice = getFinalPrice(item)
+    if (typeof filters.priceMin === "number" && finalPrice < filters.priceMin) return false
+    if (typeof filters.priceMax === "number" && finalPrice > filters.priceMax) return false
 
     return true
   }
@@ -1092,7 +1095,7 @@ export default function RestaurantDetails() {
       .slice(0, 4)
 
     return [...startsWith, ...contains].slice(0, 8)
-  }, [searchQuery, restaurant?.menuSections, showOnlyUnder250, vegMode, filters.vegNonVeg])
+  }, [searchQuery, restaurant?.menuSections, showOnlyUnder250, vegMode, filters.priceMin, filters.priceMax, filters.sortBy])
 
   const handleSearchSuggestionSelect = (suggestion) => {
     if (!suggestion?.item) return
@@ -1442,31 +1445,13 @@ export default function RestaurantDetails() {
                 onClick={() => setShowFilterSheet(true)}
               >
                 <SlidersHorizontal className="h-4 w-4" />
-                Filters
+                Price
                 {activeFilterCount > 0 && (
                   <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-semibold">
                     {activeFilterCount}
                   </span>
                 )}
                 <ChevronDown className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 bg-white rounded-full ${filters.vegNonVeg === "veg" ? "border-green-500 bg-green-50" : ""
-                  }`}
-                onClick={() =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    vegNonVeg: prev.vegNonVeg === "veg" ? null : "veg",
-                  }))
-                }
-              >
-                <div className="h-3 w-3 rounded-full bg-green-500" />
-                Veg
-                {filters.vegNonVeg === "veg" && (
-                  <X className="h-3 w-3 text-gray-600" />
-                )}
               </Button>
             </div>
           </div>
@@ -2176,7 +2161,7 @@ export default function RestaurantDetails() {
                 >
                   {/* Header with X button */}
                   <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-gray-200 dark:border-gray-800">
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Filters and Sorting</h2>
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Price Filter</h2>
                     <button
                       onClick={() => setShowFilterSheet(false)}
                       className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
@@ -2187,9 +2172,55 @@ export default function RestaurantDetails() {
 
                   {/* Scrollable Content */}
                   <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+                    {/* Price range */}
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Price range (₹)</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Min</label>
+                          <input
+                            inputMode="numeric"
+                            type="number"
+                            min={0}
+                            value={filters.priceMin ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value
+                              const next = raw === "" ? null : Math.max(0, Number(raw))
+                              setFilters((prev) => ({ ...prev, priceMin: Number.isFinite(next) ? next : null }))
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500/40"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Max</label>
+                          <input
+                            inputMode="numeric"
+                            type="number"
+                            min={0}
+                            value={filters.priceMax ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value
+                              const next = raw === "" ? null : Math.max(0, Number(raw))
+                              setFilters((prev) => ({ ...prev, priceMax: Number.isFinite(next) ? next : null }))
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500/40"
+                            placeholder="999"
+                          />
+                        </div>
+                      </div>
+                      {typeof filters.priceMin === "number" &&
+                        typeof filters.priceMax === "number" &&
+                        filters.priceMin > filters.priceMax && (
+                          <p className="text-xs text-red-600 dark:text-red-400">
+                            Min price should be less than or equal to Max price.
+                          </p>
+                        )}
+                    </div>
+
                     {/* Sort by */}
                     <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Sort by:</h3>
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Sort by</h3>
                       <div className="flex flex-col gap-1.5">
                         <button
                           onClick={() =>
@@ -2221,83 +2252,6 @@ export default function RestaurantDetails() {
                         </button>
                       </div>
                     </div>
-
-                    {/* Veg/Non-veg preference */}
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Veg/Non-veg preference:</h3>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            setFilters((prev) => ({
-                              ...prev,
-                              vegNonVeg: prev.vegNonVeg === "veg" ? null : "veg",
-                            }))
-                          }
-                          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all flex-1 ${filters.vegNonVeg === "veg"
-                            ? "border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                            : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                            }`}
-                        >
-                          <div className="h-4 w-4 rounded-full bg-green-500 dark:bg-green-400" />
-                          <span className="font-medium">Veg</span>
-                        </button>
-                        <button
-                          onClick={() =>
-                            setFilters((prev) => ({
-                              ...prev,
-                              vegNonVeg: prev.vegNonVeg === "non-veg" ? null : "non-veg",
-                            }))
-                          }
-                          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all flex-1 ${filters.vegNonVeg === "non-veg"
-                            ? "border-amber-700 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
-                            : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                            }`}
-                        >
-                          <div className="h-4 w-4 rounded-full bg-amber-700 dark:bg-amber-600" />
-                          <span className="font-medium">Non-veg</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Top picks */}
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Top picks:</h3>
-                      <button
-                        onClick={() =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            highlyReordered: !prev.highlyReordered,
-                          }))
-                        }
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all w-full ${filters.highlyReordered
-                          ? "border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                          : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                          }`}
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                        <span className="font-medium">Highly reordered</span>
-                      </button>
-                    </div>
-
-                    {/* Dietary preference */}
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Dietary preference:</h3>
-                      <button
-                        onClick={() =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            spicy: !prev.spicy,
-                          }))
-                        }
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all w-full ${filters.spicy
-                          ? "border-red-500 dark:border-red-400 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                          : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                          }`}
-                      >
-                        <Flame className="h-4 w-4" />
-                        <span className="font-medium">Spicy</span>
-                      </button>
-                    </div>
                   </div>
 
                   {/* Bottom Action Bar */}
@@ -2306,9 +2260,8 @@ export default function RestaurantDetails() {
                       onClick={() => {
                         setFilters({
                           sortBy: null,
-                          vegNonVeg: null,
-                          highlyReordered: false,
-                          spicy: false,
+                          priceMin: null,
+                          priceMax: null,
                         })
                       }}
                       className="text-red-600 dark:text-red-400 font-medium text-sm hover:text-red-700 dark:hover:text-red-500"
@@ -2318,6 +2271,11 @@ export default function RestaurantDetails() {
                     <Button
                       className="bg-gray-300 dark:bg-gray-700 hover:bg-gray-400 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-6 py-2.5 rounded-lg font-medium"
                       onClick={() => setShowFilterSheet(false)}
+                      disabled={
+                        typeof filters.priceMin === "number" &&
+                        typeof filters.priceMax === "number" &&
+                        filters.priceMin > filters.priceMax
+                      }
                     >
                       Apply {activeFilterCount > 0 && `(${activeFilterCount})`}
                     </Button>

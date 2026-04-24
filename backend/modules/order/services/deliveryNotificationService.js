@@ -894,6 +894,75 @@ export async function notifyDeliveryBoyOrderReady(order, deliveryPartnerId) {
 }
 
 /**
+ * Notify assigned delivery partner that customer updated delivery instructions (order.note)
+ * Emits socket event + sends FCM push (non-blocking).
+ */
+export async function notifyDeliveryBoyOrderNoteUpdated(order, deliveryPartnerId) {
+  try {
+    const io = await getIOInstance();
+    const deliveryNamespace = io ? io.of("/delivery") : null;
+
+    const oid = order?.orderId || order?._id?.toString?.() || null;
+    const mongoId = order?._id?.toString?.() || null;
+    const note = typeof order?.note === "string" ? order.note : "";
+
+    const payload = {
+      type: "order_note_updated",
+      orderId: oid,
+      orderMongoId: mongoId,
+      note,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (deliveryNamespace) {
+      const normalizedDeliveryPartnerId = deliveryPartnerId?.toString?.() || String(deliveryPartnerId);
+      const roomVariations = [
+        `delivery:${normalizedDeliveryPartnerId}`,
+        `delivery:${deliveryPartnerId}`,
+        ...(mongoose.Types.ObjectId.isValid(normalizedDeliveryPartnerId)
+          ? [`delivery:${new mongoose.Types.ObjectId(normalizedDeliveryPartnerId).toString()}`]
+          : []),
+      ];
+
+      roomVariations.forEach((room) => {
+        deliveryNamespace.to(room).emit("order_note_updated", payload);
+      });
+    }
+
+    // FCM push (reliable)
+    try {
+      const { sendToUser } = await import("../../fcm/services/fcmService.js");
+      if (oid) {
+        const short =
+          note && note.length > 80 ? `${note.slice(0, 77)}...` : (note || "Updated instructions");
+        await sendToUser(
+          deliveryPartnerId,
+          "delivery",
+          {
+            title: "Delivery instructions updated",
+            body: `Order #${oid}: ${short}`,
+          },
+          {
+            type: "order_note_updated",
+            orderId: oid,
+            tag: `order_note_${oid}_${Date.now()}`,
+            link: `/delivery/order/${oid}`,
+            channelId: "delivery_order_note",
+          },
+        );
+      }
+    } catch (fcmErr) {
+      console.warn("FCM delivery order_note_updated notification failed:", fcmErr?.message || fcmErr);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error notifying delivery partner about order note update:", error);
+    return { success: false, error: error?.message || String(error) };
+  }
+}
+
+/**
  * Calculate distance between two coordinates using Haversine formula
  */
 function calculateDistance(lat1, lng1, lat2, lng2) {

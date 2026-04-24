@@ -84,8 +84,9 @@ export const useDeliveryNotifications = () => {
         const restaurant = payload.restaurantId || payload.restaurant || {};
         const restaurantLoc = restaurant.location || payload.restaurantLocation || {};
         const restCoords = restaurantLoc.coordinates;
-        const restLat = Array.isArray(restCoords) ? restCoords[1] : restaurantLoc.latitude;
-        const restLng = Array.isArray(restCoords) ? restCoords[0] : restaurantLoc.longitude;
+        const hasRestCoords = Array.isArray(restCoords) && restCoords.length >= 2;
+        const restLat = hasRestCoords ? restCoords[1] : restaurantLoc.latitude;
+        const restLng = hasRestCoords ? restCoords[0] : restaurantLoc.longitude;
         const restaurantAddress =
           restaurantLoc.formattedAddress ||
           restaurantLoc.address ||
@@ -95,8 +96,9 @@ export const useDeliveryNotifications = () => {
 
         const customerLoc = payload.address?.location || payload.customerLocation || {};
         const custCoords = customerLoc.coordinates;
-        const custLat = Array.isArray(custCoords) ? custCoords[1] : customerLoc.latitude;
-        const custLng = Array.isArray(custCoords) ? custCoords[0] : customerLoc.longitude;
+        const hasCustCoords = Array.isArray(custCoords) && custCoords.length >= 2;
+        const custLat = hasCustCoords ? custCoords[1] : customerLoc.latitude;
+        const custLng = hasCustCoords ? custCoords[0] : customerLoc.longitude;
         const customerAddress =
           payload.address?.formattedAddress ||
           payload.address?.address ||
@@ -585,6 +587,17 @@ export const useDeliveryNotifications = () => {
       setOrderReady(orderData);
       // Intentionally do NOT play sound for "order_ready".
       // Keep push notification / UI state updates only.
+    });
+
+    // Customer updated delivery instructions (order.note)
+    // IMPORTANT: Avoid adding new React state hooks here (HMR hook-order issues).
+    // Broadcast as a DOM event for DeliveryHome (and others) to consume.
+    socketRef.current.on('order_note_updated', (data) => {
+      try {
+        window.dispatchEvent(new CustomEvent('deliveryOrderNoteUpdated', { detail: data || null }));
+      } catch {
+        // ignore
+      }
     });
 
     // When another delivery partner accepts the same order, close the popup instantly.

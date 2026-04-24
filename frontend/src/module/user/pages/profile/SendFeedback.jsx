@@ -86,7 +86,7 @@ export default function SendFeedback() {
                   placeholder="Tell us what you think..."
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
-                  className="min-h-[250px] md:min-h-[350px] lg:min-h-[400px] w-full resize-y text-sm md:text-base leading-relaxed"
+                  className="min-h-[250px] md:min-h-[350px] lg:min-h-[400px] w-full resize-y rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm md:text-base leading-relaxed text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100 dark:placeholder:text-gray-500"
                   dir="ltr"
                   style={{
                     direction: 'ltr',

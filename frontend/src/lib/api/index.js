@@ -1329,8 +1329,10 @@ export const adminAPI = {
   },
 
   // Get user by ID
-  getUserById: (id) => {
-    return apiClient.get(API_ENDPOINTS.ADMIN.USER_BY_ID.replace(":id", id));
+  getUserById: (id, params = {}) => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.USER_BY_ID.replace(":id", id), {
+      params,
+    });
   },
 
   // Update user (admin)

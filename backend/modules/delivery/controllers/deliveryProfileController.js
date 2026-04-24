@@ -5,6 +5,7 @@ import { validate } from '../../../shared/middleware/validate.js';
 import Joi from 'joi';
 import winston from 'winston';
 import { normalizeDeliveryProfileImages } from '../utils/profileImageNormalize.js';
+import Order from '../../order/models/Order.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -31,6 +32,48 @@ export const getProfile = asyncHandler(async (req, res) => {
 
     if (!profile) {
       return errorResponse(res, 404, 'Delivery partner not found');
+    }
+
+    // Ensure rating fields are present (compute from delivered orders reviews if missing).
+    // Some legacy delivery documents might not have metrics populated.
+    const hasRating =
+      profile?.metrics?.rating !== null && profile?.metrics?.rating !== undefined;
+    const hasRatingCount =
+      profile?.metrics?.ratingCount !== null &&
+      profile?.metrics?.ratingCount !== undefined;
+
+    if (!hasRating || !hasRatingCount) {
+      try {
+        const agg = await Order.aggregate([
+          {
+            $match: {
+              status: 'delivered',
+              deliveryPartnerId: profile._id,
+              'review.rating': { $exists: true, $ne: null },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              avgRating: { $avg: '$review.rating' },
+              ratingCount: { $sum: 1 },
+            },
+          },
+        ]);
+
+        const avgRating = agg?.[0]?.avgRating ?? null;
+        const ratingCount = agg?.[0]?.ratingCount ?? 0;
+
+        profile.metrics = profile.metrics || {};
+        // If no reviews yet, keep rating as 0 (so UI can show 0.0 (0))
+        profile.metrics.rating =
+          avgRating === null || avgRating === undefined ? 0 : Number(avgRating);
+        profile.metrics.ratingCount = Number(ratingCount || 0);
+      } catch (e) {
+        profile.metrics = profile.metrics || {};
+        if (!hasRating) profile.metrics.rating = 0;
+        if (!hasRatingCount) profile.metrics.ratingCount = 0;
+      }
     }
 
     normalizeDeliveryProfileImages(profile, req);
@@ -72,6 +115,8 @@ const updateProfileSchema = Joi.object({
     publicId: Joi.string().trim().optional().allow(null, '')
   }).optional(),
   documents: Joi.object({
+    photo: Joi.string().uri().optional().allow(null, ''),
+    profilePhoto: Joi.string().uri().optional().allow(null, ''),
     bankDetails: Joi.object({
       accountHolderName: Joi.string().trim().min(2).max(100).optional().allow(null, ''),
       accountNumber: Joi.string().trim().min(9).max(18).optional().allow(null, ''),
@@ -92,14 +137,21 @@ export const updateProfile = asyncHandler(async (req, res) => {
       return errorResponse(res, 400, error.details[0].message);
     }
 
-    // Handle nested documents.bankDetails update properly
+    // Handle nested documents.* updates properly
     const setData = { ...updateData };
-    if (updateData.documents?.bankDetails) {
-      // Merge bankDetails with existing documents
-      setData['documents.bankDetails'] = {
-        ...delivery.documents?.bankDetails,
-        ...updateData.documents.bankDetails
-      };
+    if (updateData.documents) {
+      if (updateData.documents.bankDetails) {
+        setData["documents.bankDetails"] = {
+          ...delivery.documents?.bankDetails,
+          ...updateData.documents.bankDetails,
+        };
+      }
+      if (Object.prototype.hasOwnProperty.call(updateData.documents, "photo")) {
+        setData["documents.photo"] = updateData.documents.photo;
+      }
+      if (Object.prototype.hasOwnProperty.call(updateData.documents, "profilePhoto")) {
+        setData["documents.profilePhoto"] = updateData.documents.profilePhoto;
+      }
       // Remove the nested documents object to avoid conflicts
       delete setData.documents;
     }

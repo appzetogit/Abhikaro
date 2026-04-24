@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react"
+import { useRef, useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Plus, Edit2, ChevronRight, FileText, CheckCircle, XCircle, Eye, X } from "lucide-react"
+import { ArrowLeft, Plus, Edit2, Eye, X, Trash2, Camera } from "lucide-react"
 import BottomPopup from "../components/BottomPopup"
 import { toast } from "sonner"
 import { deliveryAPI } from "@/lib/api"
 import { getDeliveryProfilePhotoUrl, getDeliveryUiAvatarUrl } from "../utils/profilePhoto"
+import apiClient from "@/lib/api/axios"
 
 export default function ProfileDetails() {
   const navigate = useNavigate()
@@ -24,6 +25,24 @@ export default function ProfileDetails() {
   })
   const [bankDetailsErrors, setBankDetailsErrors] = useState({})
   const [isUpdatingBankDetails, setIsUpdatingBankDetails] = useState(false)
+  const [isUpdatingPhoto, setIsUpdatingPhoto] = useState(false)
+  const photoInputRef = useRef(null)
+  const [showPersonalDetailsPopup, setShowPersonalDetailsPopup] = useState(false)
+  const [isUpdatingPersonalDetails, setIsUpdatingPersonalDetails] = useState(false)
+  const [personalDetails, setPersonalDetails] = useState({
+    email: "",
+    dateOfBirth: "",
+    gender: "",
+  })
+  const [personalDetailsErrors, setPersonalDetailsErrors] = useState({})
+  const [showRiderDetailsPopup, setShowRiderDetailsPopup] = useState(false)
+  const [isUpdatingRiderDetails, setIsUpdatingRiderDetails] = useState(false)
+  const [riderDetails, setRiderDetails] = useState({
+    name: "",
+    city: "",
+    vehicleType: "bike",
+  })
+  const [riderDetailsErrors, setRiderDetailsErrors] = useState({})
 
   // Note: All alternate phone related code has been removed
 
@@ -86,6 +105,87 @@ export default function ProfileDetails() {
     return "Not verified"
   }
 
+  const photoUrl = getDeliveryProfilePhotoUrl(profile)
+
+  const refetchProfile = async () => {
+    const response = await deliveryAPI.getProfile()
+    if (response?.data?.success && response?.data?.data?.profile) {
+      setProfile(response.data.data.profile)
+    }
+  }
+
+  const handleSelectNewPhoto = async (file) => {
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file")
+      return
+    }
+
+    // 5MB limit (Cloudinary allows more, but keep mobile-friendly)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size should be less than 5MB")
+      return
+    }
+
+    setIsUpdatingPhoto(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("folder", "delivery/profile")
+
+      const uploadRes = await apiClient.post("/upload/media", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+
+      if (!uploadRes?.data?.success || !uploadRes?.data?.data?.url) {
+        toast.error("Failed to upload profile photo")
+        return
+      }
+
+      const { url, publicId } = uploadRes.data.data
+      const updateRes = await deliveryAPI.updateProfile({
+        profileImage: { url, publicId },
+      })
+
+      if (updateRes?.data?.success) {
+        toast.success("Profile photo updated")
+        await refetchProfile()
+      } else {
+        toast.error(updateRes?.data?.message || "Failed to update profile photo")
+      }
+    } catch (error) {
+      console.error("Profile photo update failed:", error)
+      toast.error(error?.response?.data?.message || "Failed to update profile photo")
+    } finally {
+      setIsUpdatingPhoto(false)
+      if (photoInputRef.current) photoInputRef.current.value = ""
+    }
+  }
+
+  const handleDeletePhoto = async () => {
+    if (!window.confirm("Delete profile photo?")) return
+    setIsUpdatingPhoto(true)
+    try {
+      const updateRes = await deliveryAPI.updateProfile({
+        profileImage: { url: null, publicId: null },
+        documents: { photo: null, profilePhoto: null },
+      })
+
+      if (updateRes?.data?.success) {
+        toast.success("Profile photo removed")
+        await refetchProfile()
+      } else {
+        toast.error(updateRes?.data?.message || "Failed to remove profile photo")
+      }
+    } catch (error) {
+      console.error("Profile photo delete failed:", error)
+      toast.error(error?.response?.data?.message || "Failed to remove profile photo")
+    } finally {
+      setIsUpdatingPhoto(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -101,27 +201,77 @@ export default function ProfileDetails() {
 
       {/* Profile Picture Area */}
       <div className="relative w-full bg-gray-200 overflow-hidden flex items-center justify-center">
-        <img
-          src={
-            getDeliveryProfilePhotoUrl(profile) ||
-            getDeliveryUiAvatarUrl(profile?.name)
-          }
-          alt="Profile"
-          className="w-full h-auto max-h-96 object-contain"
-          onError={(e) => {
-            const fb = getDeliveryUiAvatarUrl(profile?.name)
-            if (e.target.src !== fb) {
-              e.target.src = fb
-            }
-          }}
+        <input
+          ref={photoInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*"
+          onChange={(e) => handleSelectNewPhoto(e.target.files?.[0] || null)}
         />
+        {photoUrl ? (
+          <img
+            src={photoUrl}
+            alt="Profile"
+            className="w-full h-auto max-h-96 object-contain"
+            onError={(e) => {
+              // If image fails, treat as no profile photo (show "No profile")
+              e.currentTarget.style.display = "none"
+            }}
+          />
+        ) : (
+          <div className="w-full h-72 md:h-96 flex items-center justify-center">
+            <div className="text-gray-700 text-base font-semibold">No profile</div>
+          </div>
+        )}
+
+        {/* Photo actions */}
+        <div className="absolute bottom-3 right-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            disabled={isUpdatingPhoto}
+            className="bg-white/95 hover:bg-white text-gray-900 shadow px-3 py-2 rounded-full flex items-center gap-2 text-sm font-medium disabled:opacity-60"
+          >
+            <Camera className="w-4 h-4" />
+            {isUpdatingPhoto ? "Updating..." : "Edit"}
+          </button>
+          {photoUrl && (
+            <button
+              type="button"
+              onClick={handleDeletePhoto}
+              disabled={isUpdatingPhoto}
+              className="bg-white/95 hover:bg-white text-red-600 shadow px-3 py-2 rounded-full flex items-center gap-2 text-sm font-medium disabled:opacity-60"
+              title="Delete photo"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
       <div className="px-4 py-6 space-y-6">
         {/* Rider Details Section */}
         <div>
-          <h2 className="text-base font-bold text-gray-900 mb-3">Rider details</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-bold text-gray-900">Rider details</h2>
+            <button
+              onClick={() => {
+                setRiderDetails({
+                  name: profile?.name || "",
+                  city: profile?.location?.city || "",
+                  vehicleType: profile?.vehicle?.type || "bike",
+                })
+                setRiderDetailsErrors({})
+                setShowRiderDetailsPopup(true)
+              }}
+              className="text-green-600 font-medium text-sm flex items-center gap-1 hover:text-green-700"
+            >
+              <Edit2 className="w-4 h-4" />
+              <span>Edit</span>
+            </button>
+          </div>
           <div className="bg-white rounded-lg shadow-sm divide-y divide-gray-200">
             <div className="p-2 px-3 flex items-center justify-between">
               <p className="text-base text-gray-900">
@@ -259,7 +409,32 @@ export default function ProfileDetails() {
 
         {/* Personal Details Section */}
         <div>
-          <h2 className="text-base font-medium text-gray-900 mb-3">Personal details</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-medium text-gray-900">Personal details</h2>
+            <button
+              onClick={() => {
+                const dob = profile?.dateOfBirth ? new Date(profile.dateOfBirth) : null
+                const toInputDate = (d) => {
+                  if (!d || Number.isNaN(d.getTime?.())) return ""
+                  const yyyy = d.getFullYear()
+                  const mm = String(d.getMonth() + 1).padStart(2, "0")
+                  const dd = String(d.getDate()).padStart(2, "0")
+                  return `${yyyy}-${mm}-${dd}`
+                }
+                setPersonalDetails({
+                  email: profile?.email || "",
+                  dateOfBirth: toInputDate(dob),
+                  gender: profile?.gender || "",
+                })
+                setPersonalDetailsErrors({})
+                setShowPersonalDetailsPopup(true)
+              }}
+              className="text-green-600 font-medium text-sm flex items-center gap-1 hover:text-green-700"
+            >
+              <Edit2 className="w-4 h-4" />
+              <span>Edit</span>
+            </button>
+          </div>
           <div className="bg-white rounded-lg shadow-sm divide-y divide-gray-200">
             <div className="p-2 px-3 flex items-center justify-between">
               <div className="w-full align-center flex content-center justify-between">
@@ -277,6 +452,20 @@ export default function ProfileDetails() {
             </div>
             <div className="p-2 px-3 flex items-center justify-between">
               <div className="w-full align-center flex content-center justify-between">
+                <p className="text-sm text-gray-900 mb-1">Date of birth</p>
+                <p className="text-base text-gray-900">
+                  {profile?.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : "-"}
+                </p>
+              </div>
+            </div>
+            <div className="p-2 px-3 flex items-center justify-between">
+              <div className="w-full align-center flex content-center justify-between">
+                <p className="text-sm text-gray-900 mb-1">Gender</p>
+                <p className="text-base text-gray-900 capitalize">{profile?.gender || "-"}</p>
+              </div>
+            </div>
+            <div className="p-2 px-3 flex items-center justify-between">
+              <div className="w-full align-center flex content-center justify-between">
                 <p className="text-sm text-gray-900 mb-1">Aadhar Card Number</p>
                 <p className="text-base text-gray-900">
                   {profile?.documents?.aadhar?.number || "-"}
@@ -287,15 +476,9 @@ export default function ProfileDetails() {
               <div className="w-full align-center flex content-center justify-between">
                 <p className="text-sm text-gray-900 mb-1">Rating</p>
                 <p className="text-base text-gray-900">
-                  {profile?.metrics?.rating ? `${profile.metrics.rating.toFixed(1)} (${profile.metrics.ratingCount || 0})` : "-"}
-                </p>
-              </div>
-            </div>
-            <div className="p-2 px-3 flex items-center justify-between">
-              <div className="w-full align-center flex content-center justify-between">
-                <p className="text-sm text-gray-900 mb-1">Wallet Balance</p>
-                <p className="text-base text-gray-900">
-                  ₹{profile?.wallet?.balance?.toFixed(2) || "0.00"}
+                  {profile?.metrics?.rating !== null && profile?.metrics?.rating !== undefined
+                    ? `${Number(profile.metrics.rating || 0).toFixed(1)} (${profile.metrics.ratingCount || 0})`
+                    : "-"}
                 </p>
               </div>
             </div>
@@ -632,6 +815,229 @@ export default function ProfileDetails() {
             }`}
           >
             {isUpdatingBankDetails ? "Updating..." : "Save Bank Details"}
+          </button>
+        </div>
+      </BottomPopup>
+
+      {/* Rider Details Edit Popup */}
+      <BottomPopup
+        isOpen={showRiderDetailsPopup}
+        onClose={() => {
+          setShowRiderDetailsPopup(false)
+          setRiderDetailsErrors({})
+        }}
+        title="Edit Rider Details"
+        showCloseButton={true}
+        closeOnBackdropClick={true}
+        maxHeight="75vh"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={riderDetails.name}
+              onChange={(e) => {
+                setRiderDetails((p) => ({ ...p, name: e.target.value }))
+                setRiderDetailsErrors((prev) => ({ ...prev, name: "" }))
+              }}
+              placeholder="Enter name"
+              className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                riderDetailsErrors.name ? "border-red-500" : "border-gray-300"
+              }`}
+            />
+            {riderDetailsErrors.name && (
+              <p className="text-red-500 text-xs mt-1">{riderDetailsErrors.name}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+            <input
+              type="text"
+              value={riderDetails.city}
+              onChange={(e) => setRiderDetails((p) => ({ ...p, city: e.target.value }))}
+              placeholder="Enter city"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle type</label>
+            <select
+              value={riderDetails.vehicleType}
+              onChange={(e) => setRiderDetails((p) => ({ ...p, vehicleType: e.target.value }))}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="bike">Bike</option>
+              <option value="scooter">Scooter</option>
+              <option value="bicycle">Bicycle</option>
+              <option value="car">Car</option>
+            </select>
+          </div>
+
+          <button
+            onClick={async () => {
+              const errors = {}
+              const nameTrimmed = String(riderDetails.name || "").trim()
+              if (!nameTrimmed || nameTrimmed.length < 2) {
+                errors.name = "Name must be at least 2 characters"
+              }
+
+              if (Object.keys(errors).length > 0) {
+                setRiderDetailsErrors(errors)
+                toast.error("Please fix the errors")
+                return
+              }
+
+              setIsUpdatingRiderDetails(true)
+              try {
+                const payload = {
+                  name: nameTrimmed,
+                  location: {
+                    ...(profile?.location || {}),
+                    city: String(riderDetails.city || "").trim(),
+                  },
+                  vehicle: {
+                    ...(profile?.vehicle || {}),
+                    type: riderDetails.vehicleType || "bike",
+                  },
+                }
+                const res = await deliveryAPI.updateProfile(payload)
+                if (res?.data?.success) {
+                  toast.success("Rider details updated")
+                  setShowRiderDetailsPopup(false)
+                  await refetchProfile()
+                } else {
+                  toast.error(res?.data?.message || "Failed to update rider details")
+                }
+              } catch (error) {
+                console.error("Failed to update rider details:", error)
+                toast.error(error?.response?.data?.message || "Failed to update rider details")
+              } finally {
+                setIsUpdatingRiderDetails(false)
+              }
+            }}
+            disabled={isUpdatingRiderDetails}
+            className={`w-full py-3 rounded-lg font-medium text-white transition-colors ${
+              isUpdatingRiderDetails
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-[#00B761] hover:bg-[#00A055]"
+            }`}
+          >
+            {isUpdatingRiderDetails ? "Updating..." : "Save Rider Details"}
+          </button>
+        </div>
+      </BottomPopup>
+
+      {/* Personal Details Edit Popup */}
+      <BottomPopup
+        isOpen={showPersonalDetailsPopup}
+        onClose={() => {
+          setShowPersonalDetailsPopup(false)
+          setPersonalDetailsErrors({})
+        }}
+        title="Edit Personal Details"
+        showCloseButton={true}
+        closeOnBackdropClick={true}
+        maxHeight="75vh"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={personalDetails.email}
+              onChange={(e) => {
+                setPersonalDetails((p) => ({ ...p, email: e.target.value }))
+                setPersonalDetailsErrors((prev) => ({ ...prev, email: "" }))
+              }}
+              placeholder="Enter email"
+              className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                personalDetailsErrors.email ? "border-red-500" : "border-gray-300"
+              }`}
+            />
+            {personalDetailsErrors.email && (
+              <p className="text-red-500 text-xs mt-1">{personalDetailsErrors.email}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth</label>
+            <input
+              type="date"
+              value={personalDetails.dateOfBirth}
+              onChange={(e) => {
+                setPersonalDetails((p) => ({ ...p, dateOfBirth: e.target.value }))
+              }}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+            <select
+              value={personalDetails.gender}
+              onChange={(e) => setPersonalDetails((p) => ({ ...p, gender: e.target.value }))}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="">Prefer not to say</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+              <option value="prefer-not-to-say">Prefer not to say</option>
+            </select>
+          </div>
+
+          <button
+            onClick={async () => {
+              const errors = {}
+              const emailTrimmed = String(personalDetails.email || "").trim()
+              if (emailTrimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+                errors.email = "Please enter a valid email"
+              }
+
+              if (Object.keys(errors).length > 0) {
+                setPersonalDetailsErrors(errors)
+                toast.error("Please fix the errors")
+                return
+              }
+
+              setIsUpdatingPersonalDetails(true)
+              try {
+                const payload = {
+                  email: emailTrimmed || "",
+                  gender: personalDetails.gender || "",
+                  dateOfBirth: personalDetails.dateOfBirth
+                    ? new Date(personalDetails.dateOfBirth).toISOString()
+                    : null,
+                }
+
+                const res = await deliveryAPI.updateProfile(payload)
+                if (res?.data?.success) {
+                  toast.success("Personal details updated")
+                  setShowPersonalDetailsPopup(false)
+                  await refetchProfile()
+                } else {
+                  toast.error(res?.data?.message || "Failed to update personal details")
+                }
+              } catch (error) {
+                console.error("Failed to update personal details:", error)
+                toast.error(error?.response?.data?.message || "Failed to update personal details")
+              } finally {
+                setIsUpdatingPersonalDetails(false)
+              }
+            }}
+            disabled={isUpdatingPersonalDetails}
+            className={`w-full py-3 rounded-lg font-medium text-white transition-colors ${
+              isUpdatingPersonalDetails
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-[#00B761] hover:bg-[#00A055]"
+            }`}
+          >
+            {isUpdatingPersonalDetails ? "Updating..." : "Save Personal Details"}
           </button>
         </div>
       </BottomPopup>

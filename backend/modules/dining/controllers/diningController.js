@@ -254,6 +254,41 @@ export const createBooking = async (req, res) => {
     const { restaurant, guests, date, timeSlot, specialRequest } = req.body;
     const userId = req.user._id;
 
+    // Reject bookings in the past (date + timeSlot)
+    const parseTimeSlotToHoursMinutes = (slot) => {
+      if (!slot || typeof slot !== "string") return null;
+      const trimmed = slot.trim();
+      const m = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (!m) return null;
+      let hours = parseInt(m[1], 10);
+      const minutes = parseInt(m[2], 10);
+      const period = String(m[3] || "").toUpperCase();
+      if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+      if (period === "PM" && hours !== 12) hours += 12;
+      if (period === "AM" && hours === 12) hours = 0;
+      return { hours, minutes };
+    };
+
+    const bookingDay = new Date(date);
+    if (Number.isNaN(bookingDay.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid booking date" });
+    }
+
+    const hm = parseTimeSlotToHoursMinutes(timeSlot);
+    if (!hm) {
+      return res.status(400).json({ success: false, message: "Invalid time slot" });
+    }
+
+    const bookingDateTime = new Date(bookingDay);
+    bookingDateTime.setHours(hm.hours, hm.minutes, 0, 0);
+
+    if (bookingDateTime.getTime() <= Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: "Past time slots are not allowed. Please select a future time.",
+      });
+    }
+
     const booking = await TableBooking.create({
       restaurant,
       user: userId,

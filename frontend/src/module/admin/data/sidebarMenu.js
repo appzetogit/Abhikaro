@@ -380,7 +380,7 @@ export const sidebarMenuData = [
       },
       {
         type: "link",
-        label: "User Feedback",
+        label: "User Order Feedback",
         path: "/admin/contact-messages",
         icon: "Mail",
         permissionId: "menu.customers",
@@ -404,6 +404,13 @@ export const sidebarMenuData = [
         label: "Safety Emergency Reports",
         path: "/admin/safety-emergency-reports",
         icon: "AlertTriangle",
+        permissionId: "menu.customers",
+      },
+      {
+        type: "link",
+        label: "Improve Feedback",
+        path: "/admin/improve-feedback",
+        icon: "MessageSquare",
         permissionId: "menu.customers",
       },
     ],

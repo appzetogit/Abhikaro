@@ -1866,6 +1866,33 @@ export const updateOrderNote = async (req, res) => {
     order.note = typeof note === "string" ? note.trim() : "";
     await order.save();
 
+    // Invalidate cached order details (user tracking uses cached getOrderDetails for 60s)
+    try {
+      const oid = order.orderId || null;
+      const mongoId = order._id?.toString?.() || null;
+      await invalidateCachePattern(`order-details:${id}:*`);
+      if (oid) await invalidateCachePattern(`order-details:${oid}:*`);
+      if (mongoId) await invalidateCachePattern(`order-details:${mongoId}:*`);
+    } catch {
+      // non-blocking
+    }
+
+    // If a delivery partner is already assigned, notify them (socket + push)
+    try {
+      const deliveryPartnerId =
+        order.deliveryPartnerId?._id?.toString?.() ||
+        order.deliveryPartnerId?.toString?.() ||
+        null;
+      if (deliveryPartnerId) {
+        const { notifyDeliveryBoyOrderNoteUpdated } = await import(
+          "../services/deliveryNotificationService.js"
+        );
+        await notifyDeliveryBoyOrderNoteUpdated(order, deliveryPartnerId);
+      }
+    } catch {
+      // non-blocking
+    }
+
     res.json({
       success: true,
       message: "Delivery instructions updated",

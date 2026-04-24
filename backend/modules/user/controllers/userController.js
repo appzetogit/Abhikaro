@@ -62,7 +62,7 @@ export const getUserProfile = asyncHandler(async (req, res) => {
  */
 export const updateUserProfile = asyncHandler(async (req, res) => {
   try {
-    const { name, email, phone, dateOfBirth, anniversary, gender } = req.body;
+    const { name, email, phone, dateOfBirth, anniversary, gender, profileImage } = req.body;
 
     const user = await User.findById(req.user._id);
 
@@ -129,6 +129,15 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
       user.gender = gender || null;
     }
 
+    // Profile image update (support explicit delete via null/"")
+    // Upload endpoint `/api/user/profile/avatar` is the primary way to set a new image.
+    // Here we only allow clearing (null/"") to avoid arbitrary URL injection.
+    if (profileImage !== undefined) {
+      if (profileImage === null || profileImage === "") {
+        user.profileImage = null;
+      }
+    }
+
     // Save to database
     await user.save();
 
@@ -141,7 +150,7 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
     await invalidateCachePattern(cacheKey);
 
     logger.info(`User profile updated: ${user._id}`, {
-      updatedFields: { name, email, phone, dateOfBirth, anniversary, gender },
+      updatedFields: { name, email, phone, dateOfBirth, anniversary, gender, profileImage },
     });
 
     return successResponse(res, 200, "Profile updated successfully", {

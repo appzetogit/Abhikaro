@@ -16,6 +16,7 @@ export default function DiningList() {
     const [error, setError] = useState(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [editingRestaurant, setEditingRestaurant] = useState(null)
+    const [commissionInput, setCommissionInput] = useState("")
     const [showOnlyRequests, setShowOnlyRequests] = useState(false)
 
     // Fetch restaurants from backend API
@@ -27,11 +28,18 @@ export default function DiningList() {
 
                 let response
                 try {
-                    // Try admin API first
+                    // Prefer admin API (includes dining fields like commission/settings)
                     response = await adminAPI.getRestaurants()
                 } catch (adminErr) {
-                    console.log("Admin restaurants endpoint not available, using fallback")
-                    response = await restaurantAPI.getRestaurants()
+                    const status = adminErr?.response?.status
+                    // Only fallback when the admin endpoint truly doesn't exist.
+                    // For auth/500/etc we should surface the real error instead of silently losing fields.
+                    if (status === 404) {
+                        console.log("Admin restaurants endpoint not available, using fallback")
+                        response = await restaurantAPI.getRestaurants()
+                    } else {
+                        throw adminErr
+                    }
                 }
 
                 if (response.data && response.data.success && response.data.data) {
@@ -57,6 +65,7 @@ export default function DiningList() {
                             : [],
 
                         diningSettings: restaurant.diningSettings || { isEnabled: true, maxGuests: 6, requestStatus: "none" },
+                        // Backend field is `diningCommissionPercentage`
                         diningCommissionPercentage: restaurant.diningCommissionPercentage ?? 0,
                         originalData: restaurant,
                     }))
@@ -422,6 +431,12 @@ export default function DiningList() {
                                                         <button
                                                             onClick={() => {
                                                                 setEditingRestaurant({ ...restaurant })
+                                                                const initial = restaurant.diningCommissionPercentage
+                                                                setCommissionInput(
+                                                                    typeof initial === "number" && Number.isFinite(initial) && initial !== 0
+                                                                        ? String(initial)
+                                                                        : ""
+                                                                )
                                                                 setIsEditModalOpen(true)
                                                             }}
                                                             className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
@@ -511,11 +526,27 @@ export default function DiningList() {
                                     min="0"
                                     max="100"
                                     step="0.5"
-                                    value={editingRestaurant.diningCommissionPercentage ?? 0}
-                                    onChange={(e) => setEditingRestaurant(prev => ({
-                                        ...prev,
-                                        diningCommissionPercentage: parseFloat(e.target.value) || 0
-                                    }))}
+                                    value={commissionInput}
+                                    onChange={(e) => {
+                                        const raw = e.target.value
+                                        setCommissionInput(raw)
+                                    }}
+                                    onBlur={() => {
+                                        const raw = String(commissionInput || "").trim()
+                                        if (!raw) {
+                                            setEditingRestaurant((prev) => ({ ...prev, diningCommissionPercentage: 0 }))
+                                            setCommissionInput("")
+                                            return
+                                        }
+
+                                        const parsed = Number(raw)
+                                        const normalized = Number.isFinite(parsed)
+                                            ? Math.min(100, Math.max(0, parsed))
+                                            : 0
+
+                                        setEditingRestaurant((prev) => ({ ...prev, diningCommissionPercentage: normalized }))
+                                        setCommissionInput(normalized === 0 ? "" : String(normalized))
+                                    }}
                                     className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 />
                                 <p className="text-xs text-slate-500">Platform commission on dining bill payments (0–100)</p>
@@ -533,8 +564,19 @@ export default function DiningList() {
                                 onClick={async () => {
                                     try {
                                         setLoading(true)
+                                        // Ensure commission is normalized even if user doesn't blur the input
+                                        const raw = String(commissionInput || "").trim()
+                                        const parsed = raw ? Number(raw) : 0
+                                        const normalizedCommission = Number.isFinite(parsed)
+                                            ? Math.min(100, Math.max(0, parsed))
+                                            : 0
+                                        setEditingRestaurant((prev) => ({
+                                            ...prev,
+                                            diningCommissionPercentage: normalizedCommission,
+                                        }))
+
                                         await adminAPI.updateRestaurantDiningSettings(editingRestaurant._id, editingRestaurant.diningSettings)
-                                        const commission = Number(editingRestaurant.diningCommissionPercentage);
+                                        const commission = normalizedCommission
                                         if (Number.isFinite(commission) && commission >= 0 && commission <= 100) {
                                             await adminAPI.updateRestaurantDiningCommission(editingRestaurant._id, commission);
                                         }

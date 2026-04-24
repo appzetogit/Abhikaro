@@ -6,6 +6,9 @@ import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { DeliveryNotificationsProvider } from "../context/DeliveryNotificationsContext"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 import alertSound from "@/assets/audio/alert.mp3"
+import io from "socket.io-client"
+import { API_BASE_URL } from "@/lib/api/config"
+import { toast } from "sonner"
 
 export default function DeliveryLayout({
   children,
@@ -19,6 +22,86 @@ export default function DeliveryLayout({
   const [requestBadgeCount, setRequestBadgeCount] = useState(() =>
     getUnreadDeliveryNotificationCount()
   )
+
+  // Background chat notifications (user <-> delivery)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const socketUrl = API_BASE_URL.replace("/api", "")
+
+    const getDeliveryIdFromStorage = () => {
+      const directId = localStorage.getItem("delivery_id") || localStorage.getItem("deliveryId")
+      if (directId) return directId.toString()
+
+      const deliveryUserStr = localStorage.getItem("delivery_user")
+      if (deliveryUserStr) {
+        try {
+          const deliveryUser = JSON.parse(deliveryUserStr)
+          const id = deliveryUser?._id || deliveryUser?.id
+          if (id) return id.toString()
+        } catch {
+          // ignore
+        }
+      }
+
+      return null
+    }
+
+    const deliveryId = getDeliveryIdFromStorage()
+    if (!deliveryId) return
+
+    const socket = io(socketUrl, {
+      path: "/socket.io/",
+      transports: ["polling"],
+      upgrade: false,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: Infinity,
+    })
+
+    socket.on("connect", () => {
+      socket.emit("join-delivery", deliveryId)
+    })
+
+    socket.on("new-message", (data) => {
+      const msg = data?.message
+      if (!msg) return
+
+      // Only notify delivery partner when THEY are the receiver
+      const receiverMatches =
+        msg?.receiverType === "delivery" && String(msg?.receiverId || "") === String(deliveryId || "")
+      if (!receiverMatches) return
+
+      const orderIdForRoute = (data?.orderIdString || data?.orderId || msg?.orderId || "").toString()
+
+      // If already on dedicated chat route for this order, don't toast.
+      const isOnChatRoute =
+        typeof location?.pathname === "string" &&
+        location.pathname.startsWith("/delivery/chat/") &&
+        location.pathname.includes(orderIdForRoute)
+      if (isOnChatRoute) return
+
+      const snippet = String(msg?.message || "").trim()
+      toast("New message from customer", {
+        description: snippet ? (snippet.length > 80 ? `${snippet.slice(0, 80)}…` : snippet) : undefined,
+        action: orderIdForRoute
+          ? {
+              label: "Open chat",
+              onClick: () => navigate(`/delivery/chat/${orderIdForRoute}`),
+            }
+          : undefined,
+      })
+    })
+
+    return () => {
+      try {
+        socket.disconnect()
+      } catch {
+        // ignore
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // FIXED: Save current route to sessionStorage on route change (for refresh persistence)
   useEffect(() => {

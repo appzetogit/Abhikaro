@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Truck, Leaf, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, AlertCircle, Pencil } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -305,6 +305,71 @@ export default function Cart() {
     : savedAddress
   const defaultPayment = getDefaultPaymentMethod()
 
+  // Checkout-only delivery address: selectable on this page without mutating Home page location.
+  const [checkoutDeliveryAddress, setCheckoutDeliveryAddress] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem("checkout_delivery_address")
+      if (raw) return JSON.parse(raw)
+    } catch {
+      // ignore
+    }
+    return defaultAddress || null
+  })
+  const [hasManuallySelectedDeliveryAddress, setHasManuallySelectedDeliveryAddress] = useState(() => {
+    try {
+      return sessionStorage.getItem("checkout_delivery_address_manual") === "true"
+    } catch {
+      return false
+    }
+  })
+
+  const makeAddressSig = useCallback((addr) => {
+    if (!addr) return "null"
+    const coords =
+      Array.isArray(addr?.location?.coordinates) && addr.location.coordinates.length >= 2
+        ? [Number(addr.location.coordinates[0] || 0), Number(addr.location.coordinates[1] || 0)]
+        : null
+
+    return JSON.stringify({
+      label: addr?.label || null,
+      formattedAddress: addr?.formattedAddress || null,
+      address: addr?.address || null,
+      street: addr?.street || null,
+      city: addr?.city || null,
+      state: addr?.state || null,
+      zipCode: addr?.zipCode || null,
+      coordinates: coords,
+    })
+  }, [])
+
+  // Keep checkout delivery address in sync with live/default address ONLY until user manually selects one.
+  useEffect(() => {
+    if (hasManuallySelectedDeliveryAddress) return
+    const next = defaultAddress || null
+    // Avoid infinite loops: defaultAddress can be a new object each render.
+    // Only update when the meaningful address fields actually changed.
+    if (makeAddressSig(checkoutDeliveryAddress) !== makeAddressSig(next)) {
+      setCheckoutDeliveryAddress(next)
+    }
+  }, [defaultAddress, hasManuallySelectedDeliveryAddress, checkoutDeliveryAddress, makeAddressSig])
+
+  // Persist checkout delivery address (session-only)
+  useEffect(() => {
+    try {
+      if (checkoutDeliveryAddress) {
+        sessionStorage.setItem("checkout_delivery_address", JSON.stringify(checkoutDeliveryAddress))
+      } else {
+        sessionStorage.removeItem("checkout_delivery_address")
+      }
+      sessionStorage.setItem(
+        "checkout_delivery_address_manual",
+        hasManuallySelectedDeliveryAddress ? "true" : "false",
+      )
+    } catch {
+      // ignore storage failures
+    }
+  }, [checkoutDeliveryAddress, hasManuallySelectedDeliveryAddress])
+
   // Get restaurant ID from cart or restaurant data
   // Priority: restaurantData > cart[0].restaurantId
   // DO NOT use cart[0].restaurant as slug fallback - it creates wrong slugs
@@ -603,7 +668,7 @@ export default function Cart() {
   // Calculate pricing from backend whenever cart, address, or coupon changes
   useEffect(() => {
     const calculatePricing = async () => {
-      if (cart.length === 0 || !defaultAddress) {
+      if (cart.length === 0 || !checkoutDeliveryAddress) {
         pricingAbortRef.current?.abort?.()
         setPricing(null)
         return
@@ -630,7 +695,7 @@ export default function Cart() {
         const response = await orderAPI.calculateOrder({
           items,
           restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
-          deliveryAddress: defaultAddress,
+          deliveryAddress: checkoutDeliveryAddress,
           couponCode: appliedCoupon?.code || couponCode || null,
           deliveryFleet: deliveryFleet || 'standard'
         }, { signal: controller.signal })
@@ -664,7 +729,7 @@ export default function Cart() {
     return () => {
       pricingAbortRef.current?.abort?.()
     }
-  }, [cart, defaultAddress, appliedCoupon, couponCode, deliveryFleet, restaurantId, restaurantData])
+  }, [cart, checkoutDeliveryAddress, appliedCoupon, couponCode, deliveryFleet, restaurantId, restaurantData])
 
   // Fetch wallet balance
   useEffect(() => {
@@ -926,48 +991,19 @@ export default function Cart() {
         return
       }
 
-      // Get coordinates from address location
-      const coordinates = address.location?.coordinates || []
-      const longitude = coordinates[0]
-      const latitude = coordinates[1]
+      // Checkout-only: selecting an address should NOT update global (Home page) location.
+      // Just update the address used for pricing + order payload on this page.
+      const formattedAddress = address.additionalDetails
+        ? `${address.additionalDetails}, ${address.street}, ${address.city}, ${address.state}${address.zipCode ? ` ${address.zipCode}` : ''}`
+        : `${address.street}, ${address.city}, ${address.state}${address.zipCode ? ` ${address.zipCode}` : ''}`
 
-      if (!latitude || !longitude) {
-        toast.error(`Invalid coordinates for ${label} address`)
-        return
-      }
-
-      // Update location in backend
-      await userAPI.updateLocation({
-        latitude,
-        longitude,
-        address: `${address.street}, ${address.city}`,
-        city: address.city,
-        state: address.state,
-        area: address.additionalDetails || "",
-        formattedAddress: address.additionalDetails
-          ? `${address.additionalDetails}, ${address.street}, ${address.city}, ${address.state}${address.zipCode ? ` ${address.zipCode}` : ''}`
-          : `${address.street}, ${address.city}, ${address.state}${address.zipCode ? ` ${address.zipCode}` : ''}`
+      setCheckoutDeliveryAddress({
+        ...address,
+        formattedAddress,
+        address: address.address || formattedAddress,
       })
-
-      // Update the location in localStorage
-      const locationData = {
-        city: address.city,
-        state: address.state,
-        address: `${address.street}, ${address.city}`,
-        area: address.additionalDetails || "",
-        zipCode: address.zipCode,
-        latitude,
-        longitude,
-        formattedAddress: address.additionalDetails
-          ? `${address.additionalDetails}, ${address.street}, ${address.city}, ${address.state}${address.zipCode ? ` ${address.zipCode}` : ''}`
-          : `${address.street}, ${address.city}, ${address.state}${address.zipCode ? ` ${address.zipCode}` : ''}`
-      }
-      localStorage.setItem("userLocation", JSON.stringify(locationData))
-
-      toast.success(`${label} address selected!`)
-
-      // Force page reload to update location
-      window.location.reload()
+      setHasManuallySelectedDeliveryAddress(true)
+      toast.success(`${label} selected for this order`)
     } catch (error) {
       toast.error(`Failed to select ${label} address. Please try again.`)
     }
@@ -980,7 +1016,7 @@ export default function Cart() {
       setShowCoupons(false)
 
       // Recalculate pricing with new coupon
-      if (cart.length > 0 && defaultAddress) {
+      if (cart.length > 0 && checkoutDeliveryAddress) {
         try {
           const items = cart.map(item => ({
             itemId: item.productId || item.id,
@@ -997,7 +1033,7 @@ export default function Cart() {
           const response = await orderAPI.calculateOrder({
             items,
             restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
-            deliveryAddress: defaultAddress,
+            deliveryAddress: checkoutDeliveryAddress,
             couponCode: coupon.code,
             deliveryFleet: deliveryFleet || 'standard'
           })
@@ -1018,7 +1054,7 @@ export default function Cart() {
     setCouponCode("")
 
     // Recalculate pricing without coupon
-    if (cart.length > 0 && defaultAddress) {
+    if (cart.length > 0 && checkoutDeliveryAddress) {
       try {
         const items = cart.map(item => ({
           itemId: item.id,
@@ -1033,7 +1069,7 @@ export default function Cart() {
         const response = await orderAPI.calculateOrder({
           items,
           restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
-          deliveryAddress: defaultAddress,
+          deliveryAddress: checkoutDeliveryAddress,
           couponCode: null,
           deliveryFleet: deliveryFleet || 'standard'
         })
@@ -1049,7 +1085,7 @@ export default function Cart() {
 
 
   const handlePlaceOrder = async () => {
-    if (!defaultAddress) {
+    if (!checkoutDeliveryAddress) {
       alert("Please add a delivery address")
       return
     }
@@ -1271,7 +1307,7 @@ export default function Cart() {
 
       const orderPayload = {
         items: orderItems,
-        address: defaultAddress,
+        address: checkoutDeliveryAddress,
         restaurantId: finalRestaurantId,
         restaurantName: finalRestaurantName,
         pricing: orderPricing,
@@ -1763,7 +1799,7 @@ export default function Cart() {
                 <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">{restaurantName}</p>
                 <p className="text-sm md:text-base font-medium text-gray-800 dark:text-white truncate">
                   {restaurantData?.estimatedDeliveryTime || "10-15 mins"} to <span className="font-semibold">Location</span>
-                  <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs md:text-sm">{defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || defaultAddress?.city || "Select address") : "Select address"}</span>
+                  <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs md:text-sm">{checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || checkoutDeliveryAddress?.formattedAddress || checkoutDeliveryAddress?.address || checkoutDeliveryAddress?.city || "Select address") : "Select address"}</span>
                 </p>
               </div>
             </div>
@@ -2091,12 +2127,13 @@ export default function Cart() {
                         Delivery at <span className="font-semibold">Location</span>
                       </p>
                       <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                        {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Add delivery address") : "Add delivery address"}
+                        {checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || checkoutDeliveryAddress?.formattedAddress || checkoutDeliveryAddress?.address || "Add delivery address") : "Add delivery address"}
                       </p>
                       {/* Address Selection Buttons */}
                       <div className="flex gap-2 mt-2">
                         {["Home", "Office", "Other"].map((label) => {
                           const addressExists = addresses.some(addr => addr.label === label)
+                          const isSelected = String(checkoutDeliveryAddress?.label || "").toLowerCase() === String(label).toLowerCase()
                           return (
                             <button
                               key={label}
@@ -2106,10 +2143,13 @@ export default function Cart() {
                                 handleSelectAddressByLabel(label)
                               }}
                               disabled={!addressExists}
-                              className={`text-xs md:text-sm px-2 md:px-3 py-1 md:py-1.5 rounded-md border transition-colors ${addressExists
-                                ? 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 bg-white dark:bg-[#1a1a1a]'
-                                : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50'
-                                }`}
+                              className={`text-xs md:text-sm px-2 md:px-3 py-1 md:py-1.5 rounded-md border transition-colors ${
+                                !addressExists
+                                  ? 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50'
+                                  : isSelected
+                                    ? 'border-green-600 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 bg-white dark:bg-[#1a1a1a]'
+                              }`}
                             >
                               {label}
                             </button>
@@ -2165,8 +2205,15 @@ export default function Cart() {
                           type="tel"
                           inputMode="numeric"
                           value={contactPhone}
-                          onChange={(e) => setContactPhone(e.target.value)}
+                          onChange={(e) => {
+                            // Keep only digits and enforce 10-digit Indian mobile format.
+                            // If user pastes +91XXXXXXXXXX, take the LAST 10 digits.
+                            const digitsOnly = String(e.target.value || "").replace(/\D/g, "")
+                            const phone10 = digitsOnly.length > 10 ? digitsOnly.slice(-10) : digitsOnly
+                            setContactPhone(phone10)
+                          }}
                           placeholder="Enter mobile number"
+                          maxLength={10}
                           className="w-full text-sm md:text-base text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                         />
                         <div className="flex items-center gap-2">
@@ -2230,68 +2277,8 @@ export default function Cart() {
                 {/* Checkout-only: no profile linkage from this editor */}
               </div>
 
-              {/* Bill Details - extra margin for spacing between total bill and footer */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl mb-8 md:mb-12 pb-4 md:pb-6">
-                <button
-                  onClick={() => setShowBillDetails(!showBillDetails)}
-                  className="flex items-center justify-between w-full"
-                >
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <FileText className="h-4 w-4 md:h-5 md:w-5 text-gray-500 dark:text-gray-400" />
-                    <div className="text-left">
-                      <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-                        <span className="text-sm md:text-base text-gray-800 dark:text-gray-200">Total Bill</span>
-                        <span className="text-sm md:text-base text-gray-400 dark:text-gray-500 line-through">₹{totalBeforeAnyDiscount.toFixed(2)}</span>
-                        <span className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">₹{total.toFixed(2)}</span>
-                        {savings > 0 && (
-                          <span className="text-xs md:text-sm bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-1.5 md:px-2 py-0.5 rounded font-medium">You saved ₹{savings}</span>
-                        )}
-                      </div>
-                      <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Incl. taxes and charges</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 md:h-5 md:w-5 text-gray-400" />
-                </button>
-
-                {showBillDetails && (
-                  <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-dashed dark:border-gray-700 space-y-2 md:space-y-3">
-                    <div className="flex justify-between text-sm md:text-base">
-                      <span className="text-gray-600 dark:text-gray-400">Item Total</span>
-                      <span className="text-gray-800 dark:text-gray-200">₹{subtotal.toFixed(0)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm md:text-base">
-                      <span className="text-gray-600 dark:text-gray-400">Delivery Fee</span>
-                      <span className={deliveryFee === 0 ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-gray-200"}>
-                        {deliveryFee === 0 ? "FREE" : `₹${deliveryFee}`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm md:text-base">
-                      <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
-                      <span className="text-gray-800 dark:text-gray-200">₹{platformFee}</span>
-                    </div>
-                    <div className="flex justify-between text-sm md:text-base">
-                      <span className="text-gray-600 dark:text-gray-400">GST and Restaurant Charges</span>
-                      <span className="text-gray-800 dark:text-gray-200">₹{gstCharges}</span>
-                    </div>
-                    {baseDiscount > 0 && (
-                      <div className="flex justify-between text-sm md:text-base text-red-600 dark:text-red-400">
-                        <span>Coupon Discount</span>
-                      <span>-₹{baseDiscount}</span>
-                      </div>
-                    )}
-                    {categoryOfferDiscount > 0 && bestCategoryOffer && (
-                      <div className="flex justify-between text-sm md:text-base text-red-600 dark:text-red-400">
-                        <span>{bestCategoryOffer.name} Offer</span>
-                        <span>-₹{categoryOfferDiscount}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-sm md:text-base font-semibold pt-2 md:pt-3 border-t dark:border-gray-700">
-                      <span>To Pay</span>
-                      <span>₹{total.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Total Bill card removed (duplicate of Order Summary) */}
+              <div className="mb-8 md:mb-12" />
 
             </div>
 
@@ -2594,10 +2581,10 @@ export default function Cart() {
                 <div>
                   <p className="text-lg font-semibold text-gray-900">Delivering to Location</p>
                   <p className="text-sm text-gray-600 mt-1">
-                    {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Address") : "Add address"}
+                    {checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || checkoutDeliveryAddress?.formattedAddress || checkoutDeliveryAddress?.address || "Address") : "Add address"}
                   </p>
                   <p className="text-sm text-gray-500">
-                    {defaultAddress ? (formatFullAddress(defaultAddress) || "Address") : "Address"}
+                    {checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || "Address") : "Address"}
                   </p>
                 </div>
               </div>
@@ -2722,11 +2709,11 @@ export default function Cart() {
                   </svg>
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">
-                  {defaultAddress?.city || "Your Location"}
+                  {checkoutDeliveryAddress?.city || "Your Location"}
                 </h2>
               </div>
               <p className="text-gray-500 text-base">
-                {defaultAddress ? (formatFullAddress(defaultAddress) || defaultAddress?.formattedAddress || defaultAddress?.address || "Delivery Address") : "Delivery Address"}
+                {checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || checkoutDeliveryAddress?.formattedAddress || checkoutDeliveryAddress?.address || "Delivery Address") : "Delivery Address"}
               </p>
             </div>
 

@@ -49,6 +49,7 @@ const AdvertiseBanner = lazy(() => import("../pages/AdvertiseBanner"));
 const CustomerContactUs = lazy(() => import("../pages/CustomerContactUs"));
 const ContactMessages = lazy(() => import("../pages/ContactMessages"));
 const SafetyEmergencyReports = lazy(() => import("../pages/SafetyEmergencyReports"));
+const ImproveFeedback = lazy(() => import("../pages/ImproveFeedback"));
 const RestaurantTermsAndCondition = lazy(() =>
   import("../pages/help-support/RestaurantTermsAndCondition"),
 );
@@ -240,6 +241,7 @@ export default function AdminRouter() {
           <Route path="customer-contact-us" element={<CustomerContactUs />} />
           <Route path="contact-messages" element={<ContactMessages />} />
           <Route path="safety-emergency-reports" element={<SafetyEmergencyReports />} />
+          <Route path="improve-feedback" element={<ImproveFeedback />} />
           <Route path="restaurant-terms" element={<RestaurantTermsAndCondition />} />
           <Route path="restaurant-privacy" element={<RestaurantPrivacyPolicy />} />
 

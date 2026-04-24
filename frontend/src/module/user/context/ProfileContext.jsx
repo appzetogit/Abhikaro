@@ -355,7 +355,20 @@ export function ProfileProvider({ children }) {
 
   // User profile functions - memoized with useCallback
   const updateUserProfile = useCallback((updatedProfile) => {
-    setUserProfile((prev) => ({ ...prev, ...updatedProfile }))
+    setUserProfile((prev) => {
+      const next = { ...(prev || {}), ...(updatedProfile || {}) }
+
+      // Keep storage keys in sync so refresh doesn't revert to stale `user_user`
+      try {
+        const storage = sessionStorage.getItem("user_accessToken") ? sessionStorage : localStorage
+        storage.setItem("user_user", JSON.stringify(next))
+        storage.setItem("userProfile", JSON.stringify(next))
+      } catch (e) {
+        console.error("Error persisting user profile:", e)
+      }
+
+      return next
+    })
   }, [])
 
   // Clear profile data on logout

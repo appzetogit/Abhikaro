@@ -448,13 +448,13 @@ export default function MyBookings() {
     if (loading) return <Loader />
 
     return (
-        <AnimatedPage className="bg-slate-50 min-h-screen pb-10">
+        <AnimatedPage className="bg-slate-50 dark:bg-[#0a0a0a] min-h-screen pb-10">
             {/* Header */}
-            <div className="bg-white px-4 pt-8 pb-4 flex items-center shadow-sm sticky top-0 z-10">
+            <div className="bg-white dark:bg-[#1a1a1a] px-4 pt-8 pb-4 flex items-center shadow-sm sticky top-0 z-10 border-b border-transparent dark:border-gray-800">
                 <button onClick={() => navigate("/profile")}>
-                    <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
+                    <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-200 cursor-pointer" />
                 </button>
-                <h1 className="ml-4 text-xl font-semibold text-gray-800">My Table Bookings</h1>
+                <h1 className="ml-4 text-xl font-semibold text-gray-800 dark:text-white">My Table Bookings</h1>
             </div>
 
             <div className="p-4 space-y-4">
@@ -474,7 +474,7 @@ export default function MyBookings() {
                                 tabIndex={0}
                                 onClick={() => setDetailsBooking(booking)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailsBooking(booking); } }}
-                                className="w-full text-left bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col sm:flex-row sm:items-stretch gap-4 hover:border-slate-200 hover:shadow-md active:scale-[0.99] transition-all cursor-pointer"
+                                className="w-full text-left bg-white dark:bg-[#1a1a1a] rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-stretch gap-4 hover:border-slate-200 dark:hover:border-gray-700 hover:shadow-md active:scale-[0.99] transition-all cursor-pointer"
                             >
                                 <div className="flex flex-1 min-w-0 gap-4">
                                     <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden flex-shrink-0 bg-slate-100">
@@ -486,7 +486,7 @@ export default function MyBookings() {
                                     </div>
                                     <div className="flex-1 min-w-0 flex flex-col">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <h3 className="font-bold text-gray-900 break-words text-sm sm:text-base">{booking.restaurant?.name || 'Restaurant'}</h3>
+                                            <h3 className="font-bold text-gray-900 dark:text-white break-words text-sm sm:text-base">{booking.restaurant?.name || 'Restaurant'}</h3>
                                             <Badge className={`shrink-0 ${booking.status === 'confirmed' ? 'bg-[#FD0134]/15 text-[#FD0134]' :
                                                 booking.status === 'checked-in' ? 'bg-orange-100 text-orange-700' :
                                                     booking.status === 'completed' ? 'bg-blue-100 text-blue-700' :
@@ -502,21 +502,21 @@ export default function MyBookings() {
                                                 <span className="text-[10px] text-[#FD0134] font-medium shrink-0">Paid</span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-gray-500 flex items-start gap-1 mt-1 break-words line-clamp-2">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-start gap-1 mt-1 break-words line-clamp-2">
                                             <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5" />
                                             <span>{locationStr || '—'}</span>
                                         </p>
 
                                         <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-3">
-                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-600 bg-slate-100 px-2 py-0.5 rounded-lg">
+                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-600 dark:text-gray-300 bg-slate-100 dark:bg-gray-800 px-2 py-0.5 rounded-lg">
                                                 <Calendar className="w-3 h-3" />
                                                 {new Date(booking.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
                                             </span>
-                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-600 bg-slate-100 px-2 py-0.5 rounded-lg">
+                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-600 dark:text-gray-300 bg-slate-100 dark:bg-gray-800 px-2 py-0.5 rounded-lg">
                                                 <Clock className="w-3 h-3" />
                                                 {booking.timeSlot}
                                             </span>
-                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-600 bg-slate-100 px-2 py-0.5 rounded-lg">
+                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-600 dark:text-gray-300 bg-slate-100 dark:bg-gray-800 px-2 py-0.5 rounded-lg">
                                                 <Users className="w-3 h-3" />
                                                 {booking.guests} Guests
                                             </span>
@@ -571,7 +571,7 @@ export default function MyBookings() {
                                                     setCancelConfirmBooking(booking)
                                                 }}
                                                 disabled={cancellingBookingId === booking._id}
-                                                className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-red-200 text-red-600 hover:bg-red-50 text-sm font-bold rounded-xl shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                                className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-4 bg-white dark:bg-[#1a1a1a] border border-red-200 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-bold rounded-xl shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                             >
                                                 {cancellingBookingId === booking._id ? (
                                                     <>
@@ -594,11 +594,11 @@ export default function MyBookings() {
                     })
                 ) : (
                     <div className="text-center py-20">
-                        <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <div className="bg-slate-100 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Utensils className="w-8 h-8 text-slate-300" />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-800">No bookings yet</h3>
-                        <p className="text-gray-500 text-sm mt-2">Book your favorite restaurant for a great dining experience!</p>
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white">No bookings yet</h3>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm mt-2">Book your favorite restaurant for a great dining experience!</p>
                         <Link to="/dining">
                             <button className="mt-6 bg-red-500 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-red-200">
                                 Book a table

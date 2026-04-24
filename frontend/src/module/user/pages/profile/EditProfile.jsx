@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, X, Pencil, Loader2 } from "lucide-react"
+import { ArrowLeft, X, Pencil, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,10 +32,17 @@ const genderOptions = [
 // Load profile data from localStorage
 const loadProfileFromStorage = () => {
   try {
-    const stored = localStorage.getItem('user_profile')
-    if (stored) {
-      return JSON.parse(stored)
-    }
+    // Legacy key used by this screen
+    const legacy = localStorage.getItem('user_profile')
+    if (legacy) return JSON.parse(legacy)
+
+    // Modern keys used by ProfileContext (preferred on refresh)
+    const modern =
+      sessionStorage.getItem("user_user") ||
+      localStorage.getItem("user_user") ||
+      sessionStorage.getItem("userProfile") ||
+      localStorage.getItem("userProfile")
+    if (modern) return JSON.parse(modern)
   } catch (error) {
     console.error('Error loading profile from localStorage:', error)
   }
@@ -54,25 +61,27 @@ const saveProfileToStorage = (data) => {
 export default function EditProfile() {
   const navigate = useNavigate()
   const { userProfile, updateUserProfile } = useProfile()
+  const [isDarkMode, setIsDarkMode] = useState(false)
+
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    const el = document.documentElement
+    const update = () => setIsDarkMode(el.classList.contains("dark"))
+    update()
+    const obs = new MutationObserver(update)
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] })
+    return () => obs.disconnect()
+  }, [])
 
   // Load from localStorage or use context
   const storedProfile = loadProfileFromStorage()
-  const initialProfile = storedProfile || userProfile || {}
+  // Merge so context wins over stale legacy storage
+  const initialProfile = { ...(storedProfile || {}), ...(userProfile || {}) }
 
   const initialFormData = {
     name: initialProfile.name ?? "",
     mobile: initialProfile.mobile ?? initialProfile.phone ?? "",
     email: initialProfile.email ?? "",
-    dateOfBirth: initialProfile.dateOfBirth
-      ? (typeof initialProfile.dateOfBirth === 'string'
-        ? dayjs(initialProfile.dateOfBirth)
-        : dayjs(initialProfile.dateOfBirth))
-      : null,
-    anniversary: initialProfile.anniversary
-      ? (typeof initialProfile.anniversary === 'string'
-        ? dayjs(initialProfile.anniversary)
-        : dayjs(initialProfile.anniversary))
-      : null,
     gender: initialProfile.gender ?? "",
   }
 
@@ -88,21 +97,11 @@ export default function EditProfile() {
   // Update form data when profile changes
   useEffect(() => {
     const storedProfile = loadProfileFromStorage()
-    const profile = storedProfile || userProfile || {}
+    const profile = { ...(storedProfile || {}), ...(userProfile || {}) }
     const newFormData = {
       name: profile.name ?? "",
       mobile: profile.mobile ?? profile.phone ?? "",
       email: profile.email ?? "",
-      dateOfBirth: profile.dateOfBirth
-        ? (typeof profile.dateOfBirth === 'string'
-          ? dayjs(profile.dateOfBirth)
-          : dayjs(profile.dateOfBirth))
-        : null,
-      anniversary: profile.anniversary
-        ? (typeof profile.anniversary === 'string'
-          ? dayjs(profile.anniversary)
-          : dayjs(profile.anniversary))
-        : null,
       gender: profile.gender ?? "",
     }
     setFormData(newFormData)
@@ -136,76 +135,6 @@ export default function EditProfile() {
       ...prev,
       [field]: ""
     }))
-  }
-
-  // Handle camera capture with Flutter support
-  const handleCameraCapture = async () => {
-    try {
-      // Check if Flutter InAppWebView handler is available
-      if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === 'function') {
-        console.log('📸 Using Flutter InAppWebView camera handler')
-
-        // Call Flutter handler to open camera
-        const result = await window.flutter_inappwebview.callHandler('openCamera', {
-          source: 'camera', // 'camera' for camera, 'gallery' for file picker
-          accept: 'image/*',
-          multiple: false,
-          quality: 0.8 // Image quality (0.0 to 1.0)
-        })
-
-        console.log('📸 Flutter handler response:', result)
-
-        if (result && result.success) {
-          // Handle the result - could be base64, file path, or file object
-          let file = null
-
-          if (result.file) {
-            // If Flutter returns a File object (preferred method)
-            file = result.file
-            console.log('✅ Received File object from Flutter')
-          } else if (result.base64) {
-            // Convert base64 to File object
-            const base64Data = result.base64
-            const mimeType = result.mimeType || 'image/jpeg'
-            const fileName = result.fileName || 'camera-image.jpg'
-
-            // Convert base64 to blob
-            const byteCharacters = atob(base64Data.split(',')[1] || base64Data)
-            const byteNumbers = new Array(byteCharacters.length)
-            for (let i = 0; i < byteCharacters.length; i++) {
-              byteNumbers[i] = byteCharacters.charCodeAt(i)
-            }
-            const byteArray = new Uint8Array(byteNumbers)
-            const blob = new Blob([byteArray], { type: mimeType })
-            file = new File([blob], fileName, { type: mimeType })
-            console.log('✅ Converted base64 to File object')
-          }
-
-          if (file) {
-            await processImageFile(file)
-          } else {
-            console.error('❌ No file data in Flutter response:', result)
-            toast.error('Failed to get image from camera')
-          }
-        } else {
-          console.log('ℹ️ Camera cancelled by user or failed')
-        }
-      } else {
-        // Fallback to standard file input for web browsers
-        console.log('📸 Flutter handler not available, using standard file input')
-        if (fileInputRef.current) {
-          fileInputRef.current.click()
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error opening camera:', error)
-      toast.error('Failed to open camera. Please try again.')
-
-      // Fallback to standard file input
-      if (fileInputRef.current) {
-        fileInputRef.current.click()
-      }
-    }
   }
 
   // Process image file (extracted for reuse)
@@ -245,14 +174,64 @@ export default function EditProfile() {
         // Update context
         updateUserProfile({ profileImage: imageUrl })
 
+        // Persist for this screen's legacy storage key too (prevents refresh revert)
+        saveProfileToStorage({
+          ...(storedProfile || {}),
+          ...(userProfile || {}),
+          name: formData.name,
+          phone: formData.mobile,
+          email: formData.email,
+          gender: formData.gender,
+          profileImage: imageUrl,
+        })
+
         // Dispatch event to refresh profile
         window.dispatchEvent(new Event("userAuthChanged"))
       }
     } catch (error) {
       console.error('Error uploading image:', error)
-      toast.error(error?.response?.data?.message || 'Failed to upload image')
+      const msg =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        'Failed to upload image'
+      toast.error(msg)
       // Revert preview
       setImagePreview(profileImage)
+    } finally {
+      setIsUploadingImage(false)
+    }
+  }
+
+  const handleRemoveProfilePhoto = async () => {
+    try {
+      setIsUploadingImage(true)
+      // Clear on backend (if supported) + update local state
+      const response = await userAPI.updateProfile({ profileImage: null })
+      const updatedUser = response?.data?.data?.user || response?.data?.user || null
+      const cleared = {
+        ...(updatedUser || {}),
+        profileImage: "",
+      }
+      setProfileImage("")
+      setImagePreview("")
+      updateUserProfile(cleared)
+      saveProfileToStorage({
+        name: cleared.name ?? formData.name,
+        phone: cleared.phone ?? formData.mobile,
+        email: cleared.email ?? formData.email,
+        profileImage: "",
+        gender: cleared.gender ?? formData.gender,
+      })
+      window.dispatchEvent(new Event("userAuthChanged"))
+      toast.success("Profile photo removed")
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        e?.message ||
+        "Failed to remove profile photo"
+      toast.error(msg)
     } finally {
       setIsUploadingImage(false)
     }
@@ -262,6 +241,12 @@ export default function EditProfile() {
     const file = e.target.files?.[0]
     if (!file) return
     await processImageFile(file)
+    // Allow re-uploading the same file again (camera often returns same filename)
+    try {
+      e.target.value = ""
+    } catch {
+      // ignore
+    }
   }
 
   const handleUpdate = async () => {
@@ -275,10 +260,9 @@ export default function EditProfile() {
         name: formData.name,
         email: formData.email || undefined,
         phone: formData.mobile || undefined,
-        dateOfBirth: formData.dateOfBirth ? formData.dateOfBirth.format('YYYY-MM-DD') : undefined,
-        anniversary: formData.anniversary ? formData.anniversary.format('YYYY-MM-DD') : undefined,
         gender: formData.gender || undefined,
-        profileImage: profileImage || undefined, // Include profileImage in update
+        // Include profileImage in update; allow explicit clearing by sending null.
+        profileImage: profileImage === "" ? null : (profileImage || undefined),
       }
 
       // Call API to update profile
@@ -299,8 +283,6 @@ export default function EditProfile() {
           phone: updatedUser.phone || formData.mobile,
           email: updatedUser.email || formData.email,
           profileImage: updatedUser.profileImage || profileImage,
-          dateOfBirth: updatedUser.dateOfBirth || formData.dateOfBirth?.format('YYYY-MM-DD'),
-          anniversary: updatedUser.anniversary || formData.anniversary?.format('YYYY-MM-DD'),
           gender: updatedUser.gender || formData.gender,
         })
 
@@ -364,22 +346,14 @@ export default function EditProfile() {
             {/* Edit Icon - with camera/gallery options */}
             <div className="absolute bottom-0 right-0 flex gap-2">
               <button
-                onClick={handleCameraCapture}
-                disabled={isUploadingImage}
-                className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Take photo"
-              >
-                {isUploadingImage ? (
-                  <Loader2 className="h-4 w-4 text-white animate-spin" />
-                ) : (
-                  <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                )}
-              </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  try {
+                    if (fileInputRef.current) fileInputRef.current.value = ""
+                  } catch {
+                    // ignore
+                  }
+                  fileInputRef.current?.click()
+                }}
                 disabled={isUploadingImage}
                 className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Choose from gallery"
@@ -389,6 +363,15 @@ export default function EditProfile() {
                 ) : (
                   <Pencil className="h-4 w-4 text-white" />
                 )}
+              </button>
+              <button
+                type="button"
+                onClick={handleRemoveProfilePhoto}
+                disabled={isUploadingImage || !imagePreview}
+                className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${imagePreview ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-400'}`}
+                title="Remove photo"
+              >
+                <Trash2 className="h-4 w-4 text-white" />
               </button>
             </div>
             <input
@@ -470,82 +453,6 @@ export default function EditProfile() {
                   Email address cannot be changed
                 </p>
               )}
-            </div>
-
-            {/* Date of Birth Field */}
-            <div className="space-y-1.5">
-              <Label htmlFor="dateOfBirth" className="text-sm font-medium text-gray-700 dark:text-white">
-                Date of birth
-              </Label>
-              <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <DatePicker
-                  value={formData.dateOfBirth}
-                  onChange={(newValue) => handleChange('dateOfBirth', newValue)}
-                  slotProps={{
-                    textField: {
-                      className: "w-full",
-                      sx: {
-                        '& .MuiOutlinedInput-root': {
-                          height: '48px',
-                          borderRadius: '8px',
-                          '& fieldset': {
-                            borderColor: '#d1d5db',
-                          },
-                          '&:hover fieldset': {
-                            borderColor: '#9ca3af',
-                          },
-                          '&.Mui-focused fieldset': {
-                            borderColor: '#16a34a',
-                            borderWidth: '1px',
-                          },
-                        },
-                        '& .MuiInputBase-input': {
-                          padding: '12px 14px',
-                          fontSize: '16px',
-                        },
-                      },
-                    },
-                  }}
-                />
-              </LocalizationProvider>
-            </div>
-
-            {/* Anniversary Field */}
-            <div className="space-y-1.5">
-              <Label htmlFor="anniversary" className="text-sm font-medium text-gray-700 dark:text-white">
-                Anniversary <span className="text-gray-400 dark:text-gray-500 font-normal">(Optional)</span>
-              </Label>
-              <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <DatePicker
-                  value={formData.anniversary}
-                  onChange={(newValue) => handleChange('anniversary', newValue)}
-                  slotProps={{
-                    textField: {
-                      className: "w-full",
-                      sx: {
-                        '& .MuiOutlinedInput-root': {
-                          height: '48px',
-                          borderRadius: '8px',
-                          '& fieldset': {
-                            borderColor: '#d1d5db',
-                          },
-                          '&:hover fieldset': {
-                            borderColor: '#9ca3af',
-                          },
-                          '&.Mui-focused fieldset': {
-                            borderColor: '#16a34a',
-                            borderWidth: '1px',
-                          },
-                        },
-                        '& .MuiInputBase-input': {
-                          padding: '12px 14px',
-                          fontSize: '16px',
-                        },
-                      },
-                    },
-                  }}
-                />
-              </LocalizationProvider>
             </div>
 
             {/* Gender Field */}

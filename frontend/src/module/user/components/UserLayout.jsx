@@ -12,6 +12,9 @@ import DesktopNavbar from "./DesktopNavbar"
 import ReplaceCartDialog from "./ReplaceCartDialog"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 import { useSharedLocation } from "@/lib/context/LocationContext"
+import io from "socket.io-client"
+import { API_BASE_URL } from "@/lib/api/config"
+import { toast } from "sonner"
 
 // Create SearchOverlay context with default value
 const SearchOverlayContext = createContext({
@@ -120,6 +123,97 @@ export default function UserLayout() {
   const navigate = useNavigate()
   const { requestLocation, refreshZone } = useSharedLocation()
   const MANUAL_OVERRIDE_STORAGE_KEY = "userLocation_manualOverride"
+
+  // Background chat notifications (delivery <-> user)
+  useEffect(() => {
+    // Only run on client
+    if (typeof window === "undefined") return
+
+    const socketUrl = API_BASE_URL.replace("/api", "")
+    const getUserIdFromStorage = () => {
+      const directId = localStorage.getItem("user_id") || localStorage.getItem("userId")
+      if (directId) return directId.toString()
+
+      const userUserStr = localStorage.getItem("user_user")
+      if (userUserStr) {
+        try {
+          const userUser = JSON.parse(userUserStr)
+          const id = userUser?._id || userUser?.id
+          if (id) return id.toString()
+        } catch {
+          // ignore
+        }
+      }
+
+      const userProfileStr = localStorage.getItem("userProfile")
+      if (userProfileStr) {
+        try {
+          const userProfile = JSON.parse(userProfileStr)
+          const id = userProfile?._id || userProfile?.id
+          if (id) return id.toString()
+        } catch {
+          // ignore
+        }
+      }
+      return null
+    }
+
+    const userId = getUserIdFromStorage()
+    if (!userId) return
+
+    const socket = io(socketUrl, {
+      path: "/socket.io/",
+      transports: ["polling"],
+      upgrade: false,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: Infinity,
+    })
+
+    socket.on("connect", () => {
+      socket.emit("join-user", userId)
+    })
+
+    socket.on("new-message", (data) => {
+      const msg = data?.message
+      if (!msg) return
+
+      // Only notify user when THEY are the receiver
+      const receiverMatches =
+        msg?.receiverType === "user" && String(msg?.receiverId || "") === String(userId || "")
+      if (!receiverMatches) return
+
+      // If already inside this order chat, don't toast.
+      const orderIdForRoute = (data?.orderIdString || data?.orderId || msg?.orderId || "").toString()
+      const isOnChatRoute =
+        typeof location?.pathname === "string" &&
+        location.pathname.includes("/orders/") &&
+        location.pathname.includes("/chat") &&
+        location.pathname.includes(orderIdForRoute)
+      if (isOnChatRoute) return
+
+      const snippet = String(msg?.message || "").trim()
+      toast("New message from delivery partner", {
+        description: snippet ? (snippet.length > 80 ? `${snippet.slice(0, 80)}…` : snippet) : undefined,
+        action: orderIdForRoute
+          ? {
+              label: "Open chat",
+              onClick: () => navigate(`/user/orders/${orderIdForRoute}/chat`),
+            }
+          : undefined,
+      })
+    })
+
+    return () => {
+      try {
+        socket.disconnect()
+      } catch {
+        // ignore
+      }
+    }
+    // We intentionally do NOT re-init on location changes; socket stays stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Handle foreground push notifications
   useForegroundNotifications({

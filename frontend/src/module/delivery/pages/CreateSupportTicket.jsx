@@ -188,11 +188,11 @@ export default function CreateSupportTicket() {
           </div>
 
           {/* Description Field */}
-          <div className="rounded-lg border border-gray-200 bg-white p-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2 px-1">
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Description <span className="text-red-500">*</span>
             </label>
-            <p className="text-xs text-gray-600 mb-2 px-1">
+            <p className="text-xs text-gray-600 mb-2">
               Describe your issue in detail (minimum 10 characters)
             </p>
             <Textarea
@@ -202,7 +202,7 @@ export default function CreateSupportTicket() {
               placeholder="Describe your issue in detail (minimum 10 characters)"
               rows={8}
               maxLength={2000}
-              className={`w-full resize-none border-2 border-gray-300 bg-white px-3 py-3 text-gray-900 shadow-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/30 ${errors.description ? "border-red-500" : ""}`}
+              className={`w-full resize-none rounded-lg border border-gray-300 bg-white px-4 py-4 text-gray-900 shadow-sm outline-none placeholder:text-gray-400 focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/30 ${errors.description ? "border-red-500" : ""}`}
               autoFocus
             />
             {errors.description && (
