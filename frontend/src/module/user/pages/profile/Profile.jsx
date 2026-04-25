@@ -337,8 +337,8 @@ export default function Profile() {
           </CardContent>
         </Card>
 
-        {/* Money and Coupons - Side by Side */}
-        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-5 mt-4 mb-4">
+        {/* Money */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-5 mt-4 mb-4">
           <Link to="/user/wallet" className="h-full">
             <motion.div
               whileHover={{ y: -4, scale: 1.02 }}
@@ -356,28 +356,6 @@ export default function Profile() {
                   <div className="flex-1 min-w-0 flex flex-col">
                     <span className="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">{companyName} Money</span>
                     <span className="text-base font-semibold text-green-600 dark:text-green-400">₹{userProfile?.wallet?.balance?.toFixed(0) || '0'}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </Link>
-
-          <Link to="/user/profile/coupons" className="h-full">
-            <motion.div
-              whileHover={{ y: -4, scale: 1.02 }}
-              transition={{ duration: 0.2, type: "spring", stiffness: 300 }}
-            >
-              <Card className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer h-full">
-                <CardContent className="p-4 h-full flex items-center gap-3">
-                  <motion.div
-                    className="bg-gray-100 dark:bg-gray-800 rounded-full p-2 flex-shrink-0"
-                    whileHover={{ rotate: 360, scale: 1.1 }}
-                    transition={{ duration: 0.5 }}
-                  >
-                    <Tag className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-                  </motion.div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">Your coupons</p>
                   </div>
                 </CardContent>
               </Card>

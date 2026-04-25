@@ -2626,6 +2626,13 @@ export const diningAPI = {
     );
   },
 
+  // Get dining reviews by restaurant slug
+  getRestaurantReviewsBySlug: (slug) => {
+    return apiClient.get(
+      API_ENDPOINTS.DINING.RESTAURANT_REVIEWS_BY_SLUG.replace(":slug", slug),
+    );
+  },
+
   // Get dining categories
   getCategories: () => {
     return apiClient.get(API_ENDPOINTS.DINING.CATEGORIES);

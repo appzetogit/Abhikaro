@@ -2,6 +2,7 @@ import express from "express";
 import {
   getRestaurants,
   getRestaurantBySlug,
+  getDiningReviewsByRestaurantSlug,
   getDiningOffersBySlug,
   getCategories,
   getLimelight,
@@ -26,6 +27,7 @@ const router = express.Router();
 
 router.get("/restaurants", getRestaurants);
 router.get("/restaurants/:slug/offers", getDiningOffersBySlug);
+router.get("/restaurants/:slug/reviews", getDiningReviewsByRestaurantSlug);
 router.get("/restaurants/:slug", getRestaurantBySlug);
 router.get("/categories", getCategories);
 router.get("/limelight", getLimelight);

@@ -201,7 +201,11 @@ class EmailService {
   async sendBookingConfirmation(email, booking) {
     const { templates } = await import("./emailTemplates.js");
     const companyName = await this.getCompanyName();
-    const restaurantName = booking.restaurant.name || "Restaurant";
+    const restaurantName =
+      booking?.restaurant?.onboarding?.step1?.restaurantName ||
+      booking?.restaurant?.name ||
+      booking?.restaurant?.restaurantId ||
+      "Restaurant";
 
     // Format date nicely
     const date = new Date(booking.date).toLocaleDateString("en-US", {

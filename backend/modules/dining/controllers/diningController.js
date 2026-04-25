@@ -70,13 +70,14 @@ export const getRestaurantBySlug = async (req, res) => {
     const slugParam = req.params.slug;
     let actualRestaurant = null;
 
-    // 1. Try finding by slug in DiningRestaurant
-    actualRestaurant = await DiningRestaurant.findOne({ slug: slugParam });
+    // 1. Prefer Restaurant collection (authoritative, has diningConfig + rating/totalRatings)
+    actualRestaurant = await Restaurant.findOne({ slug: slugParam }).select(
+      "-password -refreshToken",
+    );
 
-    // 2. Try finding by slug in Restaurant
+    // 2. Fallback to legacy DiningRestaurant collection
     if (!actualRestaurant) {
-      actualRestaurant = await Restaurant.findOne({ slug: slugParam })
-        .select('-password -refreshToken');
+      actualRestaurant = await DiningRestaurant.findOne({ slug: slugParam });
     }
 
     // 3. Try finding by _id (if slugParam looks like a valid ObjectId)
@@ -301,7 +302,7 @@ export const createBooking = async (req, res) => {
 
     let populatedBooking = await TableBooking.findById(booking._id).populate(
       "restaurant",
-      "name location image",
+      "name restaurantId onboarding.step1.restaurantName location image",
     );
     let bookingObj = populatedBooking.toObject();
 
@@ -339,7 +340,10 @@ export const createBooking = async (req, res) => {
 export const getUserBookings = async (req, res) => {
   try {
     const bookings = await TableBooking.find({ user: req.user._id })
-      .populate("restaurant", "name location image")
+      .populate(
+        "restaurant",
+        "name restaurantId onboarding.step1.restaurantName profileImage menuImages location image",
+      )
       .sort({ createdAt: -1 });
 
     const processedBookings = await Promise.all(
@@ -525,6 +529,82 @@ export const createDiningReview = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to create review",
+      error: error.message,
+    });
+  }
+};
+
+export const getDiningReviewsByRestaurantSlug = async (req, res) => {
+  try {
+    const slugParam = req.params.slug;
+
+    // Find Restaurant doc (DiningReview references Restaurant)
+    let restaurant = await Restaurant.findOne({ slug: slugParam })
+      .select("_id slug name restaurantId onboarding.step1.restaurantName")
+      .lean();
+
+    // Try by _id if slugParam is an ObjectId
+    if (!restaurant && slugParam && String(slugParam).match(/^[0-9a-fA-F]{24}$/)) {
+      restaurant = await Restaurant.findById(slugParam)
+        .select("_id slug name restaurantId onboarding.step1.restaurantName")
+        .lean();
+    }
+
+    // Fallback: match by generated slug from name/onboarding name
+    if (!restaurant) {
+      const all = await Restaurant.find({ isActive: true, "diningSettings.isEnabled": true })
+        .select("_id slug name restaurantId onboarding.step1.restaurantName")
+        .lean();
+      const normalizedSlug = String(slugParam || "").toLowerCase();
+      restaurant = (all || []).find((r) => {
+        const name = r?.onboarding?.step1?.restaurantName || r?.name || "";
+        const generatedSlug = name.toLowerCase().replace(/\s+/g, "-");
+        return generatedSlug === normalizedSlug || r?.slug === slugParam;
+      });
+    }
+
+    if (!restaurant?._id) {
+      return res.status(404).json({ success: false, message: "Restaurant not found" });
+    }
+
+    const reviews = await DiningReview.find({ restaurant: restaurant._id })
+      .populate("user", "name fullName")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const count = reviews.length;
+    const avg =
+      count > 0
+        ? reviews.reduce((sum, r) => sum + (Number(r?.rating) || 0), 0) / count
+        : 0;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        restaurant: {
+          id: restaurant._id.toString(),
+          slug: restaurant.slug,
+          name: restaurant.onboarding?.step1?.restaurantName || restaurant.name || restaurant.restaurantId || "Restaurant",
+        },
+        summary: {
+          count,
+          averageRating: count > 0 ? Number(avg.toFixed(1)) : 0,
+        },
+        reviews: reviews.map((r) => ({
+          id: r._id.toString(),
+          rating: r.rating,
+          comment: r.comment,
+          createdAt: r.createdAt,
+          user: {
+            name: r?.user?.fullName || r?.user?.name || "Guest",
+          },
+        })),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch reviews",
       error: error.message,
     });
   }

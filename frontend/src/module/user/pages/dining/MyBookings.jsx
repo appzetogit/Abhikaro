@@ -11,6 +11,30 @@ import { motion, AnimatePresence } from "framer-motion"
 import { initRazorpayPayment } from "@/lib/utils/razorpay"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
 
+const getRestaurantName = (restaurant) => {
+    return (
+        restaurant?.onboarding?.step1?.restaurantName ||
+        restaurant?.name ||
+        "Restaurant"
+    )
+}
+
+const getRestaurantImageUrl = (restaurant) => {
+    const menuImages = Array.isArray(restaurant?.menuImages) ? restaurant.menuImages : []
+    const firstMenuImage = menuImages[0]
+    const menuUrl =
+        typeof firstMenuImage === "string"
+            ? firstMenuImage
+            : firstMenuImage?.url
+
+    const profileUrl =
+        typeof restaurant?.profileImage === "string"
+            ? restaurant.profileImage
+            : restaurant?.profileImage?.url
+
+    return restaurant?.image || profileUrl || menuUrl || null
+}
+
 function BookingDetailsModal({ booking, onClose, onBookingUpdate }) {
     const [shared, setShared] = useState(false)
     const [couponCode, setCouponCode] = useState("")
@@ -23,10 +47,11 @@ function BookingDetailsModal({ booking, onClose, onBookingUpdate }) {
         ? booking.restaurant.location
         : (booking?.restaurant?.location?.formattedAddress || booking?.restaurant?.location?.address ||
             `${booking?.restaurant?.location?.city || ''}${booking?.restaurant?.location?.area ? ', ' + booking?.restaurant?.location?.area : ''}`) || "—"
-    const img = booking?.restaurant?.image || booking?.restaurant?.profileImage?.url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=300&q=80"
+    const img = getRestaurantImageUrl(booking?.restaurant)
+    const restaurantName = getRestaurantName(booking?.restaurant)
 
     const handleShare = async () => {
-        const text = `Table booked at ${booking?.restaurant?.name} – ${formattedDate} at ${booking?.timeSlot}, ${booking?.guests} guests. ID: ${booking?.bookingId || booking?._id}`
+        const text = `Table booked at ${restaurantName} – ${formattedDate} at ${booking?.timeSlot}, ${booking?.guests} guests. ID: ${booking?.bookingId || booking?._id}`
         try {
             if (navigator.share) {
                 await navigator.share({ title: 'Booking details', text })
@@ -63,9 +88,19 @@ function BookingDetailsModal({ booking, onClose, onBookingUpdate }) {
 
                 <div className="p-4 space-y-4">
                     <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-                        <img src={img} alt="" className="w-16 h-16 rounded-xl object-cover bg-slate-100" />
+                        {img ? (
+                            <img
+                                src={img}
+                                alt={restaurantName}
+                                className="w-16 h-16 rounded-xl object-cover bg-slate-100"
+                            />
+                        ) : (
+                            <div className="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center">
+                                <Utensils className="w-7 h-7 text-slate-300" />
+                            </div>
+                        )}
                         <div className="min-w-0 flex-1">
-                            <p className="font-bold text-slate-900">{booking?.restaurant?.name || "Restaurant"}</p>
+                            <p className="font-bold text-slate-900">{restaurantName}</p>
                             <p className="text-sm text-slate-500 flex items-center gap-1 mt-0.5">
                                 <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
                                 <span className="truncate">{locationText}</span>
@@ -295,7 +330,7 @@ function ReviewModal({ booking, onClose, onSubmit }) {
 
                 <div className="p-6 space-y-6">
                     <div className="flex flex-col items-center">
-                        <p className="text-sm font-medium text-slate-500 mb-3">How was your visit to {booking.restaurant?.name}?</p>
+                        <p className="text-sm font-medium text-slate-500 mb-3">How was your visit to {getRestaurantName(booking.restaurant)}?</p>
                         <div className="flex gap-2">
                             {[1, 2, 3, 4, 5].map((star) => (
                                 <button
@@ -354,7 +389,7 @@ function CancelBookingConfirmModal({ booking, onClose, onConfirm, loading }) {
             >
                 <h3 className="text-lg font-bold text-slate-900">Cancel booking?</h3>
                 <p className="mt-2 text-sm text-slate-600">
-                    {booking?.restaurant?.name ? `You are cancelling booking at ${booking.restaurant.name}.` : "This action will cancel your booking."}
+                    {booking?.restaurant ? `You are cancelling booking at ${getRestaurantName(booking.restaurant)}.` : "This action will cancel your booking."}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">This action cannot be undone.</p>
 
@@ -463,6 +498,8 @@ export default function MyBookings() {
                         const locationStr = typeof booking.restaurant?.location === 'string'
                             ? booking.restaurant.location
                             : (booking.restaurant?.location?.formattedAddress || booking.restaurant?.location?.address || `${booking.restaurant?.location?.city || ''}${booking.restaurant?.location?.area ? ', ' + booking.restaurant.location.area : ''}`) || ''
+                        const restaurantName = getRestaurantName(booking.restaurant)
+                        const restaurantImg = getRestaurantImageUrl(booking.restaurant)
                         const showPayBill = booking.billStatus === "pending" && booking.paymentStatus !== "paid"
                         const canCancelBooking = ["pending", "confirmed"].includes(booking.status) &&
                             booking.paymentStatus !== "paid" &&
@@ -478,15 +515,21 @@ export default function MyBookings() {
                             >
                                 <div className="flex flex-1 min-w-0 gap-4">
                                     <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden flex-shrink-0 bg-slate-100">
-                                        <img
-                                            src={booking.restaurant?.image || booking.restaurant?.profileImage?.url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=200&q=80"}
-                                            className="w-full h-full object-cover"
-                                            alt={booking.restaurant?.name}
-                                        />
+                                        {restaurantImg ? (
+                                            <img
+                                                src={restaurantImg}
+                                                className="w-full h-full object-cover"
+                                                alt={restaurantName}
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center">
+                                                <Utensils className="w-8 h-8 text-slate-300" />
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex-1 min-w-0 flex flex-col">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <h3 className="font-bold text-gray-900 dark:text-white break-words text-sm sm:text-base">{booking.restaurant?.name || 'Restaurant'}</h3>
+                                            <h3 className="font-bold text-gray-900 dark:text-white break-words text-sm sm:text-base">{restaurantName}</h3>
                                             <Badge className={`shrink-0 ${booking.status === 'confirmed' ? 'bg-[#FD0134]/15 text-[#FD0134]' :
                                                 booking.status === 'checked-in' ? 'bg-orange-100 text-orange-700' :
                                                     booking.status === 'completed' ? 'bg-blue-100 text-blue-700' :

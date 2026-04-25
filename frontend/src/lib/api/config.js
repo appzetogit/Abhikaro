@@ -517,6 +517,7 @@ export const API_ENDPOINTS = {
     RESTAURANTS: "/dining/restaurants",
     RESTAURANT_BY_SLUG: "/dining/restaurants/:slug",
     RESTAURANT_OFFERS_BY_SLUG: "/dining/restaurants/:slug/offers",
+    RESTAURANT_REVIEWS_BY_SLUG: "/dining/restaurants/:slug/reviews",
     CATEGORIES: "/dining/categories",
     LIMELIGHT: "/dining/limelight",
     BANK_OFFERS: "/dining/bank-offers",

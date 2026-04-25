@@ -35,6 +35,9 @@ export default function DiningRestaurantDetails() {
     const [diningOffers, setDiningOffers] = useState([])
     const [diningMenu, setDiningMenu] = useState(null)
     const [menuLoading, setMenuLoading] = useState(false)
+    const [reviews, setReviews] = useState([])
+    const [reviewsSummary, setReviewsSummary] = useState({ count: 0, averageRating: 0 })
+    const [reviewsLoading, setReviewsLoading] = useState(false)
 
     // Share handler (Web Share API + clipboard fallback)
     const copyToClipboard = async (text) => {
@@ -172,6 +175,36 @@ export default function DiningRestaurantDetails() {
         fetchOffers()
     }, [slug])
 
+    // Fetch dining reviews for this restaurant
+    useEffect(() => {
+        if (!slug) return
+        const fetchReviews = async () => {
+            try {
+                setReviewsLoading(true)
+                const res = await diningAPI.getRestaurantReviewsBySlug(slug)
+                console.log("Dining reviews API response:", res?.data)
+                const payload = res?.data?.data || null
+                const list = Array.isArray(payload?.reviews) ? payload.reviews : []
+                setReviews(list)
+                setReviewsSummary({
+                    count: Number(payload?.summary?.count || list.length || 0),
+                    averageRating: Number(payload?.summary?.averageRating || 0),
+                })
+            } catch (e) {
+                console.error("Failed to load dining reviews:", e?.response?.data || e?.message || e)
+                // Helpful in dev: if backend route isn't restarted yet, this will reveal 404 quickly
+                if (e?.response?.status === 404) {
+                    toast.error("Reviews API not available (restart backend server)")
+                }
+                setReviews([])
+                setReviewsSummary({ count: 0, averageRating: 0 })
+            } finally {
+                setReviewsLoading(false)
+            }
+        }
+        fetchReviews()
+    }, [slug])
+
     // Fetch restaurant menu for Menu tab (with images)
     useEffect(() => {
         if (!restaurant) {
@@ -277,9 +310,15 @@ export default function DiningRestaurantDetails() {
     const displayOpening = dc?.basicDetails?.openingTime || restaurant.deliveryTimings?.openingTime || "12:00"
     const displayClosing = dc?.basicDetails?.closingTime || restaurant.deliveryTimings?.closingTime || "23:59"
     const formattedDistance = "2.4 km away" // Placeholder or calc
-    const rating = restaurant.rating ?? restaurant.avgRating ?? restaurant.averageRating ?? null
-    const ratingDisplay = rating != null && rating > 0 ? Number(rating).toFixed(1) : "—"
-    const reviewsCount = restaurant.totalRatings ?? restaurant.reviewCount ?? restaurant.reviewsCount ?? 0
+    const effectiveAvgRating =
+        reviewsSummary?.averageRating > 0
+            ? reviewsSummary.averageRating
+            : (restaurant.rating ?? restaurant.avgRating ?? restaurant.averageRating ?? 0)
+    const ratingDisplay = effectiveAvgRating != null && effectiveAvgRating > 0 ? Number(effectiveAvgRating).toFixed(1) : "—"
+    const reviewsCount =
+        (reviewsSummary?.count || 0) > 0
+            ? reviewsSummary.count
+            : (restaurant.totalRatings ?? restaurant.reviewCount ?? restaurant.reviewsCount ?? 0)
     const reviewsEnabled = dc?.pageControls?.reviewsEnabled !== false
     const shareEnabled = dc?.pageControls?.shareEnabled !== false
     const reviewsLabel = reviewsCount > 0 ? `${reviewsCount} Reviews` : "No reviews yet"
@@ -403,7 +442,7 @@ export default function DiningRestaurantDetails() {
                         {reviewsEnabled && (
                             <div className="flex flex-col items-center bg-[#2B9C64]/90 backdrop-blur-sm rounded-lg px-2 py-1">
                                 <div className="flex items-center gap-1 text-white font-bold text-lg leading-none">
-                                    {ratingDisplay} {rating != null && rating > 0 && <Star className="w-3 h-3 fill-current" />}
+                                    {ratingDisplay} {effectiveAvgRating != null && effectiveAvgRating > 0 && <Star className="w-3 h-3 fill-current" />}
                                 </div>
                                 <span className="text-[10px] text-white/90">{reviewsLabel}</span>
                             </div>
@@ -613,11 +652,47 @@ export default function DiningRestaurantDetails() {
 
                 {activeTab === "Reviews" && (
                     <div className="space-y-3">
-                        <p className="text-gray-600 text-sm">{reviewsLabel}. Customer reviews from diners will appear here after their visit.</p>
-                        {reviewsCount === 0 && (
+                        <p className="text-gray-600 text-sm">
+                            {reviewsLabel}. Customer reviews from diners will appear here after their visit.
+                        </p>
+
+                        {reviewsLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 animate-spin text-[#2B9C64]" />
+                                <span className="ml-2 text-gray-600">Loading reviews...</span>
+                            </div>
+                        ) : reviewsCount === 0 ? (
                             <div className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-center">
                                 <p className="text-gray-500 text-sm font-medium">No reviews yet</p>
                                 <p className="text-gray-400 text-xs mt-1">Be the first to share your experience after dining here.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {reviews.map((r) => (
+                                    <div key={r.id} className="bg-white border border-gray-100 rounded-xl p-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="text-sm font-semibold text-gray-900">
+                                                {r?.user?.name || "Guest"}
+                                            </div>
+                                            <div className="flex items-center gap-1 text-[#2B9C64] font-bold text-sm">
+                                                <span>{Number(r.rating || 0).toFixed(1)}</span>
+                                                <Star className="w-4 h-4 fill-current" />
+                                            </div>
+                                        </div>
+                                        {r?.comment && (
+                                            <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{r.comment}</p>
+                                        )}
+                                        {r?.createdAt && (
+                                            <p className="text-xs text-gray-400 mt-2">
+                                                {new Date(r.createdAt).toLocaleDateString("en-GB", {
+                                                    day: "2-digit",
+                                                    month: "short",
+                                                    year: "numeric",
+                                                })}
+                                            </p>
+                                        )}
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
