@@ -263,6 +263,19 @@ const orderSchema = new mongoose.Schema(
       paymentIntentId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "PaymentIntent"
+      },
+      // Razorpay refund details (for online payments)
+      refund: {
+        refundId: { type: String, default: null },
+        status: { type: String, default: null }, // e.g. 'processed'/'pending' from our side or Razorpay status
+        amountPaise: { type: Number, default: null },
+        amount: { type: Number, default: null }, // rupees
+        speedRequested: { type: String, default: null }, // e.g. 'optimum'
+        speedProcessed: { type: String, default: null }, // actual speed applied by Razorpay
+        razorpayStatus: { type: String, default: null }, // Razorpay refund status
+        createdAt: { type: Date, default: null },
+        processedAt: { type: Date, default: null },
+        message: { type: String, default: null },
       }
     },
     status: {

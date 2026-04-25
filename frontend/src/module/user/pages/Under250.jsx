@@ -49,6 +49,23 @@ export default function Under250() {
     { id: 'distance-low', label: 'Distance: Low to High' },
   ]
 
+  const isVegItem = (item) => {
+    if (!item) return true
+
+    if (Object.prototype.hasOwnProperty.call(item, "isVeg")) {
+      return item.isVeg !== false
+    }
+    if (typeof item.isVegetarian === "boolean") return item.isVegetarian
+    if (typeof item.veg === "boolean") return item.veg
+
+    const ftRaw = item.foodType ?? item.food_type ?? item.type ?? ""
+    const ft = String(ftRaw).trim().toLowerCase().replace(/[\s_-]/g, "")
+    if (ft === "veg" || ft === "vegetarian") return true
+    if (ft === "nonveg" || ft === "nonvegetarian") return false
+
+    return true
+  }
+
   const handleClearAll = () => {
     setSelectedSort(null)
   }
@@ -365,7 +382,7 @@ export default function Under250() {
       restaurantId,
       description: item.description || "",
       originalPrice: item.originalPrice || item.price,
-      isVeg: item.isVeg !== false,
+      isVeg: isVegItem(item),
       ...(variantOverride && {
         selectedVariantId: variantOverride.id,
         selectedVariantName: variantOverride.name,
@@ -440,6 +457,7 @@ export default function Under250() {
       description: item.description || `${item.name} from ${restaurantName}`,
       customisable: item.customisable || false,
       notEligibleForCoupons: item.notEligibleForCoupons || false,
+      isVeg: isVegItem(item),
     }
     setSelectedItem(itemWithRestaurant)
     setShowItemDetail(true)
@@ -636,6 +654,7 @@ export default function Under250() {
                 const quantity = hasVariantsCard
                   ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
                   : (quantities[item.id] || 0)
+                const isVeg = isVegItem(item)
                 const itemKey = `${item.restaurantId || "rest"}-${item.id}-${itemIndex}`
 
                 return (
@@ -650,7 +669,7 @@ export default function Under250() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        {item.isVeg !== false ? (
+                        {isVeg ? (
                           <div className="w-4 h-4 border-2 border-green-600 flex items-center justify-center rounded-sm flex-shrink-0">
                             <div className="w-2 h-2 bg-green-600 rounded-full" />
                           </div>
@@ -948,27 +967,6 @@ export default function Under250() {
                   priority={true}
                   placeholder="blur"
                 />
-                {/* Bookmark and Share Icons Overlay */}
-                <div className="absolute bottom-4 right-4 flex items-center gap-3">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleBookmarkClick(selectedItem.id)
-                    }}
-                    className={`h-10 w-10 rounded-full border flex items-center justify-center transition-all duration-300 ${bookmarkedItems.has(selectedItem.id)
-                      ? "border-red-500 bg-red-50 text-red-500"
-                      : "border-white bg-white/90 text-gray-600 hover:bg-white"
-                      }`}
-                  >
-                    <Bookmark
-                      className={`h-5 w-5 transition-all duration-300 ${bookmarkedItems.has(selectedItem.id) ? "fill-red-500" : ""
-                        }`}
-                    />
-                  </button>
-                  <button className="h-10 w-10 rounded-full border border-white bg-white/90 text-gray-600 hover:bg-white flex items-center justify-center transition-colors">
-                    <Share2 className="h-5 w-5" />
-                  </button>
-                </div>
               </div>
 
               {/* Content Section */}
@@ -976,35 +974,18 @@ export default function Under250() {
                 {/* Item Name and Indicator */}
                 <div className="flex items-start justify-between mb-3 md:mb-4 lg:mb-6">
                   <div className="flex items-center gap-2 md:gap-3 flex-1">
-                    {selectedItem.isVeg && (
-                      <div className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7 rounded border-2 border-amber-700 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center flex-shrink-0">
-                        <div className="h-2.5 w-2.5 md:h-3 md:w-3 lg:h-3.5 lg:w-3.5 rounded-full bg-amber-700 dark:bg-amber-500" />
+                    {isVegItem(selectedItem) ? (
+                      <div className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7 rounded border-2 border-green-600 bg-green-50 dark:bg-green-900/20 flex items-center justify-center flex-shrink-0">
+                        <div className="h-2.5 w-2.5 md:h-3 md:w-3 lg:h-3.5 lg:w-3.5 rounded-full bg-green-600" />
+                      </div>
+                    ) : (
+                      <div className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7 rounded border-2 border-orange-600 bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center flex-shrink-0">
+                        <div className="h-2.5 w-2.5 md:h-3 md:w-3 lg:h-3.5 lg:w-3.5 rounded-full bg-orange-600" />
                       </div>
                     )}
                     <h2 className="text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-900 dark:text-white">
                       {selectedItem.name}
                     </h2>
-                  </div>
-                  {/* Bookmark and Share Icons (Desktop) */}
-                  <div className="hidden md:flex items-center gap-2 lg:gap-3">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleBookmarkClick(selectedItem.id)
-                      }}
-                      className={`h-8 w-8 lg:h-10 lg:w-10 rounded-full border flex items-center justify-center transition-all duration-300 ${bookmarkedItems.has(selectedItem.id)
-                        ? "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400"
-                        : "border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-                        }`}
-                    >
-                      <Bookmark
-                        className={`h-4 w-4 lg:h-5 lg:w-5 transition-all duration-300 ${bookmarkedItems.has(selectedItem.id) ? "fill-red-500 dark:fill-red-400" : ""
-                          }`}
-                      />
-                    </button>
-                    <button className="h-8 w-8 lg:h-10 lg:w-10 rounded-full border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex items-center justify-center transition-colors">
-                      <Share2 className="h-4 w-4 lg:h-5 lg:w-5" />
-                    </button>
                   </div>
                 </div>
 

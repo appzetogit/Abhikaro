@@ -228,7 +228,18 @@ const verifyWebhookSignature = async (rawBody, headerSignature) => {
 
     const valid = generatedSignature === headerSignature;
     if (!valid) {
-      logger.warn('Invalid Razorpay webhook signature');
+      if ((process.env.NODE_ENV || '').toLowerCase() === 'test') {
+        const payloadSha256 = crypto.createHash('sha256').update(payload).digest('hex');
+        logger.warn('Invalid Razorpay webhook signature', {
+          headerSignature,
+          generatedSignature,
+          payloadLength: payload?.length || 0,
+          secretLength: secret?.length || 0,
+          payloadSha256
+        });
+      } else {
+        logger.warn('Invalid Razorpay webhook signature');
+      }
     }
     return valid;
   } catch (error) {
@@ -289,24 +300,49 @@ const capturePayment = async (paymentId, amount) => {
 /**
  * Create a refund
  * @param {String} paymentId - Razorpay payment ID
- * @param {Number} amount - Refund amount in paise (optional, full refund if not provided)
- * @param {String} notes - Refund notes
+ * @param {Number|Object} amountOrOptions - Refund amount in paise OR options object
+ * @param {Object} notesOrOptions - Refund notes OR options object (when amount is number)
+ * @param {Object} maybeOptions - Optional options { speed, receipt, notes }
  * @returns {Promise<Object>} Refund details
  */
-const createRefund = async (paymentId, amount = null, notes = {}) => {
+const createRefund = async (paymentId, amountOrOptions = null, notesOrOptions = {}, maybeOptions = {}) => {
   const razorpay = await getRazorpayInstance();
   if (!razorpay) {
     throw new Error('Razorpay is not initialized');
   }
 
   try {
-    const refundOptions = {
-      notes: notes
-    };
+    // Backward-compatible arg parsing:
+    // - createRefund(paymentId, amountPaise, notes, options)
+    // - createRefund(paymentId, { amount, speed, receipt, notes })
+    let amount = null;
+    let notes = {};
+    let options = {};
 
-    if (amount) {
-      refundOptions.amount = amount;
+    if (amountOrOptions && typeof amountOrOptions === 'object') {
+      options = amountOrOptions || {};
+      amount = typeof options.amount === 'number' ? options.amount : null;
+      notes = options.notes && typeof options.notes === 'object' ? options.notes : {};
+    } else {
+      amount = typeof amountOrOptions === 'number' ? amountOrOptions : null;
+      if (notesOrOptions && typeof notesOrOptions === 'object') {
+        // If 3rd arg looks like options (has speed/receipt), treat it as options
+        const looksLikeOptions = ('speed' in notesOrOptions) || ('receipt' in notesOrOptions) || ('notes' in notesOrOptions);
+        if (looksLikeOptions) {
+          options = notesOrOptions || {};
+          notes = options.notes && typeof options.notes === 'object' ? options.notes : {};
+        } else {
+          notes = notesOrOptions || {};
+          options = maybeOptions && typeof maybeOptions === 'object' ? maybeOptions : {};
+        }
+      }
     }
+
+    const refundOptions = {};
+    if (amount != null) refundOptions.amount = amount;
+    if (options?.speed) refundOptions.speed = options.speed;
+    if (options?.receipt) refundOptions.receipt = options.receipt;
+    refundOptions.notes = notes || {};
 
     const refund = await razorpay.payments.refund(paymentId, refundOptions);
     logger.info(`Refund created: ${refund.id}`, {

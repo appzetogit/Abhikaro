@@ -943,6 +943,26 @@ export default function RestaurantDetails() {
     return Math.max(0, item.price || 0);
   };
 
+  const isVegItem = (item) => {
+    if (!item) return true
+
+    // Prefer boolean flags when present (backend often sends these).
+    if (Object.prototype.hasOwnProperty.call(item, "isVeg")) {
+      return item.isVeg !== false
+    }
+    if (typeof item.isVegetarian === "boolean") return item.isVegetarian
+    if (typeof item.veg === "boolean") return item.veg
+
+    // Fallback to foodType string (various casing/spacing formats).
+    const ftRaw = item.foodType ?? item.food_type ?? item.type ?? ""
+    const ft = String(ftRaw).trim().toLowerCase().replace(/[\s_-]/g, "")
+    if (ft === "veg" || ft === "vegetarian") return true
+    if (ft === "nonveg" || ft === "nonvegetarian") return false
+
+    // Historical behavior in this screen: default to Veg unless explicitly non-veg.
+    return true
+  }
+
   const passesBaseFilters = (item) => {
     if (!item) return false
 
@@ -954,7 +974,7 @@ export default function RestaurantDetails() {
 
     // VegMode filter - when vegMode is ON, show only Veg items
     // When vegMode is false/null/undefined, show all items (Veg and Non-Veg)
-    if (vegMode === true && item.foodType !== "Veg") return false
+    if (vegMode === true && !isVegItem(item)) return false
 
     // Price range filter
     const finalPrice = getFinalPrice(item)
@@ -1565,7 +1585,7 @@ export default function RestaurantDetails() {
                         const quantity = hasVariants
                           ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
                           : (quantities[item.id] || 0)
-                        const isVeg = item.foodType === "Veg"
+                        const isVeg = isVegItem(item)
                         const categoryOfferPercent = getCategoryOfferForItem(item)
 
                         // Create unique key combining section ID and item ID/index
@@ -1818,7 +1838,7 @@ export default function RestaurantDetails() {
                                   const quantity = hasVariantsSub
                                     ? (item?.variations || []).reduce((sum, v) => sum + (quantities[getCartItemId(item.id, v.id)] || 0), 0)
                                     : (quantities[item.id] || 0)
-                                  const isVeg = item.foodType === "Veg"
+                                  const isVeg = isVegItem(item)
 
                                   // Create unique key combining section ID, subsection ID, item ID, and index
                                   const uniqueKey = `${section.id || section.name}-${subsection.id || subsection.name}-${item.id || itemIndex}-${itemIndex}`

@@ -1,13 +1,15 @@
 /* eslint-disable no-console */
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import request from 'supertest';
 
 async function run() {
 	console.log('⏳ Starting in-memory MongoDB (webhook test)...');
-	const mongod = await MongoMemoryServer.create();
-	const uri = mongod.getUri();
+	const replset = await MongoMemoryReplSet.create({
+		replSet: { count: 1, storageEngine: 'wiredTiger' }
+	});
+	const uri = replset.getUri();
 
 	// Minimal required env before importing the server
 	process.env.MONGODB_URI = uri;
@@ -71,15 +73,19 @@ async function run() {
 				order: { entity: { id: razorpayOrderId } }
 			}
 		};
-		const raw = Buffer.from(JSON.stringify(eventBody), 'utf8');
+		const bodyString = JSON.stringify(eventBody);
+		const raw = Buffer.from(bodyString, 'utf8');
 		const signature = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET).update(raw).digest('hex');
+		const rawSha = crypto.createHash('sha256').update(raw).digest('hex');
+		console.log('ℹ️ Test raw payload diagnostics:', { rawLength: raw.length, rawSha });
 
 		// POST to webhook endpoint with raw body and signature header
 		const res = await request(app)
 			.post('/api/payment/razorpay/webhook')
 			.set('x-razorpay-signature', signature)
 			.set('content-type', 'application/json')
-			.send(raw);
+			// NOTE: send the exact JSON string bytes Razorpay would send.
+			.send(bodyString);
 
 		if (res.status !== 200 || !res.body?.success) {
 			throw new Error(`Expected 200 success ack from webhook, got ${res.status} ${JSON.stringify(res.body)}`);
@@ -105,6 +111,8 @@ async function run() {
 		const { default: Restaurant } = await import('../../modules/restaurant/models/Restaurant.js');
 		const restaurantDoc = await Restaurant.create({
 			name: 'Webhook Test Restaurant',
+			ownerName: 'Owner Test',
+			email: 'webhook-restaurant@test.local',
 			onboarding: { step1: { restaurantName: 'Webhook Test Restaurant' } },
 			ownerPhone: '9000000000'
 		});
@@ -123,10 +131,11 @@ async function run() {
 
 		console.log('\n🎉 Razorpay webhook integration test passed.');
 		await mongoose.connection.close();
-		await mongod.stop();
+		await replset.stop();
 		process.exit(0);
 	} catch (err) {
 		console.error('\n❌ Razorpay webhook integration test failed.');
+		if (err) console.error(err);
 		try { await mongoose.connection.close(); } catch {}
 		try {
 			const conns = mongoose.connections || [];
@@ -134,6 +143,7 @@ async function run() {
 				if (c.readyState !== 0) await c.close();
 			}
 		} catch {}
+		try { await replset.stop(); } catch {}
 		process.exit(1);
 	}
 }

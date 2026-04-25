@@ -514,12 +514,36 @@ app.use((req, res, next) => {
 });
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// IMPORTANT: Razorpay webhook requires the raw request body for signature verification.
+// It MUST be registered BEFORE express.json()/urlencoded(), otherwise the body is consumed
+// and signature verification will fail intermittently (leading to "payment success but order missing").
+app.use('/api/payment/razorpay/webhook', express.raw({ type: '*/*' }));
+// Preserve the exact raw bytes for downstream handlers (some middleware may touch req.body).
+app.use('/api/payment/razorpay/webhook', (req, _res, next) => {
+  req.razorpayRawBody = req.body;
+  next();
+});
+// Also, we MUST SKIP the JSON/urlencoded parsers for this webhook route, otherwise they will
+// re-parse the raw Buffer and overwrite `req.body`, breaking signature verification.
+const jsonParser = express.json({ limit: '10mb' });
+const urlencodedParser = express.urlencoded({ extended: true, limit: '10mb' });
+app.use((req, res, next) => {
+  if (req.originalUrl?.startsWith('/api/payment/razorpay/webhook')) return next();
+  return jsonParser(req, res, next);
+});
+app.use((req, res, next) => {
+  if (req.originalUrl?.startsWith('/api/payment/razorpay/webhook')) return next();
+  return urlencodedParser(req, res, next);
+});
 app.use(cookieParser());
 
 // Data sanitization
-app.use(mongoSanitize());
+// Skip sanitization for Razorpay webhook because it mutates `req.body` and breaks signature verification.
+const mongoSanitizeMiddleware = mongoSanitize();
+app.use((req, res, next) => {
+  if (req.originalUrl?.startsWith('/api/payment/razorpay/webhook')) return next();
+  return mongoSanitizeMiddleware(req, res, next);
+});
 
 // Rate limiting - Hardened Redis-based rolling window (supports 5000+ users)
 // Role-based tiered limits with automatic fail-open if Redis is unavailable

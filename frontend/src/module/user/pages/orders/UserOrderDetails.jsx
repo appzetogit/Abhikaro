@@ -202,8 +202,19 @@ export default function UserOrderDetails() {
   }
 
   const settlement = order?.settlement || null
-  const refundStatus = settlement?.cancellationDetails?.refundStatus || order?.refundStatus || null
-  const refundAmount = settlement?.cancellationDetails?.refundAmount ?? order?.refundAmount ?? null
+  const refundStatus =
+    order?.payment?.refund?.status ||
+    settlement?.cancellationDetails?.refundStatus ||
+    order?.refundStatus ||
+    null
+
+  const refundAmount =
+    (typeof order?.payment?.refund?.amount === "number" ? order.payment.refund.amount : null) ??
+    settlement?.cancellationDetails?.refundAmount ??
+    order?.refundAmount ??
+    null
+
+  const refundMeta = order?.payment?.refund || null
   const isCancelled =
     order.status === "cancelled" ||
     order.status === "restaurant_cancelled"
@@ -217,6 +228,21 @@ export default function UserOrderDetails() {
     (refundStatus === "initiated" || refundStatus === "processed") &&
     typeof refundAmount === "number" &&
     refundAmount > 0
+
+  const refundTimelineText = (() => {
+    // Razorpay refunds are not guaranteed to be instant; show clear user guidance.
+    const speedRequested = refundMeta?.speedRequested || refundMeta?.speed_requested || null
+    const speedProcessed = refundMeta?.speedProcessed || refundMeta?.speed_processed || null
+
+    if (speedRequested && speedProcessed && speedRequested !== speedProcessed) {
+      return `Refund initiated (speed: ${speedProcessed || speedRequested}). Credit bank/UPI timeline pe depend karta hai.`
+    }
+    if (speedRequested || speedProcessed) {
+      return `Refund initiated (speed: ${speedProcessed || speedRequested}). Credit bank/UPI timeline pe depend karta hai.`
+    }
+    // Fallback (older orders where refund meta isn't present)
+    return "Refund initiated. Credit bank/UPI timeline pe depend karta hai (kabhi minutes, kabhi hours)."
+  })()
 
   const handleDownloadSummary = async () => {
     try {
@@ -394,7 +420,8 @@ export default function UserOrderDetails() {
               <p className="text-xs text-blue-600 font-medium mt-1">
                 ₹{Number(refundAmount).toFixed(2)}{" "}
                 {refundStatus === "processed" ? "Refunded" : "Refund initiated"} •
-                24 hours me account me settle ho jayega
+                {" "}
+                {refundTimelineText}
               </p>
             )}
           </div>

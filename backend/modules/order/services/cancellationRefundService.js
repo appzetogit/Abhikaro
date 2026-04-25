@@ -6,7 +6,7 @@ import RestaurantWallet from '../../restaurant/models/RestaurantWallet.js';
 import AdminWallet from '../../admin/models/AdminWallet.js';
 import AuditLog from '../../admin/models/AuditLog.js';
 import Payment from '../../payment/models/Payment.js';
-import { createRefund } from '../../payment/services/razorpayService.js';
+import { createRefund, fetchPayment } from '../../payment/services/razorpayService.js';
 
 /**
  * Determine cancellation stage based on order status
@@ -458,9 +458,27 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
       throw new Error('Settlement not found');
     }
 
-    // Check if refund already processed
-    if (settlement.cancellationDetails?.refundStatus === 'processed' || 
-        settlement.cancellationDetails?.refundStatus === 'initiated') {
+    // Idempotency guard: if refund already exists, return it (do NOT create duplicate)
+    const existingRefundId =
+      settlement.cancellationDetails?.razorpayRefundId ||
+      order.payment?.refund?.refundId ||
+      null;
+    if (existingRefundId) {
+      return {
+        success: true,
+        refundId: existingRefundId,
+        refundAmount: settlement.cancellationDetails?.refundAmount || order.pricing?.total || 0,
+        razorpayRefund: null,
+        message: `Refund already initiated for this order (Refund ID: ${existingRefundId}).`,
+        alreadyInitiated: true,
+      };
+    }
+
+    // Check if refund already processed/initiated by status (fallback)
+    if (
+      settlement.cancellationDetails?.refundStatus === 'processed' ||
+      settlement.cancellationDetails?.refundStatus === 'initiated'
+    ) {
       throw new Error('Refund already processed or initiated for this order');
     }
 
@@ -481,7 +499,21 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
     }
 
     // Convert refund amount to paise (Razorpay uses paise)
-    const refundAmountInPaise = Math.round(refundAmount * 100);
+    const refundAmountInPaise = Math.round(Number(refundAmount) * 100);
+    if (!Number.isFinite(refundAmountInPaise) || refundAmountInPaise <= 0) {
+      throw new Error('Invalid refund amount');
+    }
+
+    // Refund only allowed for captured payments
+    let paymentDetails = null;
+    try {
+      paymentDetails = await fetchPayment(order.payment.razorpayPaymentId);
+    } catch (e) {
+      throw new Error(`Unable to fetch Razorpay payment to verify capture: ${e?.message || e}`);
+    }
+    if (!paymentDetails || paymentDetails.status !== 'captured') {
+      throw new Error(`Refund allowed only for captured payments. Current payment status: ${paymentDetails?.status || 'unknown'}`);
+    }
 
     // Update refund status to 'initiated'
     settlement.cancellationDetails.refundStatus = 'initiated';
@@ -494,16 +526,19 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
     // Create Razorpay refund
     let razorpayRefund = null;
     try {
-      razorpayRefund = await createRefund(
-        order.payment.razorpayPaymentId,
-        refundAmountInPaise,
-        {
+      const receipt = `refund_${order.orderId || order._id.toString()}`;
+      razorpayRefund = await createRefund(order.payment.razorpayPaymentId, {
+        amount: refundAmountInPaise, // paise
+        speed: 'optimum',
+        receipt,
+        notes: {
           orderId: order.orderId,
-          reason: order.cancellationReason || 'Order cancelled by restaurant',
-          cancelledBy: 'restaurant',
-          adminId: adminId || 'system'
-        }
-      );
+          reason: order.cancellationReason || 'Order cancelled by user',
+          cancelledBy: order.cancelledBy || 'user',
+          adminId: adminId || 'system',
+          receipt,
+        },
+      });
 
       console.log(`✅ Razorpay refund initiated: ${razorpayRefund.id} for order ${order.orderId}`);
     } catch (razorpayError) {
@@ -513,6 +548,35 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
       await settlement.save();
 
       throw new Error(`Failed to create Razorpay refund: ${razorpayError.message}`);
+    }
+
+    // Persist refund details to Order (required by UI/support)
+    try {
+      const speedRequested = razorpayRefund?.speed_requested || 'optimum';
+      const speedProcessed = razorpayRefund?.speed_processed || null;
+      const razorpayStatus = razorpayRefund?.status || null;
+
+      const fallbackMessage =
+        speedProcessed && speedRequested && speedProcessed !== speedRequested
+          ? `Razorpay processed refund with '${speedProcessed}' speed (fallback).`
+          : null;
+
+      order.payment.refund = {
+        refundId: razorpayRefund.id,
+        status: 'initiated',
+        amountPaise: refundAmountInPaise,
+        amount: refundAmount,
+        speedRequested,
+        speedProcessed,
+        razorpayStatus,
+        createdAt: new Date(),
+        processedAt: null,
+        message: fallbackMessage,
+      };
+      await order.save();
+    } catch (e) {
+      // Non-blocking: refund is already created at gateway; persistence is best-effort.
+      console.warn('⚠️ Failed to persist refund details on Order (non-blocking):', e?.message || e);
     }
 
     // Add entry to user's wallet transaction history (without affecting wallet balance)
@@ -581,6 +645,9 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
 
     // Update settlement with Razorpay refund ID
     settlement.cancellationDetails.razorpayRefundId = razorpayRefund.id;
+    settlement.cancellationDetails.speedRequested = razorpayRefund?.speed_requested || 'optimum';
+    settlement.cancellationDetails.speedProcessed = razorpayRefund?.speed_processed || null;
+    settlement.cancellationDetails.razorpayRefundStatus = razorpayRefund?.status || null;
     settlement.cancellationDetails.refundStatus = 'initiated'; // Will be updated to 'processed' via webhook
     await settlement.save();
 
@@ -628,7 +695,14 @@ export const processRazorpayRefund = async (orderId, adminId = null) => {
       refundId: razorpayRefund.id,
       refundAmount: refundAmount,
       razorpayRefund: razorpayRefund,
-      message: `Refund of ₹${refundAmount} initiated successfully. Amount will be credited to customer's account within 24 hours.`
+      message: (() => {
+        const requested = razorpayRefund?.speed_requested || 'optimum';
+        const processed = razorpayRefund?.speed_processed || null;
+        if (processed && requested && processed !== requested) {
+          return `Refund initiated. Razorpay fallback to '${processed}' speed (requested '${requested}'). Amount will be credited as per Razorpay timeline.`;
+        }
+        return `Refund initiated successfully (speed: ${requested}). Amount will be credited as per Razorpay timeline.`;
+      })()
     };
   } catch (error) {
     console.error('Error processing Razorpay refund:', error);

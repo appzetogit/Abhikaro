@@ -285,8 +285,18 @@ export default function Orders() {
               deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,
               deliveryPartnerPhone: order.deliveryPartnerId?.phone || order.deliveryPartnerPhone || null,
               note: order.note || null,
-              refundStatus: order.refundStatus || null,
-              refundAmount: order.refundAmount ?? null,
+              // Refund info (prefer new backend field: order.payment.refund)
+              refundStatus:
+                order?.payment?.refund?.status ||
+                order.refundStatus ||
+                null,
+              refundAmount:
+                (typeof order?.payment?.refund?.amount === "number"
+                  ? order.payment.refund.amount
+                  : null) ??
+                order.refundAmount ??
+                null,
+              refundMeta: order?.payment?.refund || null,
               refundInitiatedAt: order.refundInitiatedAt || null,
               refundProcessedAt: order.refundProcessedAt || null,
               razorpayRefundId: order.razorpayRefundId || null
@@ -630,6 +640,25 @@ Order again from this restaurant in the ${companyName} app.`
               (order.refundStatus === 'initiated' || order.refundStatus === 'processed') &&
               typeof order.refundAmount === 'number' &&
               order.refundAmount > 0
+
+            const refundTimelineText = (() => {
+              const speedRequested =
+                order?.refundMeta?.speedRequested ||
+                order?.refundMeta?.speed_requested ||
+                null
+              const speedProcessed =
+                order?.refundMeta?.speedProcessed ||
+                order?.refundMeta?.speed_processed ||
+                null
+
+              if (speedRequested && speedProcessed && speedRequested !== speedProcessed) {
+                return `Refund Created in 2-24 hours`
+              }
+              if (speedRequested || speedProcessed) {
+                return `Refund initiated (speed: ${speedProcessed || speedRequested}). Credit bank/UPI timeline pe depend karta hai.`
+              }
+              return "Credit bank/UPI timeline pe depend karta hai (kabhi minutes, kabhi hours)."
+            })()
             const paymentFailed = !isCodOrWallet && 
                                  !isCancelled && 
                                  (order.payment?.status === 'failed')
@@ -814,7 +843,7 @@ Order again from this restaurant in the ${companyName} app.`
                             : "Refund initiated"}
                         </p>
                         <p className="text-[11px] text-blue-600/90">
-                          Amount should be settled within 24 hours
+                          {refundTimelineText}
                         </p>
                       </div>
                      )}

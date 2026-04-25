@@ -5,6 +5,7 @@ import { authenticate } from '../auth/middleware/auth.js';
 import winston from 'winston';
 import { getRazorpayCredentials } from '../../shared/utils/envService.js';
 import Order from '../order/models/Order.js';
+import OrderSettlement from '../order/models/OrderSettlement.js';
 import mongoose from 'mongoose';
 
 const logger = winston.createLogger({
@@ -330,11 +331,22 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
  * Headers: x-razorpay-signature
  * Body: raw JSON from Razorpay
  */
-router.post('/razorpay/webhook', express.raw({ type: '*/*' }), async (req, res) => {
+// NOTE: Raw body parsing is registered in `backend/server.js` BEFORE JSON parsers.
+// Do not add another body parser here, otherwise signature verification can break.
+router.post('/razorpay/webhook', async (req, res) => {
   try {
     const featureFlag = String(process.env.ENABLE_PAID_ORDER_VISIBILITY_FIX || '').toLowerCase() === 'true';
     const headerSignature = req.get('x-razorpay-signature') || req.get('X-Razorpay-Signature') || '';
-    const rawBody = req.body;
+    const rawBody = req.razorpayRawBody || req.body;
+
+    if ((process.env.NODE_ENV || '').toLowerCase() === 'test') {
+      logger.info('Webhook raw body diagnostics', {
+        isBuffer: Buffer.isBuffer(rawBody),
+        bodyType: typeof rawBody,
+        constructor: rawBody?.constructor?.name || null,
+        hasHeaderSignature: !!headerSignature
+      });
+    }
 
     // Verify webhook signature
     const isValid = await verifyWebhookSignature(rawBody, headerSignature);
@@ -362,6 +374,130 @@ router.post('/razorpay/webhook', express.raw({ type: '*/*' }), async (req, res) 
     const eventType = event?.event;
     const paymentEntity = event?.payload?.payment?.entity;
     const orderEntity = event?.payload?.order?.entity;
+    const refundEntity = event?.payload?.refund?.entity;
+
+    // ---------------------------
+    // Refund events (do NOT rely on PaymentIntent / razorpay_order_id)
+    // ---------------------------
+    if (eventType && typeof eventType === 'string' && eventType.startsWith('refund.')) {
+      try {
+        const refundId = refundEntity?.id || null;
+        const refundStatus = refundEntity?.status || null; // typically: processed / pending / failed
+        const refundPaymentId = refundEntity?.payment_id || null;
+        const refundedAmountPaise = typeof refundEntity?.amount === 'number' ? refundEntity.amount : null;
+
+        logger.info('Webhook refund event received', {
+          source: 'razorpay.webhook',
+          eventType,
+          refundId,
+          refundStatus,
+          refundPaymentId,
+          refundedAmountPaise
+        });
+
+        if (!refundPaymentId && !refundId) {
+          logger.warn('Refund webhook missing identifiers, ignoring', {
+            source: 'razorpay.webhook',
+            eventType
+          });
+          return res.status(200).json({ success: true });
+        }
+
+        // Find order by payment id (primary), fallback by refundId (if we persisted it earlier)
+        const order =
+          (refundPaymentId
+            ? await Order.findOne({ 'payment.razorpayPaymentId': refundPaymentId })
+            : null) ||
+          (refundId ? await Order.findOne({ 'payment.refund.refundId': refundId }) : null);
+
+        if (!order) {
+          logger.warn('Refund webhook: no matching Order found', {
+            source: 'razorpay.webhook',
+            eventType,
+            refundId,
+            refundPaymentId
+          });
+          return res.status(200).json({ success: true });
+        }
+
+        // Update order.payment.refund status (best-effort)
+        const now = new Date();
+        order.payment = order.payment || {};
+        order.payment.refund = order.payment.refund || {};
+        if (refundId) order.payment.refund.refundId = refundId;
+        order.payment.refund.razorpayStatus = refundStatus || order.payment.refund.razorpayStatus || null;
+        // Normalize our UI-facing status to: initiated / processed / failed
+        if (refundStatus === 'processed') {
+          order.payment.refund.status = 'processed';
+          order.payment.refund.processedAt = now;
+          // Mark payment status refunded for visibility (optional)
+          if (order.payment.status === 'completed') order.payment.status = 'refunded';
+        } else if (refundStatus === 'failed') {
+          order.payment.refund.status = 'failed';
+          order.payment.refund.processedAt = now;
+          order.payment.refund.message = refundEntity?.error_description || refundEntity?.error_reason || order.payment.refund.message || null;
+        } else {
+          // pending / created / any other state → initiated (keep as-is if already processed)
+          if (order.payment.refund.status !== 'processed') {
+            order.payment.refund.status = 'initiated';
+          }
+        }
+        if (refundedAmountPaise != null && order.payment.refund.amountPaise == null) {
+          order.payment.refund.amountPaise = refundedAmountPaise;
+          order.payment.refund.amount =
+            typeof order.payment.refund.amount === 'number'
+              ? order.payment.refund.amount
+              : Math.round((refundedAmountPaise / 100) * 100) / 100;
+        }
+
+        await order.save();
+
+        // Update settlement cancellationDetails for user UI (authoritative for list endpoints)
+        try {
+          const settlement = await OrderSettlement.findOne({ orderId: order._id });
+          if (settlement) {
+            settlement.cancellationDetails = settlement.cancellationDetails || {};
+            if (refundId) settlement.cancellationDetails.razorpayRefundId = refundId;
+
+            if (refundStatus === 'processed') {
+              settlement.cancellationDetails.refundStatus = 'processed';
+              settlement.cancellationDetails.refundProcessedAt = now;
+            } else if (refundStatus === 'failed') {
+              settlement.cancellationDetails.refundStatus = 'failed';
+              settlement.cancellationDetails.refundFailureReason =
+                refundEntity?.error_description ||
+                refundEntity?.error_reason ||
+                settlement.cancellationDetails.refundFailureReason ||
+                'Refund failed at gateway';
+            } else {
+              // pending / created → initiated (unless already processed)
+              if (settlement.cancellationDetails.refundStatus !== 'processed') {
+                settlement.cancellationDetails.refundStatus = 'initiated';
+              }
+            }
+
+            await settlement.save();
+          }
+        } catch (settlementErr) {
+          logger.warn('Refund webhook: failed updating settlement (non-blocking)', {
+            source: 'razorpay.webhook',
+            eventType,
+            orderId: order?._id?.toString?.(),
+            error: settlementErr?.message
+          });
+        }
+
+        return res.status(200).json({ success: true });
+      } catch (refundErr) {
+        logger.error('Refund webhook handler error (non-blocking)', {
+          source: 'razorpay.webhook',
+          eventType,
+          error: refundErr?.message,
+          stack: refundErr?.stack
+        });
+        return res.status(200).json({ success: true });
+      }
+    }
 
     // Extract ids
     const razorpay_payment_id =

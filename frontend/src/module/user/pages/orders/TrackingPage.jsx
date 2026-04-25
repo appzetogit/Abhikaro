@@ -1,6 +1,6 @@
 import React from 'react';
 import { GoogleMap, LoadScript, Marker, Polyline } from '@react-google-maps/api';
-import { ArrowLeft, Share2, RefreshCcw, Home, UtensilsCrossed, ChevronRight, Shield, Phone } from 'lucide-react';
+import { ArrowLeft, Share2, RefreshCcw, Home, UtensilsCrossed, ChevronRight, Phone } from 'lucide-react';
 
 // --- 1. Google Map Styles (Light Theme - as shown in image) ---
 const lightMapStyle = [
@@ -145,17 +145,6 @@ const TrackingPage = () => {
                 <UtensilsCrossed className="w-6 h-6 text-red-400" />
               </div>
               <p className="font-semibold text-white">Food is Cooking</p>
-            </div>
-          </div>
-
-          {/* Delivery Partner Safety Card */}
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-sm">
-            <div className="flex items-center gap-3">
-              <Shield className="w-6 h-6 text-gray-400" />
-              <span className="flex-1 text-left font-medium text-white">
-                Learn about delivery partner safety
-              </span>
-              <ChevronRight className="w-5 h-5 text-gray-500" />
             </div>
           </div>
 

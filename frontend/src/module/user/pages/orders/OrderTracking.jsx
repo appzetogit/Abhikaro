@@ -12,7 +12,6 @@ import {
   MessageSquare,
   X,
   Check,
-  Shield,
   Receipt,
   CircleSlash,
   Loader2
@@ -1648,21 +1647,6 @@ export default function OrderTracking() {
 
       {/* Scrollable Content */}
       <div className="max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 space-y-4 md:space-y-6 pb-24 md:pb-32">
-        {/* Delivery Partner Safety */}
-        <motion.button
-          className="w-full bg-white rounded-xl p-4 shadow-sm flex items-center gap-3"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          whileTap={{ scale: 0.99 }}
-        >
-          <Shield className="w-6 h-6 text-gray-600" />
-          <span className="flex-1 text-left font-medium text-gray-900">
-            Learn about delivery partner safety
-          </span>
-          <ChevronRight className="w-5 h-5 text-gray-400" />
-        </motion.button>
-
         {/* Advertise Banner (Admin Controlled) */}
         {advertiseBanner?.imageUrl && (
           <motion.div

@@ -400,10 +400,22 @@ export default function OrdersTable({
                       {/* Show Refund button or Refunded status for cancelled orders with Online/Wallet payment (restaurant or user cancelled) */}
                       {(() => {
                         // Check if order is cancelled by restaurant or user
-                        const isCancelled = order.orderStatus === "Cancelled by Restaurant" || 
-                                          order.orderStatus === "Cancelled" || 
-                                          order.orderStatus === "Cancelled by User" ||
-                                          (order.status === "cancelled" && (order.cancelledBy === "user" || order.cancelledBy === "restaurant"));
+                        const cancelledLabels = new Set([
+                          "Cancelled by Restaurant",
+                          "Cancelled",
+                          "Cancelled by User",
+                          // Some APIs/UI use single-L "Canceled"
+                          "Canceled",
+                          "Canceled by User",
+                          "Canceled by Restaurant",
+                        ]);
+
+                        const isCancelled =
+                          cancelledLabels.has(order.orderStatus) ||
+                          (order.status === "cancelled" &&
+                            (order.cancelledBy === "user" ||
+                              order.cancelledBy === "restaurant" ||
+                              order.cancelledBy === "admin"));
                         
                         // Check if payment type is Online or Wallet (not Cash on Delivery)
                         const paymentMethod = order.payment?.method || order.paymentMethod;
@@ -418,8 +430,14 @@ export default function OrdersTable({
                                                 order.payment?.method === "online"));
                         
                         const isWalletPayment = order.paymentType === "Wallet" || paymentMethod === "wallet";
+
+                        // Only show refund button if money was actually collected
+                        const paymentCompleted =
+                          order.payment?.status === "completed" ||
+                          order.paymentStatus === "Paid" ||
+                          order.paymentCollectionStatus === "Collected";
                         
-                        return isCancelled && (isOnlinePayment || isWalletPayment);
+                        return isCancelled && paymentCompleted && (isOnlinePayment || isWalletPayment);
                       })() && (
                         <>
                           {order.refundStatus === 'processed' || order.refundStatus === 'initiated' ? (

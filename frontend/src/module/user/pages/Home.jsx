@@ -2272,14 +2272,6 @@ export default function Home() {
                               </Button>
                             </div>
 
-                            {/* FREE delivery Badge - Bottom Left (only for first 3 restaurants) */}
-                            {index < 3 && (
-                              <div className="absolute bottom-2 left-0 sm:bottom-2 sm:left-0 z-10 transform transition-all duration-300 group-hover:translate-x-1">
-                                <div className="bg-gradient-to-r from-blue-600 via-blue-500/80 to-transparent text-white px-2.5 py-1 rounded-r-sm text-[10px] sm:text-xs font-bold shadow-lg backdrop-blur-sm">
-                                  FREE delivery
-                                </div>
-                              </div>
-                            )}
                           </div>
 
                           {/* Content Section */}
@@ -2366,14 +2358,6 @@ export default function Home() {
                                 </Button>
                               </div>
 
-                              {/* FREE delivery Badge - Bottom Left (only for first 3 restaurants) */}
-                              {index < 3 && (
-                                <div className="absolute bottom-2 left-0 sm:bottom-2 sm:left-0 z-10 transform transition-all duration-300 group-hover:translate-x-1">
-                                  <div className="bg-gradient-to-r from-blue-600 via-blue-500/80 to-transparent text-white px-2.5 py-1 rounded-r-sm text-[10px] sm:text-xs font-bold shadow-lg backdrop-blur-sm">
-                                    FREE delivery
-                                  </div>
-                                </div>
-                              )}
                             </div>
 
                             {/* Content Section */}
