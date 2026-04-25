@@ -1439,12 +1439,6 @@ export default function ToHub() {
               <span className="flex items-center gap-2"><span className="w-3 h-0.5 bg-gray-900 inline-block"></span>Yesterday</span>
               <span className="flex items-center gap-2"><span className="w-3 h-0.5 bg-gray-400 inline-block"></span>Day before yesterday</span>
             </div>
-            <button 
-              onClick={() => setActiveTopTab("sales")}
-              className="w-full mt-3 bg-black text-white py-3 rounded-md text-sm font-semibold hover:bg-gray-800 transition-colors"
-            >
-              Get deeper insights
-            </button>
           </div>
         </div>
       </div>
@@ -1502,12 +1496,6 @@ export default function ToHub() {
             ))}
           </div>
 
-          <button 
-            onClick={() => setActiveTopTab("customers")}
-            className="w-full bg-black text-white py-3 rounded-md text-sm font-semibold hover:bg-gray-800 transition-colors"
-          >
-            Get deeper insights
-          </button>
         </div>
       </div>
 
@@ -1631,12 +1619,6 @@ export default function ToHub() {
             </div>
           </div>
 
-          <button 
-            onClick={() => setActiveTopTab("offers")}
-            className="w-full bg-black text-white py-3 rounded-md text-sm font-semibold hover:bg-gray-800 transition-colors"
-          >
-            Get deeper insights
-          </button>
         </div>
       </div>
 

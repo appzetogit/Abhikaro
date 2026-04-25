@@ -261,7 +261,7 @@ export default function BottomNavOrders() {
 
       <div
         className="fixed bottom-0 left-0 right-0 z-40"
-        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="flex items-center gap-2 w-full">
 
