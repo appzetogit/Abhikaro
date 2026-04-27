@@ -23,10 +23,13 @@ export const getRestaurantWalletOverview = asyncHandler(async (req, res) => {
     const q = String(search).trim();
     query.$or = [
       { name: { $regex: q, $options: "i" } },
+      // Many restaurants keep the "real" name in onboarding step1
+      { "onboarding.step1.restaurantName": { $regex: q, $options: "i" } },
       { restaurantId: { $regex: q, $options: "i" } },
       { phone: { $regex: q, $options: "i" } },
       { ownerPhone: { $regex: q, $options: "i" } },
       { ownerName: { $regex: q, $options: "i" } },
+      { "onboarding.step1.ownerName": { $regex: q, $options: "i" } },
     ];
   }
 
@@ -205,6 +208,7 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
         status: t.status,
         amount: t.amount,
         description: t.description,
+        orderId: t.orderId || null,
         date: t.createdAt,
         processedAt: t.processedAt,
         processedBy: t.processedBy

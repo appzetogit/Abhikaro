@@ -30,7 +30,8 @@ export const getOrders = asyncHandler(async (req, res) => {
       zone,
       customer,
       cancelledBy,
-      deliveryPartnerId
+      deliveryPartnerId,
+      userId
     } = req.query;
 
     // Build query
@@ -152,6 +153,11 @@ export const getOrders = asyncHandler(async (req, res) => {
       if (userDoc) {
         query.userId = userDoc._id;
       }
+    }
+
+    // Direct userId filter (for precise history lookups)
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      query.userId = new mongoose.Types.ObjectId(userId);
     }
 
     // Search filter (orderId, customer name, customer phone) - optimized with batch query

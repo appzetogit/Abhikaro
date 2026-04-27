@@ -61,7 +61,7 @@ function getTokenForCurrentRoute() {
   const path = window.location.pathname;
 
   if (path.startsWith("/admin")) {
-    return localStorage.getItem("admin_accessToken");
+    return getModuleToken("admin");
   } else if (
     path.startsWith("/restaurant") &&
     !path.startsWith("/restaurants") &&
@@ -70,11 +70,11 @@ function getTokenForCurrentRoute() {
   ) {
     // /restaurant/* is for restaurant module, /restaurants/* is for user module viewing restaurants
     // Exclude public routes like /restaurant/list and /restaurant/under-250
-    return localStorage.getItem("restaurant_accessToken");
+    return getModuleToken("restaurant");
   } else if (path.startsWith("/delivery")) {
-    return localStorage.getItem("delivery_accessToken");
+    return getModuleToken("delivery");
   } else if (path.startsWith("/hotel")) {
-    return localStorage.getItem("hotel_accessToken");
+    return getModuleToken("hotel");
   } else if (
     path.startsWith("/user") ||
     path === "/" ||
@@ -323,15 +323,19 @@ apiClient.interceptors.response.use(
       }
     }
 
-    // If response contains new access token, store it for the current module
+    // If response contains new access token, store it for the current module.
+    // IMPORTANT: preserve the original persistence choice (sessionStorage vs localStorage)
+    // so that "Remember me" off (session) doesn't break subsequent requests.
     if (response.data?.accessToken) {
       const currentPath = window.location.pathname;
       let tokenKey = "accessToken"; // fallback
       let expectedRole = "user";
+      let module = null;
 
       if (currentPath.startsWith("/admin")) {
         tokenKey = "admin_accessToken";
         expectedRole = "admin";
+        module = "admin";
       } else if (
         currentPath.startsWith("/restaurant") &&
         !currentPath.startsWith("/restaurants")
@@ -339,12 +343,15 @@ apiClient.interceptors.response.use(
         // /restaurant/* is for restaurant module, /restaurants/* is for user module viewing restaurants
         tokenKey = "restaurant_accessToken";
         expectedRole = "restaurant";
+        module = "restaurant";
       } else if (currentPath.startsWith("/delivery")) {
         tokenKey = "delivery_accessToken";
         expectedRole = "delivery";
+        module = "delivery";
       } else if (currentPath.startsWith("/hotel")) {
         tokenKey = "hotel_accessToken";
         expectedRole = "hotel";
+        module = "hotel";
       } else if (
         currentPath.startsWith("/user") ||
         currentPath === "/" ||
@@ -353,6 +360,7 @@ apiClient.interceptors.response.use(
         // User module includes /restaurants/* paths
         tokenKey = "user_accessToken";
         expectedRole = "user";
+        module = "user";
       }
 
       const token = response.data.accessToken;
@@ -362,7 +370,16 @@ apiClient.interceptors.response.use(
       if (!role || role !== expectedRole) {
         clearModuleAuth(tokenKey.replace("_accessToken", ""));
       } else {
-        localStorage.setItem(tokenKey, token);
+        // Decide storage based on where the module token currently lives.
+        // - If module has token/auth in sessionStorage, keep it in sessionStorage.
+        // - Otherwise, default to localStorage (persistent).
+        const shouldUseSession =
+          (module &&
+            (sessionStorage.getItem(`${module}_accessToken`) ||
+              sessionStorage.getItem(`${module}_authenticated`))) ||
+          false;
+        const storage = shouldUseSession ? sessionStorage : localStorage;
+        storage.setItem(tokenKey, token);
       }
     }
     return response;
@@ -457,10 +474,12 @@ apiClient.interceptors.response.use(
           const currentPath = window.location.pathname;
           let tokenKey = "accessToken"; // fallback
           let expectedRole = "user";
+          let module = null;
 
           if (currentPath.startsWith("/admin")) {
             tokenKey = "admin_accessToken";
             expectedRole = "admin";
+            module = "admin";
           } else if (
             currentPath.startsWith("/restaurant") &&
             !currentPath.startsWith("/restaurants")
@@ -468,12 +487,15 @@ apiClient.interceptors.response.use(
             // /restaurant/* is for restaurant module, /restaurants/* is for user module viewing restaurants
             tokenKey = "restaurant_accessToken";
             expectedRole = "restaurant";
+            module = "restaurant";
           } else if (currentPath.startsWith("/delivery")) {
             tokenKey = "delivery_accessToken";
             expectedRole = "delivery";
+            module = "delivery";
           } else if (currentPath.startsWith("/hotel")) {
             tokenKey = "hotel_accessToken";
             expectedRole = "hotel";
+            module = "hotel";
           } else if (
             currentPath.startsWith("/user") ||
             currentPath === "/" ||
@@ -482,6 +504,7 @@ apiClient.interceptors.response.use(
             // User module includes /restaurants/* paths
             tokenKey = "user_accessToken";
             expectedRole = "user";
+            module = "user";
           }
 
           const role = getRoleFromToken(accessToken);
@@ -493,7 +516,13 @@ apiClient.interceptors.response.use(
           }
 
           // Store new access token for the current module
-          localStorage.setItem(tokenKey, accessToken);
+          const shouldUseSession =
+            (module &&
+              (sessionStorage.getItem(`${module}_accessToken`) ||
+                sessionStorage.getItem(`${module}_authenticated`))) ||
+            false;
+          const storage = shouldUseSession ? sessionStorage : localStorage;
+          storage.setItem(tokenKey, accessToken);
 
           // Retry original request with new token
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;

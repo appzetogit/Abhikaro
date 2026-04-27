@@ -22,6 +22,13 @@ export const sidebarMenuData = [
     permissionId: "menu.point_of_sale",
   },
   {
+    type: "link",
+    label: "History",
+    path: "/admin/history",
+    icon: "Clock",
+    permissionId: "menu.history",
+  },
+  {
     type: "section",
     label: "FOOD MANAGEMENT",
     items: [

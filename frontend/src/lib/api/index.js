@@ -1366,6 +1366,21 @@ export const adminAPI = {
     );
   },
 
+  // ===== Settlement / earnings reports (admin) =====
+  getOrderSettlementDetails: (orderId) => {
+    return apiClient.get(`/admin/settlements/order/${orderId}`);
+  },
+  getRestaurantSettlementReport: (restaurantId, params = {}) => {
+    return apiClient.get(`/admin/settlements/restaurants/${restaurantId}/report`, {
+      params,
+    });
+  },
+  getDeliverySettlementReport: (deliveryId, params = {}) => {
+    return apiClient.get(`/admin/settlements/delivery/${deliveryId}/report`, {
+      params,
+    });
+  },
+
   // Wallet adjust OTP gate (admin)
   sendWalletAdjustOTP: () => {
     return apiClient.post(API_ENDPOINTS.ADMIN.WALLET_ADJUST_OTP_SEND);

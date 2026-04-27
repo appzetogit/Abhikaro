@@ -16,6 +16,12 @@ export const ADMIN_PERMISSIONS = [
     routePath: "/admin/point-of-sale",
   },
   {
+    id: "menu.history",
+    label: "History",
+    group: "Sidebar",
+    routePath: "/admin/history",
+  },
+  {
     id: "menu.food_management",
     label: "Food Management",
     group: "Sidebar",

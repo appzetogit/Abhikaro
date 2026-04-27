@@ -276,6 +276,7 @@ export const getDeliveryBoyWalletHistory = asyncHandler(async (req, res) => {
         status: t.status,
         amount: t.amount,
         description: t.description,
+        orderId: t.orderId || null,
         date: t.createdAt,
         processedAt: t.processedAt,
         processedBy: t.processedBy ? {
