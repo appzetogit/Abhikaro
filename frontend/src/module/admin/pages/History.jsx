@@ -177,9 +177,22 @@ function WalletTxTable({ title, rows = [] }) {
           {rows.map((t, idx) => (
             <div key={t.id || t._id || idx} className="grid grid-cols-12 items-center px-4 py-3 text-sm">
               <div className="col-span-2">
-                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  {String(t.type || "—")}
-                </span>
+                {(() => {
+                  const raw = String(t.type || "—").toLowerCase()
+                  const isCredit = raw === "bonus" || raw === "credited"
+                  const isDebit = raw === "deduction" || raw === "deducted"
+                  const label = raw === "bonus" ? "Credited" : raw === "deduction" ? "Deducted" : String(t.type || "—")
+                  const cls = isCredit
+                    ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                    : isDebit
+                      ? "bg-red-50 text-red-700 ring-1 ring-red-200"
+                      : "bg-slate-100 text-slate-700"
+                  return (
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}>
+                      {label}
+                    </span>
+                  )
+                })()}
               </div>
               <div className="col-span-6 min-w-0">
                 <p className="truncate text-slate-900">{t.description || "—"}</p>
@@ -261,7 +274,7 @@ export default function History() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
-            <TabsList className="grid w-full grid-cols-4 rounded-xl bg-slate-50/70 p-1.5">
+            <TabsList className="grid w-full grid-cols-4 rounded-xl bg-slate-50/70 p-1.5 ">
               <TabsTrigger
                 value="customers"
                 className="group h-11 gap-2 rounded-lg text-sm font-semibold text-slate-700 transition hover:bg-white/60 data-[state=active]:!bg-red-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=active]:ring-2 data-[state=active]:ring-red-200 data-[state=active]:shadow-red-100"
@@ -1108,20 +1121,25 @@ function DeliveryHistoryTab({ onViewOrder }) {
   )
 }
 
-function HotelHistoryTab() {
+function HotelHistoryTab({ onViewOrder }) {
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState([])
   const [selected, setSelected] = useState(null)
-  const [earningsLoading, setEarningsLoading] = useState(false)
-  const [earningsRows, setEarningsRows] = useState([])
+  const [range, setRange] = useState(() => defaultRange(30))
+  const [txLoading, setTxLoading] = useState(false)
+  const [txRows, setTxRows] = useState([])
 
   const fetchList = async (q = "") => {
     try {
       setLoading(true)
       const res = await adminAPI.getHotelWalletOverview({ search: q || undefined, page: 1, limit: 20 })
       if (res?.data?.success) {
-        const rows = res.data.data?.hotels || []
+        const rows = (res.data.data?.hotels || []).map((h) => ({
+          ...h,
+          // Normalize mongo id
+          _id: h?._id || h?.id || h?.hotelId || null,
+        }))
         setItems(rows)
         if (!selected && rows.length) setSelected(rows[0])
       } else {
@@ -1146,36 +1164,36 @@ function HotelHistoryTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
-  const fetchEarnings = async () => {
-    if (!selected?.hotelId) return
+  const fetchTransactions = async () => {
+    const hotelMongoId = selected?._id || selected?.hotelId || null
+    if (!hotelMongoId) return
     try {
-      setEarningsLoading(true)
-      const res = await adminAPI.getHotelWalletEarnings(selected.hotelId)
+      setTxLoading(true)
+      const res = await adminAPI.getHotelWalletTransactions(hotelMongoId, {
+        startDate: range.startDate,
+        endDate: range.endDate,
+        limit: 50,
+      })
       if (res?.data?.success) {
-        const data = res.data.data || {}
-        const rows = data?.orderEarnings || data?.earnings || data?.orders || []
-        setEarningsRows(Array.isArray(rows) ? rows : [])
+        const rows = res.data.data?.transactions || []
+        setTxRows(Array.isArray(rows) ? rows : [])
       } else {
-        setEarningsRows([])
+        setTxRows([])
       }
     } catch (e) {
       console.error(e)
-      setEarningsRows([])
+      setTxRows([])
     } finally {
-      setEarningsLoading(false)
+      setTxLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchEarnings()
+    fetchTransactions()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.hotelId])
+  }, [selected?.hotelId, range.startDate, range.endDate])
 
-  const creditTotal = useMemo(() => {
-    const rows = Array.isArray(earningsRows) ? earningsRows : []
-    // Expect per-row: hotelCommission / commissionBreakdown.hotel / hotelEarning
-    return rows.reduce((s, r) => s + (Number(r?.hotelCommission ?? r?.commissionBreakdown?.hotel ?? r?.hotelEarning ?? 0) || 0), 0)
-  }, [earningsRows])
+  const availableBalance = selected?.availableBalance ?? selected?.totalAvailableBalance ?? 0
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -1199,11 +1217,11 @@ function HotelHistoryTab() {
             <div className="space-y-2 max-h-[70vh] overflow-auto pr-1">
               {items.map((h) => (
                 <ListRow
-                  key={h.hotelId}
+                  key={h._id || h.hotelId}
                   title={h.hotelName || "—"}
                   subtitle={`${h.phone || "—"} • ID: ${h.hotelCode || h.hotelId || "—"}`}
                   meta={formatCurrency(h.availableBalance ?? h.totalAvailableBalance ?? 0)}
-                  active={selected?.hotelId === h.hotelId}
+                  active={String(selected?._id || selected?.hotelId || "") === String(h._id || h.hotelId || "")}
                   onClick={() => setSelected(h)}
                 />
               ))}
@@ -1216,26 +1234,48 @@ function HotelHistoryTab() {
 
       <div className="lg:col-span-8 space-y-4">
         <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base">Hotel commission credits</CardTitle>
-            <p className="text-sm text-slate-600 mt-1">
-              {selected ? `${selected.hotelName || "—"} (${selected.hotelCode || selected.hotelId || "—"})` : "Select a hotel"}
-            </p>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-base">Hotel transactions</CardTitle>
+              <p className="text-sm text-slate-600 mt-1">
+                {selected ? `${selected.hotelName || "—"} (${selected.hotelCode || selected.hotelId || "—"})` : "Select a hotel"}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-600">From</span>
+                <Input
+                  type="date"
+                  value={range.startDate}
+                  onChange={(e) => setRange((r) => ({ ...r, startDate: e.target.value }))}
+                  className="h-9"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-600">To</span>
+                <Input
+                  type="date"
+                  value={range.endDate}
+                  onChange={(e) => setRange((r) => ({ ...r, endDate: e.target.value }))}
+                  className="h-9"
+                />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-xs text-slate-600">Orders credited</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{earningsRows?.length || 0}</p>
+                <p className="text-xs text-slate-600">Transactions (range)</p>
+                <p className="mt-1 text-lg font-bold text-slate-900">{txRows?.length || 0}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-xs text-slate-600">Commission credited total</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{formatCurrency(creditTotal)}</p>
+                <p className="text-xs text-slate-600">Latest status</p>
+                <p className="mt-1 text-lg font-bold text-slate-900">{txRows?.[0]?.status || "—"}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-xs text-slate-600">Available balance</p>
                 <p className="mt-1 text-lg font-bold text-slate-900">
-                  {formatCurrency(selected?.availableBalance ?? selected?.totalAvailableBalance ?? 0)}
+                  {formatCurrency(availableBalance)}
                 </p>
               </div>
             </div>
@@ -1245,25 +1285,25 @@ function HotelHistoryTab() {
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <IndianRupee className="h-4 w-4 text-indigo-600" /> Credits by order
+              <Wallet className="h-4 w-4 text-indigo-600" /> Transaction history
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {earningsLoading ? (
+            {txLoading ? (
               <div className="py-16 text-center">
                 <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-600 mb-3" />
-                <p className="text-sm text-slate-600">Loading credits…</p>
+                <p className="text-sm text-slate-600">Loading transactions…</p>
               </div>
             ) : (
               <WalletTxTable
-                title="earnings rows"
-                rows={(earningsRows || []).map((r) => ({
-                  id: r?._id || r?.orderId,
-                  type: "commission_credit",
-                  description: "Hotel commission credited",
-                  amount: Number(r?.hotelCommission ?? r?.commissionBreakdown?.hotel ?? r?.hotelEarning ?? 0) || 0,
-                  date: r?.createdAt || r?.deliveredAt || r?.orderDate || null,
-                  orderId: r?.orderId || r?.order?.orderId || r?.order?._id,
+                title="hotel tx"
+                rows={(txRows || []).map((t) => ({
+                  id: t?._id || t?.id,
+                  type: t?.type || "—",
+                  description: t?.description || "—",
+                  amount: Number(t?.amount ?? 0) || 0,
+                  date: t?.createdAt || t?.processedAt || null,
+                  orderId: t?.orderNumber || t?.orderId || null,
                 }))}
               />
             )}

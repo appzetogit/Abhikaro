@@ -57,6 +57,7 @@ import {
   getHotelWalletOverview,
   updateHotelCashCollected,
   getHotelWalletOrderEarnings,
+  getHotelWalletTransactionsAdmin,
   getHotelQROrders,
   getHotelLeaderboard,
   getHotelLeaderboardRewards,
@@ -578,6 +579,11 @@ router.get(
   "/hotels/:id/wallet/earnings",
   requirePermissions("hotels.wallet_view"),
   getHotelWalletOrderEarnings,
+);
+router.get(
+  "/hotels/:id/wallet/transactions",
+  requirePermissions("hotels.wallet_view"),
+  getHotelWalletTransactionsAdmin,
 );
 router.get(
   "/hotels/:id/qr-orders",

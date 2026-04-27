@@ -1619,6 +1619,12 @@ export const adminAPI = {
       params,
     });
   },
+  // Hotel wallet transactions (admin) - mirrors hotel-side transaction feed
+  getHotelWalletTransactions: (hotelId, params = {}) => {
+    return apiClient.get(`/admin/hotels/${hotelId}/wallet/transactions`, {
+      params,
+    });
+  },
   // Get QR-scan orders for a specific hotel with user & split
   getHotelQrOrders: (hotelId, params = {}) => {
     return apiClient.get(`/admin/hotels/${hotelId}/qr-orders`, { params });

@@ -10,6 +10,153 @@ import { getHotelCommissionFromOrder } from "../../order/utils/hotelCommissionBa
 import HotelLeaderboardRewards from "../models/HotelLeaderboardRewards.js";
 
 /**
+ * Get hotel wallet transaction history (admin)
+ * GET /api/admin/hotels/:id/wallet/transactions
+ * Query: limit (max 100), startDate, endDate
+ *
+ * This mirrors the hotel-side wallet "transactions" feed (commission + withdrawals),
+ * including synthetic commission rows for older orders that never wrote transactions.
+ */
+export const getHotelWalletTransactionsAdmin = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { limit = 50, startDate, endDate } = req.query;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return errorResponse(res, 400, "Invalid hotel id");
+  }
+
+  const hotel = await Hotel.findById(id).select("_id hotelName hotelId").lean();
+  if (!hotel) {
+    return errorResponse(res, 404, "Hotel not found");
+  }
+
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+
+  const createdAtFilter = {};
+  if (startDate) {
+    const d = new Date(startDate);
+    if (!Number.isNaN(d.getTime())) createdAtFilter.$gte = d;
+  }
+  if (endDate) {
+    const d = new Date(endDate);
+    if (!Number.isNaN(d.getTime())) {
+      d.setHours(23, 59, 59, 999);
+      createdAtFilter.$lte = d;
+    }
+  }
+
+  const Order = (await import("../../order/models/Order.js")).default;
+
+  const wallet = await HotelWallet.findOrCreateByHotelId(hotel._id);
+
+  const hotelIdStr = hotel.hotelId;
+  const hotelObjectId = hotel._id;
+
+  const orders = await Order.find({
+    $or: [
+      { hotelId: hotelObjectId },
+      { hotelReference: hotelIdStr },
+      { hotelReference: hotelObjectId.toString() },
+    ],
+    status: { $ne: "cancelled" },
+    ...(Object.keys(createdAtFilter).length ? { createdAt: createdAtFilter } : {}),
+  })
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .populate("userId", "name phone")
+    .lean();
+
+  const ordersById = new Map(orders.map((o) => [o._id.toString(), o]));
+
+  const walletTransactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
+
+  // Map withdrawal txId/requestId -> withdrawalRequest.status
+  const withdrawalStatusByTxId = new Map();
+  const withdrawalStatusByRequestId = new Map();
+  (wallet.withdrawalRequests || []).forEach((wr) => {
+    if (!wr) return;
+    if (wr.transactionId) withdrawalStatusByTxId.set(wr.transactionId.toString(), wr.status);
+    if (wr._id) withdrawalStatusByRequestId.set(wr._id.toString(), wr.status);
+  });
+
+  const commissionOrderIds = new Set(
+    walletTransactions
+      .filter((t) => t?.type === "commission" && t?.orderId)
+      .map((t) => t.orderId.toString()),
+  );
+
+  const enrichedWalletTx = walletTransactions.map((t) => {
+    const order =
+      t.orderId && ordersById.size ? ordersById.get(t.orderId.toString()) : null;
+
+    const orderTotal = order?.pricing?.total || null;
+    const orderNumber = order?.orderId || null;
+    const userName = order?.userId?.name || null;
+    const userPhone = order?.userId?.phone || null;
+
+    let displayStatus = t.status;
+    if (t.type === "withdrawal" && t._id) {
+      let mappedStatus = withdrawalStatusByTxId.get(t._id.toString());
+      if (!mappedStatus && typeof t.description === "string") {
+        const match = t.description.match(/Request ID:\s*([a-fA-F0-9]+)/);
+        if (match && match[1]) mappedStatus = withdrawalStatusByRequestId.get(match[1]);
+      }
+      if (mappedStatus) displayStatus = mappedStatus;
+    }
+
+    return {
+      _id: t._id,
+      amount: t.amount,
+      type: t.type,
+      status: displayStatus,
+      description: t.description,
+      orderId: t.orderId,
+      orderNumber,
+      orderTotal,
+      userName,
+      userPhone,
+      createdAt: t.createdAt,
+      processedAt: t.processedAt,
+    };
+  });
+
+  const syntheticCommissionTx = orders
+    .filter((order) => !commissionOrderIds.has(order._id.toString()))
+    .map((order) => {
+      const totalAmount = order.pricing?.total || 0;
+      const hotelCommission =
+        (order.commissionBreakdown &&
+          typeof order.commissionBreakdown.hotel === "number" &&
+          order.commissionBreakdown.hotel) ||
+        0;
+
+      return {
+        _id: order._id,
+        amount: hotelCommission,
+        type: "commission",
+        status: "Completed",
+        description: `Commission from order ${order.orderId}`,
+        orderId: order._id,
+        orderNumber: order.orderId,
+        orderTotal: totalAmount,
+        userName: order.userId?.name || null,
+        userPhone: order.userId?.phone || null,
+        createdAt: order.createdAt,
+        processedAt: order.createdAt,
+      };
+    });
+
+  const tx = [...enrichedWalletTx, ...syntheticCommissionTx]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, lim);
+
+  return successResponse(res, 200, "Hotel wallet transactions fetched", {
+    hotel: { id: hotel._id, hotelId: hotel.hotelId, hotelName: hotel.hotelName },
+    transactions: tx,
+  });
+});
+
+/**
  * GET /api/admin/hotels
  * Get all hotels with pagination and filters
  */
@@ -773,7 +920,7 @@ export const updateHotelCashCollected = asyncHandler(async (req, res) => {
  */
 export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { limit = 200 } = req.query;
+  const { limit = 200, startDate, endDate } = req.query;
 
   const hotel = await Hotel.findById(id)
     .select("_id hotelName hotelId commission")
@@ -789,6 +936,21 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
   const hotelIdStr = hotel.hotelId;
   const lim = Math.min(parseInt(limit, 10) || 200, 500);
 
+  const createdAtFilter = {};
+  if (startDate) {
+    const d = new Date(startDate);
+    if (!Number.isNaN(d.getTime())) {
+      createdAtFilter.$gte = d;
+    }
+  }
+  if (endDate) {
+    const d = new Date(endDate);
+    if (!Number.isNaN(d.getTime())) {
+      d.setHours(23, 59, 59, 999);
+      createdAtFilter.$lte = d;
+    }
+  }
+
   const orders = await Order.find({
     $or: [
       { hotelId: hotelObjectId },
@@ -799,6 +961,7 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
     "payment.method": {
       $in: ["pay_at_hotel", "cash", "razorpay", "wallet"],
     },
+    ...(Object.keys(createdAtFilter).length ? { createdAt: createdAtFilter } : {}),
   })
     .select(
       // include pricing fields so commission base can be derived for legacy orders
@@ -1366,11 +1529,29 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
  */
 export const getHotelWithdrawalRequests = asyncHandler(async (req, res) => {
   try {
-    const { status, page = 1, limit = 50 } = req.query;
+    const { status, hotelId, startDate, endDate, page = 1, limit = 50 } = req.query;
 
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
     const skip = (pageNum - 1) * limitNum;
+
+    const hotelIdFilter =
+      hotelId && mongoose.Types.ObjectId.isValid(hotelId)
+        ? new mongoose.Types.ObjectId(hotelId)
+        : null;
+
+    const reqDateFilter = {};
+    if (startDate) {
+      const d = new Date(startDate);
+      if (!Number.isNaN(d.getTime())) reqDateFilter.$gte = d;
+    }
+    if (endDate) {
+      const d = new Date(endDate);
+      if (!Number.isNaN(d.getTime())) {
+        d.setHours(23, 59, 59, 999);
+        reqDateFilter.$lte = d;
+      }
+    }
 
     // Pull wallets that have withdrawal requests
     const wallets = await HotelWallet.find({
@@ -1383,6 +1564,7 @@ export const getHotelWithdrawalRequests = asyncHandler(async (req, res) => {
 
     wallets.forEach((wallet) => {
       const hotel = wallet.hotelId;
+      if (hotelIdFilter && String(hotel?._id || wallet.hotelId) !== String(hotelIdFilter)) return;
       if (!Array.isArray(wallet.withdrawalRequests)) return;
 
       wallet.withdrawalRequests.forEach((wr) => {
@@ -1393,6 +1575,15 @@ export const getHotelWithdrawalRequests = asyncHandler(async (req, res) => {
           wr.status !== status
         ) {
           return;
+        }
+
+        if (Object.keys(reqDateFilter).length) {
+          const dt = wr.processedAt || wr.requestedAt || wr.createdAt || null;
+          if (!dt) return;
+          const d = new Date(dt);
+          if (Number.isNaN(d.getTime())) return;
+          if (reqDateFilter.$gte && d < reqDateFilter.$gte) return;
+          if (reqDateFilter.$lte && d > reqDateFilter.$lte) return;
         }
 
         allRequests.push({
