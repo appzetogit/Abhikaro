@@ -25,10 +25,17 @@ export const getHotelWalletTransactionsAdmin = asyncHandler(async (req, res) => 
     return errorResponse(res, 400, "Invalid hotel id");
   }
 
-  const hotel = await Hotel.findById(id).select("_id hotelName hotelId").lean();
+  const hotel = await Hotel.findById(id)
+    .select("_id hotelName hotelId commission")
+    .lean();
   if (!hotel) {
     return errorResponse(res, 404, "Hotel not found");
   }
+
+  const hotelPct =
+    typeof hotel?.commission === "number" && hotel.commission > 0
+      ? hotel.commission
+      : 10;
 
   const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
 
@@ -104,9 +111,23 @@ export const getHotelWalletTransactionsAdmin = asyncHandler(async (req, res) => 
       if (mappedStatus) displayStatus = mappedStatus;
     }
 
+    const derivedHotelCommission = order
+      ? (typeof order?.commissionBreakdown?.hotel === "number" &&
+        order.commissionBreakdown.hotel > 0
+          ? order.commissionBreakdown.hotel
+          : (typeof order?.hotelCommission === "number" && order.hotelCommission > 0
+            ? order.hotelCommission
+            : getHotelCommissionFromOrder(order, hotelPct)))
+      : 0;
+
+    const displayAmount =
+      t.type === "commission" && (typeof t.amount !== "number" || t.amount <= 0)
+        ? derivedHotelCommission
+        : t.amount;
+
     return {
       _id: t._id,
-      amount: t.amount,
+      amount: displayAmount,
       type: t.type,
       status: displayStatus,
       description: t.description,
@@ -125,10 +146,12 @@ export const getHotelWalletTransactionsAdmin = asyncHandler(async (req, res) => 
     .map((order) => {
       const totalAmount = order.pricing?.total || 0;
       const hotelCommission =
-        (order.commissionBreakdown &&
-          typeof order.commissionBreakdown.hotel === "number" &&
-          order.commissionBreakdown.hotel) ||
-        0;
+        (typeof order?.commissionBreakdown?.hotel === "number" &&
+          order.commissionBreakdown.hotel > 0
+          ? order.commissionBreakdown.hotel
+          : (typeof order?.hotelCommission === "number" && order.hotelCommission > 0
+            ? order.hotelCommission
+            : getHotelCommissionFromOrder(order, hotelPct)));
 
       return {
         _id: order._id,

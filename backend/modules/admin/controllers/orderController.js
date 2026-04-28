@@ -608,9 +608,23 @@ export const getOrders = asyncHandler(async (req, res) => {
         restaurantAddress: restaurantAddress || null,
         // Hotel/QR context (used by admin UI for QR-origin orders)
         orderType: order.orderType || null,
-        hotelName: order.hotelName || null,
-        hotelReference: order.hotelReference || null,
-        hotelId: order.hotelId?.toString?.() || order.hotelId || null,
+        hotelName:
+          order.hotelName ||
+          (order.hotelId && typeof order.hotelId === "object"
+            ? order.hotelId.hotelName || null
+            : null) ||
+          null,
+        hotelReference:
+          order.hotelReference ||
+          (order.hotelId && typeof order.hotelId === "object"
+            ? order.hotelId.hotelId || null
+            : null) ||
+          null,
+        hotelId:
+          (order.hotelId && typeof order.hotelId === "object"
+            ? (order.hotelId._id?.toString?.() || order.hotelId._id || null)
+            : (order.hotelId?.toString?.() || order.hotelId || null)) ||
+          null,
         // Report-specific fields
         totalItemAmount: totalItemAmount,
         itemDiscount: itemDiscount,
