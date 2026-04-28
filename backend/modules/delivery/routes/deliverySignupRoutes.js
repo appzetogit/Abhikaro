@@ -20,7 +20,7 @@ router.post('/signup/details', validate(Joi.object({
   city: Joi.string().trim().required(),
   state: Joi.string().trim().required(),
   vehicleType: Joi.string().valid('bike', 'scooter', 'bicycle', 'car').required(),
-  vehicleName: Joi.string().trim().optional().allow(null, ''),
+  vehicleName: Joi.string().trim().min(2).max(100).required(),
   vehicleNumber: Joi.string().trim().required(),
   panNumber: Joi.string().trim().required(),
   aadharNumber: Joi.string().trim().required()

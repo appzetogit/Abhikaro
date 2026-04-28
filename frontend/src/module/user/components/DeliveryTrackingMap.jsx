@@ -31,6 +31,9 @@ const DeliveryTrackingMap = ({
   trackingRoomIds = null,
   restaurantCoords,
   customerCoords,
+  // User live location is intentionally disabled by default on user order-tracking screen.
+  // We only want to show the fixed delivery location (customerCoords), not the moving device GPS.
+  showUserLiveLocation = false,
   userLiveCoords = null,
   userLocationAccuracy = null,
   deliveryBoyData = null,
@@ -2054,10 +2057,43 @@ const DeliveryTrackingMap = ({
         } catch {}
       }
     }
-  }, [isMapLoaded, hasDeliveryPartner, deliveryBoyLat, deliveryBoyLng, deliveryBoyHeading, restaurantLat, restaurantLng, moveBikeSmoothly, order]);
+  }, [
+    isMapLoaded,
+    hasDeliveryPartner,
+    deliveryBoyLat,
+    deliveryBoyLng,
+    deliveryBoyHeading,
+    restaurantLat,
+    restaurantLng,
+    moveBikeSmoothly,
+    // Avoid re-running this effect on every `order` object identity change.
+    // Only depend on the specific fields that affect bike visibility.
+    order?.deliveryState?.status,
+    order?.deliveryState?.currentPhase,
+    order?.status,
+    order?.deliveryPartnerId,
+    order?.assignmentInfo?.deliveryPartnerId,
+  ]);
 
-  // Update user's live location marker and circle when location changes
+  // Update user's live location marker and circle when location changes (OPTIONAL)
   useEffect(() => {
+    if (!showUserLiveLocation) {
+      // Ensure any previously-created live location overlays are removed.
+      try {
+        if (userLocationMarkerRef.current) {
+          userLocationMarkerRef.current.setMap(null);
+          userLocationMarkerRef.current = null;
+        }
+        if (userLocationCircleRef.current) {
+          userLocationCircleRef.current.setMap(null);
+          userLocationCircleRef.current = null;
+        }
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     if (isMapLoaded && userLiveCoords && userLiveCoords.lat && userLiveCoords.lng && mapInstance.current) {
       const userPos = { lat: userLiveCoords.lat, lng: userLiveCoords.lng };
       const radiusMeters = Math.max(userLocationAccuracy || 50, 20);
@@ -2101,7 +2137,7 @@ const DeliveryTrackingMap = ({
         });
       }
     }
-  }, [isMapLoaded, userLiveCoords, userLocationAccuracy]);
+  }, [showUserLiveLocation, isMapLoaded, userLiveCoords, userLocationAccuracy]);
 
   // Keep customer (fixed delivery location) marker in sync when coordinates arrive/change
   useEffect(() => {

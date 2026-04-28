@@ -113,6 +113,10 @@ export default function SignupStep1() {
       newErrors.state = "State is required"
     }
 
+    if (!formData.vehicleName.trim()) {
+      newErrors.vehicleName = "Vehicle name/model is required"
+    }
+
     if (!formData.vehicleNumber.trim()) {
       newErrors.vehicleNumber = "Vehicle number is required"
     } else {
@@ -137,23 +141,25 @@ export default function SignupStep1() {
     }
 
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    return newErrors
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    if (!validate()) {
+    const validationErrors = validate()
+    if (Object.keys(validationErrors).length > 0) {
       // Prefer showing the most helpful, specific validation error
       const firstError =
-        errors.email ||
-        errors.name ||
-        errors.address ||
-        errors.city ||
-        errors.state ||
-        errors.vehicleNumber ||
-        errors.panNumber ||
-        errors.aadharNumber ||
+        validationErrors.email ||
+        validationErrors.name ||
+        validationErrors.address ||
+        validationErrors.city ||
+        validationErrors.state ||
+        validationErrors.vehicleName ||
+        validationErrors.vehicleNumber ||
+        validationErrors.panNumber ||
+        validationErrors.aadharNumber ||
         "Please fill all required fields correctly"
       toast.error(firstError)
       return
@@ -169,7 +175,7 @@ export default function SignupStep1() {
         city: formData.city.trim(),
         state: formData.state.trim(),
         vehicleType: formData.vehicleType,
-        vehicleName: formData.vehicleName.trim() || null,
+        vehicleName: formData.vehicleName.trim(),
         vehicleNumber: formData.vehicleNumber.trim(),
         panNumber: formData.panNumber.trim().toUpperCase(),
         aadharNumber: formData.aadharNumber.replace(/\s/g, "")
@@ -320,16 +326,19 @@ export default function SignupStep1() {
           {/* Vehicle Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Vehicle Name/Model (Optional)
+              Vehicle Name/Model <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               name="vehicleName"
               value={formData.vehicleName}
               onChange={handleChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                errors.vehicleName ? "border-red-500" : "border-gray-300"
+              }`}
               placeholder="e.g., Honda Activa"
             />
+            {errors.vehicleName && <p className="text-red-500 text-sm mt-1">{errors.vehicleName}</p>}
           </div>
 
           {/* Vehicle Number */}

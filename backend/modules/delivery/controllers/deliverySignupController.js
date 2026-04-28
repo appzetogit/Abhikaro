@@ -27,7 +27,7 @@ const signupDetailsSchema = Joi.object({
   city: Joi.string().trim().required(),
   state: Joi.string().trim().required(),
   vehicleType: Joi.string().valid('bike', 'scooter', 'bicycle', 'car').required(),
-  vehicleName: Joi.string().trim().optional().allow(null, ''),
+  vehicleName: Joi.string().trim().min(2).max(100).required(),
   vehicleNumber: Joi.string().trim().required(),
   panNumber: Joi.string().trim().required(),
   aadharNumber: Joi.string().trim().required()
@@ -67,8 +67,8 @@ export const submitSignupDetails = asyncHandler(async (req, res) => {
       vehicle: {
         type: vehicleType,
         number: vehicleNumber.trim(),
-        model: vehicleName ? vehicleName.trim() : null,
-        brand: vehicleName ? vehicleName.trim() : null // Use vehicleName as brand if provided
+        model: vehicleName.trim(),
+        brand: vehicleName.trim()
       },
       documents: {
         ...delivery.documents,

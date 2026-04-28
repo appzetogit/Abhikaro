@@ -138,7 +138,10 @@ export default function DeliveryOTP() {
 
         // Store auth data using utility function
         try {
-          storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
+          // During signup/onboarding we must persist the token more aggressively.
+          // In some mobile WebViews, sessionStorage can be cleared during camera/gallery flows,
+          // which would cause intermittent 401s and force-redirect to sign-in mid-signup.
+          storeAuthData("delivery", accessToken, user, { persistent: true })
           
           // Register FCM token for push notifications
           import("@/lib/fcmService.js").then(({ registerFcmToken }) => {

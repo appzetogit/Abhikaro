@@ -1,5 +1,5 @@
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom"
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import {
@@ -68,6 +68,8 @@ const AnimatedCheckmark = ({ delay = 0 }) => (
 )
 
 // Real Delivery Map Component (NO user live-location tracking on this screen)
+// NOTE: This wrapper must keep `restaurantCoords`/`customerCoords` object identity stable
+// across parent re-renders; otherwise the map/marker logic re-runs and causes flicker.
 const DeliveryMap = ({ orderId, order, isVisible }) => {
   // Get coordinates from order or use defaults (Indore)
   const getRestaurantCoords = () => {
@@ -195,10 +197,44 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     return null;
   };
 
-  const restaurantCoords = getRestaurantCoords();
+  // Stabilize coordinates object references to avoid map/marker "blink" on frequent parent re-renders.
+  const stableRestaurantCoordsRef = useRef(null)
+  const stableCustomerCoordsRef = useRef(null)
+
+  let restaurantCoords = getRestaurantCoords();
   // Show ONLY the order's delivery coordinates (where the order was placed).
   // No live tracking of the user's device location on this screen.
-  const customerCoords = getCustomerCoords() || null;
+  let customerCoords = getCustomerCoords() || null;
+
+  const sameLatLng = (a, b) =>
+    !!a &&
+    !!b &&
+    typeof a.lat === "number" &&
+    typeof a.lng === "number" &&
+    typeof b.lat === "number" &&
+    typeof b.lng === "number" &&
+    a.lat === b.lat &&
+    a.lng === b.lng
+
+  if (restaurantCoords) {
+    if (sameLatLng(restaurantCoords, stableRestaurantCoordsRef.current)) {
+      restaurantCoords = stableRestaurantCoordsRef.current
+    } else {
+      stableRestaurantCoordsRef.current = restaurantCoords
+    }
+  } else {
+    stableRestaurantCoordsRef.current = null
+  }
+
+  if (customerCoords) {
+    if (sameLatLng(customerCoords, stableCustomerCoordsRef.current)) {
+      customerCoords = stableCustomerCoordsRef.current
+    } else {
+      stableCustomerCoordsRef.current = customerCoords
+    }
+  } else {
+    stableCustomerCoordsRef.current = null
+  }
 
   const deliveryPartnerName =
     order?.deliveryPartner?.name ||
@@ -228,6 +264,13 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     avatar: order.deliveryPartner.avatar || null
   } : null;
 
+  // IMPORTANT: keep tracking ids array stable across re-renders.
+  // Otherwise `DeliveryTrackingMap`'s socket effect will reconnect repeatedly and cause flicker over time.
+  const trackingIds = useMemo(() => {
+    const ids = [orderId, order?._id, order?.orderId].filter(Boolean).map(String)
+    return Array.from(new Set(ids))
+  }, [orderId, order?._id, order?.orderId])
+
   return (
     <motion.div
       className="relative h-64 w-full"
@@ -250,7 +293,7 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
       <DeliveryTrackingMap
         orderId={orderId}
         // Join both possible socket rooms/event ids (Mongo _id and custom orderId) so live tracking works after refresh
-        trackingRoomIds={[orderId, order?._id, order?.orderId].filter(Boolean)}
+        trackingRoomIds={trackingIds}
         restaurantCoords={restaurantCoords}
         customerCoords={customerCoords}
         deliveryBoyData={deliveryBoyData}
