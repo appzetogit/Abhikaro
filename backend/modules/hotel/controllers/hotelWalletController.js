@@ -4,9 +4,11 @@ import {
 } from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import HotelWallet from "../models/HotelWallet.js";
+import Hotel from "../models/Hotel.js";
 import Order from "../../order/models/Order.js";
 import Joi from "joi";
 import { isWithdrawAllowedNow } from "../../../shared/utils/withdrawSchedule.js";
+import { getHotelCommissionFromOrder } from "../../order/utils/hotelCommissionBase.js";
 
 /**
  * GET /api/hotel/wallet
@@ -18,6 +20,13 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
   if (!hotel) {
     return errorResponse(res, 401, "Unauthorized");
   }
+
+  // Load full hotel doc for commission config (some auth payloads are partial)
+  const hotelDoc = await Hotel.findById(hotel._id).lean();
+  const hotelPct =
+    typeof hotelDoc?.commission === "number" && hotelDoc.commission > 0
+      ? hotelDoc.commission
+      : 10;
 
   // Get or create hotel wallet
   const wallet = await HotelWallet.findOrCreateByHotelId(hotel._id);
@@ -78,12 +87,24 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
     const userName = order?.userId?.name || null;
     const userPhone = order?.userId?.phone || null;
 
+    // Commission display amount:
+    // Prefer stored tx amount, but if it's missing/0 for legacy QR orders,
+    // derive from order data (same method used in hotel dashboard stats).
+    const derivedHotelCommission = order
+      ? (typeof order?.commissionBreakdown?.hotel === "number" && order.commissionBreakdown.hotel > 0
+          ? order.commissionBreakdown.hotel
+          : (typeof order?.hotelCommission === "number" && order.hotelCommission > 0
+            ? order.hotelCommission
+            : getHotelCommissionFromOrder(order, hotelPct)))
+      : 0;
+
+    const displayAmount =
+      t.type === "commission" && (typeof t.amount !== "number" || t.amount <= 0)
+        ? derivedHotelCommission
+        : t.amount;
+
     const profitAmount =
-      t.type === "commission"
-        ? t.amount
-        : t.type === "cash_collection"
-        ? 0
-        : 0;
+      t.type === "commission" ? (Number(displayAmount) || 0) : 0;
 
     // For withdrawal transactions, override status from withdrawalRequests map
     let displayStatus = t.status;
@@ -106,7 +127,7 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
 
     return {
       _id: t._id,
-      amount: t.amount,
+      amount: displayAmount,
       type: t.type,
       status: displayStatus,
       description: t.description,
@@ -128,10 +149,12 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
     .map((order) => {
       const totalAmount = order.pricing?.total || 0;
       const hotelCommission =
-        (order.commissionBreakdown &&
-          typeof order.commissionBreakdown.hotel === "number" &&
-          order.commissionBreakdown.hotel) ||
-        0;
+        (typeof order?.commissionBreakdown?.hotel === "number" &&
+          order.commissionBreakdown.hotel > 0
+          ? order.commissionBreakdown.hotel
+          : (typeof order?.hotelCommission === "number" && order.hotelCommission > 0
+            ? order.hotelCommission
+            : getHotelCommissionFromOrder(order, hotelPct)));
 
       return {
         _id: order._id,

@@ -95,21 +95,54 @@ export default function HotelWallet() {
   // fallback to wallet aggregates if stats are not available.
   const statsTotalEarned = stats?.totalHotelRevenue ?? null
 
-  // Display earnings: keep dashboard-aligned stats when available.
-  const totalEarned = statsTotalEarned ?? wallet?.totalEarned ?? 0
   const totalWithdrawn = wallet?.totalWithdrawn ?? 0
 
-  // Wallet.totalEarned is often still 0 when commissions only appear as synthetic
-  // transactions (never written to HotelWallet). Stats from orders are authoritative then.
-  // When both exist, take the max so manual admin credits on the wallet are not lost.
+  // Wallet.totalEarned can include admin/manual credits that are NOT part of order-derived stats.
+  // We therefore:
+  // - Use order-derived earnings from stats (authoritative for QR orders)
+  // - Add "manual net adjustments" from wallet transactions that are not tied to an orderId
+  //   (credits - deductions), so ₹500 manual + ₹30 order earnings becomes ₹530.
+  // This avoids double-counting order commissions if wallet totals happen to also include them.
   const walletEarnedNum = Number(wallet?.totalEarned) || 0
   const statsEarnedNum =
     statsTotalEarned != null && !Number.isNaN(Number(statsTotalEarned))
       ? Number(statsTotalEarned)
       : 0
+
+  const transactions = wallet?.transactions || []
+
+  const manualNetAdjustment = useMemo(() => {
+    // Manual credits: completed earnings not linked to a specific order
+    const manualCredit = transactions.reduce((sum, t) => {
+      if (!t || t.status !== "Completed") return sum
+      if (t.orderId) return sum
+      if (t.type === "commission" || t.type === "bonus" || t.type === "refund") {
+        return sum + (Number(t.amount) || 0)
+      }
+      return sum
+    }, 0)
+
+    const manualDeduction = transactions.reduce((sum, t) => {
+      if (!t || t.status !== "Completed") return sum
+      if (t.orderId) return sum
+      if (t.type === "deduction") {
+        return sum + (Number(t.amount) || 0)
+      }
+      return sum
+    }, 0)
+
+    return Math.round((manualCredit - manualDeduction) * 100) / 100
+  }, [transactions])
+
+  // Display earnings: stats (orders) + manual adjustments (wallet)
+  const totalEarned =
+    statsTotalEarned != null
+      ? statsEarnedNum + manualNetAdjustment
+      : walletEarnedNum
+
   const withdrawableEarnedBase =
     statsTotalEarned != null
-      ? Math.max(walletEarnedNum, statsEarnedNum)
+      ? statsEarnedNum + manualNetAdjustment
       : walletEarnedNum
 
   // Withdrawable = earnedBase - totalWithdrawn,
@@ -127,8 +160,6 @@ export default function HotelWallet() {
   const withdrawMessage = !kycStatus.complete
     ? `Please complete KYC to enable withdrawals (${kycStatus.missing.join(", ")})`
     : wallet?.withdrawMessage || ""
-
-  const transactions = wallet?.transactions || []
 
   const recentTransactions = useMemo(() => {
     return [...transactions].slice(0, 10)
