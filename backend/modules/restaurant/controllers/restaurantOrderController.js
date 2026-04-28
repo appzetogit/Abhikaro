@@ -541,8 +541,10 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     }
 
     // Priority-based order notification: First notify nearest delivery boys, then expand after 30 seconds
-    // Skip for hotel orders as they are served by hotel staff
-    if (!order.deliveryPartnerId && !order.hotelReference) {
+    // Skip only for "Pay at Hotel" orders (fulfilled by hotel staff inside hotel).
+    // NOTE: QR-scan online orders also carry `hotelReference` but still require delivery partners.
+    const isPayAtHotel = String(order.payment?.method || "").toLowerCase() === "pay_at_hotel";
+    if (!order.deliveryPartnerId && !isPayAtHotel) {
       try {
         // Canonical restaurant identifier to use for delivery assignment + lookup
         // (Used by `findNearestDeliveryBoys` and restaurant location fetch below)
@@ -1134,8 +1136,10 @@ export const markOrderPreparing = asyncHandler(async (req, res) => {
     }
 
     // Check if delivery partner is already assigned (after reload)
-    // Skip for hotel orders as they are served by hotel staff
-    if (!freshOrder.deliveryPartnerId && !freshOrder.hotelReference) {
+    // Skip only for "Pay at Hotel" orders (fulfilled by hotel staff inside hotel).
+    const isPayAtHotelFresh =
+      String(freshOrder.payment?.method || "").toLowerCase() === "pay_at_hotel";
+    if (!freshOrder.deliveryPartnerId && !isPayAtHotelFresh) {
       try {
         console.log(
           `🔄 Attempting to assign order ${freshOrder.orderId} to delivery boy (status: ${freshOrder.status})...`,
