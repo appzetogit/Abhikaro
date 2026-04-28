@@ -211,6 +211,7 @@ export default function SignupStep2() {
         if (typeof window !== "undefined") {
           try {
             sessionStorage.removeItem("deliverySignupDetails")
+            sessionStorage.setItem("delivery_signup_step", "complete")
           } catch {
             // Ignore storage errors
           }
@@ -343,7 +344,7 @@ export default function SignupStep2() {
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate("/delivery/signup/details")}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />

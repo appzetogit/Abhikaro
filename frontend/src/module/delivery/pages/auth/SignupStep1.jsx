@@ -183,6 +183,11 @@ export default function SignupStep1() {
 
       if (response?.data?.success) {
         toast.success("Details saved successfully")
+        try {
+          sessionStorage.setItem("delivery_signup_step", "documents")
+        } catch {
+          // ignore
+        }
         navigate("/delivery/signup/documents")
       }
     } catch (error) {
@@ -199,7 +204,7 @@ export default function SignupStep1() {
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-4 border-b border-gray-200">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate("/delivery/sign-in")}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
