@@ -10,6 +10,11 @@ import {
   notifyRestaurantNewOrder,
   notifyRestaurantOrderUpdate,
 } from '../../order/services/restaurantNotificationService.js';
+import {
+  calculateOrderSettlement,
+  updateSettlementOnStatusChange,
+} from '../../order/services/orderSettlementService.js';
+import { releaseEscrow } from '../../order/services/escrowWalletService.js';
 
 /**
  * Get all orders for admin
@@ -1139,6 +1144,7 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "Order not found");
     }
 
+    const prevStatus = order.status;
     const allowedOrderStatuses = new Set([
       "pending",
       "confirmed",
@@ -1158,6 +1164,8 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
     ]);
 
     let shouldNotifyRestaurantPreparing = false;
+    let didChangeOrderStatus = false;
+    let shouldRunDeliverySettlement = false;
 
     if (typeof orderStatus === "string" && orderStatus.trim().length > 0) {
       const next = orderStatus.trim().toLowerCase();
@@ -1165,9 +1173,9 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
         return errorResponse(res, 400, "Invalid order status");
       }
 
-      const prevStatus = order.status;
       const wasCancelled = prevStatus === "cancelled";
       order.status = next;
+      didChangeOrderStatus = next !== prevStatus;
       if (next === "cancelled") {
         order.cancelledAt = order.cancelledAt || new Date();
         order.cancelledBy = order.cancelledBy || "admin";
@@ -1191,6 +1199,17 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
           order.tracking.confirmed = { status: true, timestamp: new Date() };
         }
         shouldNotifyRestaurantPreparing = true;
+      }
+
+      // Mark delivered timestamp/tracking and trigger settlement release
+      if (next === 'delivered' && prevStatus !== 'delivered') {
+        if (!order.tracking) order.tracking = {};
+        order.tracking.delivered = order.tracking.delivered || {
+          status: true,
+          timestamp: new Date(),
+        };
+        order.deliveredAt = order.deliveredAt || new Date();
+        shouldRunDeliverySettlement = true;
       }
     }
 
@@ -1220,6 +1239,38 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
         console.error(
           "Admin status update: failed to notify restaurant socket clients:",
           notifyErr,
+        );
+      }
+    }
+
+    // CRITICAL: When admin marks an order as delivered, make sure settlement + wallet credits run
+    // (same as delivery-partner delivered flow). This fixes QR hotel commission missing on admin delivery.
+    if (shouldRunDeliverySettlement) {
+      try {
+        await calculateOrderSettlement(order._id);
+      } catch (e) {
+        console.warn(
+          'Admin delivered update: failed to calculate settlement (non-blocking):',
+          e?.message || e,
+        );
+      }
+
+      try {
+        await updateSettlementOnStatusChange(order._id, 'delivered', prevStatus);
+      } catch (e) {
+        console.warn(
+          'Admin delivered update: failed to update settlement on status change (non-blocking):',
+          e?.message || e,
+        );
+      }
+
+      try {
+        await releaseEscrow(order._id);
+      } catch (e) {
+        // For COD / pay_at_hotel orders escrow may not be held; don't block admin action.
+        console.warn(
+          'Admin delivered update: escrow release failed (non-blocking):',
+          e?.message || e,
         );
       }
     }

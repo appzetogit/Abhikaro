@@ -101,7 +101,6 @@ export default function Cart() {
   const [showFleetOptions, setShowFleetOptions] = useState(false)
   const [note, setNote] = useState("")
   const [showNoteInput, setShowNoteInput] = useState(false)
-  const [sendCutlery, setSendCutlery] = useState(true)
   const [additionalAddress, setAdditionalAddress] = useState("")
   const [isEditingContact, setIsEditingContact] = useState(false)
   const [contactName, setContactName] = useState("")
@@ -1313,7 +1312,7 @@ export default function Cart() {
         pricing: orderPricing,
         deliveryFleet: deliveryFleet,
         note: note,
-        sendCutlery: sendCutlery,
+        sendCutlery: true,
         paymentMethod: selectedPaymentMethod,
         zoneId: zoneId, // CRITICAL: Pass zoneId for strict zone validation
         additionalAddress: additionalAddress.trim(), // Additional address details (required)
@@ -1923,21 +1922,14 @@ export default function Cart() {
               </div>
 
 
-              {/* Note & Cutlery */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl flex flex-col sm:flex-row gap-2 md:gap-3">
+              {/* Note */}
+              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
                 <button
                   onClick={() => setShowNoteInput(!showNoteInput)}
-                  className="flex-1 flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  className="w-full flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
                 >
                   <FileText className="h-4 w-4 md:h-5 md:w-5" />
                   <span className="truncate">{note || "Add a note for the restaurant"}</span>
-                </button>
-                <button
-                  onClick={() => setSendCutlery(!sendCutlery)}
-                  className={`flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border rounded-lg md:rounded-xl text-sm md:text-base ${sendCutlery ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300' : 'border-red-600 dark:border-red-500 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'}`}
-                >
-                  <Utensils className="h-4 w-4 md:h-5 md:w-5" />
-                  <span className="whitespace-nowrap">{sendCutlery ? "Don't send cutlery" : "No cutlery"}</span>
                 </button>
               </div>
 
