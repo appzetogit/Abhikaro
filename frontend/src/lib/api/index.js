@@ -1948,6 +1948,13 @@ export const adminAPI = {
     return apiClient.get(API_ENDPOINTS.ADMIN.ORDERS, { params });
   },
 
+  // Get single order by ID/orderId (admin)
+  // Backend accepts either Mongo ObjectId (24 chars) OR human orderId string.
+  getOrderById: (id) => {
+    if (!id) return Promise.reject(new Error("Order ID is required"));
+    return apiClient.get(`/admin/orders/${encodeURIComponent(id)}`);
+  },
+
   // Bulk delete orders (admin)
   bulkDeleteOrders: (orderIds = []) => {
     return apiClient.post(API_ENDPOINTS.ADMIN.ORDERS_BULK_DELETE, { orderIds });

@@ -36,13 +36,49 @@ const getPaymentStatusColor = (paymentStatus) => {
   return "text-slate-600"
 }
 
-export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPaymentApproved }) {
+const formatMoney = (n) => {
+  const num = Number(n || 0)
+  return `₹${num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp, onPaymentApproved }) {
   const [approvingPayment, setApprovingPayment] = useState(false)
   const [reassigning, setReassigning] = useState(false)
   const [resending, setResending] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [fullOrder, setFullOrder] = useState(null)
 
-  const orderIdToUse = order?.id || order?._id || order?.orderId
+  const orderIdToUse = orderProp?.id || orderProp?._id || orderProp?.orderId
+
+  // Fetch full order details on open so earnings/hotel fields are reliable.
+  // List rows may not contain settlement-derived earnings or populated hotel info.
+  useEffect(() => {
+    let cancelled = false
+    if (!isOpen || !orderIdToUse) {
+      setFullOrder(orderProp || null)
+      return
+    }
+
+    setFullOrder(orderProp || null)
+    ;(async () => {
+      try {
+        const resp = await adminAPI.getOrderById(orderIdToUse)
+        const fetched = resp?.data?.data?.order || null
+        if (!cancelled && fetched) {
+          setFullOrder((prev) => ({ ...(prev || {}), ...(fetched || {}) }))
+        }
+      } catch (_) {
+        // Non-blocking
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, orderIdToUse])
+
+  // Use merged order everywhere below (prevents crashes when orderProp is null).
+  const order = fullOrder || orderProp
 
   // Backend should provide a consistent orderStatus, but guard against legacy/inconsistent data:
   // if cancellation fields are present, never show Delivered/other non-cancelled statuses in the UI.
@@ -211,18 +247,9 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
     }
   }
 
-  if (!order) return null
-
-  // Debug: Log order data to check billImageUrl
-  if (order.billImageUrl) {
-    console.log('📸 Bill Image URL found:', order.billImageUrl)
-  } else {
-    console.log('⚠️ Bill Image URL not found in order:', {
-      orderId: order.orderId,
-      hasBillImageUrl: !!order.billImageUrl,
-      orderKeys: Object.keys(order)
-    })
-  }
+  // NOTE: Do not return early before all hooks run.
+  // `order` can be null on the first render while the dialog state resolves.
+  // If we return early before useMemo/useEffect hooks, React will detect hook order changes.
 
   // Format address for display
   const formatAddress = (address) => {
@@ -251,6 +278,57 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
     }
     return null
   }
+
+  const viewOrder = fullOrder || order
+  const method = String(viewOrder?.payment?.method || "").toLowerCase()
+  const isHotelOrder = Boolean(
+    viewOrder?.orderType === "QR" ||
+      viewOrder?.hotelReference ||
+      viewOrder?.hotelId ||
+      viewOrder?.hotelName ||
+      method === "pay_at_hotel",
+  )
+
+  const total = Number(viewOrder?.totalAmount ?? viewOrder?.pricing?.total ?? viewOrder?.total ?? 0)
+  const rawEarnings = viewOrder?.earnings || {}
+  const estimated = viewOrder?.estimatedEarnings
+  const estimatedDeliveryEarning = (() => {
+    if (!estimated) return 0
+    if (typeof estimated === "number") return Number(estimated) || 0
+    if (typeof estimated === "object") {
+      return Number(estimated.totalEarning ?? estimated.basePayout ?? 0) || 0
+    }
+    return 0
+  })()
+  const earnings = {
+    orderTotal: Number(rawEarnings.orderTotal ?? total ?? 0) || 0,
+    restaurantEarning:
+      Number(rawEarnings.restaurantEarning ?? rawEarnings.restaurant ?? 0) ||
+      0,
+    deliveryEarning:
+      // Prefer backend earnings (which now uses DeliveryWallet as source of truth for completed deliveries).
+      Number(rawEarnings.deliveryEarning ?? rawEarnings.delivery ?? 0) ||
+      estimatedDeliveryEarning ||
+      0,
+    adminEarning:
+      Number(rawEarnings.adminEarning ?? rawEarnings.admin ?? 0) ||
+      0,
+    hotelEarning:
+      Number(rawEarnings.hotelEarning ?? rawEarnings.hotel ?? 0) ||
+      Number(viewOrder?.commissionBreakdown?.hotel ?? 0) ||
+      Number(viewOrder?.hotelCommission ?? 0) ||
+      0,
+  }
+
+  // Cancelled orders should not show any earnings/split.
+  if (isEffectivelyCancelled) {
+    earnings.restaurantEarning = 0
+    earnings.deliveryEarning = 0
+    earnings.adminEarning = 0
+    earnings.hotelEarning = 0
+  }
+
+  if (!viewOrder) return null
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -648,6 +726,35 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, onPayment
 
           {/* Pricing Breakdown */}
           <div className="border-t border-slate-200 pt-4">
+            {/* Earnings / Split (shown above pricing) */}
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-800 mb-3">Order Split</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Order total</span>
+                  <span className="font-semibold text-slate-900">{formatMoney(earnings.orderTotal)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Restaurant</span>
+                  <span className="font-semibold text-slate-900">{formatMoney(earnings.restaurantEarning)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Delivery boy </span>
+                  <span className="font-semibold text-slate-900">{formatMoney(earnings.deliveryEarning)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Admin</span>
+                  <span className="font-semibold text-slate-900">{formatMoney(earnings.adminEarning)}</span>
+                </div>
+                {isHotelOrder ? (
+                  <div className="flex justify-between md:col-span-2">
+                    <span className="text-slate-600">Hotel</span>
+                    <span className="font-semibold text-slate-900">{formatMoney(earnings.hotelEarning)}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Pricing Breakdown</h3>
             <div className="space-y-2">
               {order.totalItemAmount !== undefined && (

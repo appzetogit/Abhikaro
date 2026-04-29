@@ -463,6 +463,11 @@ export const getOrders = asyncHandler(async (req, res) => {
         settlementEarnings?.adminEarning ?? commissionInfo.adminEarning ?? 0;
 
       const isHotelQrOrder = (order.orderType === 'QR' || !!order.hotelReference || !!order.hotelId);
+      // Keep a stable hotel commission amount for UI display (avoid scope issues).
+      let hotelCommissionAmount =
+        Number(order.commissionBreakdown?.hotel || 0) ||
+        Number(order.hotelCommission || 0) ||
+        0;
 
       // QR / Hotel (Online) earnings (commission + fees):
       // Many QR orders don't have OrderSettlement populated, so we compute from stored breakdown + pricing.
@@ -486,10 +491,7 @@ export const getOrders = asyncHandler(async (req, res) => {
           Number(qrGlobalCommission?.admin || 0) ||
           Number(order.commissionPercentages?.admin || 0);
 
-        let hotelCommission =
-          Number(order.commissionBreakdown?.hotel || 0) ||
-          Number(order.hotelCommission || 0) ||
-          0;
+        let hotelCommission = hotelCommissionAmount;
         let qrAdminCommission =
           Number(order.commissionBreakdown?.admin || 0) ||
           Number(order.adminCommission || 0) ||
@@ -537,6 +539,7 @@ export const getOrders = asyncHandler(async (req, res) => {
         }
 
         // Also ensure hotel commission is excluded when we later derive restaurant (if needed)
+        hotelCommissionAmount = Number(hotelCommission || 0) || hotelCommissionAmount;
       }
 
       // If restaurant earning is still missing/zero:
@@ -709,7 +712,9 @@ export const getOrders = asyncHandler(async (req, res) => {
           orderTotal: orderAmount,
           restaurantEarning,
           deliveryEarning,
-          adminEarning
+          adminEarning,
+          // Include hotel earning for QR / hotel-origin orders so admin UI can display it
+          hotelEarning: Math.round(Number(hotelCommissionAmount || 0) * 100) / 100,
         }
       };
     });
@@ -990,6 +995,144 @@ export const getOrderById = asyncHandler(async (req, res) => {
 
     if (!order) {
       return errorResponse(res, 404, 'Order not found');
+    }
+
+    // Attach earnings breakdown for admin order details view.
+    // This keeps parity with the list endpoint which exposes `earnings`.
+    try {
+      const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
+      const settlement = await OrderSettlement.findOne({ orderId: order._id })
+        .select('adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning')
+        .lean();
+
+      const orderAmount = Number(order?.pricing?.total || 0);
+      const settlementAdmin = Number(settlement?.adminEarning?.totalEarning || 0);
+      const settlementRestaurant = Number(settlement?.restaurantEarning?.netEarning || 0);
+      let settlementDelivery = Number(settlement?.deliveryPartnerEarning?.totalEarning || 0);
+
+      // Hotel earning is stored on the order for QR/hotel-origin orders (commission breakdown).
+      const hotelEarning =
+        Number(order?.commissionBreakdown?.hotel || 0) ||
+        Number(order?.hotelCommission || 0) ||
+        0;
+
+      let restaurantEarning = settlementRestaurant;
+      let deliveryEarning = settlementDelivery;
+      let adminEarning = settlementAdmin;
+
+      // DELIVERY SOURCE OF TRUTH:
+      // Delivery app trip history uses DeliveryWallet transactions (type=payment, status=Completed)
+      // and not a deliveryFee-derived approximation. Use that when available.
+      try {
+        const deliveryId =
+          (order?.deliveryPartnerId && typeof order.deliveryPartnerId === 'object')
+            ? (order.deliveryPartnerId._id || order.deliveryPartnerId.id || null)
+            : (order?.deliveryPartnerId || null);
+        if (deliveryId) {
+          const DeliveryWallet = (await import('../../delivery/models/DeliveryWallet.js')).default;
+          const wallet = await DeliveryWallet.findOne({ deliveryId })
+            .select('transactions.amount transactions.type transactions.status transactions.orderId')
+            .lean();
+          const tx = (wallet?.transactions || []).find(
+            (t) =>
+              t &&
+              t.type === 'payment' &&
+              t.status === 'Completed' &&
+              t.orderId &&
+              t.orderId.toString() === order._id.toString()
+          );
+          if (tx && Number(tx.amount) > 0) {
+            deliveryEarning = Number(tx.amount) || 0;
+            settlementDelivery = deliveryEarning;
+          }
+        }
+      } catch (_) {
+        // Non-blocking
+      }
+
+      // Fallback for older orders without settlement
+      if (!restaurantEarning && !deliveryEarning && !adminEarning) {
+        // Prefer stored commission breakdown when present
+        const cbAdmin = Number(order?.commissionBreakdown?.admin || 0);
+        const cbRestaurant = Number(order?.commissionBreakdown?.restaurant || 0);
+        if (cbAdmin || cbRestaurant || hotelEarning) {
+          adminEarning = cbAdmin;
+          restaurantEarning = cbRestaurant;
+          // If wallet/settlement missing, use estimatedEarnings if present (same as delivery trip history)
+          const est = order?.estimatedEarnings;
+          if (est) {
+            if (typeof est === 'object') {
+              deliveryEarning =
+                Number(est.totalEarning ?? est.basePayout ?? 0) || 0;
+            } else if (typeof est === 'number') {
+              deliveryEarning = Number(est) || 0;
+            }
+          }
+        } else {
+          const subtotal = Number(order?.pricing?.subtotal || 0);
+          const discount = Number(order?.pricing?.discount || 0);
+          const deliveryFee = Number(order?.pricing?.deliveryFee || 0);
+          restaurantEarning = Math.max(0, subtotal - discount);
+          const est = order?.estimatedEarnings;
+          if (est) {
+            if (typeof est === 'object') {
+              deliveryEarning =
+                Number(est.totalEarning ?? est.basePayout ?? 0) || 0;
+            } else if (typeof est === 'number') {
+              deliveryEarning = Number(est) || 0;
+            }
+          }
+          adminEarning = Math.max(0, orderAmount - restaurantEarning - deliveryEarning);
+        }
+      }
+
+      // QR / Hotel orders: restaurant earning should be based on food subtotal (commissionable),
+      // not on platform/delivery/tax. If settlement didn't populate, derive like list endpoint:
+      // restaurant = (subtotal - discount) - hotelCommission - adminCommission
+      const isHotelOrder =
+        order?.orderType === 'QR' ||
+        Boolean(order?.hotelReference) ||
+        Boolean(order?.hotelId) ||
+        String(order?.payment?.method || '').toLowerCase() === 'pay_at_hotel';
+      if (isHotelOrder) {
+        const subtotal = Number(order?.pricing?.subtotal || 0);
+        const discount = Number(order?.pricing?.discount || 0);
+        const commissionableFood = Math.max(0, subtotal - discount);
+
+        const hotelCommission = Number(hotelEarning || 0);
+        const adminCommission =
+          Number(order?.commissionBreakdown?.admin || 0) ||
+          Number(order?.adminCommission || 0) ||
+          (commissionableFood > 0
+            ? Math.round(((commissionableFood * Number(order?.commissionPercentages?.admin || 0)) / 100) * 100) / 100
+            : 0);
+
+        if (commissionableFood > 0) {
+          const derivedRestaurant = Math.max(0, commissionableFood - hotelCommission - adminCommission);
+          // If we have no usable restaurant earning (common for hotel orders without settlement), use derived.
+          if (!restaurantEarning || restaurantEarning <= 0) {
+            restaurantEarning = Math.round(derivedRestaurant * 100) / 100;
+          }
+        }
+
+        // Admin total (for display): commission + fees (platform + delivery + tax)
+        if (!adminEarning || adminEarning <= 0) {
+          const platformFee = Number(order?.pricing?.platformFee || 0);
+          const deliveryFee = Number(order?.pricing?.deliveryFee || 0);
+          const tax = Number(order?.pricing?.tax || 0);
+          adminEarning = Math.round((adminCommission + platformFee + deliveryFee + tax) * 100) / 100;
+        }
+      }
+
+      order.earnings = {
+        orderTotal: orderAmount,
+        restaurantEarning: Math.round(Number(restaurantEarning || 0) * 100) / 100,
+        deliveryEarning: Math.round(Number(deliveryEarning || 0) * 100) / 100,
+        adminEarning: Math.round(Number(adminEarning || 0) * 100) / 100,
+        hotelEarning: Math.round(Number(hotelEarning || 0) * 100) / 100,
+      };
+    } catch (_) {
+      // Non-blocking: order details can still render without earnings.
     }
 
     return successResponse(res, 200, 'Order retrieved successfully', {
