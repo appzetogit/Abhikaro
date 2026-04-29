@@ -818,9 +818,9 @@ export default function CategoryPage() {
     setSelectedCategory(categorySlug)
     // Update URL to reflect category change
     if (categorySlug === 'all') {
-      navigate('/user/category/all')
+      navigate('/category/all')
     } else {
-      navigate(`/user/category/${categorySlug}`)
+      navigate(`/category/${categorySlug}`)
     }
   }
 
@@ -836,7 +836,7 @@ export default function CategoryPage() {
           {/* Search Bar with Back Button */}
           <div className="flex items-center gap-2 px-3 md:px-6 pt-9 pb-3 border-b border-gray-100 dark:border-gray-800">
             <button 
-              onClick={() => navigate('/user')}
+              onClick={() => navigate('/')}
               className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
             >
               <ArrowLeft className="h-5 w-5 text-gray-700 dark:text-gray-300" />

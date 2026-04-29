@@ -116,7 +116,7 @@ export default function Navbar() {
           </div>
 
           {/* Company Logo or Name - Centered between sections */}
-          <Link to="/user" className="flex items-center justify-center flex-shrink-0">
+          <Link to="/" className="flex items-center justify-center flex-shrink-0">
             {logoUrl ? (
               <img
                 src={logoUrl}

@@ -28,7 +28,7 @@ export default function BottomNavigation() {
       <div className="flex items-center justify-around h-auto px-4 sm:px-6">
         {/* Delivery Tab */}
         <Link
-          to="/user"
+          to="/"
           className={`flex flex-col items-center gap-1.5 px-4 sm:px-5 py-2 transition-all duration-200 relative ${isDelivery
               ? "text-green-700 dark:text-green-500"
               : "text-gray-600 dark:text-gray-400"
@@ -51,7 +51,7 @@ export default function BottomNavigation() {
 
             {/* Under 250 Tab */}
             <Link
-              to="/user/under-250"
+              to="/under-250"
               className={`flex flex-col items-center gap-1.5 px-4 sm:px-5 py-2 transition-all duration-200 relative ${isUnder250
                   ? "text-green-700 dark:text-green-500"
                   : "text-gray-600 dark:text-gray-400"
@@ -71,7 +71,7 @@ export default function BottomNavigation() {
 
             {/* Dining Tab */}
             <Link
-              to="/user/dining"
+              to="/dining"
               className={`flex flex-col items-center gap-1.5 px-4 sm:px-5 py-2 transition-all duration-200 relative ${isDining
                   ? "text-green-700 dark:text-green-500"
                   : "text-gray-600 dark:text-gray-400"

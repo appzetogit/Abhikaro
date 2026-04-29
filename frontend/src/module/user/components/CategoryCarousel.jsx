@@ -50,7 +50,7 @@ export default function CategoryCarousel({
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.4 }}
-          onClick={() => navigate("/user/under-250")}
+          onClick={() => navigate("/under-250")}
         >
           <img
             src={offerImage}
@@ -89,7 +89,7 @@ export default function CategoryCarousel({
                   whileTap={{ scale: 0.95 }}
                 >
                   <Link 
-                    to={`/user/category/${categoryData.slug || categoryData.name.toLowerCase().replace(/\s+/g, '-')}`} 
+                    to={`/category/${categoryData.slug || categoryData.name.toLowerCase().replace(/\s+/g, '-')}`} 
                     className="flex flex-col items-center gap-2 group"
                   >
                     <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 relative">

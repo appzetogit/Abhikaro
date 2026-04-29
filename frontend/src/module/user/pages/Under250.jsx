@@ -565,7 +565,7 @@ export default function Under250() {
               const categoryKey = `${category.id || "cat"}-${categorySlug}-${index}`
               return (
                 <div key={categoryKey} className="flex-shrink-0">
-                  <Link to={`/user/category/${categorySlug}`}>
+                  <Link to={`/category/${categorySlug}`}>
                     <motion.div
                       className="flex flex-col items-center gap-1.5 sm:gap-2 w-[56px] sm:w-20 md:w-24"
                       onClick={() => setActiveCategory(category.id)}

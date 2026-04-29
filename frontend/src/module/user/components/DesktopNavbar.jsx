@@ -144,7 +144,7 @@ export default function DesktopNavbar() {
             <div className="flex items-center space-x-1">
               {/* Delivery Tab */}
               <Link
-                to="/user"
+                to="/"
                 className={`px-6 py-2.5 text-sm font-medium transition-all duration-200 relative ${isDelivery
                   ? "text-green-600 dark:text-green-500"
                   : "text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500"
@@ -161,7 +161,7 @@ export default function DesktopNavbar() {
 
               {/* Under 250 Tab */}
               <Link
-                to="/user/under-250"
+                to="/under-250"
                 className={`px-6 py-2.5 text-sm font-medium transition-all duration-200 relative ${isUnder250
                   ? "text-green-600 dark:text-green-500"
                   : "text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500"
@@ -178,7 +178,7 @@ export default function DesktopNavbar() {
 
               {/* Dining Tab */}
               <Link
-                to="/user/dining"
+                to="/dining"
                 className={`px-6 py-2.5 text-sm font-medium transition-all duration-200 relative ${isDining
                   ? "text-green-600 dark:text-green-500"
                   : "text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500"

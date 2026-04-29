@@ -2910,7 +2910,7 @@ export default function Home() {
                         whileTap={{ scale: 0.95 }}
                       >
                         <Link
-                          to={`/user/category/${categoryData.slug || categoryData.name.toLowerCase().replace(/\s+/g, '-')}`}
+                          to={`/category/${categoryData.slug || categoryData.name.toLowerCase().replace(/\s+/g, '-')}`}
                           onClick={() => setShowAllCategoriesModal(false)}
                           className="block"
                         >
