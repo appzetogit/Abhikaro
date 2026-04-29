@@ -232,6 +232,13 @@ export default function RestaurantOTP() {
         // Store auth data using utility function to ensure proper module-specific token storage
         setRestaurantAuthData("restaurant", accessToken, restaurant)
 
+        // Clear any cached onboarding draft step so stale state doesn't force onboarding again
+        try {
+          window.localStorage.removeItem("restaurant_onboarding_step")
+        } catch {
+          // ignore
+        }
+
         // Register FCM token for push notifications (non-blocking)
         import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
           registerFcmToken(accessToken, {

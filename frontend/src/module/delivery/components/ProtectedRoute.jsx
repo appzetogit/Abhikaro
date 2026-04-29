@@ -7,6 +7,11 @@ import Loader from "@/components/Loader"
 function getRequiredSignupStep(deliveryUser) {
   if (!deliveryUser) return "details"
 
+  // Prefer backend-computed step when available (single source of truth).
+  // This avoids forcing already-registered users into signup due to payload shape differences.
+  if (deliveryUser.signupStep) return deliveryUser.signupStep
+  if (deliveryUser.signupComplete === true) return null
+
   const needsDetails =
     !deliveryUser.name ||
     deliveryUser.name === "Delivery Partner" ||

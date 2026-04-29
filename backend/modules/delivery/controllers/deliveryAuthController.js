@@ -17,6 +17,49 @@ const logger = winston.createLogger({
   ]
 });
 
+function hasNonEmptyString(v) {
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
+/**
+ * Determine which delivery signup step is required.
+ * Returns:
+ * - "details" if required basic profile fields are missing
+ * - "documents" if docs/profile photo are missing
+ * - null if signup is complete
+ */
+function getRequiredSignupStep(delivery) {
+  if (!delivery) return 'details';
+
+  const profileImageUrl =
+    delivery?.profileImage?.url ||
+    delivery?.documents?.photo ||
+    delivery?.documents?.profilePhoto ||
+    null;
+
+  const needsDetails =
+    !hasNonEmptyString(delivery.name) ||
+    delivery.name === 'Delivery Partner' ||
+    !hasNonEmptyString(delivery.email) ||
+    !hasNonEmptyString(delivery.location?.city) ||
+    !hasNonEmptyString(delivery.vehicle?.number) ||
+    !hasNonEmptyString(delivery.vehicle?.model) ||
+    !hasNonEmptyString(delivery.documents?.pan?.number) ||
+    !hasNonEmptyString(delivery.documents?.aadhar?.number);
+
+  if (needsDetails) return 'details';
+
+  const needsDocuments =
+    !hasNonEmptyString(profileImageUrl) ||
+    !hasNonEmptyString(delivery.documents?.aadhar?.document) ||
+    !hasNonEmptyString(delivery.documents?.pan?.document) ||
+    !hasNonEmptyString(delivery.documents?.drivingLicense?.document);
+
+  if (needsDocuments) return 'documents';
+
+  return null;
+}
+
 /**
  * Send OTP for delivery boy phone number
  * POST /api/delivery/auth/send-otp
@@ -157,19 +200,8 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         }
       }
 
-      // Check if signup needs to be completed (missing required fields)
-      const needsSignup = !delivery.name ||
-                         delivery.name === 'Delivery Partner' ||
-                         !delivery.email ||
-                         !delivery.location?.city || 
-                         !delivery.vehicle?.number || 
-                         !delivery.documents?.pan?.number ||
-                         !delivery.documents?.aadhar?.number ||
-                         !delivery.documents?.aadhar?.document ||
-                         !delivery.documents?.pan?.document ||
-                         !delivery.documents?.drivingLicense?.document;
-
-      if (needsSignup) {
+      const requiredStep = getRequiredSignupStep(delivery);
+      if (requiredStep) {
         // Generate tokens for signup flow
         const tokens = jwtService.generateTokens({
           userId: delivery._id.toString(),
@@ -219,6 +251,8 @@ export const verifyOTP = asyncHandler(async (req, res) => {
             email: delivery.email,
             deliveryId: delivery.deliveryId,
             status: delivery.status,
+            signupStep: requiredStep,
+            signupComplete: false,
             rejectionReason: delivery.rejectionReason || null // Include rejection reason for blocked accounts
           },
           needsSignup: true // Signal that signup needs to be completed
@@ -276,6 +310,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
 
     const deliveryPlain = delivery.toObject({ depopulate: true });
     normalizeDeliveryProfileImages(deliveryPlain, req);
+    const signupStep = getRequiredSignupStep(deliveryPlain);
 
     // Return access token and delivery boy info
     return successResponse(res, 200, 'Authentication successful', {
@@ -291,6 +326,8 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         profileImage: deliveryPlain.profileImage,
         isActive: delivery.isActive,
         status: delivery.status,
+        signupStep: signupStep,
+        signupComplete: !signupStep,
         rejectionReason: delivery.rejectionReason || null, // Include rejection reason for blocked accounts
         metrics: delivery.metrics,
         earnings: delivery.earnings
@@ -436,6 +473,7 @@ export const registerFcmToken = asyncHandler(async (req, res) => {
 export const getCurrentDelivery = asyncHandler(async (req, res) => {
   const d = req.delivery.toObject({ depopulate: true });
   normalizeDeliveryProfileImages(d, req);
+  const signupStep = getRequiredSignupStep(d);
 
   return successResponse(res, 200, 'Delivery boy retrieved successfully', {
     user: {
@@ -449,6 +487,8 @@ export const getCurrentDelivery = asyncHandler(async (req, res) => {
       profileImage: d.profileImage,
       isActive: d.isActive,
       status: d.status,
+      signupStep,
+      signupComplete: !signupStep,
       location: d.location,
       vehicle: d.vehicle,
       documents: d.documents,

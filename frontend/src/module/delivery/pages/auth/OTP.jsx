@@ -142,6 +142,13 @@ export default function DeliveryOTP() {
           // In some mobile WebViews, sessionStorage can be cleared during camera/gallery flows,
           // which would cause intermittent 401s and force-redirect to sign-in mid-signup.
           storeAuthData("delivery", accessToken, user, { persistent: true })
+
+          // Clear cached signup-step so ProtectedRoute refetches latest backend state
+          try {
+            sessionStorage.removeItem("delivery_signup_step")
+          } catch {
+            // ignore
+          }
           
           // Register FCM token for push notifications
           import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
@@ -180,6 +187,13 @@ export default function DeliveryOTP() {
       // The setAuthData function includes error handling and verification
       try {
         storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
+
+        // Clear cached signup-step so ProtectedRoute refetches and doesn't use stale session value
+        try {
+          sessionStorage.removeItem("delivery_signup_step")
+        } catch {
+          // ignore
+        }
         
         // Register FCM token for push notifications
         import("@/lib/fcmService.js").then(({ registerFcmToken }) => {
@@ -273,6 +287,13 @@ export default function DeliveryOTP() {
       // The setAuthData function includes error handling and verification
       try {
         storeAuthData("delivery", accessToken, user, { persistent: !!authData?.rememberMe })
+
+        // Clear cached signup-step so ProtectedRoute refetches and doesn't use stale session value
+        try {
+          sessionStorage.removeItem("delivery_signup_step")
+        } catch {
+          // ignore
+        }
       } catch (storageError) {
         // Failed to store authentication data
         setError("Failed to save authentication. Please try again or clear your browser storage.")

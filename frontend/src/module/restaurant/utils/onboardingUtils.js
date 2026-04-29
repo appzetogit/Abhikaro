@@ -24,9 +24,6 @@ const isStepComplete = (stepData, stepNumber) => {
       stepData.deliveryTimings?.closingTime &&
       Array.isArray(stepData.openDays) &&
       stepData.openDays.length > 0 &&
-      // Check for menu images (must have at least one)
-      Array.isArray(stepData.menuImageUrls) &&
-      stepData.menuImageUrls.length > 0 &&
       // Check for profile image
       stepData.profileImageUrl &&
       (stepData.profileImageUrl.url || typeof stepData.profileImageUrl === 'string')
