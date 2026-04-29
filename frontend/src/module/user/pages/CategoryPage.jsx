@@ -810,6 +810,11 @@ export default function CategoryPage() {
 
   const handleCategorySelect = (category) => {
     const categorySlug = category.slug || category.id
+    // If already selected, don't re-navigate / re-trigger state updates
+    if (!categorySlug) return
+    if (selectedCategory === categorySlug || selectedCategory === category.id) {
+      return
+    }
     setSelectedCategory(categorySlug)
     // Update URL to reflect category change
     if (categorySlug === 'all') {
