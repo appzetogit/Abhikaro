@@ -873,7 +873,7 @@ export default function CategoryPage() {
                 const isSelected = selectedCategory === categorySlug || selectedCategory === cat.id
                 return (
                   <button
-                    key={cat.id}
+                    key={categorySlug || cat.id || cat.name}
                     onClick={() => handleCategorySelect(cat)}
                     className={`flex flex-col items-center gap-1.5 flex-shrink-0 pb-2 transition-all ${
                       isSelected ? 'border-b-2 border-green-600' : ''
