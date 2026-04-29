@@ -71,6 +71,27 @@ export const createOrder = async (req, res) => {
       return paymentMethod || "razorpay";
     })();
 
+    // Fix: For Pay at Hotel orders, frontend sometimes sends only `hotelReference`
+    // (hotelId string) and `hotelName` becomes null.
+    // We resolve hotelName on backend so admin UI can always display hotel name.
+    let resolvedHotelName = hotelName || null;
+    let resolvedHotelMongoId = null;
+    if (normalizedPaymentMethod === "pay_at_hotel" && hotelReference && !resolvedHotelName) {
+      try {
+        const Hotel = (await import("../../hotel/models/Hotel.js")).default;
+        const hotelDoc = mongoose.Types.ObjectId.isValid(hotelReference)
+          ? await Hotel.findById(hotelReference).lean()
+          : await Hotel.findOne({ hotelId: hotelReference }).lean();
+
+        resolvedHotelName = hotelDoc?.hotelName || null;
+        resolvedHotelMongoId = hotelDoc?._id || null;
+      } catch (_) {
+        // Non-blocking: order can still be created without hotelName.
+        resolvedHotelName = hotelName || null;
+        resolvedHotelMongoId = null;
+      }
+    }
+
     if (isDev) {
       logger.info("Order create paymentMethod:", {
         raw: paymentMethod,
@@ -725,11 +746,12 @@ export const createOrder = async (req, res) => {
       // Add hotel reference
       hotelReference: hotelReference || null,
       hotelId:
-        hotelReference && mongoose.Types.ObjectId.isValid(hotelReference)
+        resolvedHotelMongoId ||
+        (hotelReference && mongoose.Types.ObjectId.isValid(hotelReference)
           ? hotelReference
-          : null,
+          : null),
       qrReferenceId: req.body.qrReferenceId || null,
-      hotelName: hotelName || null,
+      hotelName: resolvedHotelName || null,
       orderType:
         hotelReference || normalizedPaymentMethod === "pay_at_hotel"
           ? "QR"
@@ -1026,7 +1048,7 @@ export const createOrder = async (req, res) => {
               details: {
                 previousStatus: "new",
                 newStatus: "pending",
-                note: `Pay at Hotel order created${hotelReference ? ` (Hotel: ${hotelName || hotelReference})` : ""}`,
+                note: `Pay at Hotel order created${hotelReference ? ` (Hotel: ${resolvedHotelName || hotelReference})` : ""}`,
               },
             },
           ],
@@ -1104,7 +1126,7 @@ export const createOrder = async (req, res) => {
           order: order.toObject(),
           paymentMethod: "pay_at_hotel",
           hotelReference: hotelReference || null,
-          hotelName: hotelName || null,
+          hotelName: resolvedHotelName || null,
         },
       });
     }
