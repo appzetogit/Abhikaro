@@ -524,7 +524,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           // New unified suggest endpoint (fast top-N)
           let fromSuggestFoods = []
           try {
-            const suggestResp = await searchAPI.suggest(trimmedQuery, 6)
+            const suggestResp = await searchAPI.suggest(trimmedQuery, 6, zoneId)
             const foods = Array.isArray(suggestResp?.data?.data?.foods)
               ? suggestResp.data.data.foods
               : []
@@ -672,7 +672,17 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
         }
       })
     } else {
-      navigate(`/search?q=${encodeURIComponent(food.name)}`)
+      // Generic dish suggestion (not tied to a specific restaurant).
+      // Route to category page (e.g. /category/paneer) instead of global search.
+      const slug = String(food?.name || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+      if (slug) {
+        navigate(`/category/${encodeURIComponent(slug)}`)
+      } else {
+        navigate(`/search?q=${encodeURIComponent(food.name)}`)
+      }
     }
     onClose()
     onSearchChange("")
@@ -682,7 +692,7 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     const categoryId = category?.slug || category?.id
     if (!categoryId) return
 
-    navigate(`/search?cat=${encodeURIComponent(categoryId)}`)
+    navigate(`/category/${encodeURIComponent(categoryId)}`)
     onClose()
     onSearchChange("")
   }

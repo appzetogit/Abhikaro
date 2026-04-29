@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Menu from '../restaurant/models/Menu.js';
 import Restaurant from '../restaurant/models/Restaurant.js';
 import RestaurantCategory from '../restaurant/models/RestaurantCategory.js';
+import Zone from '../admin/models/Zone.js';
 
 /**
  * Normalize and validate the query string
@@ -32,6 +33,7 @@ export async function suggestUnifiedSearch(req, res, next) {
   try {
     const qNorm = getNormalizedQuery(req.query.q || req.query.query || '');
     const limit = Math.min(Math.max(parseInt(req.query.limit || '5', 10) || 5, 1), 10);
+    const zoneIdRaw = req.query.zoneId || req.query.zone || null;
     if (qNorm.length < 2) {
       return res.status(400).json({
         success: false,
@@ -40,6 +42,52 @@ export async function suggestUnifiedSearch(req, res, next) {
     }
 
     const rx = buildSafeRegexContains(qNorm);
+
+    // Zone scoping: if zoneId is provided, restrict all suggestions to restaurants in that zone.
+    // This prevents showing dishes/restaurants from other zones in typeahead.
+    let allowedRestaurantIds = null;
+    if (zoneIdRaw) {
+      const zoneId = String(zoneIdRaw).trim();
+      if (mongoose.Types.ObjectId.isValid(zoneId)) {
+        try {
+          const z = await Zone.findById(zoneId).select('_id isActive').lean();
+          if (!z || z.isActive === false) {
+            return res.status(200).json({
+              success: true,
+              data: { foods: [], restaurants: [], categories: [] },
+            });
+          }
+        } catch {
+          return res.status(200).json({
+            success: true,
+            data: { foods: [], restaurants: [], categories: [] },
+          });
+        }
+      }
+
+      // Restaurant.zoneId might be stored as ObjectId or string (legacy).
+      const zoneCandidates = [
+        mongoose.Types.ObjectId.isValid(zoneId) ? new mongoose.Types.ObjectId(zoneId) : null,
+        zoneId,
+      ].filter(Boolean);
+
+      const inZoneRestaurants = await Restaurant.find(
+        {
+          zoneId: { $in: zoneCandidates },
+          isActive: true,
+          isAcceptingOrders: true,
+        },
+        { _id: 1 }
+      ).lean();
+      allowedRestaurantIds = inZoneRestaurants.map((r) => String(r._id));
+
+      if (!allowedRestaurantIds.length) {
+        return res.status(200).json({
+          success: true,
+          data: { foods: [], restaurants: [], categories: [] },
+        });
+      }
+    }
 
     // Query restaurants
     const restaurantQuery = rx ? {
@@ -56,6 +104,7 @@ export async function suggestUnifiedSearch(req, res, next) {
         ...restaurantQuery,
         // Ensure closed/offline restaurants do not appear in search surfaces.
         isAcceptingOrders: true,
+        ...(allowedRestaurantIds ? { _id: { $in: allowedRestaurantIds.map((id) => new mongoose.Types.ObjectId(id)) } } : {}),
       },
       {
       name: 1,
@@ -79,7 +128,15 @@ export async function suggestUnifiedSearch(req, res, next) {
 
     // Query categories (restaurant-specific defined categories)
     const categories = await RestaurantCategory.aggregate([
-      { $match: rx ? { name: { $regex: rx } , isActive: true } : { isActive: true } },
+      {
+        $match: {
+          ...(rx ? { name: { $regex: rx } } : {}),
+          isActive: true,
+          ...(allowedRestaurantIds
+            ? { restaurant: { $in: allowedRestaurantIds.map((id) => new mongoose.Types.ObjectId(id)) } }
+            : {}),
+        },
+      },
       { $sort: { itemCount: -1, name: 1 } },
       { $limit: limit },
       {
@@ -101,7 +158,7 @@ export async function suggestUnifiedSearch(req, res, next) {
     // Query foods from Menu items (search both sections.items and subsections.items)
     // 1) Sections.items
     const itemsFromSections = await Menu.aggregate([
-      { $match: { isActive: true } },
+      { $match: { isActive: true, ...(allowedRestaurantIds ? { restaurant: { $in: allowedRestaurantIds.map((id) => new mongoose.Types.ObjectId(id)) } } : {}) } },
       { $unwind: '$sections' },
       { $unwind: '$sections.items' },
       ...(rx ? [{ $match: { 'sections.items.name': { $regex: rx } } }] : []),
@@ -117,7 +174,7 @@ export async function suggestUnifiedSearch(req, res, next) {
 
     // 2) Sections.subsections.items
     const itemsFromSubsections = await Menu.aggregate([
-      { $match: { isActive: true } },
+      { $match: { isActive: true, ...(allowedRestaurantIds ? { restaurant: { $in: allowedRestaurantIds.map((id) => new mongoose.Types.ObjectId(id)) } } : {}) } },
       { $unwind: '$sections' },
       { $unwind: '$sections.subsections' },
       { $unwind: '$sections.subsections.items' },
@@ -154,6 +211,7 @@ export async function suggestUnifiedSearch(req, res, next) {
         _id: { $in: restaurantIds.map(id => new mongoose.Types.ObjectId(id)) },
         isActive: true,
         isAcceptingOrders: true,
+        ...(allowedRestaurantIds ? { _id: { $in: allowedRestaurantIds.map((id) => new mongoose.Types.ObjectId(id)) } } : {}),
       },
       { name: 1, slug: 1, profileImage: 1, onboarding: 1, isActive: 1, isAcceptingOrders: 1 }
     ).lean();
@@ -200,14 +258,32 @@ export async function legacyMenuSearch(req, res, next) {
   try {
     const qNorm = getNormalizedQuery(req.query.q || req.query.query || '');
     const limit = Math.min(Math.max(parseInt(req.query.limit || '24', 10) || 24, 1), 100);
+    const zoneIdRaw = req.query.zoneId || req.query.zone || null;
     if (!qNorm) {
       return res.status(200).json({ success: true, items: [] });
     }
     const rx = buildSafeRegexContains(qNorm);
 
+    let allowedRestaurantIds = null;
+    if (zoneIdRaw) {
+      const zoneId = String(zoneIdRaw).trim();
+      const zoneCandidates = [
+        mongoose.Types.ObjectId.isValid(zoneId) ? new mongoose.Types.ObjectId(zoneId) : null,
+        zoneId,
+      ].filter(Boolean);
+      const inZoneRestaurants = await Restaurant.find(
+        { zoneId: { $in: zoneCandidates }, isActive: true, isAcceptingOrders: true },
+        { _id: 1 }
+      ).lean();
+      allowedRestaurantIds = inZoneRestaurants.map((r) => new mongoose.Types.ObjectId(String(r._id)));
+      if (!allowedRestaurantIds.length) {
+        return res.status(200).json({ success: true, items: [] });
+      }
+    }
+
     // Search both sections.items and subsections.items
     const fromSections = await Menu.aggregate([
-      { $match: { isActive: true } },
+      { $match: { isActive: true, ...(allowedRestaurantIds ? { restaurant: { $in: allowedRestaurantIds } } : {}) } },
       { $unwind: '$sections' },
       { $unwind: '$sections.items' },
       ...(rx ? [{ $match: { 'sections.items.name': { $regex: rx } } }] : []),
@@ -222,7 +298,7 @@ export async function legacyMenuSearch(req, res, next) {
     ]);
 
     const fromSubsections = await Menu.aggregate([
-      { $match: { isActive: true } },
+      { $match: { isActive: true, ...(allowedRestaurantIds ? { restaurant: { $in: allowedRestaurantIds } } : {}) } },
       { $unwind: '$sections' },
       { $unwind: '$sections.subsections' },
       { $unwind: '$sections.subsections.items' },

@@ -317,24 +317,6 @@ export default function HotelDashboard() {
                 </h3>
               </div>
             </div>
-
-            {/* Total Cash Collected */}
-            <div className="bg-white p-2.5 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
-              <div className="absolute right-0 top-0 p-2.5 opacity-10">
-                <CheckCircle size={38} className="text-orange-500" />
-              </div>
-              <div className="flex flex-col">
-                <div className="p-1.5 bg-orange-50 rounded-lg w-fit mb-1.5">
-                  <CheckCircle size={16} className="text-orange-500" />
-                </div>
-                <p className="text-gray-500 text-[11px] font-medium">
-                  Total collected amount
-                </p>
-                <h3 className="text-lg font-bold text-gray-800 mt-1">
-                  ₹{settlementSummary?.totalCashCollected || 0}
-                </h3>
-              </div>
-            </div>
           </div>
         </div>
 
