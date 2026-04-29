@@ -26,7 +26,24 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
   const [cachedMenuFoods, setCachedMenuFoods] = useState([])
   const [menuFoodsLoaded, setMenuFoodsLoaded] = useState(false)
   const [imageErrors, setImageErrors] = useState(new Set())
+  const [showAvailableSoon, setShowAvailableSoon] = useState(false)
   const zoneId = contextZoneId || localStorage.getItem("userZoneId")
+
+  const normalizeKey = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, "")
+
+  const findExactCategoryMatch = (query) => {
+    const q = normalizeKey(query)
+    if (!q) return null
+    return (
+      categories.find((c) => normalizeKey(c?.name) === q) ||
+      categories.find((c) => normalizeKey(c?.slug) === q) ||
+      null
+    )
+  }
 
   const isLikelyGenericRestaurantName = (name) =>
     /^restaurant\s*\d+$/i.test(String(name || "").trim())
@@ -488,6 +505,11 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
 
   useEffect(() => {
     if (!isOpen) return
+    setShowAvailableSoon(false)
+  }, [searchValue, isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
 
     const trimmedQuery = searchValue.trim()
     if (!zoneId) {
@@ -638,18 +660,25 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
     onSearchChange(suggestion)
     inputRef.current?.focus()
     saveRecentSearch(suggestion)
-    navigate(`/search?q=${encodeURIComponent(suggestion)}`)
-    onClose()
-    onSearchChange("")
+    const exactCategory = findExactCategoryMatch(suggestion)
+    if (exactCategory) {
+      handleCategoryClick(exactCategory)
+      return
+    }
+    setShowAvailableSoon(true)
   }
 
   const handleSearchSubmit = (e) => {
     e.preventDefault()
     if (searchValue.trim()) {
-      saveRecentSearch(searchValue.trim())
-      navigate(`/search?q=${encodeURIComponent(searchValue.trim())}`)
-      onClose()
-      onSearchChange("")
+      const q = searchValue.trim()
+      saveRecentSearch(q)
+      const exactCategory = findExactCategoryMatch(q)
+      if (exactCategory) {
+        handleCategoryClick(exactCategory)
+        return
+      }
+      setShowAvailableSoon(true)
     }
   }
 
@@ -804,6 +833,20 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
           </div>
         )}
 
+        {/* No category exact match notice */}
+        {showAvailableSoon && searchValue.trim() !== "" && filteredCategories.length === 0 && (
+          <div className="mb-8">
+            <div className="bg-orange-50 dark:bg-[#1a130f] border border-orange-200 dark:border-orange-900 rounded-2xl px-4 py-4">
+              <p className="text-sm sm:text-base font-semibold text-orange-800 dark:text-orange-200">
+                Available soon
+              </p>
+              <p className="text-xs sm:text-sm text-orange-700/90 dark:text-orange-300/90 mt-1">
+                “{searchValue.trim()}” category is not available right now.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Food Grid */}
         <div
           style={{
@@ -884,9 +927,12 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
                   const q = searchValue.trim()
                   if (!q) return
                   saveRecentSearch(q)
-                  navigate(`/search?q=${encodeURIComponent(q)}`)
-                  onClose()
-                  onSearchChange("")
+                  const exactCategory = findExactCategoryMatch(q)
+                  if (exactCategory) {
+                    handleCategoryClick(exactCategory)
+                    return
+                  }
+                  setShowAvailableSoon(true)
                 }}
                 className="rounded-full px-6 border-gray-200 dark:border-gray-800"
               >

@@ -53,9 +53,10 @@ export default function SearchBar({
                 onFocus={onFocus}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && value.trim()) {
-                    navigate(`/search?q=${encodeURIComponent(value.trim())}`)
-                    onClose()
-                    onChange("")
+                    // Prefer opening the search overlay, which can route to /category directly
+                    // when the query matches a category.
+                    e.preventDefault()
+                    onFocus?.()
                   }
                 }}
                 aria-label="Search restaurants and food"

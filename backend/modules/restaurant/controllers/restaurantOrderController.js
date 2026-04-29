@@ -540,11 +540,10 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       console.error("❌ Error sending push notification:", pushError);
     }
 
-    // Priority-based order notification: First notify nearest delivery boys, then expand after 30 seconds
-    // Skip only for "Pay at Hotel" orders (fulfilled by hotel staff inside hotel).
-    // NOTE: QR-scan online orders also carry `hotelReference` but still require delivery partners.
-    const isPayAtHotel = String(order.payment?.method || "").toLowerCase() === "pay_at_hotel";
-    if (!order.deliveryPartnerId && !isPayAtHotel) {
+    // Priority-based order notification: notify nearest delivery partners immediately after accept.
+    // IMPORTANT: This must run for ALL payment methods (online/wallet/cash/pay_at_hotel).
+    // Delivery eligibility should be decided by delivery/fulfillment flags, not payment method.
+    if (!order.deliveryPartnerId) {
       try {
         // Canonical restaurant identifier to use for delivery assignment + lookup
         // (Used by `findNearestDeliveryBoys` and restaurant location fetch below)
@@ -1136,10 +1135,8 @@ export const markOrderPreparing = asyncHandler(async (req, res) => {
     }
 
     // Check if delivery partner is already assigned (after reload)
-    // Skip only for "Pay at Hotel" orders (fulfilled by hotel staff inside hotel).
-    const isPayAtHotelFresh =
-      String(freshOrder.payment?.method || "").toLowerCase() === "pay_at_hotel";
-    if (!freshOrder.deliveryPartnerId && !isPayAtHotelFresh) {
+    // IMPORTANT: Notify/assign riders regardless of payment method (including pay_at_hotel).
+    if (!freshOrder.deliveryPartnerId) {
       try {
         console.log(
           `🔄 Attempting to assign order ${freshOrder.orderId} to delivery boy (status: ${freshOrder.status})...`,

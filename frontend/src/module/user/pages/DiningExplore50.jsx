@@ -281,9 +281,10 @@ export default function DiningExplore50() {
                 onFocus={handleSearchFocus}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && heroSearch.trim()) {
-                    navigate(`/search?q=${encodeURIComponent(heroSearch.trim())}`)
-                    closeSearch()
-                    setHeroSearch("")
+                    // Prefer the search overlay routing (it can open /category directly).
+                    e.preventDefault()
+                    setSearchValue(heroSearch.trim())
+                    openSearch()
                   }
                 }}
                 placeholder="Search for restaurants, cuisines, dishes..."
