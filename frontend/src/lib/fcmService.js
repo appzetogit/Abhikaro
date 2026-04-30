@@ -3,6 +3,8 @@
  * Uses Firebase Web SDK - credentials stay in frontend config (VAPID key is public)
  */
 
+import { log } from "./utils/logger.js";
+
 let messagingInstance = null;
 
 async function getMessaging() {
@@ -44,14 +46,16 @@ export async function getFcmToken() {
   try {
     if (!("Notification" in window)) {
       if (import.meta.env.DEV) {
-        console.warn("[FCM] Notifications API not available in this browser");
+        log.warn("[FCM] Notifications API not available in this browser");
       }
       return null;
     }
 
     if (Notification.permission === "denied") {
       if (import.meta.env.DEV) {
-        console.warn("[FCM] Notification permission denied — enable notifications for this site in browser settings");
+        log.warn(
+          "[FCM] Notification permission denied — enable notifications for this site in browser settings",
+        );
       }
       return null;
     }
@@ -60,7 +64,7 @@ export async function getFcmToken() {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         if (import.meta.env.DEV) {
-          console.warn("[FCM] Notification permission not granted:", permission);
+          log.warn("[FCM] Notification permission not granted:", permission);
         }
         return null;
       }
@@ -69,7 +73,7 @@ export async function getFcmToken() {
     const messaging = await getMessaging();
     if (!messaging) {
       if (import.meta.env.DEV) {
-        console.warn("[FCM] Firebase Messaging not supported or Firebase app missing");
+        log.warn("[FCM] Firebase Messaging not supported or Firebase app missing");
       }
       return null;
     }
@@ -77,7 +81,7 @@ export async function getFcmToken() {
     const vapidKey = await getVapidKey();
     if (!vapidKey || String(vapidKey).trim() === "") {
       if (import.meta.env.DEV) {
-        console.warn(
+        log.warn(
           "[FCM] Missing VAPID key — set FIREBASE_VAPID_KEY in backend .env or VITE_FIREBASE_VAPID_KEY in frontend .env",
         );
       }
@@ -100,7 +104,7 @@ export async function getFcmToken() {
     return token || null;
   } catch (err) {
     if (import.meta.env.DEV) {
-      console.warn("[FCM] getFcmToken failed:", err?.message || err);
+      log.warn("[FCM] getFcmToken failed:", err?.message || err);
     }
     return null;
   }
@@ -139,12 +143,12 @@ export async function registerFcmToken(accessToken, options = {}) {
       }
     );
     if (import.meta.env.DEV) {
-      console.log("[FCM] Token registered with backend");
+      log.info("[FCM] Token registered with backend");
     }
   } catch (err) {
     const msg = err?.response?.data?.message || err?.message || "unknown error";
     if (import.meta.env.DEV) {
-      console.warn("[FCM] Backend registration failed:", msg, err?.response?.status);
+      log.warn("[FCM] Backend registration failed:", msg, err?.response?.status);
     }
   }
 }
@@ -180,12 +184,16 @@ export async function registerNativeFcmToken(accessToken, nativeFcmToken, option
       },
     );
     if (import.meta.env.DEV) {
-      console.log("[FCM] Native token registered with backend");
+      log.info("[FCM] Native token registered with backend");
     }
   } catch (err) {
     const msg = err?.response?.data?.message || err?.message || "unknown error";
     if (import.meta.env.DEV) {
-      console.warn("[FCM] Native backend registration failed:", msg, err?.response?.status);
+      log.warn(
+        "[FCM] Native backend registration failed:",
+        msg,
+        err?.response?.status,
+      );
     }
   }
 }

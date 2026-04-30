@@ -3,6 +3,8 @@
  * Centralized configuration for API base URL and endpoints
  */
 
+import { log } from "../utils/logger.js";
+
 // Get API base URL from environment variable or use default
 // IMPORTANT: Backend runs on port 5000, frontend on port 5173
 let rawApiBaseUrl =
@@ -57,19 +59,19 @@ if (!API_BASE_URL.startsWith('/')) {
 try {
   const urlObj = new URL(API_BASE_URL);
   if (!urlObj.protocol || !urlObj.hostname) {
-    console.error("❌ Invalid API_BASE_URL format:", API_BASE_URL);
-    console.error(
+    log.error("❌ Invalid API_BASE_URL format:", API_BASE_URL);
+    log.error(
       "💡 Expected format: https://your-domain.com/api or /api",
     );
   }
 } catch (urlError) {
-  console.error("❌ Invalid API_BASE_URL format:", API_BASE_URL);
-  console.error("💡 URL validation error:", urlError.message);
-  console.error(
+  log.error("❌ Invalid API_BASE_URL format:", API_BASE_URL);
+  log.error("💡 URL validation error:", urlError.message);
+  log.error(
     "💡 Raw VITE_API_BASE_URL:",
     import.meta.env.VITE_API_BASE_URL || "Not set",
   );
-  console.error(
+  log.error(
     "💡 Expected format: https://your-domain.com/api or /api",
   );
 
@@ -79,13 +81,13 @@ try {
   if (fixedUrl.includes("://https://") || fixedUrl.includes("://http://")) {
     const parts = fixedUrl.split("://");
     fixedUrl = parts[0] + "://" + parts[parts.length - 1]; // Take first protocol and last part
-    console.warn("⚠️ Auto-fixing malformed URL pattern, new URL:", fixedUrl);
+    log.warn("⚠️ Auto-fixing malformed URL pattern, new URL:", fixedUrl);
   }
 
   // If still invalid, warn but don't change it
   try {
     new URL(fixedUrl);
-    console.warn("⚠️ Consider using fixed URL:", fixedUrl);
+    log.warn("⚠️ Consider using fixed URL:", fixedUrl);
   } catch (e) {
     // Still invalid, keep original
   }
@@ -94,23 +96,23 @@ try {
 
 // Validate API base URL
 if (API_BASE_URL.includes("5173")) {
-  console.error(
+  log.error(
     "❌ ERROR: API_BASE_URL is pointing to frontend port (5173) instead of backend port (5000)",
   );
-  console.error(
+  log.error(
     "💡 Fix: Set VITE_API_BASE_URL=/api in .env file",
   );
-  console.error(
+  log.error(
     "💡 Or remove VITE_API_BASE_URL to use default: /api",
   );
 }
 
-// Log API base URL in both development and production for debugging
-console.log("🌐 API Base URL:", API_BASE_URL);
-console.log("🌐 Backend URL:", API_BASE_URL.replace("/api", ""));
-console.log("🌐 Frontend URL:", window.location.origin);
-console.log("🌐 Environment:", import.meta.env.MODE);
-console.log(
+// Keep console clean by default (set VITE_LOG_LEVEL=info/debug to see these).
+log.info("🌐 API Base URL:", API_BASE_URL);
+log.info("🌐 Backend URL:", API_BASE_URL.replace("/api", ""));
+log.info("🌐 Frontend URL:", window.location.origin);
+log.info("🌐 Environment:", import.meta.env.MODE);
+log.info(
   "🌐 VITE_API_BASE_URL:",
   import.meta.env.VITE_API_BASE_URL || "Not set (using default)",
 );
@@ -120,11 +122,11 @@ if (
   import.meta.env.MODE === "production" &&
   API_BASE_URL.includes("localhost")
 ) {
-  console.error("❌ WARNING: API_BASE_URL is set to localhost in production!");
-  console.error(
+  log.error("❌ WARNING: API_BASE_URL is set to localhost in production!");
+  log.error(
     "💡 Fix: Set VITE_API_BASE_URL environment variable to your production backend URL",
   );
-  console.error(
+  log.error(
     "💡 Example: VITE_API_BASE_URL=https://your-backend-domain.com/api",
   );
 }

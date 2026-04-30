@@ -4,6 +4,7 @@ import { API_BASE_URL } from "./config.js";
 import { getRoleFromToken, clearModuleAuth, getModuleToken } from "../utils/auth.js";
 import { getNetworkStatus } from "../utils/networkStatus.js";
 import { deduplicateRequest, clearRequestCache } from "../utils/requestDeduplication.js";
+import { log } from "../utils/logger.js";
 
 // Network error tracking to prevent spam
 const networkErrorState = {
@@ -25,19 +26,19 @@ if (import.meta.env.DEV) {
   const frontendUrl = window.location.origin;
 
   if (API_BASE_URL.includes("5173") || backendUrl.includes("5173")) {
-    console.error(
+    log.error(
       "❌ CRITICAL: API_BASE_URL is pointing to FRONTEND port (5173) instead of BACKEND port (5000)",
     );
-    console.error("💡 Current API_BASE_URL:", API_BASE_URL);
-    console.error("💡 Frontend URL:", frontendUrl);
-    console.error("💡 Backend should be at: http://localhost:5000");
-    console.error(
+    log.error("💡 Current API_BASE_URL:", API_BASE_URL);
+    log.error("💡 Frontend URL:", frontendUrl);
+    log.error("💡 Backend should be at: http://localhost:5000");
+    log.error(
       "💡 Fix: Check .env file - VITE_API_BASE_URL should be /api (recommended for mobile via Vite proxy) or http://<your-pc-ip>:5000/api",
     );
   } else {
-    console.log("✅ API_BASE_URL correctly points to backend:", API_BASE_URL);
-    console.log("✅ Backend URL:", backendUrl);
-    console.log("✅ Frontend URL:", frontendUrl);
+    log.info("✅ API_BASE_URL correctly points to backend:", API_BASE_URL);
+    log.info("✅ Backend URL:", backendUrl);
+    log.info("✅ Frontend URL:", frontendUrl);
   }
 }
 
@@ -112,7 +113,7 @@ apiClient.interceptors.request.use(
 
     // Debug logging for FormData requests
     if (import.meta.env.DEV && config.data instanceof FormData) {
-      console.log("[API Interceptor] FormData request detected:", {
+      log.debug("[API Interceptor] FormData request detected:", {
         url: config.url,
         method: config.method,
         hasAuthHeader: !!config.headers.Authorization,
@@ -182,17 +183,17 @@ apiClient.interceptors.request.use(
         ) {
           config.headers.Authorization = `Bearer ${accessToken.trim()}`;
           if (import.meta.env.DEV && config.data instanceof FormData) {
-            console.log(
+            log.debug(
               "[API Interceptor] Added Authorization header for authenticated FormData request",
             );
           }
         } else {
           // Log warning in development if token is missing for authenticated routes
           if (import.meta.env.DEV) {
-            console.warn(
+            log.warn(
               `[API Interceptor] No access token found for authenticated route: ${path}. Request may fail with 401.`,
             );
-            console.warn(`[API Interceptor] Available tokens:`, {
+            log.warn(`[API Interceptor] Available tokens:`, {
               admin: localStorage.getItem("admin_accessToken")
                 ? "exists"
                 : "missing",
@@ -217,7 +218,7 @@ apiClient.interceptors.request.use(
       } else {
         // Authorization header already set (from getAuthConfig), log in dev mode for FormData
         if (import.meta.env.DEV && config.data instanceof FormData) {
-          console.log(
+          log.debug(
             "[API Interceptor] Authorization header already set, preserving it for FormData request",
           );
         }
@@ -251,7 +252,7 @@ apiClient.interceptors.request.use(
       if (authHeader) {
         config.headers.Authorization = authHeader;
         if (import.meta.env.DEV) {
-          console.log(
+          log.debug(
             "[API Interceptor] Preserved Authorization header for FormData request",
           );
         }
@@ -264,7 +265,7 @@ apiClient.interceptors.request.use(
         // If no auth header but we have a token, add it
         config.headers.Authorization = `Bearer ${accessToken.trim()}`;
         if (import.meta.env.DEV) {
-          console.log(
+          log.debug(
             "[API Interceptor] Added Authorization header for FormData request",
           );
         }
@@ -319,7 +320,7 @@ apiClient.interceptors.response.use(
       networkErrorState.lastErrorTime = 0;
       networkErrorState.toastShown = false;
       if (import.meta.env.DEV) {
-        console.log("✅ Backend connection restored");
+        log.info("✅ Backend connection restored");
       }
     }
 
@@ -655,7 +656,7 @@ apiClient.interceptors.response.use(
         originalRequest._retryCount = retryCount + 1;
         
         if (import.meta.env.DEV) {
-          console.warn(
+          log.warn(
             `⏳ Rate limited (429) for ${method.toUpperCase()} ${url}. Retrying in ${retryAfterSec}s (attempt ${retryCount + 1}/${maxRetries})`
           );
         }
@@ -706,7 +707,7 @@ apiClient.interceptors.response.use(
             // Network error logging removed - errors handled via toast notifications
           } else {
             // For subsequent errors, show a brief message
-            console.warn(
+            log.warn(
               `⚠️ Network Error (${networkErrorState.errorCount}x) - Backend still not connected`,
             );
           }

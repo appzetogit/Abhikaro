@@ -3,6 +3,8 @@
  * Decode and extract information from JWT tokens
  */
 
+import { log } from "./logger.js";
+
 /**
  * Decode JWT token without verification (client-side only)
  * @param {string} token - JWT token
@@ -22,7 +24,7 @@ export function decodeToken(token) {
     
     return decoded;
   } catch (error) {
-    console.error('Error decoding token:', error);
+    log.error('Error decoding token:', error);
     return null;
   }
 }
@@ -234,7 +236,7 @@ export async function restoreUserSession() {
     // If refresh fails (e.g. no cookie, expired token), just treat as logged out.
     // Do not throw; app will naturally show login screen where required.
     restoreUserSessionLastFailedAt = Date.now();
-    console.warn('restoreUserSession failed:', error?.message || error);
+    log.warn('restoreUserSession failed:', error?.message || error);
     return false;
   } finally {
     restoreUserSessionInFlight = null;
@@ -281,7 +283,7 @@ export function setAuthData(module, token, user, options = {}) {
       try {
         storage.setItem(userKey, JSON.stringify(user));
       } catch (userError) {
-        console.warn('Failed to store user data, but token was stored:', userError);
+        log.warn('Failed to store user data, but token was stored:', userError);
       }
     }
 
@@ -299,11 +301,11 @@ export function setAuthData(module, token, user, options = {}) {
         storage.setItem(`${module}_authenticated`, 'true');
         if (user) storage.setItem(`${module}_user`, JSON.stringify(user));
       } catch (retryError) {
-        console.error('Failed to store auth data after clearing space:', retryError);
+        log.error('Failed to store auth data after clearing space:', retryError);
         throw new Error('Unable to store authentication data. Please clear browser storage and try again.');
       }
     } else {
-      console.error('[setAuthData] Error storing auth data:', error);
+      log.error('[setAuthData] Error storing auth data:', error);
       throw error;
     }
   }

@@ -3,6 +3,8 @@
  * Reduces API calls and billing by caching responses
  */
 
+import { log } from "./logger.js";
+
 // Cache storage (in-memory + localStorage for persistence)
 const cache = {
   geocoding: new Map(),
@@ -96,7 +98,7 @@ export function getCached(type, ...args) {
   if (isCacheValid(entry, CACHE_TTL[type])) {
     // Only log for important operations (not every location update)
     if (type === 'directions' || type === 'places') {
-      console.log(`✅ Using cached ${type} result`);
+      log.debug(`✅ Using cached ${type} result`);
     }
     return entry.data;
   }
@@ -152,7 +154,7 @@ export function setCached(type, data, ...args) {
       }
     } catch (error) {
       // localStorage might be full or disabled
-      console.warn('Failed to save to localStorage:', error);
+      log.warn('Failed to save to localStorage:', error);
     }
   }
 }
@@ -178,9 +180,9 @@ export function loadFromLocalStorage() {
         }
       });
     });
-    console.log('✅ Loaded Google Maps API cache from localStorage');
+    log.info('✅ Loaded Google Maps API cache from localStorage');
   } catch (error) {
-    console.warn('Failed to load from localStorage:', error);
+    log.warn('Failed to load from localStorage:', error);
   }
 }
 

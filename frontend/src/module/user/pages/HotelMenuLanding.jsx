@@ -5,12 +5,74 @@ import { API_BASE_URL } from '@/lib/api/config';
 import axios from 'axios';
 import { toast } from 'sonner';
 import AnimatedPage from '../components/AnimatedPage';
+import { log } from '@/lib/utils/logger';
 
 export default function HotelMenuLanding() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [hotelData, setHotelData] = useState(null);
+    const [askingLocation, setAskingLocation] = useState(false);
+    const [gettingLocation, setGettingLocation] = useState(false);
+
+    const saveUserLocation = (coords) => {
+        const latitude = Number(coords?.latitude);
+        const longitude = Number(coords?.longitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            throw new Error("Invalid coordinates");
+        }
+
+        const userLocation = {
+            latitude,
+            longitude,
+            city: "",
+            state: "",
+            area: "",
+            address: "Current location",
+            formattedAddress: "Current location",
+            timestamp: Date.now(),
+        };
+        localStorage.setItem("userLocation", JSON.stringify(userLocation));
+        localStorage.setItem("userLocation_manualOverride", "true");
+    };
+
+    const handleGetCurrentLocation = async () => {
+        if (gettingLocation) return;
+
+        if (!("geolocation" in navigator)) {
+            toast.error("Location is not supported on this device/browser.");
+            return;
+        }
+
+        setGettingLocation(true);
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 0,
+                });
+            });
+
+            saveUserLocation(position.coords);
+            toast.success("Location saved.");
+            navigate('/', { replace: true });
+        } catch (err) {
+            const code = err?.code;
+            const msg =
+                code === 1
+                    ? "Please allow location access to continue."
+                    : code === 2
+                        ? "Unable to detect location. Please try again."
+                        : code === 3
+                            ? "Location request timed out. Please try again."
+                            : "Failed to get location. Please try again.";
+            toast.error(msg);
+        } finally {
+            setGettingLocation(false);
+        }
+    };
 
     useEffect(() => {
         const validateQR = async () => {
@@ -24,7 +86,7 @@ export default function HotelMenuLanding() {
                     return;
                 }
 
-                console.log('🔍 Validating hotel QR code:', hotelRef);
+                log.debug('🔍 Validating hotel QR code:', hotelRef);
 
                 // Validate QR code with backend
                 const response = await axios.get(
@@ -32,52 +94,22 @@ export default function HotelMenuLanding() {
                 );
 
                 if (response.data.success && response.data.data.hotel) {
-                    const hotelData = response.data.data.hotel;
-                    console.log('✅ Hotel validated:', hotelData);
+                    const validatedHotel = response.data.data.hotel;
+                    log.debug('✅ Hotel validated:', validatedHotel);
 
                     // Store hotel reference in sessionStorage (session-scoped)
-                    sessionStorage.setItem('hotelReference', hotelData.hotelId);
-                    sessionStorage.setItem('hotelReferenceName', hotelData.hotelName);
+                    sessionStorage.setItem('hotelReference', validatedHotel.hotelId);
+                    sessionStorage.setItem('hotelReferenceName', validatedHotel.hotelName);
                     sessionStorage.setItem('isHotelOrder', 'true');
 
-                    // Set user location to hotel location so Home can load restaurants without GPS permission.
-                    // Treat as manual override so GPS watcher doesn't instantly overwrite it.
-                    try {
-                        const loc = hotelData.location || {};
-                        const latitude = Number(loc.latitude);
-                        const longitude = Number(loc.longitude);
-                        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-                            const userLocation = {
-                                latitude,
-                                longitude,
-                                city: loc.city || "",
-                                state: loc.state || "",
-                                area: loc.area || "",
-                                address: loc.address || hotelData.address || hotelData.hotelName || "Hotel",
-                                formattedAddress:
-                                    loc.formattedAddress ||
-                                    loc.address ||
-                                    hotelData.address ||
-                                    hotelData.hotelName ||
-                                    "Hotel",
-                                timestamp: Date.now(),
-                            };
-                            localStorage.setItem("userLocation", JSON.stringify(userLocation));
-                            localStorage.setItem("userLocation_manualOverride", "true");
-                        }
-                    } catch {
-                        // ignore storage errors
-                    }
-
-                    toast.success(`Welcome to ${hotelData.hotelName}!`);
-
-                    // Directly open home after activating hotel reference
-                    navigate('/', { replace: true });
+                    setHotelData(validatedHotel);
+                    setAskingLocation(true);
+                    toast.success(`Welcome to ${validatedHotel.hotelName}!`);
                 } else {
                     setError('Hotel not found or inactive');
                 }
             } catch (err) {
-                console.error('❌ Error validating QR code:', err);
+                log.warn('❌ Error validating QR code:', err);
                 setError(err.response?.data?.message || 'Failed to validate QR code');
             } finally {
                 setLoading(false);
@@ -118,6 +150,52 @@ export default function HotelMenuLanding() {
         );
     }
 
-    // If we reached here without error, navigation already happened.
-    return null;
+    if (askingLocation) {
+        return (
+            <AnimatedPage className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-yellow-50 px-4">
+                <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+                    <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Hotel className="h-8 w-8 text-orange-600" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                        Allow Location to Continue
+                    </h2>
+                    <p className="text-gray-600 mb-6">
+                        {hotelData?.hotelName
+                            ? `You’re opening the menu for ${hotelData.hotelName}.`
+                            : "You’re opening the hotel menu."}{" "}
+                        Please share your current location to proceed.
+                    </p>
+
+                    <button
+                        onClick={handleGetCurrentLocation}
+                        disabled={gettingLocation}
+                        className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-3 rounded-lg font-semibold hover:from-orange-600 hover:to-red-600 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {gettingLocation ? (
+                            <>
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                Getting location...
+                            </>
+                        ) : (
+                            "Use Current Location"
+                        )}
+                    </button>
+
+                    <p className="text-xs text-gray-500 mt-4">
+                        Location is required to continue.
+                    </p>
+                </div>
+            </AnimatedPage>
+        );
+    }
+
+    // Fallback: should not happen, but keep user on safe screen.
+    return (
+        <AnimatedPage className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-yellow-50 px-4">
+            <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+                <p className="text-gray-700">Preparing…</p>
+            </div>
+        </AnimatedPage>
+    );
 }

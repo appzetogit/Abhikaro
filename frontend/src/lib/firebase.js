@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { log } from "./utils/logger.js";
 
 // Firebase configuration - will be populated from backend
 const firebaseConfig = {
@@ -39,7 +40,7 @@ const fetchFirebaseConfig = async () => {
     }
     return false;
   } catch (e) {
-    console.warn(
+    log.warn(
       "⚠️ Failed to fetch firebase config from backend, using defaults/env",
       e,
     );
@@ -69,11 +70,11 @@ async function ensureFirebaseInitialized() {
   );
 
   if (missingFields.length > 0) {
-    console.warn(
+    log.warn(
       "⚠️ Firebase configuration is missing required fields:",
       missingFields,
     );
-    console.warn(
+    log.warn(
       "💡 Set VITE_FIREBASE_* in frontend .env or FIREBASE_* in backend .env (public API).",
     );
     return;
@@ -83,7 +84,7 @@ async function ensureFirebaseInitialized() {
     const existingApps = getApps();
     if (existingApps.length === 0) {
       app = initializeApp(firebaseConfig);
-      console.log("🚀 Firebase initialized successfully");
+      log.info("🚀 Firebase initialized successfully");
     } else {
       app = existingApps[0];
     }
@@ -100,7 +101,7 @@ async function ensureFirebaseInitialized() {
       googleProvider.addScope("profile");
     }
   } catch (error) {
-    console.error("❌ Firebase initialization error:", error);
+    log.error("❌ Firebase initialization error:", error);
   }
 }
 
