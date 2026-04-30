@@ -4,8 +4,42 @@ import { ArrowLeft, Search, MoreVertical, ChevronRight, Star, RotateCcw, AlertCi
 import { orderAPI, api, API_ENDPOINTS } from "@/lib/api"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
+import { API_BASE_URL } from "@/lib/api/config"
 
 const RATING_POPUP_STORAGE_KEY = "ratedOrdersForFeedback"
+
+const pickUrl = (...candidates) => {
+  for (const c of candidates) {
+    if (!c) continue
+    if (typeof c === "string" && c.trim()) return c.trim()
+    if (typeof c === "object") {
+      const u = c.url || c.secure_url || c.path
+      if (typeof u === "string" && u.trim()) return u.trim()
+    }
+  }
+  return null
+}
+
+const resolveMediaUrl = (url) => {
+  if (!url || typeof url !== "string") return url
+  const t = url.trim()
+  if (!t) return null
+  if (/^https?:\/\//i.test(t) || t.startsWith("data:") || t.startsWith("blob:"))
+    return t
+  if (t.startsWith("//"))
+    return `${typeof window !== "undefined" ? window.location.protocol : "https:"}${t}`
+  if (t.startsWith("/")) {
+    const base = (API_BASE_URL || "").trim()
+    if (base.startsWith("http://") || base.startsWith("https://")) {
+      const origin = base.replace(/\/api\/?$/i, "").replace(/\/$/, "")
+      return origin ? `${origin}${t}` : t
+    }
+    if (typeof window !== "undefined") {
+      return `${window.location.origin.replace(/\/$/, "")}${t}`
+    }
+  }
+  return t
+}
 
 export default function Orders() {
   const navigate = useNavigate()
@@ -279,7 +313,24 @@ export default function Orders() {
               paymentMethod: order.payment?.method || order.paymentMethod,
               restaurant: order.restaurantId?.name || order.restaurantName || 'Restaurant',
               restaurantId: order.restaurantId?._id || order.restaurantId,
-              restaurantImage: order.restaurantId?.profileImage?.url || order.restaurantId?.profileImage || null,
+              // Prefer outlet profile photo; fall back to any order-provided restaurant image.
+              restaurantImage: resolveMediaUrl(
+                pickUrl(
+                  order.restaurantId?.profileImage,
+                  order.restaurantId?.thumbnailImage,
+                  order.restaurantId?.logo,
+                  order.restaurantId?.image,
+                  order.restaurantId?.photo,
+                  order.restaurantId?.images?.[0],
+                  order.restaurantId?.coverImages?.[0],
+                  order.restaurant?.profileImage,
+                  order.restaurant?.thumbnailImage,
+                  order.restaurant?.logo,
+                  order.restaurant?.image,
+                  order.restaurantImage,
+                  order.restaurantProfileImage
+                )
+              ),
               restaurantLocation: order.restaurantId?.location?.area || order.restaurantId?.location?.city || order.address?.city || '',
               rating: order.rating || order.review?.rating || null, // Check both rating and review.rating
               review: order.review || null,
@@ -413,8 +464,14 @@ export default function Orders() {
   // Handle reorder
   const handleReorder = (order) => {
     // Navigate to restaurant page or cart
-    if (order.restaurantId) {
-      navigate(`/user/restaurants/${order.restaurantId}`)
+    const key =
+      (order?.restaurantSlug && String(order.restaurantSlug).trim()) ||
+      (order?.slug && String(order.slug).trim()) ||
+      (order?.restaurantId ? String(order.restaurantId) : "") ||
+      ""
+
+    if (key && key !== "[object Object]") {
+      navigate(`/restaurants/${encodeURIComponent(key)}`)
     } else {
       toast.info('Restaurant information not available')
     }
@@ -684,13 +741,11 @@ Order again from this restaurant in the ${companyName} app.`
                                  (order.payment?.status === 'failed')
             
             const isDelivered = order.status === 'delivered'
+            const hasSeenRatingPopup = getAllOrderIdsForDedupe(order).some((id) =>
+              shownRatingForOrders.has(id)
+            )
             const isRestaurantCancelled = order.isRestaurantCancelled || order.status === 'restaurant_cancelled'
             const isUserCancelled = order.isUserCancelled || (isCancelled && order.cancelledBy === 'user')
-            // Prefer food image from first item; fallback to restaurant image, then generic food photo
-            const firstItemImage = order.items?.[0]?.image
-            const restaurantImage = firstItemImage 
-              || order.restaurantImage 
-              || "https://images.unsplash.com/photo-1604908176997-125188eb3c52?auto=format&fit=crop&w=200&q=80"
             const location = order.restaurantLocation || `${order.address?.city || ''}, ${order.address?.state || ''}`.trim() || 'Location not available'
 
             return (
@@ -698,18 +753,6 @@ Order again from this restaurant in the ${companyName} app.`
                 {/* Card Header: Restaurant Info */}
                 <div className="flex items-start justify-between p-4 pb-2">
                   <div className="flex gap-3">
-                    {/* Restaurant Image */}
-                    <div className="w-14 h-14 rounded-lg bg-gray-200 overflow-hidden flex-shrink-0">
-                      <img 
-                        src={restaurantImage} 
-                        alt={order.restaurant} 
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.target.src = "https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?auto=format&fit=crop&w=100&q=80"
-                        }}
-                      />
-                    </div>
-                    
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-gray-800 text-lg leading-tight">{order.restaurant}</h3>
                       <p className="text-xs text-gray-500 mt-0.5">{location}</p>
@@ -916,13 +959,15 @@ Order again from this restaurant in the ${companyName} app.`
                   ) : isDelivered ? (
                     <div>
                       <p className="text-xs text-gray-500">Order delivered</p>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenRating(order)}
-                        className="text-xs text-red-500 font-medium mt-0.5 flex items-center"
-                      >
-                        Rate order <span className="ml-0.5">▸</span>
-                      </button>
+                      {!hasSeenRatingPopup && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRating(order)}
+                          className="text-xs text-red-500 font-medium mt-0.5 flex items-center"
+                        >
+                          Rate order <span className="ml-0.5">▸</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div>

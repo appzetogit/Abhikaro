@@ -322,6 +322,11 @@ const orderSchema = new mongoose.Schema(
     note: {
       type: String,
     },
+    // Instructions meant for the delivery partner (kept separate from restaurant note)
+    deliveryInstructions: {
+      type: String,
+      default: "",
+    },
     sendCutlery: {
       type: Boolean,
       default: true,

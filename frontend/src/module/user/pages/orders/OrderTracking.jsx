@@ -321,7 +321,9 @@ const SectionItem = ({ icon: Icon, title, subtitle, onClick, showArrow = true, r
         onClick(e)
       }
     }}
-    className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left border-b border-dashed border-gray-200 last:border-0 cursor-pointer"
+    className={`w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left border-b border-dashed border-gray-200 last:border-0 ${
+      onClick ? "cursor-pointer" : "cursor-default"
+    }`}
     whileTap={{ scale: 0.99 }}
   >
     <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
@@ -365,10 +367,53 @@ export default function OrderTracking() {
   const [showInstructionsDialog, setShowInstructionsDialog] = useState(false)
   const [instructionsText, setInstructionsText] = useState("")
   const [isSavingInstructions, setIsSavingInstructions] = useState(false)
+  const [showAddressDialog, setShowAddressDialog] = useState(false)
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false)
   const [advertiseBanner, setAdvertiseBanner] = useState(null)
 
   const defaultAddress = getDefaultAddress()
+
+  const deliveryAddressText = useMemo(() => {
+    // Priority 1: Use order address formattedAddress (live location address)
+    if (
+      order?.address?.formattedAddress &&
+      order.address.formattedAddress !== "Select location"
+    ) {
+      return order.address.formattedAddress
+    }
+
+    // Priority 2: Build full address from order address parts
+    if (order?.address) {
+      const parts = []
+      if (order.address.street) parts.push(order.address.street)
+      if (order.address.additionalDetails) parts.push(order.address.additionalDetails)
+      if (order.address.city) parts.push(order.address.city)
+      if (order.address.state) parts.push(order.address.state)
+      if (order.address.zipCode) parts.push(order.address.zipCode)
+      if (parts.length > 0) return parts.join(", ")
+    }
+
+    // Priority 3: Use defaultAddress formattedAddress (live location address)
+    if (
+      defaultAddress?.formattedAddress &&
+      defaultAddress.formattedAddress !== "Select location"
+    ) {
+      return defaultAddress.formattedAddress
+    }
+
+    // Priority 4: Build full address from defaultAddress parts
+    if (defaultAddress) {
+      const parts = []
+      if (defaultAddress.street) parts.push(defaultAddress.street)
+      if (defaultAddress.additionalDetails) parts.push(defaultAddress.additionalDetails)
+      if (defaultAddress.city) parts.push(defaultAddress.city)
+      if (defaultAddress.state) parts.push(defaultAddress.state)
+      if (defaultAddress.zipCode) parts.push(defaultAddress.zipCode)
+      if (parts.length > 0) return parts.join(", ")
+    }
+
+    return "Add delivery address"
+  }, [order, defaultAddress])
 
   // Preload Google Maps script early so map appears faster.
   useEffect(() => {
@@ -605,6 +650,12 @@ export default function OrderTracking() {
               restaurantLocation: restaurantCoords ? {
                 coordinates: restaurantCoords
               } : order.restaurantLocation,
+              // Preserve cancellation metadata for UI (reason text entered by restaurant/admin/user)
+              cancellationReason:
+                apiOrder?.cancellationReason ||
+                apiOrder?.cancellation_reason ||
+                order?.cancellationReason ||
+                null,
               deliveryPartner: apiOrder.deliveryPartnerId ? {
                 name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
                 avatar: null,
@@ -634,6 +685,11 @@ export default function OrderTracking() {
             const transformedOrder = {
               ...apiOrder,
               restaurantLocation: order?.restaurantLocation,
+              cancellationReason:
+                apiOrder?.cancellationReason ||
+                apiOrder?.cancellation_reason ||
+                order?.cancellationReason ||
+                null,
             deliveryPartner: apiOrder.deliveryPartnerId ? {
               name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
               avatar: null,
@@ -815,6 +871,7 @@ export default function OrderTracking() {
             userId: apiOrder.userId || null, // Include user data for phone number
             userName: apiOrder.userName || apiOrder.userId?.name || apiOrder.userId?.fullName || '',
             userPhone: apiOrder.userPhone || apiOrder.userId?.phone || '',
+            cancellationReason: apiOrder.cancellationReason || apiOrder.cancellation_reason || null,
             address: {
               street: apiOrder.address?.street || '',
               city: apiOrder.address?.city || '',
@@ -850,7 +907,11 @@ export default function OrderTracking() {
             estimatedDeliveryTime: apiOrder.estimatedDeliveryTime || null,
             eta: apiOrder.eta || null,
             createdAt: apiOrder.createdAt || null,
-            note: apiOrder.note || ''
+            note: apiOrder.note || '',
+            deliveryInstructions:
+              apiOrder.deliveryInstructions ||
+              apiOrder.delivery_instructions ||
+              ""
           }
 
           if (apiOrder.hotelReference) {
@@ -997,13 +1058,30 @@ export default function OrderTracking() {
   // Listen for order status updates from socket (e.g., "Delivery partner on the way")
   useEffect(() => {
     const handleOrderStatusNotification = (event) => {
-      const { message, title, status, estimatedDeliveryTime } = event.detail;
+      const {
+        message,
+        title,
+        status,
+        estimatedDeliveryTime,
+        cancellationReason: incomingCancellationReason,
+      } = event.detail;
 
       console.log('📢 Order status notification received:', { message, status });
 
       // Keep local order object in sync so UI reacts immediately (e.g. hide cancel once READY)
       if (status) {
-        setOrder((prev) => (prev ? { ...prev, status } : prev));
+        setOrder((prev) => {
+          if (!prev) return prev
+          const next = { ...prev, status }
+          const s = String(status || '').trim().toLowerCase().replace(/\s+/g, "_")
+          if (["cancelled", "canceled"].includes(s)) {
+            next.cancellationReason =
+              incomingCancellationReason ||
+              prev.cancellationReason ||
+              null
+          }
+          return next
+        });
       }
 
       // Update order status in UI
@@ -1348,6 +1426,7 @@ export default function OrderTracking() {
           userId: apiOrder.userId || null, // Include user data for phone number
           userName: apiOrder.userName || apiOrder.userId?.name || apiOrder.userId?.fullName || '',
           userPhone: apiOrder.userPhone || apiOrder.userId?.phone || '',
+          cancellationReason: apiOrder.cancellationReason || apiOrder.cancellation_reason || null,
           address: {
             street: apiOrder.address?.street || '',
             city: apiOrder.address?.city || '',
@@ -1378,7 +1457,11 @@ export default function OrderTracking() {
           estimatedDeliveryTime: apiOrder.estimatedDeliveryTime || null,
           eta: apiOrder.eta || null,
           createdAt: apiOrder.createdAt || null,
-          note: apiOrder.note || ''
+          note: apiOrder.note || '',
+          deliveryInstructions:
+            apiOrder.deliveryInstructions ||
+            apiOrder.delivery_instructions ||
+            ""
         }
         setOrder(transformedOrder)
 
@@ -1541,7 +1624,9 @@ export default function OrderTracking() {
     },
     cancelled: {
       title: "Order cancelled",
-      subtitle: "This order has been cancelled",
+      subtitle: order?.cancellationReason
+        ? `Reason: ${order.cancellationReason}`
+        : "This order has been cancelled",
       color: "bg-red-600"
     }
   }
@@ -1731,57 +1816,25 @@ export default function OrderTracking() {
               defaultAddress?.phone ||
               'Phone number not available'
             }
+            showArrow={false}
           />
           <SectionItem
             icon={HomeIcon}
             title="Delivery at Location"
-            subtitle={(() => {
-              // Priority 1: Use order address formattedAddress (live location address)
-              if (order?.address?.formattedAddress && order.address.formattedAddress !== "Select location") {
-                return order.address.formattedAddress
-              }
-
-              // Priority 2: Build full address from order address parts
-              if (order?.address) {
-                const orderAddressParts = []
-                if (order.address.street) orderAddressParts.push(order.address.street)
-                if (order.address.additionalDetails) orderAddressParts.push(order.address.additionalDetails)
-                if (order.address.city) orderAddressParts.push(order.address.city)
-                if (order.address.state) orderAddressParts.push(order.address.state)
-                if (order.address.zipCode) orderAddressParts.push(order.address.zipCode)
-                if (orderAddressParts.length > 0) {
-                  return orderAddressParts.join(', ')
-                }
-              }
-
-              // Priority 3: Use defaultAddress formattedAddress (live location address)
-              if (defaultAddress?.formattedAddress && defaultAddress.formattedAddress !== "Select location") {
-                return defaultAddress.formattedAddress
-              }
-
-              // Priority 4: Build full address from defaultAddress parts
-              if (defaultAddress) {
-                const defaultAddressParts = []
-                if (defaultAddress.street) defaultAddressParts.push(defaultAddress.street)
-                if (defaultAddress.additionalDetails) defaultAddressParts.push(defaultAddress.additionalDetails)
-                if (defaultAddress.city) defaultAddressParts.push(defaultAddress.city)
-                if (defaultAddress.state) defaultAddressParts.push(defaultAddress.state)
-                if (defaultAddress.zipCode) defaultAddressParts.push(defaultAddress.zipCode)
-                if (defaultAddressParts.length > 0) {
-                  return defaultAddressParts.join(', ')
-                }
-              }
-
-              return 'Add delivery address'
-            })()}
+            subtitle={deliveryAddressText}
+            onClick={() => setShowAddressDialog(true)}
           />
           <SectionItem
             icon={MessageSquare}
             title="Add delivery instructions"
-            subtitle={order?.note ? order.note : "Leave a note for the delivery partner"}
+            subtitle={
+              order?.deliveryInstructions
+                ? order.deliveryInstructions
+                : "Leave a note for the delivery partner"
+            }
             onClick={() => {
               if (order?.status === "delivered" || order?.status === "cancelled") return
-              setInstructionsText(order?.note || "")
+              setInstructionsText(order?.deliveryInstructions || "")
               setShowInstructionsDialog(true)
             }}
             showArrow={order?.status !== "delivered" && order?.status !== "cancelled"}
@@ -2000,7 +2053,11 @@ export default function OrderTracking() {
                   try {
                     const response = await orderAPI.updateDeliveryInstructions(orderId, instructionsText)
                     if (response.data?.success) {
-                      setOrder((prev) => prev ? { ...prev, note: instructionsText.trim() } : prev)
+                      setOrder((prev) =>
+                        prev
+                          ? { ...prev, deliveryInstructions: instructionsText.trim() }
+                          : prev
+                      )
                       setShowInstructionsDialog(false)
                       setInstructionsText("")
                       toast.success("Delivery instructions updated")
@@ -2024,6 +2081,33 @@ export default function OrderTracking() {
                 ) : (
                   "Save"
                 )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delivery Address Dialog */}
+      <Dialog open={showAddressDialog} onOpenChange={setShowAddressDialog}>
+        <DialogContent className="sm:max-w-xl w-[95%] max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-gray-900">
+              Delivery Address
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-6 px-2 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                <MapPin className="w-5 h-5 text-gray-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900">Delivery at Location</p>
+                <p className="text-sm text-gray-600 break-words">{deliveryAddressText}</p>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" onClick={() => setShowAddressDialog(false)}>
+                Close
               </Button>
             </div>
           </div>

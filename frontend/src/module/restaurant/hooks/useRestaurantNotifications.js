@@ -9,6 +9,8 @@ import alertSound from '@/assets/audio/alert.mp3';
  * @returns {object} - { newOrder, playSound, isConnected }
  */
 export const useRestaurantNotifications = () => {
+  // Session start timestamp (used to ignore stale socket bursts on connect/reconnect in production)
+  const sessionStartMsRef = useRef(Date.now());
   // Read persisted unlock flag once, synchronously, to avoid a race where the first socket event
   // arrives before our effects run (causing first order sound to be missed).
   const initialUnlocked = (() => {
@@ -93,6 +95,10 @@ export const useRestaurantNotifications = () => {
   };
 
   const stopNotificationSound = useCallback(() => {
+    // Capture handlers before nulling refs, so we can reliably remove listeners.
+    const endedHandler = ringEndedHandlerRef.current;
+    const pauseHandler = ringPauseHandlerRef.current;
+
     try {
       if (ringIntervalRef.current) {
         clearInterval(ringIntervalRef.current);
@@ -102,10 +108,13 @@ export const useRestaurantNotifications = () => {
         clearTimeout(ringTimeoutRef.current);
         ringTimeoutRef.current = null;
       }
-      // Remove any ended listener used for loop fallback
+      // Remove listeners used for resilience while ringing
       try {
-        if (audioRef.current && ringEndedHandlerRef.current) {
-          audioRef.current.removeEventListener('ended', ringEndedHandlerRef.current);
+        if (audioRef.current && endedHandler) {
+          audioRef.current.removeEventListener('ended', endedHandler);
+        }
+        if (audioRef.current && pauseHandler) {
+          audioRef.current.removeEventListener('pause', pauseHandler);
         }
       } catch {
         // ignore
@@ -123,17 +132,6 @@ export const useRestaurantNotifications = () => {
         // Ensure loop is disabled after we stop ringing
         try {
           audioRef.current.loop = false;
-        } catch {
-          // ignore
-        }
-        // Remove listeners used for resilience while ringing
-        try {
-          if (ringEndedHandlerRef.current) {
-            audioRef.current.removeEventListener('ended', ringEndedHandlerRef.current);
-          }
-          if (ringPauseHandlerRef.current) {
-            audioRef.current.removeEventListener('pause', ringPauseHandlerRef.current);
-          }
         } catch {
           // ignore
         }
@@ -486,6 +484,13 @@ export const useRestaurantNotifications = () => {
           qrReferenceId: orderData?.qrReferenceId,
         });
       } catch (_) {}
+
+      // Live servers sometimes emit a stale "last pending order" burst on connect/reconnect.
+      // Ignore orders created before this tab/session started (small tolerance for clock skew).
+      const createdAtMs = orderData?.createdAt ? new Date(orderData.createdAt).getTime() : Date.now();
+      if (createdAtMs < sessionStartMsRef.current - 5000) {
+        return;
+      }
 
       setNewOrder(orderData);
       

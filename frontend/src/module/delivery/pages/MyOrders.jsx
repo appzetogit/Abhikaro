@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom"
 import { 
   ArrowLeft,
   Search,
-  Mic,
   MoreVertical,
   ChevronRight,
   Star,
@@ -212,7 +211,6 @@ export default function MyOrders() {
             className="flex-1 ml-3 outline-none text-gray-600 placeholder-gray-400"
             autoComplete="off"
           />
-          <Mic className="w-5 h-5 text-red-500 border-l pl-2 box-content border-gray-300" />
             </div>
           </div>
           

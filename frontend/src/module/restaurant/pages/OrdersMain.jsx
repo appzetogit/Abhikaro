@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import Lenis from "lenis"
-import { Printer, Volume2, VolumeX, ChevronDown, ChevronUp, Minus, Plus, X, AlertCircle, Loader2, Calendar, Clock, Users, MessageSquare, PhoneCall } from "lucide-react"
+import { Printer, ChevronDown, ChevronUp, Minus, Plus, X, AlertCircle, Loader2, Calendar, Clock, Users, MessageSquare, PhoneCall, Bell } from "lucide-react"
 import { toast } from "sonner"
 import BottomNavOrders from "../components/BottomNavOrders"
 import RestaurantNavbar from "../components/RestaurantNavbar"
@@ -578,9 +578,9 @@ export default function OrdersMain() {
   // New order popup states
   const [showNewOrderPopup, setShowNewOrderPopup] = useState(false)
   const [popupOrder, setPopupOrder] = useState(null) // Store order for popup (from Socket.IO or API)
-  const [isMuted, setIsMuted] = useState(false)
   const [prepTime, setPrepTime] = useState(11)
-  const ACCEPT_WINDOW_SECONDS = 300 // 5 minutes
+  // Must match backend auto-reject window (`backend/modules/order/services/autoRejectService.js`)
+  const ACCEPT_WINDOW_SECONDS = 240 // 4 minutes
   const acceptDeadlineMsRef = useRef(null)
   const [countdown, setCountdown] = useState(ACCEPT_WINDOW_SECONDS)
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true)
@@ -1157,7 +1157,7 @@ export default function OrdersMain() {
       setShowNewOrderPopup(false)
       setPopupOrder(null)
       clearNewOrder()
-      setCountdown(240)
+      setCountdown(ACCEPT_WINDOW_SECONDS)
       setPrepTime(11)
     }
 
@@ -1269,6 +1269,23 @@ export default function OrdersMain() {
 
   // Handle accept order
   const handleAcceptOrder = async () => {
+    // Prevent race: if accept window already expired, don't call API.
+    if (countdown <= 0) {
+      toast.error('Accept window expired. Order may have been auto-cancelled.')
+      try {
+        window.dispatchEvent(new CustomEvent('new_order_received', { detail: { source: 'accept_click_after_expiry' } }))
+      } catch {
+        // ignore
+      }
+      setShowNewOrderPopup(false)
+      setPopupOrder(null)
+      clearNewOrder()
+      acceptDeadlineMsRef.current = null
+      setCountdown(ACCEPT_WINDOW_SECONDS)
+      setPrepTime(11)
+      return
+    }
+
     // FIXED: Check restaurant location before accepting order
     if (restaurantLocationMissing) {
       toast.error('Restaurant location is not set. Please set your location first.', {
@@ -1338,8 +1355,6 @@ export default function OrdersMain() {
     }
     acceptDeadlineMsRef.current = null
     setCountdown(ACCEPT_WINDOW_SECONDS)
-    acceptDeadlineMsRef.current = null
-    setCountdown(ACCEPT_WINDOW_SECONDS)
     setPrepTime(11)
 
     // Note: PreparingOrders component will automatically refresh orders via its own useEffect
@@ -1389,7 +1404,7 @@ export default function OrdersMain() {
       // ignore
     }
     setRejectReason("")
-    setCountdown(240)
+    setCountdown(ACCEPT_WINDOW_SECONDS)
     setPrepTime(11)
   }
 
@@ -1427,11 +1442,7 @@ export default function OrdersMain() {
     setCancelReason("")
   }
 
-  // Toggle mute
-  const toggleMute = () => {
-    setIsMuted(!isMuted)
-    // No-op: popup sound playback removed (centralized in hook).
-  }
+  // Sound UI removed; sound is handled by `useRestaurantNotifications`.
 
   // Handle PDF download
   const handlePrint = async () => {
@@ -2182,17 +2193,6 @@ export default function OrdersMain() {
                     >
                       <Printer className="w-5 h-5 text-gray-700" />
                     </button>
-                    <button
-                      onClick={toggleMute}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                      aria-label={isMuted ? "Unmute" : "Mute"}
-                    >
-                      {isMuted ? (
-                        <VolumeX className="w-5 h-5 text-gray-700" />
-                      ) : (
-                        <Volume2 className="w-5 h-5 text-gray-700" />
-                      )}
-                    </button>
                   </div>
                 </div>
 
@@ -2824,7 +2824,7 @@ function ResendNotificationButton({ orderId, mongoId }) {
         </>
       ) : (
         <>
-          <Volume2 className="w-3 h-3" />
+          <Bell className="w-3 h-3" />
           <span>Resend</span>
         </>
       )}

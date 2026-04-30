@@ -184,7 +184,9 @@ export default function RestaurantDetails() {
         setRestaurantError(null)
 
         let apiRestaurant = null
-        let rId = aligned?.id || aligned?.restaurantId || aligned?._id
+        // IMPORTANT: Prefer Mongo `_id` for menu/inventory endpoints.
+        // Many backend routes expect Mongo id; using business `restaurantId` can return empty menu.
+        let rId = aligned?._id || aligned?.id || aligned?.restaurantId
         const hasMenuFromState =
           aligned &&
           Array.isArray(aligned.menuSections) &&
@@ -223,7 +225,14 @@ export default function RestaurantDetails() {
           const formattedAddress = formatAddress(locationObj)
 
           const transformed = {
-            id: actualRestaurant?.restaurantId || actualRestaurant?._id || actualRestaurant?.id || apiRestaurant?.restaurantId || apiRestaurant?._id || null,
+            // IMPORTANT: Prefer Mongo `_id` for downstream menu/inventory fetches.
+            id:
+              actualRestaurant?._id ||
+              actualRestaurant?.id ||
+              actualRestaurant?.restaurantId ||
+              apiRestaurant?._id ||
+              apiRestaurant?.restaurantId ||
+              null,
             name: actualRestaurant?.onboarding?.step1?.restaurantName || apiRestaurant?.onboarding?.step1?.restaurantName || actualRestaurant?.name || apiRestaurant?.name || "Unknown Restaurant",
             cuisine: (actualRestaurant?.cuisines?.[0]) || actualRestaurant?.cuisine || "Multi-cuisine",
             rating: Number(actualRestaurant?.averageRating || actualRestaurant?.rating || 0),

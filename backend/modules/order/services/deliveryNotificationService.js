@@ -965,7 +965,7 @@ export async function notifyDeliveryBoyOrderReady(order, deliveryPartnerId) {
 }
 
 /**
- * Notify assigned delivery partner that customer updated delivery instructions (order.note)
+ * Notify assigned delivery partner that customer updated delivery instructions (order.deliveryInstructions)
  * Emits socket event + sends FCM push (non-blocking).
  */
 export async function notifyDeliveryBoyOrderNoteUpdated(order, deliveryPartnerId) {
@@ -975,7 +975,10 @@ export async function notifyDeliveryBoyOrderNoteUpdated(order, deliveryPartnerId
 
     const oid = order?.orderId || order?._id?.toString?.() || null;
     const mongoId = order?._id?.toString?.() || null;
-    const note = typeof order?.note === "string" ? order.note : "";
+    const note =
+      typeof order?.deliveryInstructions === "string"
+        ? order.deliveryInstructions
+        : "";
 
     const payload = {
       type: "order_note_updated",

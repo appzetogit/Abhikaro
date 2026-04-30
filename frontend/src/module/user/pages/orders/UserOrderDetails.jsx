@@ -218,6 +218,12 @@ export default function UserOrderDetails() {
   const isCancelled =
     order.status === "cancelled" ||
     order.status === "restaurant_cancelled"
+  const isDelivered =
+    order.status === "delivered" ||
+    order.status === "completed" ||
+    Boolean(order.deliveredAt || order.delivered_on || order.deliveredOn) ||
+    order?.tracking?.delivered?.status === true ||
+    order?.tracking?.delivered === true
   const isOnlinePayment =
     order.payment?.method === "razorpay" ||
     order.payment?.method === "upi" ||
@@ -309,8 +315,8 @@ export default function UserOrderDetails() {
       const tableData = items.map(item => [
         item.name || 'Item',
         String(item.quantity || item.qty || 1),
-        `₹${Number(item.price || 0).toFixed(2)}`,
-        `₹${Number((item.price || 0) * (item.quantity || item.qty || 1)).toFixed(2)}`
+        `Rs. ${Number(item.price || 0).toFixed(2)}`,
+        `Rs. ${Number((item.price || 0) * (item.quantity || item.qty || 1)).toFixed(2)}`
       ])
       
       autoTable(doc, {
@@ -335,7 +341,7 @@ export default function UserOrderDetails() {
       doc.setFontSize(12)
       doc.setFont('helvetica', 'bold')
       doc.text('Total:', 145, finalY + 10, { align: 'right' })
-      doc.text(`₹${Number(pricing.total || 0).toFixed(2)}`, 195, finalY + 10, { align: 'right' })
+      doc.text(`Rs. ${Number(pricing.total || 0).toFixed(2)}`, 195, finalY + 10, { align: 'right' })
       
       // Save PDF instantly
       const fileName = `Order_Summary_${orderIdDisplay}_${Date.now()}.pdf`
@@ -431,18 +437,6 @@ export default function UserOrderDetails() {
         <div className="bg-white p-4 rounded-xl shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <img
-                src={
-                  // Prefer the food image from the first ordered item
-                  (Array.isArray(items) && items[0]?.image) ||
-                  restaurantObj.profileImage?.url ||
-                  restaurantObj.profileImage ||
-                  order.restaurantImage ||
-                  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=100&q=80"
-                }
-                alt={restaurantName}
-                className="w-10 h-10 rounded-lg object-cover"
-              />
               <div>
                 <h3 className="font-semibold text-gray-800">{restaurantName}</h3>
                 <p className="text-xs text-gray-500">{restaurantLocation}</p>
@@ -657,7 +651,35 @@ export default function UserOrderDetails() {
       <div className="fixed bottom-0 w-full bg-white border-t border-gray-200 p-4 flex gap-3 z-20">
         <button
           type="button"
-          onClick={() => navigate(`/user/restaurants/${order.restaurantId || ""}`)}
+          onClick={() => {
+            const slug =
+              order?.restaurantSlug ||
+              order?.slug ||
+              restaurant?.slug ||
+              order?.restaurantId?.slug ||
+              null
+
+            const rid =
+              (typeof order?.restaurantId === "string" && order.restaurantId) ||
+              order?.restaurantId?._id ||
+              order?.restaurantId?.id ||
+              order?.restaurantId?.restaurantId ||
+              restaurant?._id ||
+              restaurant?.id ||
+              restaurant?.restaurantId ||
+              null
+
+            const restaurantKeyForNav = (slug && String(slug).trim())
+              ? String(slug).trim()
+              : (rid ? String(rid) : "")
+
+            if (!restaurantKeyForNav || restaurantKeyForNav === "[object Object]") {
+              toast.info("Restaurant details not available for reorder")
+              return
+            }
+            // User router uses `/restaurants/:slug`
+            navigate(`/restaurants/${encodeURIComponent(restaurantKeyForNav)}`)
+          }}
           className="flex-1 bg-[#E23744] text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-red-600 transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
@@ -674,7 +696,7 @@ export default function UserOrderDetails() {
       </div>
 
       {/* Restaurant Complaint Button - Below Order Details */}
-      {order && (
+      {order && isDelivered && (
         <div className="p-4 pb-24">
           <button
             type="button"

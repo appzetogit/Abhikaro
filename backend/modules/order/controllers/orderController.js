@@ -1885,7 +1885,9 @@ export const updateOrderNote = async (req, res) => {
       });
     }
 
-    order.note = typeof note === "string" ? note.trim() : "";
+    // IMPORTANT: keep restaurant note (`order.note`) separate.
+    // This endpoint updates delivery partner instructions only.
+    order.deliveryInstructions = typeof note === "string" ? note.trim() : "";
     await order.save();
 
     // Invalidate cached order details (user tracking uses cached getOrderDetails for 60s)
@@ -1921,7 +1923,7 @@ export const updateOrderNote = async (req, res) => {
       data: {
         order: {
           orderId: order.orderId,
-          note: order.note,
+          deliveryInstructions: order.deliveryInstructions,
         },
       },
     });

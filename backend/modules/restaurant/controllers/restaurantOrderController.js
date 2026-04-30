@@ -433,6 +433,23 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "Order not found");
     }
 
+    // Keep accept-window consistent with backend auto-reject (`autoRejectService.js`).
+    // If the UI shows a countdown, it must be derived from the same window.
+    const ACCEPT_TIME_LIMIT_SECONDS = 240; // 4 minutes
+    const ACCEPT_TIME_LIMIT_MS = ACCEPT_TIME_LIMIT_SECONDS * 1000;
+    const isHotelPay =
+      String(order?.payment?.method || "").toLowerCase() === "pay_at_hotel";
+    if (!isHotelPay && order?.createdAt) {
+      const elapsedMs = Date.now() - new Date(order.createdAt).getTime();
+      if (Number.isFinite(elapsedMs) && elapsedMs >= ACCEPT_TIME_LIMIT_MS) {
+        return errorResponse(
+          res,
+          400,
+          `Order cannot be accepted. Accept window expired (${ACCEPT_TIME_LIMIT_SECONDS}s). Current status: ${order.status}`,
+        );
+      }
+    }
+
     // Allow accepting orders with status 'pending' or 'confirmed'
     // 'confirmed' status means payment is verified, restaurant can still accept
     if (!["pending", "confirmed"].includes(order.status)) {
@@ -1008,6 +1025,35 @@ export const rejectOrder = asyncHandler(async (req, res) => {
     order.cancelledBy = "restaurant";
     order.cancelledAt = new Date();
     await order.save();
+
+    // Realtime notify CUSTOMER UI so it can update instantly (cancel screen + reason).
+    try {
+      const io = await getIOInstance();
+      if (io) {
+        const payload = {
+          orderId: order?.orderId,
+          orderMongoId: order._id.toString(),
+          status: "cancelled",
+          title: "Order cancelled",
+          message: order.cancellationReason || "Your order was cancelled by the restaurant",
+          cancellationReason: order.cancellationReason || null,
+          cancelledBy: order.cancelledBy || "restaurant",
+          cancelledAt: order.cancelledAt || new Date(),
+          updatedAt: new Date(),
+        };
+
+        const roomIds = [
+          order._id.toString(),
+          order?.orderId,
+        ].filter(Boolean);
+
+        [...new Set(roomIds)].forEach((rid) => {
+          io.to(`order:${rid}`).emit("order_status_update", payload);
+        });
+      }
+    } catch (e) {
+      console.warn("⚠️ Customer realtime cancel notification failed:", e?.message);
+    }
 
     // Calculate refund amount but don't process automatically
     // Admin will process refund manually via refund button
