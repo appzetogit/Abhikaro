@@ -7,8 +7,33 @@ import { log } from "../utils/logger.js";
 
 // Get API base URL from environment variable or use default
 // IMPORTANT: Backend runs on port 5000, frontend on port 5173
-let rawApiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL || "/api";
+const explicitEnvApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+let rawApiBaseUrl = explicitEnvApiBaseUrl || "/api";
+
+// In production deployments, `/api` requires a reverse proxy on the frontend domain.
+// If the build didn't set VITE_API_BASE_URL, infer a common backend host pattern:
+// - frontend: foods.abhikaro.in → backend: api.foods.abhikaro.in
+// This avoids silent failures like zone detection breaking on production.
+try {
+  const hostname = window.location.hostname || "";
+  const isLocalhost =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".local") ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("10.") ||
+    hostname === "";
+  const isProductionBuild = import.meta.env.MODE === "production" || import.meta.env.PROD;
+  const isRelativeApi = typeof rawApiBaseUrl === "string" && rawApiBaseUrl.trim().startsWith("/");
+
+  if (isProductionBuild && !isLocalhost && !explicitEnvApiBaseUrl && isRelativeApi) {
+    const protocol = window.location.protocol || "https:";
+    const apiHost = hostname.startsWith("api.") ? hostname : `api.${hostname}`;
+    rawApiBaseUrl = `${protocol}//${apiHost}/api`;
+  }
+} catch {
+  // ignore inference failures; keep rawApiBaseUrl as-is
+}
 
 // Normalize URL - fix common issues like double slashes, missing protocols
 if (rawApiBaseUrl && typeof rawApiBaseUrl === "string") {
@@ -53,6 +78,44 @@ if (rawApiBaseUrl && typeof rawApiBaseUrl === "string") {
 }
 
 export const API_BASE_URL = rawApiBaseUrl;
+
+/**
+ * Backend origin (protocol + host) derived from API_BASE_URL.
+ *
+ * Why: many realtime modules use Socket.IO and need an origin, not `/api`.
+ * Using `API_BASE_URL.replace("/api","")` can yield malformed strings when env
+ * values are misconfigured (e.g. `https://https://...`), which then causes CSP
+ * connect-src failures like `https://https/socket.io/...`.
+ */
+export const BACKEND_ORIGIN = (() => {
+  // Relative `/api` → same-origin backend behind proxy (Vite, Nginx, etc.)
+  if (typeof rawApiBaseUrl === "string" && rawApiBaseUrl.trim().startsWith("/")) {
+    return window.location.origin;
+  }
+
+  const candidate = String(rawApiBaseUrl || "").trim();
+  if (!candidate) return window.location.origin;
+
+  // Extra safety: collapse duplicated protocol prefixes before parsing.
+  // Example: https://https://api.example.com/api → https://api.example.com/api
+  const normalized = candidate.replace(
+    /^(https?:\/\/)+(https?:\/\/)+/gi,
+    (match) => {
+      const protocol = match.match(/^(https?):\/\//i)?.[1] || "https";
+      return `${protocol}://`;
+    },
+  );
+
+  try {
+    const url = new URL(normalized);
+    if (!url.protocol || !url.hostname) return window.location.origin;
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    // If an env var is badly malformed, fall back to same-origin so the app
+    // still works behind a reverse proxy and doesn't generate nonsense hosts.
+    return window.location.origin;
+  }
+})();
 
 // Validate URL format - catch malformed URLs like "https:/" or "https://https://"
 if (!API_BASE_URL.startsWith('/')) {

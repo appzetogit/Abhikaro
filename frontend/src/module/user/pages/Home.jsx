@@ -35,6 +35,7 @@ import {
 import { useSharedLocation } from "@/lib/context/LocationContext"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { extractDistanceKm } from "@/lib/utils/distance"
+import { getCachedResponse, setCachedResponse } from "@/lib/utils/apiResponseCache"
 import offerImage from "@/assets/offerimage.png"
 import closeappImage from "@/assets/closeapp.png"
 import api, { restaurantAPI, orderAPI } from "@/lib/api"
@@ -503,6 +504,16 @@ export default function Home() {
     heroBannerFetchAbortRef.current = controller
 
     try {
+      const cacheKey = "GET:/hero-banners/public"
+      const cached = getCachedResponse(cacheKey, 2 * 60 * 1000) // 2 minutes
+      if (cached && Array.isArray(cached)) {
+        setHeroBannersData(cached)
+        setHeroBannerImages(cached.map((b) => b?.imageUrl || b))
+        heroBannersRetryRef.current = false
+        if (!silent) setLoadingBanners(false)
+        return
+      }
+
       if (!silent) setLoadingBanners(true)
       const response = await api.get('/hero-banners/public', {
         signal: controller.signal,
@@ -513,6 +524,7 @@ export default function Home() {
       if (response?.data?.success && Array.isArray(banners)) {
         setHeroBannersData(banners)
         setHeroBannerImages(banners.map((b) => b.imageUrl || b))
+        setCachedResponse(cacheKey, banners)
         heroBannersRetryRef.current = false
       }
     } catch (error) {
@@ -543,6 +555,14 @@ export default function Home() {
     categoriesFetchAbortRef.current = controller
 
     try {
+      const cacheKey = "GET:/categories/public?home=true"
+      const cached = getCachedResponse(cacheKey, 5 * 60 * 1000) // 5 minutes
+      if (cached && Array.isArray(cached)) {
+        setRealCategories(cached)
+        if (!silent) setLoadingRealCategories(false)
+        return
+      }
+
       if (!silent) setLoadingRealCategories(true)
       const response = await api.get('/categories/public?home=true', {
         signal: controller.signal,
@@ -558,6 +578,7 @@ export default function Home() {
           label: cat.name, // For compatibility with existing code
         }))
         setRealCategories(adminCategories)
+        setCachedResponse(cacheKey, adminCategories)
       } else if (!silent) {
         setRealCategories([])
       }
@@ -612,6 +633,26 @@ export default function Home() {
     landingFetchAbortRef.current = controller
 
     try {
+      const cacheKey = "GET:/hero-banners/landing/public"
+      const cached = getCachedResponse(cacheKey, 5 * 60 * 1000) // 5 minutes
+      if (cached && typeof cached === "object") {
+        setLandingCategories(
+          (cached.categories || [])
+            .filter((c) => c.isActive !== false)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        )
+        setLandingExploreMore(
+          (cached.exploreMore || [])
+            .filter((e) => e.isActive !== false)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        )
+        setExploreMoreHeading(cached.settings?.exploreMoreHeading || "Explore More")
+        setShowRecommendedSection(cached.settings?.showRecommendedSection === true)
+        landingConfigRetryRef.current = false
+        if (!silent) setLoadingLandingConfig(false)
+        return
+      }
+
       if (!silent) setLoadingLandingConfig(true)
       const response = await api.get('/hero-banners/landing/public', {
         signal: controller.signal,
@@ -635,6 +676,7 @@ export default function Home() {
         )
         setExploreMoreHeading(response.data.data.settings?.exploreMoreHeading || "Explore More")
         setShowRecommendedSection(response.data.data.settings?.showRecommendedSection === true)
+        setCachedResponse(cacheKey, response.data.data)
         landingConfigRetryRef.current = false
       }
     } catch (error) {

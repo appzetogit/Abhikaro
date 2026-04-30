@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, Hotel } from 'lucide-react';
-import { API_BASE_URL } from '@/lib/api/config';
-import axios from 'axios';
+import api from '@/lib/api';
 import { toast } from 'sonner';
 import AnimatedPage from '../components/AnimatedPage';
 import { log } from '@/lib/utils/logger';
+import { getCachedResponse, setCachedResponse } from '@/lib/utils/apiResponseCache';
 
 export default function HotelMenuLanding() {
     const [searchParams] = useSearchParams();
@@ -88,10 +88,26 @@ export default function HotelMenuLanding() {
 
                 log.debug('🔍 Validating hotel QR code:', hotelRef);
 
-                // Validate QR code with backend
-                const response = await axios.get(
-                    `${API_BASE_URL}/hotel/public/qr/${hotelRef}`
-                );
+                const cacheKey = `GET:/hotel/public/qr/${hotelRef}`;
+                const cached = getCachedResponse(cacheKey, 5 * 60 * 1000); // 5 minutes
+                if (cached) {
+                    if (cached?.success && cached?.data?.hotel) {
+                        const validatedHotel = cached.data.hotel;
+                        sessionStorage.setItem('hotelReference', validatedHotel.hotelId);
+                        sessionStorage.setItem('hotelReferenceName', validatedHotel.hotelName);
+                        sessionStorage.setItem('isHotelOrder', 'true');
+                        setHotelData(validatedHotel);
+                        setAskingLocation(true);
+                        toast.success(`Welcome to ${validatedHotel.hotelName}!`);
+                        return;
+                    }
+                }
+
+                // Validate QR code with backend (uses configured api client)
+                const response = await api.get(`/hotel/public/qr/${hotelRef}`);
+                if (response?.data) {
+                    setCachedResponse(cacheKey, response.data);
+                }
 
                 if (response.data.success && response.data.data.hotel) {
                     const validatedHotel = response.data.data.hotel;

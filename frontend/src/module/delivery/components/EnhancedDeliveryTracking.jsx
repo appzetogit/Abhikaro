@@ -11,7 +11,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import io from 'socket.io-client';
 import { calculateBearing, calculateBearingFromLocations, lerpBearing } from '../utils/bearingCalculation';
 import { createSmoothAnimationController } from '../utils/smoothAnimation';
-import { API_BASE_URL } from '@/lib/api/config';
+import { BACKEND_ORIGIN } from '@/lib/api/config';
 
 const EnhancedDeliveryTracking = ({
   orderId,
@@ -174,7 +174,7 @@ const EnhancedDeliveryTracking = ({
     if (!orderId) return;
 
     // Get socket URL from API base URL
-    const backendUrl = socketUrl || API_BASE_URL.replace('/api', '');
+    const backendUrl = socketUrl || BACKEND_ORIGIN;
     const socket = io(backendUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,

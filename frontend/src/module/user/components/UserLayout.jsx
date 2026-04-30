@@ -13,7 +13,7 @@ import ReplaceCartDialog from "./ReplaceCartDialog"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 import { useSharedLocation } from "@/lib/context/LocationContext"
 import io from "socket.io-client"
-import { API_BASE_URL } from "@/lib/api/config"
+import { BACKEND_ORIGIN } from "@/lib/api/config"
 import { toast } from "sonner"
 
 // Create SearchOverlay context with default value
@@ -129,7 +129,7 @@ export default function UserLayout() {
     // Only run on client
     if (typeof window === "undefined") return
 
-    const socketUrl = API_BASE_URL.replace("/api", "")
+    const socketUrl = BACKEND_ORIGIN
     const getUserIdFromStorage = () => {
       const directId = localStorage.getItem("user_id") || localStorage.getItem("userId")
       if (directId) return directId.toString()

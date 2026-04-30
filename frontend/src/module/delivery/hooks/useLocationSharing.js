@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import io from 'socket.io-client';
-import { API_BASE_URL } from '@/lib/api/config';
+import { BACKEND_ORIGIN } from '@/lib/api/config';
 
 /**
  * Calculate distance between two points using Haversine formula
@@ -33,7 +33,7 @@ export const useLocationSharing = (orderId, enabled = false) => {
   const watchIdRef = useRef(null);
   const isSharingRef = useRef(false);
 
-  const backendUrl = API_BASE_URL.replace('/api', '');
+  const backendUrl = BACKEND_ORIGIN;
 
   const startSharing = () => {
     if (!orderId) {

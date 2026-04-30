@@ -4,7 +4,7 @@ import { ArrowLeft, Send, Loader2 } from "lucide-react";
 import { chatAPI, userAPI } from "@/lib/api";
 import { toast } from "sonner";
 import io from "socket.io-client";
-import { API_BASE_URL } from "@/lib/api/config";
+import { BACKEND_ORIGIN } from "@/lib/api/config";
 
 export default function OrderChat() {
   const { orderId } = useParams();
@@ -18,8 +18,8 @@ export default function OrderChat() {
   const socketRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
-  // Get socket URL from API base URL
-  const socketUrl = API_BASE_URL.replace("/api", "");
+  // Socket.IO needs an origin; never derive it via string replace
+  const socketUrl = BACKEND_ORIGIN;
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {

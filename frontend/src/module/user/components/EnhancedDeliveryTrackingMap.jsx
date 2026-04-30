@@ -11,7 +11,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import io from 'socket.io-client';
-import { API_BASE_URL } from '@/lib/api/config';
+import { BACKEND_ORIGIN } from '@/lib/api/config';
 import bikeLogo from '@/assets/bikelogo.png';
 import {
   snapToPolyline,
@@ -41,7 +41,7 @@ const EnhancedDeliveryTrackingMap = ({
   const [currentLocation, setCurrentLocation] = useState(null);
   const [isOffRoute, setIsOffRoute] = useState(false);
 
-  const backendUrl = API_BASE_URL.replace('/api', '');
+  const backendUrl = BACKEND_ORIGIN;
 
   /**
    * Initialize bike marker

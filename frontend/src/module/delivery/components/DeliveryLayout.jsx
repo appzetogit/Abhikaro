@@ -7,7 +7,7 @@ import { DeliveryNotificationsProvider } from "../context/DeliveryNotificationsC
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 import alertSound from "@/assets/audio/alert.mp3"
 import io from "socket.io-client"
-import { API_BASE_URL } from "@/lib/api/config"
+import { BACKEND_ORIGIN } from "@/lib/api/config"
 import { toast } from "sonner"
 
 export default function DeliveryLayout({
@@ -27,7 +27,7 @@ export default function DeliveryLayout({
   useEffect(() => {
     if (typeof window === "undefined") return
 
-    const socketUrl = API_BASE_URL.replace("/api", "")
+    const socketUrl = BACKEND_ORIGIN
 
     const getDeliveryIdFromStorage = () => {
       const directId = localStorage.getItem("delivery_id") || localStorage.getItem("deliveryId")
