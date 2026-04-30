@@ -52,17 +52,7 @@ export default function Under250() {
   const isVegItem = (item) => {
     if (!item) return true
 
-    if (Object.prototype.hasOwnProperty.call(item, "isVeg")) {
-      return item.isVeg !== false
-    }
-    if (typeof item.isVegetarian === "boolean") return item.isVegetarian
-    if (typeof item.veg === "boolean") return item.veg
-
-    const ftRaw = item.foodType ?? item.food_type ?? item.type ?? ""
-    const ft = String(ftRaw).trim().toLowerCase().replace(/[\s_-]/g, "")
-    if (ft === "veg" || ft === "vegetarian") return true
-    if (ft === "nonveg" || ft === "nonvegetarian") return false
-
+    // Platform is Veg-only: always treat items as Veg in UI.
     return true
   }
 

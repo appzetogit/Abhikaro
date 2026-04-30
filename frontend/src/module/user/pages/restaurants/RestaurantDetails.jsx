@@ -562,7 +562,7 @@ export default function RestaurantDetails() {
       name: item.name,
       price: effectivePrice,
       variantPrice: effectivePrice,
-      image: item.image,
+      image: getItemImageUrl(item),
       restaurant: restaurant.name,
       restaurantId: validRestaurantId,
       description: item.description,
@@ -613,7 +613,7 @@ export default function RestaurantDetails() {
       const productInfo = {
         id: cartItemId,
         name: variantOverride ? `${item.name} - ${variantOverride.name}` : item.name,
-        imageUrl: item.image,
+        imageUrl: getItemImageUrl(item),
       }
       removeFromCart(cartItemId, sourcePosition, productInfo)
     } else {
@@ -622,7 +622,7 @@ export default function RestaurantDetails() {
         const productInfo = {
           id: cartItemId,
           name: variantOverride ? `${item.name} - ${variantOverride.name}` : item.name,
-          imageUrl: item.image,
+          imageUrl: getItemImageUrl(item),
         }
 
         if (newQuantity > existingCartItem.quantity && sourcePosition) {
@@ -734,7 +734,7 @@ export default function RestaurantDetails() {
         description: item.description,
         price: item.price,
         originalPrice: item.originalPrice,
-        image: item.image,
+        image: getItemImageUrl(item),
         restaurantId: restaurantId,
         restaurantName: restaurant?.name || "",
         restaurantSlug: restaurant?.slug || slug || "",
@@ -946,21 +946,18 @@ export default function RestaurantDetails() {
   const isVegItem = (item) => {
     if (!item) return true
 
-    // Prefer boolean flags when present (backend often sends these).
-    if (Object.prototype.hasOwnProperty.call(item, "isVeg")) {
-      return item.isVeg !== false
-    }
-    if (typeof item.isVegetarian === "boolean") return item.isVegetarian
-    if (typeof item.veg === "boolean") return item.veg
-
-    // Fallback to foodType string (various casing/spacing formats).
-    const ftRaw = item.foodType ?? item.food_type ?? item.type ?? ""
-    const ft = String(ftRaw).trim().toLowerCase().replace(/[\s_-]/g, "")
-    if (ft === "veg" || ft === "vegetarian") return true
-    if (ft === "nonveg" || ft === "nonvegetarian") return false
-
-    // Historical behavior in this screen: default to Veg unless explicitly non-veg.
+    // Platform is Veg-only: always render Veg indicator.
+    // Some legacy data may still carry isVeg=false or non-veg foodType strings.
     return true
+  }
+
+  const getItemImageUrl = (item) => {
+    if (!item) return ""
+    const direct = item.image || item.imageUrl || item.photo || item.thumbnail
+    if (direct && typeof direct === "string") return direct
+    const arr = item.images || item.imageUrls || item.photos
+    if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === "string") return arr[0]
+    return ""
   }
 
   const passesBaseFilters = (item) => {
@@ -1685,9 +1682,9 @@ export default function RestaurantDetails() {
 
                             {/* Right Side - Image and Add Button */}
                             <div className="relative w-32 h-32 flex-shrink-0">
-                              {item.image ? (
+                              {getItemImageUrl(item) ? (
                                 <img
-                                  src={item.image}
+                                  src={getItemImageUrl(item)}
                                   alt={item.name}
                                   className="w-full h-full object-cover rounded-2xl shadow-sm"
                                 />
@@ -1932,9 +1929,9 @@ export default function RestaurantDetails() {
 
                                       {/* Right Side - Image and Add Button */}
                                       <div className="relative w-32 h-32 flex-shrink-0">
-                                        {item.image ? (
+                                        {getItemImageUrl(item) ? (
                                           <img
-                                            src={item.image}
+                                            src={getItemImageUrl(item)}
                                             alt={item.name}
                                             className="w-full h-full object-cover rounded-2xl shadow-sm"
                                           />
@@ -2566,9 +2563,9 @@ export default function RestaurantDetails() {
 
                   {/* Image Section */}
                   <div className="relative w-full h-64 overflow-hidden rounded-t-3xl">
-                    {selectedItem.image ? (
+                    {getItemImageUrl(selectedItem) ? (
                       <img
-                        src={selectedItem.image}
+                        src={getItemImageUrl(selectedItem)}
                         alt={selectedItem.name}
                         className="w-full h-full object-cover"
                       />
@@ -2612,8 +2609,9 @@ export default function RestaurantDetails() {
                     {/* Item Name and Indicator */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2 flex-1">
-                        <div className="h-5 w-5 rounded border-2 border-amber-700 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                          <div className="h-2.5 w-2.5 rounded-full bg-amber-700 dark:bg-amber-600" />
+                        {/* Veg-only indicator */}
+                        <div className="h-5 w-5 rounded border-2 border-green-600 dark:border-green-500 bg-green-50 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+                          <div className="h-2.5 w-2.5 rounded-full bg-green-600 dark:bg-green-500" />
                         </div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                           {selectedItem.name}

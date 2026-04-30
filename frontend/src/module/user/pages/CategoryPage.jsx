@@ -747,9 +747,7 @@ export default function CategoryPage() {
             // Create one card per dish
             categoryDishes.forEach((dish, index) => {
               // Filter by vegMode if enabled
-              if (vegMode && dish.foodType !== "Veg") {
-                return // Skip non-veg dishes when vegMode is ON
-              }
+                // Veg-only platform: no non-veg dishes exist.
 
               const dishCardId = createDishCardId(r.id, dish, index)
               expandedDishes.push({
