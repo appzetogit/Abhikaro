@@ -1,10 +1,38 @@
 import { Link, useLocation } from "react-router-dom"
+import { useEffect, useState } from "react"
 import { UtensilsCrossed, Tag, User, Truck } from "lucide-react"
 import { useSharedLocation } from "@/lib/context/LocationContext"
 
 export default function BottomNavigation() {
   const location = useLocation()
   const { location: userLocation, isOutOfService } = useSharedLocation()
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+
+  // Keep bottom nav at screen bottom (hide behind keyboard instead of jumping up)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const computeOffset = () => {
+      const layoutHeight = document.documentElement?.clientHeight || window.innerHeight
+      const visualHeight = vv.height || 0
+      const offsetTop = vv.offsetTop || 0
+      const bottomInset = Math.max(0, layoutHeight - (visualHeight + offsetTop))
+      setKeyboardOffset(bottomInset)
+    }
+
+    computeOffset()
+    vv.addEventListener("resize", computeOffset)
+    vv.addEventListener("scroll", computeOffset)
+    window.addEventListener("resize", computeOffset)
+
+    return () => {
+      vv.removeEventListener("resize", computeOffset)
+      vv.removeEventListener("scroll", computeOffset)
+      window.removeEventListener("resize", computeOffset)
+    }
+  }, [])
 
   // Check active routes - support both /user/* and /* paths
   const isDining = location.pathname === "/dining" || location.pathname === "/user/dining"
@@ -23,7 +51,12 @@ export default function BottomNavigation() {
   return (
     <div
       className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-800 z-[60] shadow-lg safe-area-inset-bottom"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0)' }}
+      style={{
+        paddingBottom: "env(safe-area-inset-bottom, 0)",
+        transform: keyboardOffset ? `translateY(${keyboardOffset}px)` : undefined,
+        transition: "transform 150ms ease-out",
+        willChange: "transform",
+      }}
     >
       <div className="flex items-center justify-around h-auto px-4 sm:px-6">
         {/* Delivery Tab */}

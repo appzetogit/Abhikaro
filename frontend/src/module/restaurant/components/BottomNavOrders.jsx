@@ -40,6 +40,33 @@ export default function BottomNavOrders() {
   const [transitionPhase, setTransitionPhase] = useState('idle') // 'idle', 'entering', 'exiting'
   const [transitionDirection, setTransitionDirection] = useState('right')
   const prevIsHubModeRef = useRef(null)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+
+  // Keep bottom nav at screen bottom (hide behind keyboard instead of jumping up)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const computeOffset = () => {
+      const layoutHeight = document.documentElement?.clientHeight || window.innerHeight
+      const visualHeight = vv.height || 0
+      const offsetTop = vv.offsetTop || 0
+      const bottomInset = Math.max(0, layoutHeight - (visualHeight + offsetTop))
+      setKeyboardOffset(bottomInset)
+    }
+
+    computeOffset()
+    vv.addEventListener("resize", computeOffset)
+    vv.addEventListener("scroll", computeOffset)
+    window.addEventListener("resize", computeOffset)
+
+    return () => {
+      vv.removeEventListener("resize", computeOffset)
+      vv.removeEventListener("scroll", computeOffset)
+      window.removeEventListener("resize", computeOffset)
+    }
+  }, [])
 
   // Hide on internal pages (create-offers flow)
   const isInternalPage = pathname.includes("/create-offers")
@@ -261,7 +288,12 @@ export default function BottomNavOrders() {
 
       <div
         className="fixed -bottom-2 left-0 right-0 z-40"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        style={{
+          paddingBottom: "env(safe-area-inset-bottom)",
+          transform: keyboardOffset ? `translateY(${keyboardOffset}px)` : undefined,
+          transition: "transform 150ms ease-out",
+          willChange: "transform",
+        }}
       >
         <div className="flex items-center gap-2 w-full">
 

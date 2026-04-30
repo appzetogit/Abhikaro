@@ -23,6 +23,33 @@ export default function BottomNavigation() {
   const location = useLocation()
   const [profileImage, setProfileImage] = useState(null)
   const [imageError, setImageError] = useState(false)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+
+  // Keep bottom nav at screen bottom (hide behind keyboard instead of jumping up)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const computeOffset = () => {
+      const layoutHeight = document.documentElement?.clientHeight || window.innerHeight
+      const visualHeight = vv.height || 0
+      const offsetTop = vv.offsetTop || 0
+      const bottomInset = Math.max(0, layoutHeight - (visualHeight + offsetTop))
+      setKeyboardOffset(bottomInset)
+    }
+
+    computeOffset()
+    vv.addEventListener("resize", computeOffset)
+    vv.addEventListener("scroll", computeOffset)
+    window.addEventListener("resize", computeOffset)
+
+    return () => {
+      vv.removeEventListener("resize", computeOffset)
+      vv.removeEventListener("scroll", computeOffset)
+      window.removeEventListener("resize", computeOffset)
+    }
+  }, [])
 
   const isActive = (path) => {
     if (path === "/delivery") return location.pathname === "/delivery"
@@ -81,7 +108,14 @@ export default function BottomNavigation() {
   }, [])
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
+    <div
+      className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50"
+      style={{
+        transform: keyboardOffset ? `translateY(${keyboardOffset}px)` : undefined,
+        transition: "transform 150ms ease-out",
+        willChange: "transform",
+      }}
+    >
       <div className="flex items-center justify-around py-2 px-4">
 
         {/* Feed */}

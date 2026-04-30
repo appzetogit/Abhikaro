@@ -14,7 +14,7 @@ export default function NetworkStatusBanner() {
     ? "You are offline. Data cannot be saved to the server. Please check your internet connection."
     : isBackendUnavailable
       ? "Internet is connected, but the backend server is unavailable. Data cannot be saved right now."
-      : "Network is very slow. Data is not stored locally and may not reach the server. Please try again on a stable connection.";
+      : "Network seems slow. Requests may take longer than usual.";
 
   return (
     <div

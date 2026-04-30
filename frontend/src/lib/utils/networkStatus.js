@@ -8,12 +8,16 @@ let currentStatus = "online";
 
 const listeners = new Set();
 
-const SLOW_THRESHOLD_MS = 3000; // >3s to /health => treat as slow
-const PING_TIMEOUT_MS = 5000;   // hard timeout for health request
+// NOTE: "slow" should be conservative; false positives hurt UX.
+// We treat "slow" as "backend is responding, but noticeably delayed".
+const SLOW_THRESHOLD_MS = 8000; // >8s to /health => treat as slow
+const PING_TIMEOUT_MS = 10000;  // hard timeout for health request
 const PING_INTERVAL_MS = 15000; // periodic health check
 const BACKEND_FAILS_BEFORE_UNAVAILABLE = 2; // debounce transient failures
+const SLOW_HITS_BEFORE_SLOW = 2; // debounce transient slowness
 
 let consecutiveBackendFailures = 0;
+let consecutiveSlowHits = 0;
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -113,17 +117,31 @@ async function pingBackend() {
     consecutiveBackendFailures = 0;
 
     if (navigator.onLine === false) {
+      consecutiveSlowHits = 0;
       setStatus("offline");
-    } else if (elapsed > SLOW_THRESHOLD_MS) {
-      setStatus("slow");
     } else {
-      setStatus("online");
+      if (elapsed > SLOW_THRESHOLD_MS) {
+        consecutiveSlowHits += 1;
+        if (consecutiveSlowHits >= SLOW_HITS_BEFORE_SLOW) {
+          setStatus("slow");
+        } else {
+          // Keep current status unless we have strong evidence of slowness.
+          // This avoids flashing "slow" due to one delayed response.
+          if (currentStatus === "offline" || currentStatus === "backend_unavailable") {
+            setStatus("online");
+          }
+        }
+      } else {
+        consecutiveSlowHits = 0;
+        setStatus("online");
+      }
     }
   } catch (error) {
     // Only mark the app as offline when the browser itself is offline.
     // A failed health check while online means the backend is unavailable.
     if (navigator.onLine === false) {
       consecutiveBackendFailures = 0;
+      consecutiveSlowHits = 0;
       setStatus("offline");
       return;
     }
@@ -152,8 +170,9 @@ function initBrowserListeners() {
   }
 
   window.addEventListener("online", () => {
-    // When browser comes online, treat as at least slow until health check confirms
-    setStatus("slow");
+    // When browser comes online, optimistically mark online and verify via health check.
+    // (Avoids false "slow" banners on brief reconnects.)
+    setStatus("online");
     pingBackend().catch(() => {});
   });
 

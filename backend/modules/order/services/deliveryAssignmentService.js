@@ -4,6 +4,32 @@ import Zone from '../../admin/models/Zone.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import mongoose from 'mongoose';
 
+function buildActiveOrderQueryForDeliveryPartnerIds(deliveryPartnerObjectIds) {
+  return {
+    deliveryPartnerId: { $in: deliveryPartnerObjectIds },
+    status: { $nin: ['delivered', 'cancelled'] },
+    $or: [
+      { 'deliveryState.currentPhase': { $ne: 'completed' } },
+      { 'deliveryState.currentPhase': { $exists: false } },
+    ],
+  };
+}
+
+async function getBusyDeliveryPartnerIdSet(deliveryPartnerIds) {
+  const objectIds = (deliveryPartnerIds || [])
+    .map((id) => (mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : null))
+    .filter(Boolean);
+
+  if (objectIds.length === 0) return new Set();
+
+  const busy = await Order.distinct(
+    'deliveryPartnerId',
+    buildActiveOrderQueryForDeliveryPartnerIds(objectIds),
+  );
+
+  return new Set((busy || []).map((id) => id?.toString?.() || String(id)));
+}
+
 /**
  * Calculate distance between two coordinates using Haversine formula
  * @param {number} lat1 - Latitude of first point
@@ -120,8 +146,15 @@ export async function findNearestDeliveryBoys(
       return [];
     }
 
+    // Exclude delivery partners who are already handling an active order
+    const busyIdSet = await getBusyDeliveryPartnerIdSet(deliveryPartners.map((p) => p?._id?.toString?.() || String(p?._id)));
+    const freeDeliveryPartners = deliveryPartners.filter((p) => !busyIdSet.has(p?._id?.toString?.() || String(p?._id)));
+    if (freeDeliveryPartners.length !== deliveryPartners.length) {
+      console.log(`🚫 Excluding ${deliveryPartners.length - freeDeliveryPartners.length} busy delivery partners (already on an active order)`);
+    }
+
     // Calculate distance and filter
-    const deliveryPartnersWithDistance = deliveryPartners
+    const deliveryPartnersWithDistance = freeDeliveryPartners
       .map(partner => {
         const location = partner.availability?.currentLocation;
         if (!location || !location.coordinates || location.coordinates.length < 2) {
@@ -287,8 +320,19 @@ export async function findNearestDeliveryBoy(restaurantLat, restaurantLng, resta
       return null;
     }
 
+    // Exclude delivery partners who are already handling an active order
+    const busyIdSet = await getBusyDeliveryPartnerIdSet(deliveryPartners.map((p) => p?._id?.toString?.() || String(p?._id)));
+    const freeDeliveryPartners = deliveryPartners.filter((p) => !busyIdSet.has(p?._id?.toString?.() || String(p?._id)));
+    if (freeDeliveryPartners.length === 0) {
+      console.log('⚠️ All online delivery partners are currently busy with active orders');
+      return null;
+    }
+    if (freeDeliveryPartners.length !== deliveryPartners.length) {
+      console.log(`🚫 Excluding ${deliveryPartners.length - freeDeliveryPartners.length} busy delivery partners (already on an active order)`);
+    }
+
     // Calculate distance for each delivery partner and filter by zone if applicable
-    const deliveryPartnersWithDistance = deliveryPartners
+    const deliveryPartnersWithDistance = freeDeliveryPartners
       .map(partner => {
         const location = partner.availability?.currentLocation;
         if (!location || !location.coordinates || location.coordinates.length < 2) {

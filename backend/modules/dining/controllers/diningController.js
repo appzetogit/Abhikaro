@@ -12,6 +12,7 @@ import Restaurant from "../../restaurant/models/Restaurant.js";
 import RestaurantDiningOffer from "../../restaurant/models/RestaurantDiningOffer.js";
 import RestaurantWallet from "../../restaurant/models/RestaurantWallet.js";
 import emailService from "../../auth/services/emailService.js";
+import { notifyRestaurantDiningBookingCreated } from "../../fcm/services/pushNotificationService.js";
 import {
   createOrder as createRazorpayOrder,
   verifyPayment as verifyRazorpayPayment,
@@ -319,6 +320,11 @@ export const createBooking = async (req, res) => {
       success: true,
       message: "Booking confirmed successfully",
       data: bookingObj,
+    });
+
+    // Notify restaurant (best-effort; don't block user response)
+    notifyRestaurantDiningBookingCreated(bookingObj, req.user).catch((err) => {
+      console.error("Failed to send restaurant booking push notification:", err);
     });
 
     if (req.user.email) {

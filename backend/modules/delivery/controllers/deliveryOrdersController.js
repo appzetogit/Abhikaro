@@ -456,6 +456,28 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     const orderDeliveryPartnerId = order.deliveryPartnerId?.toString();
     const currentDeliveryId = delivery._id.toString();
 
+    // CRITICAL: A delivery partner can handle only one active order at a time
+    // If they already have another non-completed order, block acceptance of new ones.
+    const activeOrderExists = await Order.exists({
+      deliveryPartnerId: delivery._id,
+      _id: { $ne: order._id },
+      status: { $nin: ["delivered", "cancelled"] },
+      $or: [
+        { "deliveryState.currentPhase": { $ne: "completed" } },
+        { "deliveryState.currentPhase": { $exists: false } },
+      ],
+    });
+    if (activeOrderExists) {
+      console.warn(
+        `⚠️ Delivery partner ${currentDeliveryId} is already handling an active order. Blocking acceptance for order ${order.orderId}`,
+      );
+      return errorResponse(
+        res,
+        409,
+        "You already have an active order. Please complete it before accepting a new one.",
+      );
+    }
+
     // If order is not assigned, check if this delivery boy was notified (priority-based system)
     // FIXED: Only allow acceptance if order is in 'ready' status (Ready to Pickup)
     if (!orderDeliveryPartnerId) {

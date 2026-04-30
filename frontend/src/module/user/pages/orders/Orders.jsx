@@ -176,6 +176,16 @@ export default function Orders() {
           status: orderToRate.status,
           originalStatus: orderToRate.originalStatus
         })
+        // Mark as "seen" immediately so it doesn't re-open for this order later.
+        try {
+          const ids = getAllOrderIdsForDedupe(orderToRate)
+          if (ids.length) {
+            setShownRatingForOrders((prev) => new Set([...prev, ...ids]))
+          }
+        } catch {
+          // ignore
+        }
+
         setRatingModal({ open: true, order: orderToRate })
         setSelectedRating(null)
         setFeedbackText("")
@@ -472,6 +482,16 @@ Order again from this restaurant in the ${companyName} app.`
 
   // Open rating modal for an order
   const handleOpenRating = (order) => {
+    // Mark as "seen" immediately so it doesn't re-prompt for the same order.
+    try {
+      const ids = getAllOrderIdsForDedupe(order)
+      if (ids.length) {
+        setShownRatingForOrders((prev) => new Set([...prev, ...ids]))
+      }
+    } catch {
+      // ignore
+    }
+
     setRatingModal({ open: true, order })
     setSelectedRating(order.rating || null)
     setFeedbackText("")

@@ -14,6 +14,60 @@ async function getIOInstance() {
   return getIO ? getIO() : null;
 }
 
+function buildActiveOrderQueryForDeliveryPartner(deliveryPartnerIdCondition, excludeOrderObjectId = null) {
+  const q = {
+    deliveryPartnerId: deliveryPartnerIdCondition,
+    status: { $nin: ['delivered', 'cancelled'] },
+    $or: [
+      { 'deliveryState.currentPhase': { $ne: 'completed' } },
+      { 'deliveryState.currentPhase': { $exists: false } },
+    ],
+  };
+  if (excludeOrderObjectId) {
+    q._id = { $ne: excludeOrderObjectId };
+  }
+  return q;
+}
+
+async function isDeliveryPartnerBusy(deliveryPartnerId, { excludeOrderId } = {}) {
+  const normalized = deliveryPartnerId?.toString?.() || String(deliveryPartnerId);
+  if (!mongoose.Types.ObjectId.isValid(normalized)) return false;
+
+  const deliveryObjectId = new mongoose.Types.ObjectId(normalized);
+  const excludeOrderObjectId =
+    excludeOrderId && mongoose.Types.ObjectId.isValid(String(excludeOrderId))
+      ? new mongoose.Types.ObjectId(String(excludeOrderId))
+      : null;
+
+  const active = await Order.exists(buildActiveOrderQueryForDeliveryPartner(deliveryObjectId, excludeOrderObjectId));
+  return !!active;
+}
+
+async function filterOutBusyDeliveryPartners(deliveryPartnerIds, { excludeOrderId } = {}) {
+  const ids = Array.isArray(deliveryPartnerIds) ? deliveryPartnerIds : [];
+  const objectIds = ids
+    .map((id) => {
+      const s = id?.toString?.() || String(id);
+      return mongoose.Types.ObjectId.isValid(s) ? new mongoose.Types.ObjectId(s) : null;
+    })
+    .filter(Boolean);
+
+  if (objectIds.length === 0) return ids;
+
+  const excludeOrderObjectId =
+    excludeOrderId && mongoose.Types.ObjectId.isValid(String(excludeOrderId))
+      ? new mongoose.Types.ObjectId(String(excludeOrderId))
+      : null;
+
+  const busy = await Order.distinct(
+    'deliveryPartnerId',
+    buildActiveOrderQueryForDeliveryPartner({ $in: objectIds }, excludeOrderObjectId),
+  );
+
+  const busySet = new Set((busy || []).map((x) => x?.toString?.() || String(x)));
+  return ids.filter((id) => !busySet.has(id?.toString?.() || String(id)));
+}
+
 /**
  * Check if delivery partner is connected to socket
  * @param {string} deliveryPartnerId - Delivery partner ID
@@ -63,6 +117,13 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
     return { success: false, reason: 'Order is cancelled' };
   }
   try {
+    // Guard: don't send "new order" to a rider already busy with another active order
+    const busy = await isDeliveryPartnerBusy(deliveryPartnerId, { excludeOrderId: order?._id });
+    if (busy) {
+      console.warn(`⚠️ Skipping notification: delivery partner ${deliveryPartnerId} is busy with another active order`);
+      return { success: false, reason: 'Delivery partner is busy with another active order' };
+    }
+
     const io = await getIOInstance();
     
     if (!io) {
@@ -457,6 +518,16 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
       return { success: false, notified: 0 };
     }
 
+    // Exclude delivery partners who are already handling an active order
+    const filteredIds = await filterOutBusyDeliveryPartners(deliveryPartnerIds, { excludeOrderId: order?._id });
+    if (filteredIds.length === 0) {
+      console.log(`🚫 All target delivery partners are busy; skipping notifications for order ${order?.orderId}`);
+      return { success: false, notified: 0 };
+    }
+    if (filteredIds.length !== deliveryPartnerIds.length) {
+      console.log(`🚫 Excluding ${deliveryPartnerIds.length - filteredIds.length} busy delivery partners from notification targets`);
+    }
+
     // Server-side auto-resend loop should refresh availability without spamming
     // FCM pushes / notification sounds / forced "new_order" popups every few seconds.
     const isAutoResendTick = phase === 'auto_resend';
@@ -695,7 +766,7 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
     });
 
     // Notify each delivery partner
-    for (const deliveryPartnerId of deliveryPartnerIds) {
+    for (const deliveryPartnerId of filteredIds) {
       try {
         const normalizedId = deliveryPartnerId?.toString() || deliveryPartnerId;
         // Also try legacy business identifier room (`deliveryId`) if present on Delivery profile

@@ -272,8 +272,8 @@ apiClient.interceptors.request.use(
       }
     }
 
-    // Block write requests when network is slow or offline so that
-    // we never \"fake save\" anything in the frontend or localStorage.
+    // Block write requests only when the browser is truly offline.
+    // "slow" must not block writes; it causes false negatives and lost actions.
     const method = (config.method || "get").toLowerCase();
     const isWriteMethod = ["post", "put", "patch", "delete"].includes(method);
     const requestPath = String(config.url || "");
@@ -285,14 +285,12 @@ apiClient.interceptors.request.use(
 
     if (isWriteMethod && !isFcmOrPushRoute) {
       const status = getNetworkStatus();
-      if (status === "offline" || status === "slow") {
+      if (status === "offline") {
         const message =
-          status === "offline"
-            ? "Network is offline. Data is NOT saved to the server. Please check your connection and try again."
-            : "Network is very slow. Data is NOT saved to the server. Please try again on a stable connection.";
+          "Network is offline. Data is NOT saved to the server. Please check your connection and try again.";
 
         const error = new Error(message);
-        error.code = status === "offline" ? "NETWORK_OFFLINE" : "NETWORK_SLOW";
+        error.code = "NETWORK_OFFLINE";
         return Promise.reject(error);
       }
     }

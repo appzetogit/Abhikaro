@@ -254,6 +254,17 @@ export default function Home() {
       const normalized = normalizeOrderForRating(order)
       if (!normalized.id) return
 
+      // Mark as "seen" immediately so the popup is shown only once per order,
+      // even if the user closes it or doesn't submit a rating.
+      try {
+        const ids = getAllOrderIdsForDedupe(normalized)
+        if (ids.length) {
+          setShownRatingForOrders((prev) => new Set([...prev, ...ids]))
+        }
+      } catch {
+        // ignore
+      }
+
       scheduledRatingOrderIdRef.current = null
       if (ratingPopupTimeoutRef.current) {
         clearTimeout(ratingPopupTimeoutRef.current)
@@ -264,7 +275,7 @@ export default function Home() {
       setSelectedRating(null)
       setFeedbackText("")
     },
-    [normalizeOrderForRating]
+    [normalizeOrderForRating, getAllOrderIdsForDedupe]
   )
 
   const handleCloseRatingModal = useCallback(() => {
@@ -315,10 +326,10 @@ export default function Home() {
         },
       })
 
-      // Persist only rated orders (not merely shown), so unrated delivered
-      // orders are never permanently suppressed due to stale local storage.
-      const ratedIds = getAllOrderIdsForDedupe(order)
-      setShownRatingForOrders((prev) => new Set([...prev, ...ratedIds]))
+      // Ensure this order stays suppressed for future prompts.
+      // (We already mark it as "seen" on modal open, but keep this as a safety net.)
+      const ids = getAllOrderIdsForDedupe(order)
+      setShownRatingForOrders((prev) => new Set([...prev, ...ids]))
 
       // Close modal & allow next order popup in future (for other orders)
       toast.success("Thanks for rating your order! 🎉")

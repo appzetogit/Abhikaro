@@ -233,6 +233,58 @@ export async function notifyRestaurantNewOrder(order) {
 }
 
 /**
+ * Send notification to restaurant when a user books a dining table
+ */
+export async function notifyRestaurantDiningBookingCreated(booking, user) {
+  try {
+    const restaurantId =
+      booking?.restaurant?._id || booking?.restaurant || booking?.restaurantId?._id || booking?.restaurantId;
+    if (!restaurantId) {
+      console.warn('⚠️ [Push Notification] Cannot notify restaurant: booking has no restaurant id');
+      return;
+    }
+
+    const bookingCode = booking?.bookingId || booking?._id?.toString?.() || '';
+    const guests = booking?.guests != null ? String(booking.guests) : '';
+    const timeSlot = booking?.timeSlot ? String(booking.timeSlot) : '';
+
+    const when =
+      booking?.date
+        ? new Date(booking.date).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' })
+        : '';
+
+    const userName = user?.name || user?.fullName || 'Customer';
+
+    const bodyParts = [
+      `Booking ${bookingCode ? `#${bookingCode}` : ''}`.trim(),
+      userName ? `by ${userName}` : '',
+      guests ? `• Guests: ${guests}` : '',
+      when ? `• ${when}` : '',
+      timeSlot ? `• ${timeSlot}` : '',
+    ].filter(Boolean);
+
+    await sendPushNotification(restaurantId.toString(), 'restaurant', {
+      title: 'New table booking',
+      body: bodyParts.join(' '),
+      data: {
+        type: 'dining_booking_created',
+        bookingId: booking?.bookingId || undefined,
+        bookingMongoId: booking?._id?.toString?.() || undefined,
+        restaurantId: restaurantId.toString(),
+        guests: guests || undefined,
+        date: booking?.date ? new Date(booking.date).toISOString() : undefined,
+        timeSlot: timeSlot || undefined,
+        channelId: 'restaurant_dining_booking',
+        sound: 'default',
+        tag: `restaurant_dining_booking_${bookingCode || restaurantId}_${booking?._id || ''}`,
+      },
+    });
+  } catch (error) {
+    console.error('❌ [Push Notification] Error notifying restaurant about dining booking:', error);
+  }
+}
+
+/**
  * Send notification to hotel when a user places an order via hotel QR.
  * Copy requirement: "QR is scanned" + room number.
  */
