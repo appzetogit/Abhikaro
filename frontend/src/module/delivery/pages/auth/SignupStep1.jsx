@@ -14,7 +14,7 @@ export default function SignupStep1() {
         if (stored) {
           const parsed = JSON.parse(stored) || {}
           return {
-            name: parsed.name || "",
+            name: (parsed.name || "").replace(/[^a-zA-Z\s]/g, ""),
             email: parsed.email || "",
             address: parsed.address || "",
             city: parsed.city || "",
@@ -52,7 +52,10 @@ export default function SignupStep1() {
     let newValue = value
 
     // Normalize and format specific fields
-    if (name === "vehicleNumber") {
+    if (name === "name") {
+      // Allow only alphabets and spaces
+      newValue = value.replace(/[^a-zA-Z\s]/g, "")
+    } else if (name === "vehicleNumber") {
       // Remove spaces and convert letters to uppercase
       newValue = value.toUpperCase().replace(/\s/g, "")
     } else if (name === "panNumber") {
@@ -93,12 +96,14 @@ export default function SignupStep1() {
 
     if (!formData.name.trim()) {
       newErrors.name = "Name is required"
+    } else if (!/^[a-zA-Z\s]+$/.test(formData.name.trim())) {
+      newErrors.name = "Name should contain only alphabets"
     }
 
     if (!formData.email.trim()) {
       newErrors.email = "Email is required"
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-      newErrors.email = "Wrong email address"
+    } else if (!/^[^\s@]+@gmail\.com$/i.test(formData.email.trim())) {
+      newErrors.email = "Email must end with @gmail.com"
     }
 
     if (!formData.address.trim()) {
