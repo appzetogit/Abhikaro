@@ -447,7 +447,10 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
-      // If payload is minimal (no coords/address), enrich via API before setting
+      // Always prefer canonical order details from API for payout fields.
+      // Socket payload can be stale/incomplete (e.g., estimatedEarnings mismatch), causing popup to show wrong amount.
+      // We still show the popup immediately (setNewOrder(orderData)), but we always do a background fetch
+      // and overwrite with normalized API payload when available.
       const hasUsefulPayload =
         !!orderData?.restaurantLocation ||
         !!orderData?.customerLocation ||
@@ -456,7 +459,16 @@ export const useDeliveryNotifications = () => {
         !!orderData?.restaurantAddress ||
         !!orderData?.deliveryDistance;
 
-      if (orderId && !hasUsefulPayload) {
+      // Show immediately but DO NOT trust socket `estimatedEarnings` (can be stale/static like ₹40).
+      // We'll fetch canonical details from API and then populate earnings.
+      setNewOrder({
+        ...orderData,
+        estimatedEarnings: null,
+        _clientNeedsNormalization: true,
+      });
+
+      // Background normalize (deduped) to fix earnings and fill missing fields.
+      if (orderId) {
         (async () => {
           const normalized = await fetchOrderDetailsForPopup(orderId);
           if (!normalized) return;
@@ -465,12 +477,27 @@ export const useDeliveryNotifications = () => {
             normalized?._id?.toString?.() ||
             normalized?.orderMongoId?.toString?.();
           if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
-          setNewOrder(normalized);
-          // Sound is handled by DeliveryHome popup loop (plays while popup is open).
+
+          // Only overwrite if it is the same order we are currently showing (avoid racing with a newer order)
+          const current = socketRef.__lastNewOrderId;
+          if (current && current !== orderId.toString()) return;
+
+          setNewOrder(prev => ({
+            ...(prev || {}),
+            ...normalized,
+            _clientNormalized: true,
+            _clientNeedsNormalization: false,
+          }));
         })();
-      } else {
-        setNewOrder(orderData);
-        // Sound is handled by DeliveryHome popup loop (plays while popup is open).
+      } else if (!hasUsefulPayload) {
+        // If we don't have an id and payload is also minimal, nothing else we can do.
+      }
+
+      // Track last order id to prevent race overwrites
+      try {
+        socketRef.__lastNewOrderId = orderId ? orderId.toString() : null;
+      } catch {
+        // ignore
       }
     });
 
@@ -495,7 +522,14 @@ export const useDeliveryNotifications = () => {
         !!orderData?.restaurantAddress ||
         !!orderData?.deliveryDistance;
 
-      if (orderId && !hasUsefulPayload) {
+      // Treat it the same as new_order: show immediately, but clear untrusted socket earnings.
+      setNewOrder({
+        ...orderData,
+        estimatedEarnings: null,
+        _clientNeedsNormalization: true,
+      });
+
+      if (orderId) {
         (async () => {
           const normalized = await fetchOrderDetailsForPopup(orderId);
           if (!normalized) return;
@@ -504,13 +538,25 @@ export const useDeliveryNotifications = () => {
             normalized?._id?.toString?.() ||
             normalized?.orderMongoId?.toString?.();
           if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
-          setNewOrder(normalized);
-          // Sound is handled by DeliveryHome popup loop (plays while popup is open).
+
+          const current = socketRef.__lastNewOrderId;
+          if (current && current !== orderId.toString()) return;
+
+          setNewOrder(prev => ({
+            ...(prev || {}),
+            ...normalized,
+            _clientNormalized: true,
+            _clientNeedsNormalization: false,
+          }));
         })();
-      } else {
-        // Treat it the same as new_order for now - delivery boy can accept it
-        setNewOrder(orderData);
-        // Sound is handled by DeliveryHome popup loop (plays while popup is open).
+      } else if (!hasUsefulPayload) {
+        // no-op
+      }
+
+      try {
+        socketRef.__lastNewOrderId = orderId ? orderId.toString() : null;
+      } catch {
+        // ignore
       }
     });
 

@@ -833,10 +833,15 @@ export default function OrdersMain() {
     if (!newOrder) return
     ;(async () => {
       console.log('📦 New order received via Socket.IO:', newOrder)
-      const orderId = newOrder.orderId || newOrder.orderMongoId
+      const orderId =
+        newOrder?.orderId ||
+        newOrder?.orderMongoId ||
+        newOrder?._id ||
+        newOrder?.mongoId
       const createdAtMs = newOrder?.createdAt ? new Date(newOrder.createdAt).getTime() : Date.now()
       const popupKey = orderId ? `${String(orderId)}:${String(createdAtMs)}` : null
-      if (!orderId || (popupKey && shownOrdersRef.current.has(popupKey))) return
+      // If we can't identify the order, still show the popup (best-effort). Dedupe only when we have a stable key.
+      if (popupKey && shownOrdersRef.current.has(popupKey)) return
       if (popupKey) shownOrdersRef.current.add(popupKey)
 
       // Build initial normalized address
@@ -860,7 +865,8 @@ export default function OrdersMain() {
             '',
         }
 
-      // If the address looks incomplete (no formatted or too short), fetch full order BEFORE opening popup
+      // Show popup immediately; enrich address/payment in the background to avoid missing the accept window
+      // on slow/stalled networks.
       const looksIncomplete =
         !normalizedAddress ||
         typeof normalizedAddress === 'string' ||
@@ -868,25 +874,6 @@ export default function OrdersMain() {
         !normalizedAddress.formattedAddress ||
         // Or formattedAddress exists but is suspiciously short
         (normalizedAddress.formattedAddress && normalizedAddress.formattedAddress.length < 40)
-      if (looksIncomplete) {
-        try {
-          const resp = await restaurantAPI.getOrderById(orderId)
-          const o = resp?.data?.data?.order
-          if (o?.address) {
-            const a = o.address
-            normalizedAddress = {
-              formattedAddress: a.formattedAddress || a.address || '',
-              street: a.street || '',
-              city: a.city || '',
-              state: a.state || '',
-              zipCode: a.zipCode || a.pincode || a.postalCode || '',
-              additionalDetails: a.additionalDetails || a.additionalAddress || newOrder?.additionalAddress || a.landmark || ''
-            }
-          }
-        } catch (err) {
-          // ignore fetch error - fall back to whatever we have
-        }
-      }
 
       const normalizedOrder = {
         ...newOrder,
@@ -913,26 +900,60 @@ export default function OrdersMain() {
 
       // Always fetch the full order once to merge reliable payment + hotel QR indicators
       try {
-        const respFull = await restaurantAPI.getOrderById(orderId)
-        const full = respFull?.data?.data?.order
-        if (full) {
-          setPopupOrder(prev => ({
-            ...(prev || normalizedOrder),
-            // Keep earlier normalized address if present
-            customerAddress: (prev?.customerAddress || normalizedOrder.customerAddress),
-            // Merge payment + hotel origin flags
-            payment: full.payment || prev?.payment,
-            paymentStatus: full.payment?.status || prev?.paymentStatus,
-            paymentMethod: full.payment?.method || prev?.paymentMethod,
-            orderType: full.orderType || prev?.orderType,
-            hotelReference: full.hotelReference ?? prev?.hotelReference,
-            hotelId: full.hotelId ?? prev?.hotelId,
-            qrReferenceId: full.qrReferenceId ?? prev?.qrReferenceId,
-            hotelName: full.hotelName ?? prev?.hotelName,
-          }))
+        if (orderId) {
+          const respFull = await restaurantAPI.getOrderById(orderId)
+          const full = respFull?.data?.data?.order
+          if (full) {
+            setPopupOrder(prev => ({
+              ...(prev || normalizedOrder),
+              // Keep earlier normalized address if present
+              customerAddress: (prev?.customerAddress || normalizedOrder.customerAddress),
+              // Merge payment + hotel origin flags
+              payment: full.payment || prev?.payment,
+              paymentStatus: full.payment?.status || prev?.paymentStatus,
+              paymentMethod: full.payment?.method || prev?.paymentMethod,
+              orderType: full.orderType || prev?.orderType,
+              hotelReference: full.hotelReference ?? prev?.hotelReference,
+              hotelId: full.hotelId ?? prev?.hotelId,
+              qrReferenceId: full.qrReferenceId ?? prev?.qrReferenceId,
+              hotelName: full.hotelName ?? prev?.hotelName,
+            }))
+          }
         }
       } catch (_) {
         // ignore failure; UI will still work with socket payload
+      }
+
+      // Background-only address enrichment (non-blocking). Only if we have an id to fetch.
+      if (looksIncomplete && orderId) {
+        ;(async () => {
+          try {
+            const resp = await restaurantAPI.getOrderById(orderId)
+            const o = resp?.data?.data?.order
+            if (o?.address) {
+              const a = o.address
+              const enriched = {
+                formattedAddress: a.formattedAddress || a.address || '',
+                street: a.street || '',
+                city: a.city || '',
+                state: a.state || '',
+                zipCode: a.zipCode || a.pincode || a.postalCode || '',
+                additionalDetails:
+                  a.additionalDetails ||
+                  a.additionalAddress ||
+                  newOrder?.additionalAddress ||
+                  a.landmark ||
+                  ''
+              }
+              setPopupOrder(prev => ({
+                ...(prev || normalizedOrder),
+                customerAddress: enriched,
+              }))
+            }
+          } catch {
+            // ignore
+          }
+        })()
       }
     })()
   }, [newOrder])

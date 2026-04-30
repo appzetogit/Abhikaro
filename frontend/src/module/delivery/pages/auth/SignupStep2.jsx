@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 export default function SignupStep2() {
   const navigate = useNavigate()
+  const MAX_DOCUMENT_SIZE_BYTES = 8 * 1024 * 1024 // 8MB
   const [documents, setDocuments] = useState({
     profilePhoto: null,
     aadharPhoto: null,
@@ -131,9 +132,9 @@ export default function SignupStep2() {
       return
     }
 
-    // Validate file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image size should be less than 2MB")
+    // Validate file size (max 8MB)
+    if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
+      toast.error("Image size should be less than 8MB")
       return
     }
 
@@ -320,7 +321,7 @@ export default function SignupStep2() {
                   <>
                     <Upload className="w-8 h-8 text-gray-400 mb-2" />
                     <p className="text-sm text-gray-500 mb-1">Tap to upload from gallery</p>
-                    <p className="text-xs text-gray-400">PNG, JPG up to 2MB</p>
+                    <p className="text-xs text-gray-400">PNG, JPG up to 8MB</p>
                   </>
                 )}
               </div>

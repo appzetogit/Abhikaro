@@ -174,17 +174,20 @@ export default function NewOrderPopup({
     // - estimatedEarnings: number (treated as total)
     // - estimatedEarnings: { basePayout, distanceCommission, totalEarning, ... }
     //
-    // Requirement: delivery app "Estimated earnings" should reflect the Admin-set base payout by default.
-    // So we always prefer basePayout when present.
+    // IMPORTANT:
+    // "Estimated earnings" must match the payout the rider will actually get on accept.
+    // Prefer totalEarning (canonical total payout). basePayout is only a component.
     const earnings = orderData?.estimatedEarnings || 0
     let value = 0
 
     if (earnings) {
       if (typeof earnings === 'object') {
-        if (earnings.basePayout != null) {
-          value = Number(earnings.basePayout) || 0
-        } else if (earnings.totalEarning != null) {
+        if (earnings.totalEarning != null) {
           value = Number(earnings.totalEarning) || 0
+        } else if (earnings.basePayout != null) {
+          value = Number(earnings.basePayout) || 0
+        } else if (earnings.total != null) {
+          value = Number(earnings.total) || 0
         }
       } else if (typeof earnings === 'number') {
         value = earnings > 0 ? Number(earnings) : 0

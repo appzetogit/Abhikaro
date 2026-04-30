@@ -11127,25 +11127,26 @@ export default function DeliveryHome() {
                     <p className="text-gray-500 text-sm mb-1">Estimated earnings</p>
                     <p className="text-4xl font-bold text-gray-900 mb-2">
                       ₹{(() => {
-                        // Prefer real commission data coming from admin's Delivery Boy Commission rules
-                        const earnings = newOrder?.estimatedEarnings || selectedRestaurant?.estimatedEarnings || 0;
-                        let value = 0;
+                        // Estimated earnings must match the payout rider actually gets on accept.
+                        // Prefer totalEarning (canonical total payout). basePayout is only a component.
+                        const earnings = newOrder?.estimatedEarnings || selectedRestaurant?.estimatedEarnings || 0
+                        let value = 0
 
                         if (earnings) {
-                          if (typeof earnings === 'object') {
-                            // IMPORTANT: Always prioritise basePayout configured from Admin panel
-                            if (earnings.basePayout != null) {
-                              value = Number(earnings.basePayout) || 0;
-                            } else if (earnings.totalEarning != null) {
-                              // Fallback to totalEarning when basePayout is not explicitly present
-                              value = Number(earnings.totalEarning) || 0;
+                          if (typeof earnings === "object") {
+                            if (earnings.totalEarning != null) {
+                              value = Number(earnings.totalEarning) || 0
+                            } else if (earnings.basePayout != null) {
+                              value = Number(earnings.basePayout) || 0
+                            } else if (earnings.total != null) {
+                              value = Number(earnings.total) || 0
                             }
-                          } else if (typeof earnings === 'number') {
-                            value = earnings > 0 ? Number(earnings) : 0;
+                          } else if (typeof earnings === "number") {
+                            value = earnings > 0 ? Number(earnings) : 0
                           }
                         }
 
-                        return value > 0 ? value.toFixed(2) : '0.00';
+                        return value > 0 ? value.toFixed(2) : "0.00"
                       })()}
                     </p>
                     {/* Earnings Breakdown hidden as per requirement */}
