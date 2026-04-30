@@ -17,34 +17,57 @@ const logger = winston.createLogger({
   ]
 });
 
+const isRedisEnabled = ['true', '1', 'yes'].includes(String(process.env.REDIS_ENABLED || '').toLowerCase());
+
+function createNoopQueue(name) {
+  const noop = async () => undefined;
+  const q = {
+    name,
+    add: noop,
+    process: () => q,
+    on: () => q,
+    pause: noop,
+    resume: noop,
+    close: noop,
+    isReady: async () => false,
+  };
+  return q;
+}
+
+if (!isRedisEnabled) {
+  logger.warn('⚠️ Redis disabled - notification queue is running in no-op mode');
+}
+
 const redisClient = getRedisClient();
 const redisUrl = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`;
 
 // Create notification queue
-export const notificationQueue = new Queue('notifications', {
-  redis: redisClient && redisClient.isOpen ? {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT) || 6379,
-    password: process.env.REDIS_PASSWORD || undefined,
-  } : redisUrl,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
+export const notificationQueue = !isRedisEnabled
+  ? createNoopQueue('notifications')
+  : new Queue('notifications', {
+    redis: redisClient && redisClient.isOpen ? {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT) || 6379,
+      password: process.env.REDIS_PASSWORD || undefined,
+    } : redisUrl,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+      removeOnComplete: {
+        age: 3600, // Keep completed jobs for 1 hour
+        count: 1000,
+      },
+      removeOnFail: {
+        age: 86400, // Keep failed jobs for 24 hours
+      },
     },
-    removeOnComplete: {
-      age: 3600, // Keep completed jobs for 1 hour
-      count: 1000,
-    },
-    removeOnFail: {
-      age: 86400, // Keep failed jobs for 24 hours
-    },
-  },
-});
+  });
 
 // Process FCM notifications
-notificationQueue.process('fcm-push', async (job) => {
+if (isRedisEnabled) notificationQueue.process('fcm-push', async (job) => {
   const { token, title, body, data } = job.data;
   
   try {
@@ -60,7 +83,7 @@ notificationQueue.process('fcm-push', async (job) => {
 });
 
 // Process batch notifications
-notificationQueue.process('batch-notifications', async (job) => {
+if (isRedisEnabled) notificationQueue.process('batch-notifications', async (job) => {
   const { tokens, title, body, data } = job.data;
   
   try {
@@ -76,15 +99,15 @@ notificationQueue.process('batch-notifications', async (job) => {
 });
 
 // Queue event handlers
-notificationQueue.on('completed', (job, result) => {
+if (isRedisEnabled) notificationQueue.on('completed', (job, result) => {
   logger.info(`Notification queue job ${job.id} completed:`, result);
 });
 
-notificationQueue.on('failed', (job, err) => {
+if (isRedisEnabled) notificationQueue.on('failed', (job, err) => {
   logger.error(`Notification queue job ${job.id} failed:`, err.message);
 });
 
-notificationQueue.on('error', (error) => {
+if (isRedisEnabled) notificationQueue.on('error', (error) => {
   logger.error(`Notification queue error:`, error.message);
 });
 

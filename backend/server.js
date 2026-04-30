@@ -1,6 +1,10 @@
 // Load .env before any other local imports (ESM hoists imports; dotenv must run first)
 import "dotenv/config";
 
+// Redis is currently unstable/misconfigured in deployment and is not required for core functionality.
+// Force-disable Redis so Bull/Redis adapter/rate-limit Redis client never connect.
+process.env.REDIS_ENABLED = 'false';
+
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -10,7 +14,6 @@ import rateLimit from 'express-rate-limit';
 import compression from 'compression';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { createAdapter } from '@socket.io/redis-adapter';
 import cron from 'node-cron';
 import mongoose from 'mongoose';
 
@@ -351,13 +354,17 @@ connectDB().then(async () => {
 
 // Redis connection is optional - only connects if REDIS_ENABLED=true
 connectRedis().then(async (redisClient) => {
+  const redisEnabled = ['true', '1', 'yes'].includes(String(process.env.REDIS_ENABLED || '').toLowerCase());
+  if (!redisEnabled) return;
+
   if (redisClient && redisClient.isOpen) {
     // Enable Socket.IO Redis adapter for multi-server scaling
     try {
       const pubClient = redisClient;
       const subClient = redisClient.duplicate();
       await subClient.connect();
-      
+
+      const { createAdapter } = await import('@socket.io/redis-adapter');
       io.adapter(createAdapter(pubClient, subClient));
       console.log('✅ Socket.IO Redis adapter enabled - Multi-server scaling ready');
     } catch (error) {

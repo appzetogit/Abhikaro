@@ -16,12 +16,14 @@ let connectionAttempted = false;
 let connectionErrorLogged = false;
 
 export const connectRedis = async () => {
-  // In production, Redis should be enabled for caching and rate limiting
-  // Only skip if explicitly disabled
-  if (process.env.REDIS_ENABLED === 'false' || process.env.REDIS_ENABLED === '0') {
+  // Redis is OPTIONAL. Default to disabled unless explicitly enabled.
+  // This prevents accidental startup crashes in environments without Redis auth/config.
+  const redisEnabled = String(process.env.REDIS_ENABLED || '').toLowerCase();
+  const isEnabled = redisEnabled === 'true' || redisEnabled === '1' || redisEnabled === 'yes';
+  if (!isEnabled) {
     if (!connectionAttempted) {
       logger.warn('⚠️ Redis is disabled. Caching and Redis-based rate limiting will not work.');
-      logger.warn('⚠️ For production, set REDIS_ENABLED=true in .env to enable.');
+      logger.warn('⚠️ To enable Redis, set REDIS_ENABLED=true (and REDIS_URL/REDIS_HOST/REDIS_PASSWORD) in .env');
       connectionAttempted = true;
     }
     return null;

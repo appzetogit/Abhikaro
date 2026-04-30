@@ -17,34 +17,57 @@ const logger = winston.createLogger({
   ]
 });
 
+const isRedisEnabled = ['true', '1', 'yes'].includes(String(process.env.REDIS_ENABLED || '').toLowerCase());
+
+function createNoopQueue(name) {
+  const noop = async () => undefined;
+  const q = {
+    name,
+    add: noop,
+    process: () => q,
+    on: () => q,
+    pause: noop,
+    resume: noop,
+    close: noop,
+    isReady: async () => false,
+  };
+  return q;
+}
+
+if (!isRedisEnabled) {
+  logger.warn('⚠️ Redis disabled - email queue is running in no-op mode');
+}
+
 const redisClient = getRedisClient();
 const redisUrl = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`;
 
 // Create email queue
-export const emailQueue = new Queue('emails', {
-  redis: redisClient && redisClient.isOpen ? {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT) || 6379,
-    password: process.env.REDIS_PASSWORD || undefined,
-  } : redisUrl,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
+export const emailQueue = !isRedisEnabled
+  ? createNoopQueue('emails')
+  : new Queue('emails', {
+    redis: redisClient && redisClient.isOpen ? {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT) || 6379,
+      password: process.env.REDIS_PASSWORD || undefined,
+    } : redisUrl,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+      removeOnComplete: {
+        age: 3600, // Keep completed jobs for 1 hour
+        count: 1000,
+      },
+      removeOnFail: {
+        age: 86400, // Keep failed jobs for 24 hours
+      },
     },
-    removeOnComplete: {
-      age: 3600, // Keep completed jobs for 1 hour
-      count: 1000,
-    },
-    removeOnFail: {
-      age: 86400, // Keep failed jobs for 24 hours
-    },
-  },
-});
+  });
 
 // Process email sending
-emailQueue.process('send-email', async (job) => {
+if (isRedisEnabled) emailQueue.process('send-email', async (job) => {
   const { to, subject, html, text } = job.data;
   
   try {
@@ -64,15 +87,15 @@ emailQueue.process('send-email', async (job) => {
 });
 
 // Queue event handlers
-emailQueue.on('completed', (job, result) => {
+if (isRedisEnabled) emailQueue.on('completed', (job, result) => {
   logger.info(`Email queue job ${job.id} completed:`, result);
 });
 
-emailQueue.on('failed', (job, err) => {
+if (isRedisEnabled) emailQueue.on('failed', (job, err) => {
   logger.error(`Email queue job ${job.id} failed:`, err.message);
 });
 
-emailQueue.on('error', (error) => {
+if (isRedisEnabled) emailQueue.on('error', (error) => {
   logger.error(`Email queue error:`, error.message);
 });
 

@@ -17,34 +17,57 @@ const logger = winston.createLogger({
   ]
 });
 
+const isRedisEnabled = ['true', '1', 'yes'].includes(String(process.env.REDIS_ENABLED || '').toLowerCase());
+
+function createNoopQueue(name) {
+  const noop = async () => undefined;
+  const q = {
+    name,
+    add: noop,
+    process: () => q,
+    on: () => q,
+    pause: noop,
+    resume: noop,
+    close: noop,
+    isReady: async () => false,
+  };
+  return q;
+}
+
+if (!isRedisEnabled) {
+  logger.warn('⚠️ Redis disabled - payment queue is running in no-op mode');
+}
+
 const redisClient = getRedisClient();
 const redisUrl = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`;
 
 // Create payment queue
-export const paymentQueue = new Queue('payments', {
-  redis: redisClient && redisClient.isOpen ? {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT) || 6379,
-    password: process.env.REDIS_PASSWORD || undefined,
-  } : redisUrl,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
+export const paymentQueue = !isRedisEnabled
+  ? createNoopQueue('payments')
+  : new Queue('payments', {
+    redis: redisClient && redisClient.isOpen ? {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT) || 6379,
+      password: process.env.REDIS_PASSWORD || undefined,
+    } : redisUrl,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+      removeOnComplete: {
+        age: 3600, // Keep completed jobs for 1 hour
+        count: 1000,
+      },
+      removeOnFail: {
+        age: 86400, // Keep failed jobs for 24 hours
+      },
     },
-    removeOnComplete: {
-      age: 3600, // Keep completed jobs for 1 hour
-      count: 1000,
-    },
-    removeOnFail: {
-      age: 86400, // Keep failed jobs for 24 hours
-    },
-  },
-});
+  });
 
 // Process payment verification
-paymentQueue.process('verify-payment', async (job) => {
+if (isRedisEnabled) paymentQueue.process('verify-payment', async (job) => {
   const { orderId, paymentId, signature } = job.data;
   
   try {
@@ -60,7 +83,7 @@ paymentQueue.process('verify-payment', async (job) => {
 });
 
 // Process refunds
-paymentQueue.process('process-refund', async (job) => {
+if (isRedisEnabled) paymentQueue.process('process-refund', async (job) => {
   const { orderId, amount, reason } = job.data;
   
   try {
@@ -76,15 +99,15 @@ paymentQueue.process('process-refund', async (job) => {
 });
 
 // Queue event handlers
-paymentQueue.on('completed', (job, result) => {
+if (isRedisEnabled) paymentQueue.on('completed', (job, result) => {
   logger.info(`Payment queue job ${job.id} completed:`, result);
 });
 
-paymentQueue.on('failed', (job, err) => {
+if (isRedisEnabled) paymentQueue.on('failed', (job, err) => {
   logger.error(`Payment queue job ${job.id} failed:`, err.message);
 });
 
-paymentQueue.on('error', (error) => {
+if (isRedisEnabled) paymentQueue.on('error', (error) => {
   logger.error(`Payment queue error:`, error.message);
 });
 
