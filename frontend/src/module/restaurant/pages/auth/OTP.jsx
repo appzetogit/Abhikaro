@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { restaurantAPI } from "@/lib/api"
 import { setAuthData as setRestaurantAuthData } from "@/lib/utils/auth"
-import { checkOnboardingStatus } from "../../utils/onboardingUtils"
+import { determineStepToShow } from "../../utils/onboardingUtils"
 
 export default function RestaurantOTP() {
   const navigate = useNavigate()
@@ -258,19 +258,12 @@ export default function RestaurantOTP() {
           if (authData?.isSignUp) {
             navigate("/restaurant/onboarding", { replace: true })
           } else {
-            // After login, check if onboarding is incomplete
-            try {
-              const incompleteStep = await checkOnboardingStatus()
-              if (incompleteStep) {
-                // Navigate to onboarding with the incomplete step
-                navigate(`/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
-              } else {
-                // Onboarding is complete, go to restaurant home
-                navigate("/restaurant", { replace: true })
-              }
-            } catch (err) {
-              console.error("Failed to check onboarding status:", err)
-              // Fallback to restaurant home
+            // After login, decide onboarding status from the restaurant object we just received.
+            // IMPORTANT: do not force onboarding on transient API failures.
+            const incompleteStep = determineStepToShow(restaurant?.onboarding)
+            if (incompleteStep) {
+              navigate(`/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
+            } else {
               navigate("/restaurant", { replace: true })
             }
           }

@@ -221,6 +221,13 @@ export const sidebarMenuData = [
         icon: "Wallet",
         permissionId: "hotels.withdrawal_approve",
       },
+      {
+        type: "link",
+        label: "Hotel Terms & Condition",
+        path: "/admin/hotel-terms",
+        icon: "FileText",
+        permissionId: "hotels.view",
+      },
     ],
   },
   {

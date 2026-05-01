@@ -180,11 +180,43 @@ export const verifyOTP = asyncHandler(async (req, res) => {
     const identifier = phone || email;
     const identifierType = phone ? "phone" : "email";
 
+    // Normalize phone lookups so existing users don't get forced into re-registration
+    // due to format differences ("+91 9XXXXXXXXX" vs "91XXXXXXXXXX" vs "XXXXXXXXXX").
+    const normalizedPhone = phone ? normalizePhoneNumber(phone) : null;
+    const buildPhoneQuery = (normalized) => {
+      if (!normalized) return null;
+      if (normalized.startsWith("91") && normalized.length === 12) {
+        const last10 = normalized.slice(-10);
+        return {
+          $or: [
+            { phone: normalized },
+            { phone: last10 },
+            { phone: `+${normalized}` },
+            { phone: `+91${last10}` },
+            { phone: `+91 ${last10}` },
+            { phone: `+91-${last10}` },
+          ],
+        };
+      }
+      const last10 = normalized.length >= 10 ? normalized.slice(-10) : normalized;
+      return {
+        $or: [
+          { phone: normalized },
+          { phone: last10 },
+          { phone: `91${last10}` },
+          { phone: `+91${last10}` },
+          { phone: `+91 ${last10}` },
+          { phone: `+91-${last10}` },
+          { phone: `+${normalized}` },
+        ],
+      };
+    };
+
     if (purpose === "register") {
       // Registration flow
       // Check if user already exists with same email/phone AND role
       const findQuery = phone
-        ? { phone, role: userRole }
+        ? { ...(buildPhoneQuery(normalizedPhone) || { phone }), role: userRole }
         : { email, role: userRole };
       user = await User.findOne(findQuery);
 
@@ -211,7 +243,8 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       };
 
       if (phone) {
-        userData.phone = phone;
+        // Store normalized phone when possible (keeps DB consistent long-term)
+        userData.phone = normalizedPhone || phone;
         userData.phoneVerified = true;
       }
       if (email) {
@@ -231,7 +264,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         if (createError.code === 11000) {
           // Try to find the user again
           const findQuery = phone
-            ? { phone, role: userRole }
+            ? { ...(buildPhoneQuery(normalizedPhone) || { phone }), role: userRole }
             : { email, role: userRole };
           user = await User.findOne(findQuery);
           if (!user) {
@@ -257,7 +290,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       // Login (with optional auto-registration)
       // Find user by email/phone AND role to ensure correct module access
       const findQuery = phone
-        ? { phone, role: userRole }
+        ? { ...(buildPhoneQuery(normalizedPhone) || { phone }), role: userRole }
         : { email, role: userRole };
       user = await User.findOne(findQuery);
 
@@ -324,7 +357,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         };
 
         if (phone) {
-          userData.phone = phone;
+          userData.phone = normalizedPhone || phone;
           userData.phoneVerified = true;
         }
         // Only include email if provided (don't set to null)
@@ -343,7 +376,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
           if (createError.code === 11000) {
             // Try to find the user again
             const findQuery = phone
-              ? { phone, role: userRole }
+              ? { ...(buildPhoneQuery(normalizedPhone) || { phone }), role: userRole }
               : { email, role: userRole };
             user = await User.findOne(findQuery);
             if (!user) {

@@ -49,7 +49,8 @@ export const useLocationSharing = (orderId, enabled = false) => {
     // Initialize socket connection
     if (!socketRef.current) {
       socketRef.current = io(backendUrl, {
-        transports: ['websocket', 'polling'],
+        transports: ["polling"],
+        upgrade: false,
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionAttempts: 5

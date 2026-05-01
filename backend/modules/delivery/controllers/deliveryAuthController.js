@@ -21,6 +21,36 @@ function hasNonEmptyString(v) {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
+function extractIndianMobile10(phone) {
+  if (!phone || typeof phone !== 'string') return null;
+  const digitsOnly = phone.trim().replace(/\D/g, '');
+  if (!digitsOnly) return null;
+
+  let ten = digitsOnly;
+  if (ten.length > 10 && ten.startsWith('91')) ten = ten.slice(-10);
+  if (ten.length === 11 && ten.startsWith('0')) ten = ten.slice(-10);
+
+  if (ten.length !== 10) return null;
+  if (!/^[6-9]\d{9}$/.test(ten)) return null;
+  return ten;
+}
+
+function buildDeliveryPhoneQuery(mobile10) {
+  if (!mobile10) return null;
+  return {
+    $or: [
+      { phone: mobile10 },
+      { phone: `91${mobile10}` },
+      { phone: `+91${mobile10}` },
+      { phone: `+91 ${mobile10}` },
+      { phone: `+91-${mobile10}` },
+      { phone: `+91-${mobile10}` },
+      { phone: `+91${mobile10}` },
+      { phone: `+${mobile10}` },
+    ],
+  };
+}
+
 /**
  * Determine which delivery signup step is required.
  * Returns:
@@ -30,6 +60,12 @@ function hasNonEmptyString(v) {
  */
 function getRequiredSignupStep(delivery) {
   if (!delivery) return 'details';
+
+  // If the delivery partner is already approved/active, do NOT force them back into signup.
+  // Legacy profiles may have missing optional fields, but they should still be able to use the app.
+  if (delivery.status === 'approved' || delivery.status === 'active') {
+    return null;
+  }
 
   const profileImageUrl =
     delivery?.profileImage?.url ||
@@ -72,14 +108,13 @@ export const sendOTP = asyncHandler(async (req, res) => {
     return errorResponse(res, 400, 'Phone number is required');
   }
 
-  // Validate phone number format
-  const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/;
-  if (!phoneRegex.test(phone)) {
-    return errorResponse(res, 400, 'Invalid phone number format');
+  const mobile10 = extractIndianMobile10(phone);
+  if (!mobile10) {
+    return errorResponse(res, 400, 'Invalid mobile number. Please enter a valid 10 digit mobile number');
   }
 
   try {
-    const result = await otpService.generateAndSendOTP(phone, purpose, null);
+    const result = await otpService.generateAndSendOTP(mobile10, purpose, null);
     return successResponse(res, 200, result.message, {
       expiresIn: result.expiresIn,
       identifierType: result.identifierType
@@ -102,17 +137,23 @@ export const verifyOTP = asyncHandler(async (req, res) => {
     return errorResponse(res, 400, 'Phone number and OTP are required');
   }
 
+  const mobile10 = extractIndianMobile10(phone);
+  if (!mobile10) {
+    return errorResponse(res, 400, 'Invalid mobile number. Please enter a valid 10 digit mobile number');
+  }
+
   // Normalize name - convert null/undefined to empty string for optional field
   const normalizedName = name && typeof name === 'string' ? name.trim() : null;
 
   try {
     let delivery;
-    const identifier = phone;
+    const identifier = mobile10;
+    const findQuery = buildDeliveryPhoneQuery(mobile10) || { phone: mobile10 };
 
     if (purpose === 'register') {
       // Registration flow
       // Check if delivery boy already exists
-      delivery = await Delivery.findOne({ phone });
+      delivery = await Delivery.findOne(findQuery);
 
       if (delivery) {
         return errorResponse(res, 400, 'Delivery boy already exists with this phone number. Please login.');
@@ -124,11 +165,11 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
 
       // Verify OTP before creating delivery boy
-      await otpService.verifyOTP(phone, otp, purpose, null);
+      await otpService.verifyOTP(mobile10, otp, purpose, null);
 
       const deliveryData = {
         name: normalizedName,
-        phone,
+        phone: mobile10,
         phoneVerified: true,
         signupMethod: 'phone',
         status: 'pending', // New delivery boys start as pending approval
@@ -138,14 +179,14 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       try {
         delivery = await Delivery.create(deliveryData);
         logger.info(`New delivery boy registered: ${delivery._id}`, { 
-          phone, 
+          phone: mobile10, 
           deliveryId: delivery._id,
           deliveryIdField: delivery.deliveryId
         });
       } catch (createError) {
         // Handle duplicate key error
         if (createError.code === 11000) {
-          delivery = await Delivery.findOne({ phone });
+          delivery = await Delivery.findOne(findQuery);
           if (!delivery) {
             throw createError;
           }
@@ -156,17 +197,17 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
     } else {
       // Login (with optional auto-registration)
-      delivery = await Delivery.findOne({ phone });
+      delivery = await Delivery.findOne(findQuery);
 
       // Verify OTP first (before creating user)
-      await otpService.verifyOTP(phone, otp, purpose, null);
+      await otpService.verifyOTP(mobile10, otp, purpose, null);
 
       if (!delivery) {
         // New user - create minimal record for signup flow
         // Use provided name or placeholder
         const deliveryData = {
           name: normalizedName || 'Delivery Partner', // Placeholder if not provided
-          phone,
+          phone: mobile10,
           phoneVerified: true,
           signupMethod: 'phone',
           status: 'pending', // New delivery boys start as pending approval
@@ -176,14 +217,14 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         try {
           delivery = await Delivery.create(deliveryData);
           logger.info(`New delivery boy created for signup: ${delivery._id}`, { 
-            phone, 
+            phone: mobile10, 
             deliveryId: delivery._id,
             deliveryIdField: delivery.deliveryId,
             hasName: !!normalizedName
           });
         } catch (createError) {
           if (createError.code === 11000) {
-            delivery = await Delivery.findOne({ phone });
+            delivery = await Delivery.findOne(findQuery);
             if (!delivery) {
               throw createError;
             }

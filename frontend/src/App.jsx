@@ -119,6 +119,7 @@ const HotelSettlement = lazy(() => import("@/module/hotel/pages/HotelSettlement"
 const ViewHotel = lazy(() => import("@/module/hotel/pages/ViewHotel"))
 const HotelLeaderboard = lazy(() => import("@/module/hotel/pages/Leaderboard"))
 const HotelPastWinners = lazy(() => import("@/module/hotel/pages/PastWinners"))
+const HotelTermsAndConditions = lazy(() => import("@/module/hotel/pages/TermsAndConditions"))
 
 function UserPathRedirect() {
   const location = useLocation()
@@ -912,6 +913,14 @@ export default function App() {
         {/* Hotel Public Routes */}
         <Route path="/hotel" element={<AuthRedirect module="hotel"><HotelSignup /></AuthRedirect>} />
         <Route path="/hotel/otp" element={<AuthRedirect module="hotel"><HotelOTP /></AuthRedirect>} />
+        <Route
+          path="/hotel/legal/terms"
+          element={
+            <Suspense fallback={<Loader />}>
+              <HotelTermsAndConditions />
+            </Suspense>
+          }
+        />
         <Route path="/hotel/view/:hotelId" element={<ViewHotel />} />
 
         {/* Hotel Protected Routes */}

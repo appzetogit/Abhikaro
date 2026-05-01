@@ -1,40 +1,9 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { hotelAPI } from "@/lib/api"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { loadBusinessSettings } from "@/lib/utils/businessSettings"
-
-// Common country codes
-const countryCodes = [
-  { code: "+1", country: "US/CA", flag: "🇺🇸" },
-  { code: "+44", country: "UK", flag: "🇬🇧" },
-  { code: "+91", country: "IN", flag: "🇮🇳" },
-  { code: "+86", country: "CN", flag: "🇨🇳" },
-  { code: "+81", country: "JP", flag: "🇯🇵" },
-  { code: "+49", country: "DE", flag: "🇩🇪" },
-  { code: "+33", country: "FR", flag: "🇫🇷" },
-  { code: "+39", country: "IT", flag: "🇮🇹" },
-  { code: "+34", country: "ES", flag: "🇪🇸" },
-  { code: "+61", country: "AU", flag: "🇦🇺" },
-  { code: "+7", country: "RU", flag: "🇷🇺" },
-  { code: "+55", country: "BR", flag: "🇧🇷" },
-  { code: "+52", country: "MX", flag: "🇲🇽" },
-  { code: "+82", country: "KR", flag: "🇰🇷" },
-  { code: "+65", country: "SG", flag: "🇸🇬" },
-  { code: "+971", country: "AE", flag: "🇦🇪" },
-  { code: "+966", country: "SA", flag: "🇸🇦" },
-  { code: "+27", country: "ZA", flag: "🇿🇦" },
-  { code: "+31", country: "NL", flag: "🇳🇱" },
-  { code: "+46", country: "SE", flag: "🇸🇪" },
-]
 
 export default function HotelSignup() {
   const companyName = useCompanyName()
@@ -55,35 +24,25 @@ export default function HotelSignup() {
 
   const [formData, setFormData] = useState({
     phone: "",
-    countryCode: "+91",
   })
   const [error, setError] = useState("")
   const [isSending, setIsSending] = useState(false)
   const lastOTPRequestTime = useRef(0) // Track last OTP request time for debouncing
 
-  // Get selected country details dynamically
-  const selectedCountry = countryCodes.find(c => c.code === formData.countryCode) || countryCodes[2] // Default to India (+91)
-
-  const validatePhone = (phone, countryCode) => {
+  const validatePhone = (phone) => {
     if (!phone || phone.trim() === "") {
       return "Phone number is required"
     }
 
     const digitsOnly = phone.replace(/\D/g, "")
 
-    if (digitsOnly.length < 7) {
-      return "Phone number must be at least 7 digits"
+    if (digitsOnly.length !== 10) {
+      return "Mobile number must be 10 digits"
     }
 
-    // India-specific validation
-    if (countryCode === "+91") {
-      if (digitsOnly.length !== 10) {
-        return "Indian phone number must be 10 digits"
-      }
-      const firstDigit = digitsOnly[0]
-      if (!["6", "7", "8", "9"].includes(firstDigit)) {
-        return "Invalid Indian mobile number"
-      }
+    const firstDigit = digitsOnly[0]
+    if (!["6", "7", "8", "9"].includes(firstDigit)) {
+      return "Invalid mobile number"
     }
 
     return ""
@@ -99,13 +58,13 @@ export default function HotelSignup() {
     
     setError("")
 
-    const phoneError = validatePhone(formData.phone, formData.countryCode)
+    const phoneError = validatePhone(formData.phone)
     if (phoneError) {
       setError(phoneError)
       return
     }
 
-    const fullPhone = `${formData.countryCode} ${formData.phone}`.trim()
+    const fullPhone = formData.phone.trim()
 
     try {
       setIsSending(true)
@@ -153,18 +112,11 @@ export default function HotelSignup() {
     const value = e.target.value.replace(/\D/g, "")
     setFormData({
       ...formData,
-      phone: value,
+      phone: value.slice(0, 10),
     })
   }
 
-  const handleCountryCodeChange = (value) => {
-    setFormData({
-      ...formData,
-      countryCode: value,
-    })
-  }
-
-  const isValid = !validatePhone(formData.phone, formData.countryCode)
+  const isValid = !validatePhone(formData.phone)
 
   return (
     <div className="max-h-screen h-screen bg-white flex flex-col">
@@ -201,35 +153,13 @@ export default function HotelSignup() {
           {/* Mobile Number Input */}
           <div className="space-y-2 w-full">
             <div className="flex gap-2 items-stretch w-full">
-              <Select
-                value={formData.countryCode}
-                onValueChange={handleCountryCodeChange}
-              >
-                <SelectTrigger className="w-[100px] !h-12 border-gray-300 rounded-lg flex items-center shrink-0" size="default">
-                  <SelectValue>
-                    <span className="flex items-center gap-2">
-                      <span>{selectedCountry.flag}</span>
-                      <span>{selectedCountry.code}</span>
-                    </span>
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px] overflow-y-auto">
-                  {countryCodes.map((country) => (
-                    <SelectItem key={country.code} value={country.code}>
-                      <span className="flex items-center gap-2">
-                        <span>{country.flag}</span>
-                        <span>{country.code}</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <input
                 type="tel"
                 inputMode="numeric"
                 placeholder="Enter mobile number"
                 value={formData.phone}
                 onChange={handlePhoneChange}
+                maxLength={10}
                 autoComplete="off"
                 autoFocus={false}
                 className={`flex-1 h-12 px-4 text-gray-900 placeholder-gray-400 focus:outline-none text-base border rounded-lg min-w-0 ${error ? "border-red-500" : "border-gray-300"
@@ -269,9 +199,13 @@ export default function HotelSignup() {
           {/* Terms and Conditions */}
           <p className="text-xs text-center text-gray-600 px-4">
             By continuing, you agree to our{" "}
-            <a href="#" className="text-blue-600 hover:underline">
+            <button
+              type="button"
+              onClick={() => navigate("/hotel/legal/terms")}
+              className="text-blue-600 hover:underline"
+            >
               Terms and Conditions
-            </a>
+            </button>
           </p>
         </div>
       </div>

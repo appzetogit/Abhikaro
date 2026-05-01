@@ -52,12 +52,8 @@ export default function HotelOTP() {
     setAuthData(data)
 
     if (data.phone) {
-      const phoneMatch = data.phone?.match(/(\+\d+)\s*(.+)/)
-      if (phoneMatch) {
-        setContactInfo(`${phoneMatch[1]}-${phoneMatch[2].replace(/\D/g, "")}`)
-      } else {
-        setContactInfo(data.phone || "")
-      }
+      const digitsOnly = String(data.phone).replace(/\D/g, "")
+      setContactInfo(digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly)
     }
 
     startResendTimer()
@@ -260,8 +256,8 @@ export default function HotelOTP() {
     const errors = {}
     if (!signupData.hotelName.trim()) errors.hotelName = "Hotel name is required"
     if (!signupData.email.trim()) errors.email = "Email is required"
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signupData.email)) {
-      errors.email = "Invalid email format"
+    else if (!/^[^\s@]+@gmail\.com$/i.test(signupData.email.trim())) {
+      errors.email = "Email must be a valid @gmail.com address"
     }
     if (!signupData.address.trim()) errors.address = "Address is required"
 
@@ -374,7 +370,7 @@ export default function HotelOTP() {
               onChange={(e) =>
                 setSignupData({ ...signupData, hotelName: e.target.value })
               }
-              className={`border ${signupErrors.hotelName ? "border-red-500" : "border-gray-300"} focus:border-gray-400 focus:ring-1 focus:ring-gray-400`}
+              className={`mt-2 border ${signupErrors.hotelName ? "border-red-500" : "border-gray-300"} focus:border-gray-400 focus:ring-1 focus:ring-gray-400`}
             />
             {signupErrors.hotelName && (
               <p className="text-sm text-red-600 mt-1">{signupErrors.hotelName}</p>
@@ -390,7 +386,7 @@ export default function HotelOTP() {
               onChange={(e) =>
                 setSignupData({ ...signupData, email: e.target.value })
               }
-              className={`border ${signupErrors.email ? "border-red-500" : "border-gray-300"} focus:border-gray-400 focus:ring-1 focus:ring-gray-400`}
+              className={`mt-2 border ${signupErrors.email ? "border-red-500" : "border-gray-300"} focus:border-gray-400 focus:ring-1 focus:ring-gray-400`}
             />
             {signupErrors.email && (
               <p className="text-sm text-red-600 mt-1">{signupErrors.email}</p>
@@ -405,7 +401,7 @@ export default function HotelOTP() {
               onChange={(e) =>
                 setSignupData({ ...signupData, address: e.target.value })
               }
-              className={`border ${signupErrors.address ? "border-red-500" : "border-gray-300"} focus:border-gray-400 focus:ring-1 focus:ring-gray-400`}
+              className={`mt-2 border ${signupErrors.address ? "border-red-500" : "border-gray-300"} focus:border-gray-400 focus:ring-1 focus:ring-gray-400`}
             />
             {signupErrors.address && (
               <p className="text-sm text-red-600 mt-1">{signupErrors.address}</p>

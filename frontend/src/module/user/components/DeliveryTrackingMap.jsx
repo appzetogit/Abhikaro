@@ -1054,7 +1054,8 @@ const DeliveryTrackingMap = ({
       console.log("🔌 Connecting socket:", { url: c.url, path: c.path })
       return io(c.url, {
         path: c.path,
-        transports: ['websocket', 'polling'],
+        transports: ["polling"],
+        upgrade: false,
         reconnection: true,
         reconnectionDelay: 500,
         reconnectionAttempts: 5,

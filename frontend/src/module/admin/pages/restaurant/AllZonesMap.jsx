@@ -123,7 +123,8 @@ export default function AllZonesMap() {
     // Socket connection for live delivery tracking (admin view)
     const socketUrl = API_BASE_URL.replace("/api", "") + "/delivery"
     socketRef.current = io(socketUrl, {
-      transports: ["websocket", "polling"],
+      transports: ["polling"],
+      upgrade: false,
       reconnection: true,
       reconnectionDelay: 800,
       reconnectionAttempts: 10,

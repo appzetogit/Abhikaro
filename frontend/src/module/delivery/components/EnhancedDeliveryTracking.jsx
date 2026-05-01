@@ -176,10 +176,11 @@ const EnhancedDeliveryTracking = ({
     // Get socket URL from API base URL
     const backendUrl = socketUrl || BACKEND_ORIGIN;
     const socket = io(backendUrl, {
-      transports: ['websocket', 'polling'],
+      transports: ["polling"],
+      upgrade: false,
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5
+      reconnectionAttempts: 5,
     });
 
     socketRef.current = socket;

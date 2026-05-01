@@ -218,10 +218,11 @@ const EnhancedDeliveryTrackingMap = ({
     if (!orderId) return;
 
     const socket = io(backendUrl, {
-      transports: ['websocket', 'polling'],
+      transports: ["polling"],
+      upgrade: false,
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5
+      reconnectionAttempts: 5,
     });
 
     socket.on('connect', () => {

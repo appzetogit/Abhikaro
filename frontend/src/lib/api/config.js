@@ -465,6 +465,8 @@ export const API_ENDPOINTS = {
     WITHDRAWAL_REJECT: "/admin/withdrawal/:id/reject",
     BUSINESS_SETTINGS: "/admin/business-settings",
     BUSINESS_SETTINGS_PUBLIC: "/business-settings/public",
+    HOTEL_TERMS: "/admin/hotel-terms",
+    HOTEL_TERMS_PUBLIC: "/hotel-terms/public",
     ANALYTICS: "/admin/analytics",
     DASHBOARD_STATS: "/admin/dashboard/stats",
     CATEGORIES: "/admin/categories",

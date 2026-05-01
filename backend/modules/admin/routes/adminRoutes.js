@@ -221,6 +221,10 @@ import {
   updateRestaurantTerms,
 } from "../controllers/restaurantTermsAndConditionController.js";
 import {
+  getHotelTerms,
+  updateHotelTerms,
+} from "../controllers/hotelTermsAndConditionController.js";
+import {
   getCommissionSettings,
   updateCommissionSettings,
 } from "../controllers/commissionController.js";
@@ -775,6 +779,10 @@ router.put("/delivery-privacy", updateDeliveryPrivacy);
 // Restaurant Terms and Condition Management
 router.get("/restaurant-terms", getRestaurantTerms);
 router.put("/restaurant-terms", updateRestaurantTerms);
+
+// Hotel Terms and Condition Management
+router.get("/hotel-terms", getHotelTerms);
+router.put("/hotel-terms", updateHotelTerms);
 
 // Privacy Policy Management
 router.get("/privacy", getPrivacy);

@@ -10,6 +10,21 @@ import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
 import { handleAuthFcmToken } from "../../fcm/services/notificationTriggers.js";
 import winston from "winston";
 
+const extractIndianMobile10 = (phone) => {
+  if (!phone || typeof phone !== "string") return null;
+  const digitsOnly = phone.trim().replace(/\D/g, "");
+  if (!digitsOnly) return null;
+
+  // allow "+91xxxxxxxxxx" / "91xxxxxxxxxx" / "xxxxxxxxxx" but always validate 10-digit mobile
+  let ten = digitsOnly;
+  if (ten.length > 10 && ten.startsWith("91")) ten = ten.slice(-10);
+  if (ten.length === 11 && ten.startsWith("0")) ten = ten.slice(-10);
+
+  if (ten.length !== 10) return null;
+  if (!/^[6-9]\d{9}$/.test(ten)) return null;
+  return ten;
+};
+
 /**
  * Build phone query that searches in multiple formats (with/without country code)
  */
@@ -22,16 +37,22 @@ const buildPhoneQuery = (normalizedPhone) => {
       $or: [
         { phone: normalizedPhone },
         { phone: phoneWithoutCountryCode },
+        { phone: phoneWithoutCountryCode },
         { phone: `+${normalizedPhone}` },
         { phone: `+91${phoneWithoutCountryCode}` },
+        { phone: `+91 ${phoneWithoutCountryCode}` },
+        { phone: `+91-${phoneWithoutCountryCode}` },
       ],
     };
   } else {
     return {
       $or: [
         { phone: normalizedPhone },
+        { phone: normalizedPhone.length >= 10 ? normalizedPhone.slice(-10) : normalizedPhone },
         { phone: `91${normalizedPhone}` },
         { phone: `+91${normalizedPhone}` },
+        { phone: `+91 ${normalizedPhone}` },
+        { phone: `+91-${normalizedPhone}` },
         { phone: `+${normalizedPhone}` },
       ],
     };
@@ -59,15 +80,14 @@ export const sendOTP = asyncHandler(async (req, res) => {
     return errorResponse(res, 400, "Phone number is required");
   }
 
-  const phoneRegex =
-    /^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/;
-  if (!phoneRegex.test(phone)) {
-    return errorResponse(res, 400, "Invalid phone number format");
+  const mobile10 = extractIndianMobile10(phone);
+  if (!mobile10) {
+    return errorResponse(res, 400, "Invalid mobile number. Please enter a valid 10 digit mobile number");
   }
 
   try {
     const result = await otpService.generateAndSendOTP(
-      phone,
+      mobile10,
       purpose,
       null,
     );
@@ -104,7 +124,12 @@ export const verifyOTP = asyncHandler(async (req, res) => {
 
   try {
     let hotel;
-    const normalizedPhone = normalizePhoneNumber(phone);
+    const mobile10 = extractIndianMobile10(phone);
+    if (!mobile10) {
+      return errorResponse(res, 400, "Invalid mobile number. Please enter a valid 10 digit mobile number");
+    }
+
+    const normalizedPhone = normalizePhoneNumber(mobile10);
     if (!normalizedPhone) {
       return errorResponse(res, 400, "Invalid phone number format");
     }
@@ -136,7 +161,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
 
       // Verify OTP before creating hotel
-      await otpService.verifyOTP(phone, otp, otpVerificationPurpose, null);
+      await otpService.verifyOTP(mobile10, otp, otpVerificationPurpose, null);
 
       const hotelData = {
         phone: normalizedPhone,
@@ -253,7 +278,7 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
 
       // Verify OTP
-      await otpService.verifyOTP(phone, otp, otpVerificationPurpose, null);
+      await otpService.verifyOTP(mobile10, otp, otpVerificationPurpose, null);
 
       // Allow login if active OR in development mode
       if (!hotel.isActive && process.env.NODE_ENV !== "development") {
