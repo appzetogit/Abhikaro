@@ -12,7 +12,7 @@ export const authenticateAdmin = async (req, res, next) => {
     const authHeader = req.headers.authorization || req.headers.Authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return errorResponse(res, 401, 'No token provided');
+      return errorResponse(res, 401, 'Authentication required. Please login first.');
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix

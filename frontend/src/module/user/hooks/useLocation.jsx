@@ -1422,13 +1422,15 @@ export function useLocation() {
 
               localStorage.setItem("userLocation", JSON.stringify(finalLoc))
               lastProcessedCoordsRef.current = { latitude, longitude }
+              anchorLocationRef.current = { latitude, longitude }
+              lastSavedLocationRef.current = { latitude, longitude }
+              
               setLocation(finalLoc)
               setPermissionGranted(true)
               if (showLoading) setLoading(false)
               setError(null)
 
-              // CRITICAL: Always save coordinates to Firebase immediately, even if address is placeholder
-              // Don't wait for debounce - save immediately when location is first fetched
+              // CRITICAL: Always save coordinates to Firebase immediately
               if (updateDB) {
                 await updateLocationInDB(finalLoc).catch(() => {})
               }
@@ -1456,6 +1458,9 @@ export function useLocation() {
                   }
                   localStorage.setItem("userLocation", JSON.stringify(lastResortLoc))
                   lastProcessedCoordsRef.current = { latitude, longitude }
+                  anchorLocationRef.current = { latitude, longitude }
+                  lastSavedLocationRef.current = { latitude, longitude }
+                  
                   setLocation(lastResortLoc)
                   setPermissionGranted(true)
                   if (showLoading) setLoading(false)
@@ -1483,6 +1488,8 @@ export function useLocation() {
               // CRITICAL: Save coordinates even if address is placeholder - coordinates are still useful
               localStorage.setItem("userLocation", JSON.stringify(fallbackLoc))
               lastProcessedCoordsRef.current = { latitude, longitude }
+              anchorLocationRef.current = { latitude, longitude }
+              lastSavedLocationRef.current = { latitude, longitude }
               setLocation(fallbackLoc)
               setPermissionGranted(true)
               if (showLoading) setLoading(false)
@@ -1640,10 +1647,6 @@ export function useLocation() {
             // Reset retry count on success
             retryCount = 0
 
-            // CRITICAL: Live tracking should NOT call reverse geocoding (cuts API costs by 99%)
-            // Use stored address from current location or localStorage instead
-            // Reverse geocoding should ONLY happen when user manually adds/edits address
-            
             // Get current location to preserve address fields
             const currentLoc = location || (() => {
               try {
@@ -1654,35 +1657,77 @@ export function useLocation() {
               }
             })()
 
-            // Build location object - update ONLY coordinates, preserve existing address
-            const loc = {
+            // Build location object - update coordinates
+            let loc = {
               ...(currentLoc || {}), // Preserve all existing address fields
               latitude,
               longitude,
               accuracy: accuracy || null
             }
 
-            // If no existing address, use coordinates as display (don't call geocoding API)
-            if (!loc.address || loc.address === "Select location" || loc.address === "Current Location") {
-              // Show coordinates in a user-friendly way when address is not available
-              loc.address = `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
-              loc.formattedAddress = `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
-              loc.city = currentLoc?.city || "Current Location"
-            }
-
             // STABILITY: Only update if coordinates changed significantly (>10m)
-            // Don't check address improvement since we're not calling geocoding
             const prevLoc = location
+            let distanceSinceLastUpdate = 0
             if (prevLoc && prevLoc.latitude && prevLoc.longitude) {
-              const distanceMeters = calculateDistance(latitude, longitude, prevLoc.latitude, prevLoc.longitude)
+              distanceSinceLastUpdate = calculateDistance(latitude, longitude, prevLoc.latitude, prevLoc.longitude)
 
-              // Only update if moved >10 meters
-              if (distanceMeters <= UI_COORD_CHANGE_THRESHOLD_METERS) {
-                return // Don't update - coordinates haven't changed significantly
+              // If coordinates haven't changed significantly, skip everything
+              if (distanceSinceLastUpdate <= UI_COORD_CHANGE_THRESHOLD_METERS) {
+                return 
               }
             }
 
-            // Check if coordinates have changed significantly (threshold: ~10 meters)
+            // Check for movement and decide if we need to refresh the address or update DB
+            let shouldUpdateDB = false
+            let needsAddressRefresh = false
+            
+            // Check if current address is just a placeholder
+            const hasPlaceholder = !loc.address || 
+                                  loc.address === "Select location" || 
+                                  loc.address === "Current Location" ||
+                                  loc.city === "Current Location"
+
+            if (anchorLocationRef.current.latitude && anchorLocationRef.current.longitude) {
+              const distanceFromAnchor = calculateDistance(
+                latitude,
+                longitude,
+                anchorLocationRef.current.latitude,
+                anchorLocationRef.current.longitude
+              )
+
+              if (distanceFromAnchor >= MOVEMENT_UPDATE_THRESHOLD_METERS) {
+                shouldUpdateDB = true
+                needsAddressRefresh = true
+              }
+            } else {
+              // Initialize anchor and refresh address on first valid position
+              anchorLocationRef.current = { latitude, longitude }
+              needsAddressRefresh = true
+              shouldUpdateDB = true
+            }
+
+            // Always try to refresh if we only have a placeholder address
+            if (hasPlaceholder) {
+              needsAddressRefresh = true
+            }
+
+            if (needsAddressRefresh) {
+              try {
+                // Fetch fresh address for the new location
+                const addr = await reverseGeocodeWithGoogleMaps(latitude, longitude)
+                loc = { ...loc, ...addr }
+                // Update anchor so we don't fetch again until another 200m movement
+                anchorLocationRef.current = { latitude, longitude }
+              } catch (geocodeErr) {
+                // If geocoding fails, fallback to coordinates-based display if no address exists
+                if (hasPlaceholder) {
+                  loc.address = `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+                  loc.formattedAddress = `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+                }
+              }
+            }
+
+            // Check if coordinates have changed significantly (threshold: ~10 meters) for UI update
             const coordThreshold = 0.0001 // approximately 10 meters
             const coordsChanged =
               !prevLocationCoordsRef.current.latitude ||
@@ -1690,8 +1735,8 @@ export function useLocation() {
               Math.abs(prevLocationCoordsRef.current.latitude - loc.latitude) > coordThreshold ||
               Math.abs(prevLocationCoordsRef.current.longitude - loc.longitude) > coordThreshold
 
-            // Only update location state if coordinates changed significantly
-            if (coordsChanged) {
+            // Only update location state if coordinates changed significantly or address was refreshed
+            if (coordsChanged || needsAddressRefresh) {
               prevLocationCoordsRef.current = { latitude: loc.latitude, longitude: loc.longitude }
               localStorage.setItem("userLocation", JSON.stringify(loc))
               setLocation(loc)
@@ -1703,34 +1748,14 @@ export function useLocation() {
               localStorage.setItem("userLocation", JSON.stringify(loc))
             }
 
-            // Debounce DB updates - only update every 5 seconds when movement from anchor is >= 200m
-            if (isUserAuthenticated()) {
-              let shouldUpdateDB = false
-
-              if (anchorLocationRef.current.latitude && anchorLocationRef.current.longitude) {
-                const distanceFromAnchor = calculateDistance(
-                  latitude,
-                  longitude,
-                  anchorLocationRef.current.latitude,
-                  anchorLocationRef.current.longitude
-                )
-
-                if (distanceFromAnchor >= MOVEMENT_UPDATE_THRESHOLD_METERS) {
-                  shouldUpdateDB = true
-                }
-              } else {
-                // Initialize anchor if not set
-                anchorLocationRef.current = { latitude, longitude }
-              }
-
-              if (shouldUpdateDB) {
+            // Debounce DB updates - only update every 5 seconds when movement is detected
+            if (isUserAuthenticated() && shouldUpdateDB) {
                 clearTimeout(updateTimerRef.current)
                 updateTimerRef.current = setTimeout(() => {
                   updateLocationInDB(loc).catch(err => {
                   })
                 }, 5000)
               }
-            }
           } catch (err) {
             // On error, preserve existing location (don't update with placeholder)
             // This ensures we keep the stored address even if coordinate update fails

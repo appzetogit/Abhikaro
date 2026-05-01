@@ -518,6 +518,12 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
       return { success: false, notified: 0 };
     }
 
+    // CRITICAL: Stop circulation if order is already assigned
+    if (order.deliveryPartnerId) {
+      console.log(`🚫 Order ${order.orderId} already assigned to ${order.deliveryPartnerId}; stopping notification circulation.`);
+      return { success: false, notified: 0, reason: 'Already assigned' };
+    }
+
     // Exclude delivery partners who are already handling an active order
     const filteredIds = await filterOutBusyDeliveryPartners(deliveryPartnerIds, { excludeOrderId: order?._id });
     if (filteredIds.length === 0) {

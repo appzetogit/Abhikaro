@@ -708,6 +708,11 @@ export const acceptOrder = asyncHandler(async (req, res) => {
             // Start immediately + repeat
             tick().catch(() => {});
             const timer = setInterval(() => {
+              const freshState = global.__deliveryResendLoops.get(loopKey);
+              if (!freshState) {
+                clearInterval(timer);
+                return;
+              }
               tick().catch(() => {});
             }, RESEND_LOOP_MS);
             global.__deliveryResendLoops.set(loopKey, { attempts: 0, timer });

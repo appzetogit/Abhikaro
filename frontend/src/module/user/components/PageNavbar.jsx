@@ -22,13 +22,15 @@ export default function PageNavbar({
   const cartCount = getCartCount()
   const [logoUrl, setLogoUrl] = useState(null)
   const [companyName, setCompanyName] = useState(null)
-  const { userProfile } = useProfile()
+  const { userProfile, isAuthenticated } = useProfile()
   const userDisplayName = useMemo(() => {
     if (!userProfile) return ""
+    // Some responses might have user object nested
+    const user = userProfile.user || userProfile
     return (
-      userProfile.fullName ||
-      userProfile.name ||
-      [userProfile.firstName, userProfile.lastName].filter(Boolean).join(" ") ||
+      user.fullName ||
+      user.name ||
+      [user.firstName, user.lastName].filter(Boolean).join(" ") ||
       ""
     )
   }, [userProfile])
@@ -965,7 +967,7 @@ export default function PageNavbar({
                     className={`h-4 w-4 sm:h-5 sm:w-5 ${textColorClass} ${textColor === "white" ? "drop-shadow-lg" : ""}`}
                   />
                   <span className={`text-md sm:text-lg font-bold ${textColorClass} max-w-[160px] sm:max-w-[200px] truncate ${textColor === "white" ? "drop-shadow-lg" : ""}`}>
-                    {userDisplayName || mainLocationName}
+                    {(isAuthenticated && userDisplayName) ? userDisplayName : mainLocationName}
                   </span>
                   <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 ${textColorClass} flex-shrink-0 ${textColor === "white" ? "drop-shadow-lg" : ""}`} strokeWidth={2.5} />
                 </div>

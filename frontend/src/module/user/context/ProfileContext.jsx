@@ -5,30 +5,36 @@ const ProfileContext = createContext(null)
 
 export function ProfileProvider({ children }) {
   const [userProfile, setUserProfile] = useState(() => {
-    // Session first (when Remember Me is off), then localStorage
-    const userStr = sessionStorage.getItem("user_user") || localStorage.getItem("user_user")
-    if (userStr) {
-      try {
-        return JSON.parse(userStr)
-      } catch (e) {
-        console.error("Error parsing user_user:", e)
-      }
-    }
+    if (typeof window === "undefined") return null
+    try {
+      const token = sessionStorage.getItem("user_accessToken") || localStorage.getItem("user_accessToken")
+      const isAuthenticatedStatus = sessionStorage.getItem("user_authenticated") === "true" ||
+        localStorage.getItem("user_authenticated") === "true" || !!token
 
-    const saved = sessionStorage.getItem("userProfile") || localStorage.getItem("userProfile")
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch (e) {
-        console.error("Error parsing userProfile from localStorage:", e)
-      }
-    }
+      if (!isAuthenticatedStatus) return null
 
-    // Default empty profile
+      const userStr = sessionStorage.getItem("user_user") || localStorage.getItem("user_user")
+      if (userStr) {
+        const parsed = JSON.parse(userStr)
+        // Check if it's the mock user "Ajay Panchal" and clear it if unauthenticated
+        if (parsed?.name === "Ajay Panchal" && !token) {
+          return null
+        }
+        return parsed
+      }
+    } catch (error) {
+      console.error("Error parsing user profile from storage:", error)
+    }
     return null
   })
 
   const [loading, setLoading] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (typeof window === "undefined") return false
+    const token = sessionStorage.getItem("user_accessToken") || localStorage.getItem("user_accessToken")
+    return sessionStorage.getItem("user_authenticated") === "true" ||
+      localStorage.getItem("user_authenticated") === "true" || !!token
+  })
 
   const [addresses, setAddresses] = useState([])
 
@@ -105,10 +111,13 @@ export function ProfileProvider({ children }) {
   useEffect(() => {
     const fetchUserProfile = async () => {
       const token = sessionStorage.getItem("user_accessToken") || localStorage.getItem("user_accessToken")
-      const isAuthenticated = sessionStorage.getItem("user_authenticated") === "true" ||
+      const isAuthenticatedStatus = sessionStorage.getItem("user_authenticated") === "true" ||
         localStorage.getItem("user_authenticated") === "true" || !!token
 
-      if (!isAuthenticated) {
+      setIsAuthenticated(isAuthenticatedStatus)
+
+      if (!isAuthenticatedStatus) {
+        setUserProfile(null)
         setLoading(false)
         return
       }
@@ -118,9 +127,18 @@ export function ProfileProvider({ children }) {
 
         // Fetch user profile
         const response = await authAPI.getCurrentUser()
-        const userData = response?.data?.data?.user || response?.data?.user || response?.data
-
-        if (userData) {
+        // Extract user data from various possible response structures
+        const userData = response?.data?.data?.user || 
+                         response?.data?.user || 
+                         (response?.data?.success && response?.data?.data && !response.data.data.user ? response.data.data : null) ||
+                         (response?.data && !response.data.user && !response.data.data ? response.data : null)
+        
+        if (userData && typeof userData === 'object') {
+          // Ensure we preserve the role if it's missing
+          if (!userData.role) {
+            userData.role = 'user'
+          }
+          
           // Check if this is a different user (different user ID)
           const previousUserId = userProfile?._id || userProfile?.id
           const currentUserId = userData._id || userData.id
@@ -388,7 +406,9 @@ export function ProfileProvider({ children }) {
       "userPaymentMethods",
       "userFavorites",
       "userDishFavorites",
-      "userVegMode"
+      "userVegMode",
+      "user_accessToken",
+      "user_authenticated"
     ]
     keysToRemove.forEach(key => {
       localStorage.removeItem(key)
@@ -399,6 +419,7 @@ export function ProfileProvider({ children }) {
   // Memoize the context value to prevent unnecessary re-renders
   const value = useMemo(
     () => ({
+      isAuthenticated,
       userProfile,
       loading,
       updateUserProfile,
@@ -431,6 +452,7 @@ export function ProfileProvider({ children }) {
       getDishFavorites,
     }),
     [
+      isAuthenticated,
       userProfile,
       loading,
       updateUserProfile,

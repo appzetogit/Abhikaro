@@ -102,6 +102,9 @@ export default function Cart() {
   const [note, setNote] = useState("")
   const [showNoteInput, setShowNoteInput] = useState(false)
   const [additionalAddress, setAdditionalAddress] = useState("")
+  const [addressError, setAddressError] = useState(false)
+  const [roomError, setRoomError] = useState(false)
+  const [deliveryAddressError, setDeliveryAddressError] = useState(false)
   const [isEditingContact, setIsEditingContact] = useState(false)
   const [contactName, setContactName] = useState("")
   const [contactPhone, setContactPhone] = useState("")
@@ -979,9 +982,19 @@ export default function Cart() {
   const restaurantName = restaurantData?.name || cart[0]?.restaurant || "Restaurant"
   const restaurantSlug = restaurantData?.slug || restaurantData?.name?.toLowerCase?.()?.replace(/\s+/g, "-") || cart[0]?.restaurant?.toLowerCase?.()?.replace(/\s+/g, "-") || ""
 
-  // Handler to select address by label (Home, Office, Other)
+  // Handler to select address by label (Live, Home, Office, Other)
   const handleSelectAddressByLabel = async (label) => {
     try {
+      if (label === "Live") {
+        // Reset manual override and sync with live location
+        setHasManuallySelectedDeliveryAddress(false)
+        setCheckoutDeliveryAddress(defaultAddress)
+        sessionStorage.removeItem("checkout_delivery_address")
+        sessionStorage.removeItem("checkout_delivery_address_manual")
+        toast.success("Switched to live location")
+        return
+      }
+
       // Find address with matching label
       const address = addresses.find(addr => addr.label === label)
 
@@ -1085,13 +1098,26 @@ export default function Cart() {
 
   const handlePlaceOrder = async () => {
     if (!checkoutDeliveryAddress) {
-      alert("Please add a delivery address")
+      setDeliveryAddressError(true)
+      const element = document.getElementById('delivery-address-section')
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
       return
     }
 
+    // Clear delivery address error if it was set
+    if (deliveryAddressError) setDeliveryAddressError(false)
+
     // Validate additional address (make it mandatory)
     if (!additionalAddress || !additionalAddress.trim()) {
-      toast.error("Please enter additional address details (e.g., Flat no., Floor, Landmark)")
+      setAddressError(true)
+      // Scroll and focus the field
+      const element = document.getElementById('additional-address-input')
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setTimeout(() => element.focus(), 500)
+      }
       return
     }
 
@@ -1103,7 +1129,12 @@ export default function Cart() {
   // Validate room number for hotel orders (regardless of payment method)
   if (isHotelOrder) {
       if (!roomNumber || roomNumber.trim() === '') {
-        toast.error('Please enter your room number');
+        setRoomError(true)
+        const element = document.getElementById('room-number-input')
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          setTimeout(() => element.focus(), 500)
+        }
         return;
       }
     }
@@ -1376,7 +1407,13 @@ export default function Cart() {
                 setPlacedOrderId(createdOrderId)
                 setShowOrderSuccess(true)
                 window.dispatchEvent(new Event('orderStatusUpdated'))
+
+                // Clear cart and checkout-specific address overrides
                 clearCart()
+                sessionStorage.removeItem("checkout_delivery_address")
+                sessionStorage.removeItem("checkout_delivery_address_manual")
+                setHasManuallySelectedDeliveryAddress(false)
+
                 setIsPlacingOrder(false)
                 return
               }
@@ -1483,7 +1520,13 @@ export default function Cart() {
         setShowOrderSuccess(true)
         // Notify home screen tracking card to refresh active orders
         window.dispatchEvent(new Event('orderStatusUpdated'))
+        
+        // Clear cart and checkout-specific address overrides
         clearCart()
+        sessionStorage.removeItem("checkout_delivery_address")
+        sessionStorage.removeItem("checkout_delivery_address_manual")
+        setHasManuallySelectedDeliveryAddress(false)
+        
         setIsPlacingOrder(false)
         return
       }
@@ -1509,7 +1552,13 @@ export default function Cart() {
         setShowOrderSuccess(true)
         // Notify home screen tracking card to refresh active orders
         window.dispatchEvent(new Event('orderStatusUpdated'))
+        
+        // Clear cart and checkout-specific address overrides
         clearCart()
+        sessionStorage.removeItem("checkout_delivery_address")
+        sessionStorage.removeItem("checkout_delivery_address_manual")
+        setHasManuallySelectedDeliveryAddress(false)
+        
         setIsPlacingOrder(false)
         // Refresh wallet balance
         try {
@@ -2110,8 +2159,8 @@ export default function Cart() {
               </div>
 
               {/* Delivery Address */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
-                <Link className="flex items-center justify-between">
+              <div id="delivery-address-section" className={`bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl transition-all ${deliveryAddressError ? 'ring-2 ring-red-500 shadow-lg shadow-red-500/10' : ''}`}>
+                <Link className="flex items-center justify-between" onClick={() => deliveryAddressError && setDeliveryAddressError(false)}>
                   <div className="flex items-center gap-3 md:gap-4">
                     <MapPin className="h-4 w-4 md:h-5 md:w-5 text-gray-500 dark:text-gray-400" />
                     <div className="flex-1">
@@ -2122,10 +2171,14 @@ export default function Cart() {
                         {checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || checkoutDeliveryAddress?.formattedAddress || checkoutDeliveryAddress?.address || "Add delivery address") : "Add delivery address"}
                       </p>
                       {/* Address Selection Buttons */}
-                      <div className="flex gap-2 mt-2">
-                        {["Home", "Office", "Other"].map((label) => {
-                          const addressExists = addresses.some(addr => addr.label === label)
-                          const isSelected = String(checkoutDeliveryAddress?.label || "").toLowerCase() === String(label).toLowerCase()
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {["Live", "Home", "Office", "Other"].map((label) => {
+                          const isLive = label === "Live"
+                          const addressExists = isLive || addresses.some(addr => addr.label === label)
+                          const isSelected = isLive 
+                            ? !hasManuallySelectedDeliveryAddress 
+                            : String(checkoutDeliveryAddress?.label || "").toLowerCase() === String(label).toLowerCase()
+                          
                           return (
                             <button
                               key={label}
@@ -2135,19 +2188,27 @@ export default function Cart() {
                                 handleSelectAddressByLabel(label)
                               }}
                               disabled={!addressExists}
-                              className={`text-xs md:text-sm px-2 md:px-3 py-1 md:py-1.5 rounded-md border transition-colors ${
+                              className={`text-xs md:text-sm px-2 md:px-3 py-1 md:py-1.5 rounded-md border transition-all ${
                                 !addressExists
                                   ? 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50'
                                   : isSelected
-                                    ? 'border-green-600 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                                    ? isLive 
+                                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                                      : 'border-green-600 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
                                     : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 bg-white dark:bg-[#1a1a1a]'
-                              }`}
+                              } ${isLive && !isSelected ? 'border-blue-200 text-blue-500' : ''}`}
                             >
-                              {label}
+                              {isLive ? "📍 Live" : label}
                             </button>
                           )
                         })}
                       </div>
+                      {deliveryAddressError && (
+                        <p className="text-red-500 text-[11px] md:text-xs mt-2 font-medium flex items-center gap-1 animate-bounce">
+                          <AlertCircle className="h-3 w-3" />
+                          Please select a delivery address
+                        </p>
+                      )}
                     </div>
                   </div>
                   <ChevronRight className="h-4 w-4 md:h-5 md:w-5 text-gray-400" />
@@ -2163,13 +2224,27 @@ export default function Cart() {
                     <span className="text-red-500">*</span>
                   </label>
                 </div>
-                <Input
-                  type="text"
-                  placeholder="Enter additional address details (e.g., Flat no., Floor, Landmark)"
-                  value={additionalAddress}
-                  onChange={(e) => setAdditionalAddress(e.target.value)}
-                  className="w-full text-sm md:text-base text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-red-500 dark:focus:border-red-500"
-                />
+                <motion.div
+                  animate={addressError ? { x: [-2, 2, -2, 2, 0], transition: { duration: 0.4 } } : {}}
+                >
+                  <Input
+                    id="additional-address-input"
+                    type="text"
+                    placeholder="Enter additional address details (e.g., Flat no., Floor, Landmark)"
+                    value={additionalAddress}
+                    onChange={(e) => {
+                      setAdditionalAddress(e.target.value)
+                      if (addressError) setAddressError(false)
+                    }}
+                    className={`w-full text-sm md:text-base text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-red-500 dark:focus:border-red-500 ${addressError ? 'border-red-500 ring-2 ring-red-500 shadow-sm' : ''}`}
+                  />
+                </motion.div>
+                {addressError && (
+                  <p className="text-red-500 text-[11px] md:text-xs mt-1.5 font-bold flex items-center gap-1">
+                    <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded uppercase">Required</span>
+                    Please fill this field to proceed
+                  </p>
+                )}
               </div>
 
               {/* Contact */}
@@ -2413,14 +2488,27 @@ export default function Cart() {
                       <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
                         🏨 Room Number <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="text"
-                        value={roomNumber}
-                        onChange={(e) => setRoomNumber(e.target.value)}
-                        placeholder="Enter your room number (e.g., 101)"
-                        className="w-full px-3 py-2 h-10 text-sm border-2 border-orange-300 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent font-medium"
-                        required
-                      />   
+                      <motion.div
+                        animate={roomError ? { x: [-2, 2, -2, 2, 0], transition: { duration: 0.4 } } : {}}
+                      >
+                        <Input
+                          id="room-number-input"
+                          type="text"
+                          placeholder="e.g., 101, 202, etc."
+                          value={roomNumber}
+                          onChange={(e) => {
+                            setRoomNumber(e.target.value)
+                            if (roomError) setRoomError(false)
+                          }}
+                          className={`w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:ring-red-500 focus:border-red-500 ${roomError ? 'border-red-500 ring-2 ring-red-500 shadow-sm' : ''}`}
+                        />
+                      </motion.div>
+                      {roomError && (
+                        <p className="text-red-500 text-[11px] mt-1.5 font-bold flex items-center gap-1">
+                          <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded uppercase">Missing</span>
+                          Please enter room number
+                        </p>
+                      )}   
                       {isHotelOrder && hotelName && (
                         <p className="mt-1 text-xs font-medium text-orange-600 dark:text-orange-400">
                           📍 Ordering from: {hotelName}

@@ -45,7 +45,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   const inputRef = useRef(null)
   const [searchValue, setSearchValue] = useState("")
   const { location, loading, requestLocation, setManualLocation } = useSharedLocation()
-  const { addresses = [], addAddress, updateAddress, userProfile } = useProfile()
+  const { addresses = [], addAddress, updateAddress, userProfile, isAuthenticated } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [mapPosition, setMapPosition] = useState([22.7196, 75.8577]) // Default Indore coordinates [lat, lng]
   const [addressFormData, setAddressFormData] = useState({
@@ -2002,6 +2002,12 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       return
     }
 
+    if (!isAuthenticated) {
+      toast.error("Please login first to save addresses")
+      navigate("/user/auth/sign-in")
+      return
+    }
+
     setLoadingAddress(true)
     try {
       // Prepare address data matching backend format
@@ -2539,9 +2545,6 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                 </div>
                 <div className="text-left">
                   <p className="font-semibold text-green-700 dark:text-green-400">Use current location</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {loading ? "Getting location..." : currentLocationText}
-                  </p>
                 </div>
               </div>
               <ChevronRight className="h-5 w-5 text-gray-400 dark:text-gray-500" />
