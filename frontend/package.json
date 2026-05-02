@@ -39,7 +39,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.19",
-    "firebase": "^10.14.1",
+    "firebase": "^12.12.1",
     "framer-motion": "^12.38.0",
     "gsap": "^3.13.0",
     "html2canvas": "^1.4.1",

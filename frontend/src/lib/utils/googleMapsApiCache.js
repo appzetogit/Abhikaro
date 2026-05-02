@@ -15,14 +15,14 @@ const cache = {
 // Cache TTL (Time To Live) in milliseconds
 // Balanced for both cost savings and usability
 const CACHE_TTL = {
-  geocoding: 24 * 60 * 60 * 1000, // 24 hours (addresses don't change often)
+  geocoding: 10 * 60 * 1000, // 10 minutes (reduced from 24h for live location accuracy)
   directions: 15 * 60 * 1000, // 15 minutes (increased from 10 for better UX - routes rarely change in short time)
   places: 24 * 60 * 60 * 1000 // 24 hours (places don't change often)
 };
 
 // Rate limiting: Max API calls per minute (STRICT to prevent 429 errors)
 const RATE_LIMITS = {
-  geocoding: 2, // Max 2 geocoding calls per minute (reduced from 5)
+  geocoding: 10, // Max 10 geocoding calls per minute (increased from 2 for better live tracking)
   directions: 2, // Max 2 directions calls per minute (reduced from 3)
   places: 2 // Max 2 places calls per minute (reduced from 3)
 };

@@ -814,13 +814,23 @@ export default function PageNavbar({
         .map((p) => p.trim())
         .filter((p) => p.length > 0)
 
-      if (parts.length >= 3) {
-        // e.g. "Dewas Bypass, Karnakhri, Dewas, Dewas Nagar Tahsil" -> "Dewas Bypass, Karnakhri, Dewas"
-        mainLocation = `${parts[0]}, ${parts[1]}, ${parts[2]}`
-      } else if (parts.length === 2) {
-        mainLocation = `${parts[0]}, ${parts[1]}`
-      } else if (parts.length === 1) {
-        mainLocation = parts[0]
+      if (parts.length >= 1) {
+        // If first part is just a number (building #) or very short, combine it with second part
+        const isTooShort = parts[0].match(/^\d+$/) || parts[0].length <= 3
+        
+        if (isTooShort && parts.length >= 2) {
+          if (parts.length >= 3) {
+            mainLocation = `${parts[0]}, ${parts[1]}, ${parts[2]}`
+          } else {
+            mainLocation = `${parts[0]}, ${parts[1]}`
+          }
+        } else if (parts.length >= 3) {
+          mainLocation = `${parts[0]}, ${parts[1]}, ${parts[2]}`
+        } else if (parts.length === 2) {
+          mainLocation = `${parts[0]}, ${parts[1]}`
+        } else {
+          mainLocation = parts[0]
+        }
       }
     }
 
@@ -910,9 +920,6 @@ export default function PageNavbar({
 
     const stored = getStoredUserLocation()
     const candidates = [
-      stored?.formattedAddress,
-      stored?.address,
-      stored?.area,
       location?.formattedAddress,
       location?.address,
       location?.mainTitle,

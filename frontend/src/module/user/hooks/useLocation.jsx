@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react"
 import { locationAPI, userAPI } from "@/lib/api"
 
 export function useLocation() {
-  const MOVEMENT_UPDATE_THRESHOLD_METERS = 200
+  const MOVEMENT_UPDATE_THRESHOLD_METERS = 50 // Reduced from 200m for better real-time accuracy
   const UI_COORD_CHANGE_THRESHOLD_METERS = 10
   const SAME_POINT_DEDUPE_MIN_METERS = 20
 
@@ -11,9 +11,7 @@ export function useLocation() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [permissionGranted, setPermissionGranted] = useState(false)
-  const manualOverrideUntilRef = useRef(0)
   const manualOverrideEnabledRef = useRef(false)
-  const MANUAL_OVERRIDE_STORAGE_KEY = "userLocation_manualOverride"
 
   const watchIdRef = useRef(null)
   const updateTimerRef = useRef(null)
@@ -298,7 +296,7 @@ export function useLocation() {
   }
 
   /* ===================== GOOGLE MAPS REVERSE GEOCODE ===================== */
-  const reverseGeocodeWithGoogleMaps = async (latitude, longitude) => {
+  const reverseGeocodeWithGoogleMaps = async (latitude, longitude, skipCache = false) => {
     try {
       // Check cache first
       try {
@@ -309,9 +307,11 @@ export function useLocation() {
         if (cacheModule) {
           const { getCached, setCached, shouldMakeApiCall } = cacheModule;
           
-          const cachedResult = getCached('geocoding', latitude, longitude);
-          if (cachedResult) {
-            return cachedResult;
+          if (!skipCache) {
+            const cachedResult = getCached('geocoding', latitude, longitude);
+            if (cachedResult) {
+              return cachedResult;
+            }
           }
           
           // Check rate limit
@@ -1237,24 +1237,29 @@ export function useLocation() {
       if (process.env.NODE_ENV === 'development') {
       }
       // Wait a bit and return current location - don't start another fetch
-      return location || (() => {
-        try {
-          const stored = localStorage.getItem("userLocation")
-          return stored ? JSON.parse(stored) : null
-        } catch {
-          return null
-        }
-      })()
+      return location
     }
+
+    // If manual override is active, we check if it was set in this session
+    // Since we don't use localStorage anymore, manualOverrideEnabledRef will reset on refresh
+    if (manualOverrideEnabledRef.current && !forceFresh) {
+      return location
+    }
+
+    if (manualOverrideEnabledRef.current && !forceFresh) {
+      return location
+    }
+
+    // Manual override resets on session start
 
     // Mark as fetching
     isFetchingLocationRef.current = true
 
     try {
-      // If not forcing fresh, try DB first (faster)
+      // If not forcing fresh, try DB only as a last resort fallback, NOT as primary
       let dbLocation = !forceFresh ? await fetchLocationFromDB() : null
       if (dbLocation && !forceFresh) {
-        localStorage.setItem("userLocation", JSON.stringify(dbLocation))
+        // We set it to state but still mark it as needing a fresh check if it's not forceFresh
         setLocation(dbLocation)
         // Initialize last saved location from DB
         if (dbLocation.latitude && dbLocation.longitude) {
@@ -1292,7 +1297,7 @@ export function useLocation() {
         // If forceFresh is true, don't use cache (maximumAge: 0)
         const cachedOptions = {
           ...options,
-          maximumAge: forceFresh ? 0 : (options.maximumAge || 60000), // If forceFresh, get fresh location
+          maximumAge: forceFresh ? 0 : 0, // Force fresh location, disable cache
         }
         
         
@@ -1302,7 +1307,7 @@ export function useLocation() {
               const { latitude, longitude, accuracy } = pos.coords
               const timestamp = pos.timestamp || Date.now()
               const processedCoords = lastProcessedCoordsRef.current
-              const dedupeThreshold = Math.max(SAME_POINT_DEDUPE_MIN_METERS, Math.min(accuracy || 0, 50))
+              const dedupeThreshold = Math.max(20, Math.min(accuracy || 0, 50)) // Reduced threshold
               const movedSinceLastProcessed = hasMovedBeyondThreshold(
                 processedCoords.latitude,
                 processedCoords.longitude,
@@ -1313,21 +1318,13 @@ export function useLocation() {
 
               // Skip reverse-geocoding churn for same point / GPS jitter.
               if (!forceFresh && !movedSinceLastProcessed) {
-                const currentLoc = location || (() => {
-                  try {
-                    const stored = localStorage.getItem("userLocation")
-                    return stored ? JSON.parse(stored) : null
-                  } catch {
-                    return null
-                  }
-                })()
-                const jitterSafeLoc = currentLoc
-                  ? { ...currentLoc, latitude, longitude, accuracy: accuracy || null, timestamp }
+                const jitterSafeLoc = location
+                  ? { ...location, latitude, longitude, accuracy: accuracy || null, timestamp }
                   : null
+
                 if (jitterSafeLoc) {
-                  localStorage.setItem("userLocation", JSON.stringify(jitterSafeLoc))
                   setLocation(jitterSafeLoc)
-                  if (updateDB) await updateLocationInDB(jitterSafeLoc).catch(() => {})
+                  if (updateDB) await updateLocationInDB(jitterSafeLoc).catch(() => { })
                   isFetchingLocationRef.current = false
                   resolve(jitterSafeLoc)
                   return
@@ -1353,7 +1350,7 @@ export function useLocation() {
                 }
               } else {
                 try {
-                  addr = await reverseGeocodeWithGoogleMaps(latitude, longitude)
+                  addr = await reverseGeocodeWithGoogleMaps(latitude, longitude, forceFresh)
 
                   // Validate result - if it still has placeholder values, don't save
                   if (addr.city === "Current Location" || addr.address.includes(latitude.toFixed(4))) {
@@ -1420,8 +1417,6 @@ export function useLocation() {
               // We'll retry reverse geocoding in background to get proper address
               }
 
-              localStorage.setItem("userLocation", JSON.stringify(finalLoc))
-              lastProcessedCoordsRef.current = { latitude, longitude }
               anchorLocationRef.current = { latitude, longitude }
               lastSavedLocationRef.current = { latitude, longitude }
               
@@ -1456,8 +1451,6 @@ export function useLocation() {
                     accuracy: pos.coords.accuracy || null,
                     timestamp: pos.timestamp || Date.now(),
                   }
-                  localStorage.setItem("userLocation", JSON.stringify(lastResortLoc))
-                  lastProcessedCoordsRef.current = { latitude, longitude }
                   anchorLocationRef.current = { latitude, longitude }
                   lastSavedLocationRef.current = { latitude, longitude }
                   
@@ -1485,8 +1478,6 @@ export function useLocation() {
                 formattedAddress: "Select location", // Don't show coordinates
                 timestamp: pos.timestamp || Date.now(),
               }
-              // CRITICAL: Save coordinates even if address is placeholder - coordinates are still useful
-              localStorage.setItem("userLocation", JSON.stringify(fallbackLoc))
               lastProcessedCoordsRef.current = { latitude, longitude }
               anchorLocationRef.current = { latitude, longitude }
               lastSavedLocationRef.current = { latitude, longitude }
@@ -1528,7 +1519,7 @@ export function useLocation() {
               getPositionWithRetry({
                 enableHighAccuracy: false,
                 timeout: 5000,  // 5 seconds for lower accuracy (network-based is faster)
-                maximumAge: 300000 // Allow 5 minute old cached location for instant response
+                maximumAge: 0 // Disable cache
               }, 1).then(resolve).catch(reject)
               return
             }
@@ -1544,17 +1535,6 @@ export function useLocation() {
               let fallback = dbLocation
               if (!fallback) {
                 fallback = await fetchLocationFromDB()
-              }
-
-              // Strategy 2: Use cached location from localStorage
-              if (!fallback) {
-                const stored = localStorage.getItem("userLocation")
-                if (stored) {
-                  try {
-                    fallback = JSON.parse(stored)
-                  } catch (parseErr) {
-                  }
-                }
               }
 
               if (fallback) {
@@ -1597,7 +1577,7 @@ export function useLocation() {
       const locationResult = await getPositionWithRetry({
         enableHighAccuracy: true,  // Use GPS for exact location (highest accuracy)
         timeout: 15000,            // 15 seconds timeout (gives GPS more time to get accurate fix)
-        maximumAge: forceFresh ? 0 : 60000  // If forceFresh, get fresh location. Otherwise allow 1 minute cache
+        maximumAge: 0  // Force fresh location, no cache
       })
       
       // Ensure flag is reset after getting location
@@ -1619,10 +1599,7 @@ export function useLocation() {
       return
     }
 
-    // If user manually selected a location recently, don't let GPS watcher overwrite it immediately.
-    if (Date.now() < manualOverrideUntilRef.current) {
-      return
-    }
+    // If user manually selected a location, only resume live tracking when they explicitly request it.
 
     // If user manually selected a location, only resume live tracking when they explicitly request it.
     if (manualOverrideEnabledRef.current) {
@@ -1642,6 +1619,11 @@ export function useLocation() {
       watchIdRef.current = navigator.geolocation.watchPosition(
         async (pos) => {
           try {
+            // Check if manual override is active
+            if (manualOverrideEnabledRef.current) {
+              return
+            }
+
             const { latitude, longitude, accuracy } = pos.coords
 
             // Reset retry count on success
@@ -1672,7 +1654,7 @@ export function useLocation() {
               distanceSinceLastUpdate = calculateDistance(latitude, longitude, prevLoc.latitude, prevLoc.longitude)
 
               // If coordinates haven't changed significantly, skip everything
-              if (distanceSinceLastUpdate <= UI_COORD_CHANGE_THRESHOLD_METERS) {
+              if (distanceSinceLastUpdate <= 10) {
                 return 
               }
             }
@@ -1738,14 +1720,11 @@ export function useLocation() {
             // Only update location state if coordinates changed significantly or address was refreshed
             if (coordsChanged || needsAddressRefresh) {
               prevLocationCoordsRef.current = { latitude: loc.latitude, longitude: loc.longitude }
-              localStorage.setItem("userLocation", JSON.stringify(loc))
               setLocation(loc)
               setPermissionGranted(true)
               setError(null)
             } else {
               // Coordinates haven't changed significantly, skip state update to prevent re-renders
-              // Still update localStorage silently for persistence
-              localStorage.setItem("userLocation", JSON.stringify(loc))
             }
 
             // Debounce DB updates - only update every 5 seconds when movement is detected
@@ -1784,7 +1763,7 @@ export function useLocation() {
             setTimeout(() => {
               startWatch({
                 enableHighAccuracy: true,   // Keep using GPS (not network-based)
-                timeout: 20000,              // 20 seconds timeout (give GPS more time)
+                timeout: 15000,              // Reduced timeout
                 maximumAge: 0                // Always get fresh GPS location
               })
             }, 3000) // 3 second delay before retry
@@ -1811,7 +1790,7 @@ export function useLocation() {
     // Network-based location won't give exact landmarks like "Mama Loca Cafe"
     startWatch({
       enableHighAccuracy: true,   // CRITICAL: Use GPS (not network-based) for accurate location
-      timeout: 15000,             // 15 seconds timeout (gives GPS more time to get accurate fix)
+      timeout: 15000,             // Reduced timeout
       maximumAge: 0               // Always get fresh GPS location (no cache for live tracking)
     })
   }
@@ -1843,14 +1822,9 @@ export function useLocation() {
       const lng = Number(locationData.longitude)
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
 
-      // Pause watcher briefly so it doesn't instantly overwrite the manual choice.
-      manualOverrideUntilRef.current = Date.now() + Math.max(0, Number(pauseWatchMs) || 0)
       // Enable manual override mode: do not resume live tracking until user explicitly requests it.
       manualOverrideEnabledRef.current = true
       stopWatchingLocation()
-      try {
-        localStorage.setItem(MANUAL_OVERRIDE_STORAGE_KEY, "true")
-      } catch {}
 
       const nextLoc = {
         ...locationData,
@@ -1859,9 +1833,9 @@ export function useLocation() {
         timestamp: locationData.timestamp || Date.now(),
       }
 
-      // Persist + update state immediately
+      // Update state immediately
       try {
-        localStorage.setItem("userLocation", JSON.stringify(nextLoc))
+        // No localStorage persistence as requested
       } catch {}
 
       lastProcessedCoordsRef.current = { latitude: lat, longitude: lng }
@@ -1900,118 +1874,18 @@ export function useLocation() {
 
   /* ===================== INIT ===================== */
   useEffect(() => {
-    // Load stored location first for IMMEDIATE display (no loading state)
-    const stored = localStorage.getItem("userLocation")
-    let shouldForceRefresh = false
     let hasInitialLocation = false
 
-    if (stored) {
-      try {
-        const parsedLocation = JSON.parse(stored)
-
-        // Show cached location immediately (even if incomplete) - better UX
-        // We'll refresh in background but user sees something right away
-        // Show location even if address is placeholder, as long as we have coordinates
-        if (parsedLocation && parsedLocation.latitude && parsedLocation.longitude) {
-          // CRITICAL: Remove coordinates from address if they were added before
-          // Don't show coordinates in UI - show "Current Location" instead
-          if (parsedLocation.address && (
-              parsedLocation.address.includes('Location (') ||
-              parsedLocation.address.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/)
-            )) {
-            parsedLocation.address = "Current Location"
-          }
-          if (parsedLocation.formattedAddress && (
-              parsedLocation.formattedAddress.includes('Location (') ||
-              parsedLocation.formattedAddress.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/)
-            )) {
-            parsedLocation.formattedAddress = "Current Location"
-          }
-          
-          // Update localStorage with cleaned address (without coordinates)
-          const originalAddress = parsedLocation.address
-          const originalFormattedAddress = parsedLocation.formattedAddress
-          if (originalAddress !== parsedLocation.address || 
-              originalFormattedAddress !== parsedLocation.formattedAddress) {
-            localStorage.setItem("userLocation", JSON.stringify(parsedLocation))
-          }
-          
-          setLocation(parsedLocation)
-          setPermissionGranted(true)
-          setLoading(false) // Set loading to false immediately
-          hasInitialLocation = true
-          
-          // Initialize last saved location from localStorage
-          if (parsedLocation.latitude && parsedLocation.longitude) {
-            lastSavedLocationRef.current = {
-              latitude: parsedLocation.latitude,
-              longitude: parsedLocation.longitude
-            };
-          }
-          
-          // If address is placeholder, trigger reverse geocoding retry in background
-          if (parsedLocation.formattedAddress === "Select location" || 
-              parsedLocation.formattedAddress === "Current Location" ||
-              parsedLocation.city === "Current Location" ||
-              !parsedLocation.formattedAddress ||
-              parsedLocation.address === "Current Location") {
-            shouldForceRefresh = true
-          }
-
-          // Check if we should refresh in background for better address
-          const hasCompleteAddress = parsedLocation?.formattedAddress &&
-            parsedLocation.formattedAddress !== "Select location" &&
-            !parsedLocation.formattedAddress.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/) &&
-            parsedLocation.formattedAddress.split(',').length >= 4
-
-          if (!hasCompleteAddress) {
-            shouldForceRefresh = true
-          }
-        } else {
-          shouldForceRefresh = true
-        }
-      } catch (err) {
-        shouldForceRefresh = true
-      }
-    }
-
-    // If no cached location, try DB
+    // If no initial location, try DB as a silent background hint only
     if (!hasInitialLocation) {
       fetchLocationFromDB()
         .then((dbLoc) => {
           if (dbLoc && (dbLoc.latitude || dbLoc.city)) {
-            setLocation(dbLoc)
-            setPermissionGranted(true)
-            setLoading(false)
-            hasInitialLocation = true
-            
-            // Initialize last saved location from DB
-            if (dbLoc.latitude && dbLoc.longitude) {
-              lastSavedLocationRef.current = {
-                latitude: dbLoc.latitude,
-                longitude: dbLoc.longitude
-              };
-            }
-
-            // Check if we should refresh for better address
-            const hasCompleteAddress = dbLoc?.formattedAddress &&
-              dbLoc.formattedAddress !== "Select location" &&
-              !dbLoc.formattedAddress.match(/^-?\d+\.\d+,\s*-?\d+\.\d+$/) &&
-              dbLoc.formattedAddress.split(',').length >= 4
-
-            if (!hasCompleteAddress) {
-              shouldForceRefresh = true
-            }
-          } else {
-            // No location found - set loading to false and show fallback
-            setLoading(false)
-            shouldForceRefresh = true
+            // We don't set this to state immediately to avoid showing old location
+            // unless GPS fails. 
           }
         })
-        .catch(() => {
-          setLoading(false)
-          shouldForceRefresh = true
-        })
+        .catch(() => {})
     }
 
     // Always ensure loading is false after initial check
@@ -2042,26 +1916,22 @@ export function useLocation() {
     // Only set fallback if we have no location after all attempts
 
     const checkPermissionAndStart = async () => {
-      // Prevent multiple simultaneous calls
-      if (hasInitializedRef.current) {
-        if (process.env.NODE_ENV === 'development') {
-        }
-        return
-      }
+      if (hasInitializedRef.current) return
       
+      // Always show Detecting state on startup as we want current location only
+      setLocation({
+        city: "Detecting...",
+        address: "Updating location...",
+        formattedAddress: "Updating location...",
+        area: ""
+      })
+      setLoading(true)
+
       hasInitializedRef.current = true
       
       try {
-        // ZOMATO-STYLE: Always attempt to fetch on app open.
-        // This will trigger the browser's native permission prompt.
-        const currentLocation = location
-        const hasPlaceholder =
-          currentLocation &&
-          (currentLocation.formattedAddress === "Select location" ||
-            currentLocation.city === "Current Location")
-        const shouldForceFreshFetch = shouldForceRefresh || !hasInitialLocation || hasPlaceholder
-
-        getLocation(true, shouldForceFreshFetch, false)
+        // Always force fresh fetch
+        getLocation(true, true, false)
           .then((freshLoc) => {
             if (freshLoc) {
               setLocation(freshLoc)
@@ -2115,17 +1985,11 @@ export function useLocation() {
     isFetchingLocationRef.current = false
     // User explicitly requested current GPS location; exit manual override mode.
     manualOverrideEnabledRef.current = false
-    try {
-      localStorage.removeItem(MANUAL_OVERRIDE_STORAGE_KEY)
-    } catch {}
     
     setLoading(true)
     setError(null)
 
     try {
-      // Don't clear localStorage yet - keep it as fallback if geolocation fails
-      // We'll update it after successfully getting new location
-
       // Show loading, so pass showLoading = true
       // forceFresh = true, updateDB = true, showLoading = true
       // This ensures we get fresh GPS coordinates and reverse geocode with Google Maps
@@ -2152,21 +2016,6 @@ export function useLocation() {
       return location
     } catch (err) {
       setError(err.message || "Failed to get location")
-      
-      // Try to use cached location as fallback
-      const cached = localStorage.getItem("userLocation")
-      if (cached) {
-        try {
-          const cachedLocation = JSON.parse(cached)
-          if (cachedLocation?.latitude && cachedLocation?.longitude) {
-            setLocation(cachedLocation)
-            // Don't throw error if we have cached location
-            setLoading(false)
-            return cachedLocation
-          }
-        } catch (e) {
-        }
-      }
       
       // Still try to start watching in case it works
       startWatchingLocation()
