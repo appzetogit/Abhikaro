@@ -152,7 +152,7 @@ export function clearModuleAuth(module) {
  * Clear all authentication data for all modules
  */
 export function clearAuthData() {
-  const modules = ['admin', 'restaurant', 'delivery', 'user'];
+  const modules = ['admin', 'restaurant', 'delivery', 'user', 'hotel'];
   modules.forEach(module => {
     clearModuleAuth(module);
   });

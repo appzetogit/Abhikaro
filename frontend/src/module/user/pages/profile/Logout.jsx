@@ -8,6 +8,7 @@ import { authAPI } from "@/lib/api"
 import { firebaseAuth } from "@/lib/firebase"
 import { useProfile } from "../../context/ProfileContext"
 import { useCart } from "../../context/CartContext"
+import { clearAuthData } from "@/lib/utils/auth"
 
 export default function Logout() {
   const navigate = useNavigate()
@@ -49,23 +50,26 @@ export default function Logout() {
         console.warn("Firebase logout failed, continuing with local cleanup:", firebaseError)
       }
 
-      // Clear profile state and specific localStorage keys
+      // Clear profile state (handles most user-specific keys)
       clearProfile()
+
+      // Clear all authentication data for all modules (admin, restaurant, delivery, user, hotel)
+      clearAuthData()
 
       // Clear cart when logging out so new account starts with empty cart
       if (cartContext?.clearCart) cartContext.clearCart()
 
-      // Clear all authentication data from localStorage
-      localStorage.removeItem("accessToken")
-      localStorage.removeItem("user_authenticated")
-      localStorage.removeItem("user_user")
-
-      // Clear sessionStorage
-      sessionStorage.removeItem("userAuthData")
-      sessionStorage.removeItem("user_accessToken")
-      sessionStorage.removeItem("user_authenticated")
-      sessionStorage.removeItem("user_user")
-      sessionStorage.removeItem("userProfile")
+      // Clear hotel-specific reference data (guest-facing)
+      const hotelKeys = [
+        "hotelReference",
+        "hotelReferenceName",
+        "isHotelOrder",
+        "hotelReferenceTimestamp"
+      ]
+      hotelKeys.forEach(key => {
+        sessionStorage.removeItem(key)
+        localStorage.removeItem(key)
+      })
 
       // Dispatch auth change event to notify other components
       window.dispatchEvent(new Event("userAuthChanged"))
@@ -79,16 +83,15 @@ export default function Logout() {
       console.error("Error during logout:", err)
 
       // Clear local data anyway
-      localStorage.removeItem("accessToken")
-      localStorage.removeItem("user_accessToken")
-      localStorage.removeItem("user_authenticated")
-      localStorage.removeItem("user_user")
-      localStorage.removeItem("userProfile")
-      sessionStorage.removeItem("userAuthData")
-      sessionStorage.removeItem("user_accessToken")
-      sessionStorage.removeItem("user_authenticated")
-      sessionStorage.removeItem("user_user")
-      sessionStorage.removeItem("userProfile")
+      clearAuthData()
+      if (clearProfile) clearProfile()
+      
+      const hotelKeys = ["hotelReference", "hotelReferenceName", "isHotelOrder", "hotelReferenceTimestamp"]
+      hotelKeys.forEach(key => {
+        sessionStorage.removeItem(key)
+        localStorage.removeItem(key)
+      })
+
       window.dispatchEvent(new Event("userAuthChanged"))
 
       setError("An error occurred during logout, but you have been signed out locally.")
