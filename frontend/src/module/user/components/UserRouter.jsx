@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation } from "react-router-dom"
+import { Routes, Route, useLocation, Outlet } from "react-router-dom"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AuthRedirect from "@/components/AuthRedirect"
 import UserLayout from "./UserLayout"
@@ -120,323 +120,95 @@ export default function UserRouter() {
       <UserRouteTracker>
         <Routes>
           <Route element={<UserLayout />}>
-          {/* Home & Discovery */}
-          <Route path="/" element={<UserPreventRedirect><Home /></UserPreventRedirect>} />
-          <Route path="/dining" element={<Dining />} />
-          <Route path="/dining/restaurants" element={<DiningRestaurants />} />
-          <Route path="/dining/:category" element={<DiningCategory />} />
-          <Route path="/dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
-          <Route path="/dining/book/:slug" element={<TableBooking />} />
-            <Route
-            path="/dining/book-confirmation"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <TableBookingConfirmation />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/dining/book-success"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <TableBookingSuccess />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/bookings"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <MyBookings />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/under-250" element={<Under250 />} />
-          <Route path="/category/:category" element={<CategoryPage />} />
+          {/* Global User Protection for main app content */}
+          <Route element={<ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in"><Outlet /></ProtectedRoute>}>
+            {/* Home & Discovery */}
+            <Route path="/" element={<UserPreventRedirect><Home /></UserPreventRedirect>} />
+            <Route path="/dining" element={<Dining />} />
+            <Route path="/dining/restaurants" element={<DiningRestaurants />} />
+            <Route path="/dining/:category" element={<DiningCategory />} />
+            <Route path="/dining/:diningType/:slug" element={<DiningRestaurantDetails />} />
+            <Route path="/dining/book/:slug" element={<TableBooking />} />
+            <Route path="/dining/book-confirmation" element={<TableBookingConfirmation />} />
+            <Route path="/dining/book-success" element={<TableBookingSuccess />} />
+            <Route path="/bookings" element={<MyBookings />} />
+            <Route path="/under-250" element={<Under250 />} />
+            <Route path="/category/:category" element={<CategoryPage />} />
+            <Route path="/restaurants/:slug" element={<RestaurantDetails />} />
+            <Route path="/restaurants/:slug/info" element={<RestaurantInfo />} />
+            <Route path="/search" element={<SearchResults />} />
 
-          <Route path="/restaurants/:slug" element={<RestaurantDetails />} />
-          <Route path="/restaurants/:slug/info" element={<RestaurantInfo />} />
-          <Route path="/search" element={<SearchResults />} />
+            {/* Cart */}
+            <Route path="/cart" element={<Cart />} />
+            <Route path="/cart/checkout" element={<Checkout />} />
 
-          {/* Cart - Protected */}
-            <Route
-            path="/cart"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Cart />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/cart/checkout"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Checkout />
-              </ProtectedRoute>
-            }
-          />
+            {/* Orders */}
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/orders/:orderId" element={<OrderTracking />} />
+            <Route path="/orders/:orderId/invoice" element={<OrderInvoice />} />
+            <Route path="/orders/:orderId/details" element={<UserOrderDetails />} />
+            <Route path="/orders/:orderId/chat" element={<OrderChat />} />
 
-          {/* Orders - Protected */}
-            <Route
-            path="/orders"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Orders />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/orders/:orderId"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <OrderTracking />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/orders/:orderId/invoice"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <OrderInvoice />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/orders/:orderId/details"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <UserOrderDetails />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/orders/:orderId/chat"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <OrderChat />
-              </ProtectedRoute>
-            }
-          />
+            {/* Offers */}
+            <Route path="/offers" element={<Offers />} />
 
-          {/* Offers */}
-          <Route path="/offers" element={<Offers />} />
+            {/* Gourmet */}
+            <Route path="/gourmet" element={<Gourmet />} />
 
-          {/* Gourmet */}
-          <Route path="/gourmet" element={<Gourmet />} />
+            {/* Top 10 */}
+            <Route path="/top-10" element={<Top10 />} />
 
-          {/* Top 10 */}
-          <Route path="/top-10" element={<Top10 />} />
+            {/* Collections */}
+            <Route path="/collections" element={<Collections />} />
+            <Route path="/collections/:id" element={<CollectionDetail />} />
 
-          {/* Collections */}
-          <Route path="/collections" element={<Collections />} />
-            <Route
-            path="/collections/:id"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <CollectionDetail />
-              </ProtectedRoute>
-            }
-          />
+            {/* Gift Cards */}
+            <Route path="/gift-card" element={<GiftCards />} />
+            <Route path="/gift-card/checkout" element={<GiftCardCheckout />} />
 
-          {/* Gift Cards */}
-          <Route path="/gift-card" element={<GiftCards />} />
-            <Route
-            path="/gift-card/checkout"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <GiftCardCheckout />
-              </ProtectedRoute>
-            }
-          />
+            {/* Profile */}
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/profile/edit" element={<EditProfile />} />
+            <Route path="/profile/payments" element={<Payments />} />
+            <Route path="/profile/payments/new" element={<AddPayment />} />
+            <Route path="/profile/payments/:id/edit" element={<EditPayment />} />
+            <Route path="/profile/favorites" element={<Favorites />} />
+            <Route path="/profile/settings" element={<Settings />} />
+            <Route path="/profile/coupons" element={<Coupons />} />
+            <Route path="/profile/about" element={<About />} />
+            
+            {/* Protected Terms and Privacy routes (for logged-in users) */}
+            <Route path="/profile/terms" element={<Terms />} />
+            <Route path="/profile/privacy" element={<Privacy />} />
+            <Route path="/profile/refund" element={<Refund />} />
+            <Route path="/profile/shipping" element={<Shipping />} />
+            <Route path="/profile/cancellation" element={<Cancellation />} />
+            <Route path="/profile/send-feedback" element={<SendFeedback />} />
+            <Route path="/profile/contact-us" element={<ContactUs />} />
+            <Route path="/profile/report-safety-emergency" element={<ReportSafetyEmergency />} />
+            <Route path="/profile/logout" element={<Logout />} />
 
-          {/* Profile - Protected */}
-            <Route
-            path="/profile"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Profile />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/edit"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <EditProfile />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/payments"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Payments />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/payments/new"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <AddPayment />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/payments/:id/edit"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <EditPayment />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/favorites"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Favorites />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/settings"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/coupons"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Coupons />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/about"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <About />
-              </ProtectedRoute>
-            }
-          />
-          {/* Public Terms and Privacy routes (accessible without login) */}
-          <Route path="/terms" element={<Terms />} />
-          <Route path="/privacy" element={<Privacy />} />
-          
-          {/* Protected Terms and Privacy routes (for logged-in users) */}
-            <Route
-            path="/profile/terms"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Terms />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/privacy"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Privacy />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/refund"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Refund />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/shipping"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Shipping />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/cancellation"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Cancellation />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/send-feedback"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <SendFeedback />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/contact-us"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <ContactUs />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/report-safety-emergency"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <ReportSafetyEmergency />
-              </ProtectedRoute>
-            }
-          />
-            <Route
-            path="/profile/logout"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Logout />
-              </ProtectedRoute>
-            }
-          />
+            {/* Notifications */}
+            <Route path="/notifications" element={<Notifications />} />
 
+            {/* Wallet */}
+            <Route path="/wallet" element={<Wallet />} />
+
+            {/* Complaints */}
+            <Route path="/complaints/submit/:orderId" element={<SubmitComplaint />} />
+          </Route>
+
+          {/* Public routes (accessible without login) */}
           {/* Auth */}
           <Route path="/auth/sign-in" element={<AuthRedirect module="user"><SignIn /></AuthRedirect>} />
           <Route path="/auth/otp" element={<AuthRedirect module="user"><OTP /></AuthRedirect>} />
           <Route path="/auth/callback" element={<AuthRedirect module="user"><AuthCallback /></AuthRedirect>} />
 
-          {/* Help */}
+          {/* Public Legal and Info */}
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route path="/help" element={<Help />} />
 
-          {/* Notifications - Protected */}
-          <Route
-            path="/notifications"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Notifications />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Wallet - Protected */}
-          <Route
-            path="/wallet"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <Wallet />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Complaints - Protected */}
-          <Route
-            path="/complaints/submit/:orderId"
-            element={
-              <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
-                <SubmitComplaint />
-              </ProtectedRoute>
-            }
-          />
           </Route>
         </Routes>
       </UserRouteTracker>

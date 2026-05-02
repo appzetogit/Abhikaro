@@ -297,8 +297,15 @@ export default function App() {
         <Route path="/user" element={<Navigate to="/" replace />} />
         <Route path="/user/*" element={<UserPathRedirect />} />
 
-        {/* Hotel QR Menu Landing - Public route for QR code scanning */}
-        <Route path="/hotel-menu" element={<HotelMenuLanding />} />
+        {/* Hotel QR Menu Landing - Protected route for QR code scanning */}
+        <Route
+          path="/hotel-menu"
+          element={
+            <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
+              <HotelMenuLanding />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Removed /routes route - Home should be accessed through UserRouter */}
 
@@ -921,7 +928,14 @@ export default function App() {
             </Suspense>
           }
         />
-        <Route path="/hotel/view/:hotelId" element={<ViewHotel />} />
+        <Route
+          path="/hotel/view/:hotelId"
+          element={
+            <ProtectedRoute requiredRole="user" loginPath="/user/auth/sign-in">
+              <ViewHotel />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Hotel Protected Routes */}
         <Route
