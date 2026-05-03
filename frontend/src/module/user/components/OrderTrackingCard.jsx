@@ -186,18 +186,17 @@ export default function OrderTrackingCard() {
       let remainingMinutes = estimatedMinutes - elapsedMinutes;
       
       // If remaining time is 0 or negative, but order is still active (not delivered), 
-      // show at least 1 minute or use estimated time as fallback
+      // show at least 1 minute. Do not jump back to estimatedMinutes as it looks static/broken.
       if (remainingMinutes <= 0) {
-        // If order is still preparing/confirmed/out_for_delivery, show estimated time
         const orderStatus = normalizeStatus(active);
-        if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled') {
-          // Order is still active but time calculation shows 0 - use estimated time as fallback
-          remainingMinutes = estimatedMinutes;
+        const terminal = new Set(['delivered', 'completed', 'cancelled', 'restaurant_cancelled']);
+        if (!terminal.has(orderStatus)) {
+          remainingMinutes = 1;
         }
       }
       
       // Ensure minimum of 1 minute if order is still active
-      if (remainingMinutes <= 0) {
+      if (remainingMinutes < 1) {
         remainingMinutes = 1;
       }
       
@@ -350,16 +349,18 @@ export default function OrderTrackingCard() {
       // Calculate remaining time
       let remaining = estimatedMinutes - elapsedMinutes;
       
-      // If remaining is 0 or negative but order is still active, use estimated time as fallback
+      // If remaining is 0 or negative but order is still active, show 1 minute.
+      // Do not jump back to estimatedMinutes.
       if (remaining <= 0) {
-        const orderStatus = normalizeStatus(currentActive);
-        if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled') {
-          remaining = estimatedMinutes; // Use full estimated time as fallback
+        const status = normalizeStatus(currentActive);
+        const terminal = new Set(['delivered', 'completed', 'cancelled', 'restaurant_cancelled']);
+        if (!terminal.has(status)) {
+          remaining = 1; 
         }
       }
       
       // Ensure minimum of 1 minute if order is still active
-      if (remaining <= 0) {
+      if (remaining < 1) {
         remaining = 1;
       }
       

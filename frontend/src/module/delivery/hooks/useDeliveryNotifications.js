@@ -605,7 +605,10 @@ export const useDeliveryNotifications = () => {
             // Force update even if orderId matches (resend needs to re-open popup + audio)
             setNewOrder({ ...data, _clientEventTs: eventTs });
           } else {
-            // Fetch order details and set a normalized payload so popup always has data.
+            // SHOW MINIMAL STATE IMMEDIATELY - Don't wait for background fetch
+            setNewOrder({ orderId, _clientEventTs: eventTs, _clientNeedsNormalization: true });
+            
+            // Fetch order details and update state when ready
             (async () => {
               const normalized = await fetchOrderDetailsForPopup(orderId);
               if (!normalized) return;
@@ -613,11 +616,13 @@ export const useDeliveryNotifications = () => {
                 normalized?.orderId?.toString?.() ||
                 normalized?._id?.toString?.() ||
                 normalized?.orderMongoId?.toString?.();
+              
               // If this is a resend, clear local rejection so popup can show again.
               if (normalizedId && isResendSignal(normalized)) {
                 unmarkOrderRejected(normalizedId);
               }
               if (normalizedId && rejectedOrderIdsRef.current.has(normalizedId)) return;
+              
               // Force update even if orderId matches (resend needs to re-open popup + audio)
               setNewOrder({ ...normalized, _clientEventTs: eventTs });
             })();

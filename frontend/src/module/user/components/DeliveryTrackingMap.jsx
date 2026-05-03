@@ -154,6 +154,7 @@ const DeliveryTrackingMap = ({
   const mapInitializedRef = useRef(false);
   const directionsCacheRef = useRef(new Map()); // Cache for Directions API calls
   const lastRouteRequestRef = useRef({ start: null, end: null, timestamp: 0 });
+  const lastDirectionsRef = useRef(null); // Track last rendered directions to avoid flicker
   const isMountedRef = useRef(true); // Track if component is mounted
 
   // Socket connection can be tricky in production depending on reverse-proxy rules.
@@ -328,101 +329,64 @@ const DeliveryTrackingMap = ({
       });
       
       if (cacheModule) {
-        const { getCached, setCached, shouldMakeApiCall } = cacheModule;
-        
+        const { getCached, shouldMakeApiCall } = cacheModule;
         const cachedResult = getCached('directions', start, end);
+        
         if (cachedResult) {
-        directionsRendererRef.current.setOptions({ preserveViewport: true });
-        directionsRendererRef.current.setDirections(cachedResult);
-        
-        // Also update local cache
-        const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
-        const cacheKey = `${roundCoord(startLat)},${roundCoord(startLng)}|${roundCoord(endLat)},${roundCoord(endLng)}`;
-        directionsCacheRef.current.set(cacheKey, {
-          result: cachedResult,
-          timestamp: Date.now()
-        });
-        
-        // Extract polyline and update animation
-        const polylinePoints = extractPolylineFromDirections(cachedResult);
-        if (polylinePoints && polylinePoints.length > 0) {
-          routePolylinePointsRef.current = polylinePoints;
-          if (bikeMarkerRef.current && !animationControllerRef.current) {
-            animationControllerRef.current = new RouteBasedAnimationController(
-              bikeMarkerRef.current,
-              polylinePoints
-            );
-          }
-        }
-        
-        if (cachedResult.routes && cachedResult.routes[0] && cachedResult.routes[0].overview_path) {
-          if (routePolylineRef.current) {
-            routePolylineRef.current.setMap(null);
-          }
-          routePolylineRef.current = new window.google.maps.Polyline({
-            path: cachedResult.routes[0].overview_path,
-            geodesic: true,
-            strokeColor: '#10b981',
-            strokeOpacity: 0.0, // hide solid; show arrows only
-            strokeWeight: 0,
-            icons: [{
-              icon: {
-                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 3,
-                strokeColor: '#10b981',
-                strokeOpacity: 1,
-                fillColor: '#10b981',
-                fillOpacity: 1,
-              },
-              offset: '0%',
-              repeat: '30px'
-            }],
-            map: mapInstance.current,
-            zIndex: 3
-          });
-          routePolylineRef.current = new window.google.maps.Polyline({
-            path: cachedResult.routes[0].overview_path,
-            geodesic: true,
-            strokeColor: '#10b981',
-            strokeOpacity: 0.0,
-            strokeWeight: 0,
-            icons: [{
-              icon: {
-                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 3,
-                strokeColor: '#10b981',
-                strokeOpacity: 1,
-                fillColor: '#10b981',
-                fillOpacity: 1,
-              },
-              offset: '0%',
-              repeat: '30px'
-            }],
-            map: mapInstance.current,
-            zIndex: 3
-          });
-        }
-        return;
-      }
-      
-      // Check rate limit
-      if (!shouldMakeApiCall('directions')) {
-        console.warn('⚠️ Directions API rate limit reached, using local cache if available');
-        // Try local cache as fallback
-        const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
-        const cacheKey = `${roundCoord(startLat)},${roundCoord(startLng)}|${roundCoord(endLat)},${roundCoord(endLng)}`;
-        const cached = directionsCacheRef.current.get(cacheKey);
-        const now = Date.now();
-        if (cached && (now - cached.timestamp) < 300000) {
-          console.log('✅ Using local cached route as fallback');
-          if (cached.result && cached.result.routes && cached.result.routes[0]) {
+          if (lastDirectionsRef.current !== cachedResult) {
             directionsRendererRef.current.setOptions({ preserveViewport: true });
-            directionsRendererRef.current.setDirections(cached.result);
+            directionsRendererRef.current.setDirections(cachedResult);
+            lastDirectionsRef.current = cachedResult;
           }
+          
+          // Also update local cache
+          const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
+          const cacheKey = `${roundCoord(startLat)},${roundCoord(startLng)}|${roundCoord(endLat)},${roundCoord(endLng)}`;
+          directionsCacheRef.current.set(cacheKey, {
+            result: cachedResult,
+            timestamp: Date.now()
+          });
+          
+          // Extract polyline and update animation
+          const polylinePoints = extractPolylineFromDirections(cachedResult);
+          if (polylinePoints && polylinePoints.length > 0) {
+            routePolylinePointsRef.current = polylinePoints;
+            if (bikeMarkerRef.current && !animationControllerRef.current) {
+              animationControllerRef.current = new RouteBasedAnimationController(
+                bikeMarkerRef.current,
+                polylinePoints
+              );
+            }
+          }
+          
+          if (cachedResult.routes && cachedResult.routes[0] && cachedResult.routes[0].overview_path) {
+            if (routePolylineRef.current) {
+              routePolylineRef.current.setMap(null);
+              routePolylineRef.current = null;
+            }
+          }
+          return;
         }
-        return;
+        
+        // Check rate limit
+        if (!shouldMakeApiCall('directions')) {
+          console.warn('⚠️ Directions API rate limit reached, using local cache if available');
+          // Try local cache as fallback
+          const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
+          const cacheKey = `${roundCoord(startLat)},${roundCoord(startLng)}|${roundCoord(endLat)},${roundCoord(endLng)}`;
+          const cached = directionsCacheRef.current.get(cacheKey);
+          const now = Date.now();
+          if (cached && (now - cached.timestamp) < 300000) {
+            console.log('✅ Using local cached route as fallback');
+            if (cached.result && lastDirectionsRef.current !== cached.result) {
+              directionsRendererRef.current.setOptions({ preserveViewport: true });
+              directionsRendererRef.current.setDirections(cached.result);
+              lastDirectionsRef.current = cached.result;
+            }
+          }
+          return;
+        }
       }
-      } // Close if (cacheModule) block
     } catch (error) {
       console.warn('Cache utility not available, using local cache:', error);
     }
@@ -471,29 +435,8 @@ const DeliveryTrackingMap = ({
         if (cached.result.routes && cached.result.routes[0] && cached.result.routes[0].overview_path) {
           if (routePolylineRef.current) {
             routePolylineRef.current.setMap(null);
+            routePolylineRef.current = null;
           }
-
-          routePolylineRef.current = new window.google.maps.Polyline({
-            path: cached.result.routes[0].overview_path,
-            geodesic: true,
-            strokeColor: '#10b981',
-            strokeOpacity: 0.0,
-            strokeWeight: 0,
-            icons: [{
-              icon: {
-                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 3,
-                strokeColor: '#10b981',
-                strokeOpacity: 1,
-                fillColor: '#10b981',
-                fillOpacity: 1,
-              },
-              offset: '0%',
-              repeat: '30px'
-            }],
-            map: mapInstance.current,
-            zIndex: 3
-          });
         }
       }
       return;
@@ -552,6 +495,7 @@ const DeliveryTrackingMap = ({
           // Ensure viewport doesn't change when route is set
           directionsRendererRef.current.setOptions({ preserveViewport: true });
           directionsRendererRef.current.setDirections(result);
+          lastDirectionsRef.current = result;
 
           // Extract polyline points for route-based animation (Rapido style)
           const polylinePoints = extractPolylineFromDirections(result);
@@ -585,35 +529,10 @@ const DeliveryTrackingMap = ({
             }
           }
 
-          // Create arrow polyline overlay for visibility
-          if (result.routes && result.routes[0] && result.routes[0].overview_path) {
-            // Remove existing custom polyline if any
-            if (routePolylineRef.current) {
-              routePolylineRef.current.setMap(null);
-            }
-
-            // Create arrow polyline
-            routePolylineRef.current = new window.google.maps.Polyline({
-              path: result.routes[0].overview_path,
-              geodesic: true,
-              strokeColor: '#10b981',
-              strokeOpacity: 0.0,
-              strokeWeight: 0,
-              icons: [{
-                icon: {
-                  path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                  scale: 3,
-                  strokeColor: '#10b981',
-                  strokeOpacity: 1,
-                  fillColor: '#10b981',
-                  fillOpacity: 1,
-                },
-                offset: '0%',
-                repeat: '30px'
-              }],
-              map: mapInstance.current,
-              zIndex: 3
-            });
+          // Clear existing custom polyline if any
+          if (routePolylineRef.current) {
+            routePolylineRef.current.setMap(null);
+            routePolylineRef.current = null;
           }
 
         } else {
@@ -681,41 +600,64 @@ const DeliveryTrackingMap = ({
 
   // Determine which route to show based on order phase
   const getRouteToShow = useCallback(() => {
-    if (!order || !deliveryBoyLocation) {
-      // No delivery boy location yet, show restaurant to customer
+    if (!order) {
+      // No order yet, show restaurant to customer as fallback
       return { start: restaurantCoords, end: customerCoords };
     }
 
-    const currentPhase = order.deliveryState?.currentPhase || 'assigned';
-    const status = order.deliveryState?.status || 'pending';
+    const currentPhase = String(order.deliveryState?.currentPhase || 'assigned').toLowerCase();
+    const status = String(order.deliveryState?.status || 'pending').toLowerCase();
+    const orderStatus = String(order.status || '').toLowerCase();
 
-    // Phase 1: Delivery boy going to restaurant (en_route_to_pickup)
-    if (currentPhase === 'en_route_to_pickup' || status === 'accepted') {
-      return {
-        start: { lat: deliveryBoyLocation.lat, lng: deliveryBoyLocation.lng },
-        end: restaurantCoords
-      };
+    // Phase 1: Delivery boy going to restaurant
+    // Use stable anchors: START (rider loc when assigned) -> END (restaurant)
+    // For now, if we don't have rider loc, fallback to restaurant->customer
+    if (currentPhase === 'en_route_to_pickup' || status === 'accepted' || status === 'assigned') {
+      if (deliveryBoyLocation) {
+        return {
+          start: { lat: deliveryBoyLocation.lat, lng: deliveryBoyLocation.lng },
+          end: restaurantCoords
+        };
+      }
+      return { start: restaurantCoords, end: customerCoords };
     }
 
-    // Phase 2: Delivery boy at restaurant (at_pickup) - show route to customer
-    if (currentPhase === 'at_pickup' || status === 'reached_pickup' || status === 'order_confirmed') {
+    // Phase 2: Delivery boy at restaurant - show static route to customer
+    if (currentPhase === 'at_pickup' || status === 'reached_pickup' || status === 'at_pickup' || status === 'order_confirmed') {
       return {
         start: restaurantCoords,
         end: customerCoords
       };
     }
 
-    // Phase 3: Delivery boy going to customer (en_route_to_delivery)
-    if (currentPhase === 'en_route_to_delivery' || status === 'en_route_to_delivery' || order.status === 'out_for_delivery') {
+    // Phase 3: Delivery boy going to customer
+    // Show FULL route from Restaurant to Customer to prevent red line flickering
+    if (
+      currentPhase === 'en_route_to_delivery' || 
+      status === 'en_route_to_delivery' || 
+      status === 'picked_up' ||
+      status === 'reached_delivery' ||
+      orderStatus === 'out_for_delivery'
+    ) {
       return {
-        start: { lat: deliveryBoyLocation.lat, lng: deliveryBoyLocation.lng },
+        start: restaurantCoords,
         end: customerCoords
       };
     }
 
     // Default: Show restaurant to customer
     return { start: restaurantCoords, end: customerCoords };
-  }, [order, deliveryBoyLocation, restaurantCoords, customerCoords]);
+  }, [
+    order?.deliveryState?.currentPhase, 
+    order?.deliveryState?.status, 
+    order?.status, 
+    deliveryBoyLocation?.lat, 
+    deliveryBoyLocation?.lng, 
+    restaurantCoords?.lat, 
+    restaurantCoords?.lng, 
+    customerCoords?.lat, 
+    customerCoords?.lng
+  ]);
 
   // Move bike smoothly with rotation
   const moveBikeSmoothly = useCallback((lat, lng, heading) => {
@@ -809,7 +751,7 @@ const DeliveryTrackingMap = ({
             zIndex: window.google.maps.Marker.MAX_ZINDEX + 3, // Above other markers
             title: 'Delivery Partner',
             visible: true,
-            animation: window.google.maps.Animation.DROP // Add drop animation
+            // Removed DROP animation to prevent flickering during rapid updates or re-renders
           });
 
           // Force marker to be visible
@@ -1567,9 +1509,9 @@ const DeliveryTrackingMap = ({
           suppressMarkers: true, // We'll add custom markers
           preserveViewport: true, // CRITICAL: Don't auto-adjust viewport when route is set - keep map stable
           polylineOptions: {
-            strokeColor: '#10b981',
-            strokeWeight: 0, // Hide default polyline, we'll use custom dashed one
-            strokeOpacity: 0
+            strokeColor: '#ef4444',
+            strokeWeight: 4, // Thin, premium look
+            strokeOpacity: 0.8
           }
         });
 
@@ -1848,85 +1790,40 @@ const DeliveryTrackingMap = ({
       }
     }
 
-    // Throttle route updates to avoid too many API calls
     const now = Date.now();
-    if (lastRouteUpdateRef.current && (now - lastRouteUpdateRef.current) < 10000) {
-      return; // Skip if updated less than 10 seconds ago
-    }
-
-    // Only draw route if delivery partner is assigned
-    const routePhase = order?.deliveryState?.currentPhase;
-    const routeStatus = order?.deliveryState?.status;
-    const hasDeliveryPartnerForRoute = routeStatus === 'accepted' ||
-      routePhase === 'en_route_to_pickup' ||
-      routePhase === 'at_pickup' ||
-      routePhase === 'en_route_to_delivery' ||
-      (routeStatus && routeStatus !== 'pending');
-
-    // Only draw route if delivery partner is assigned
-    if (!hasDeliveryPartnerForRoute) {
-      // Clear any existing route if delivery partner is not assigned
-      if (routePolylineRef.current) {
-        routePolylineRef.current.setMap(null);
-        routePolylineRef.current = null;
-      }
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setDirections({ routes: [] });
-      }
-      return;
-    }
-
     const route = getRouteToShow();
-    if (route.start && route.end) {
+    if (!route || !route.start || !route.end) return;
+
+    // Only draw if coordinates changed meaningfully (approx > 5 meters)
+    // We reduced sensitivity here to prevent flickering during minor GPS jitter
+    const last = lastRouteRequestRef.current;
+    const startChanged = !last.start || 
+      Math.abs(last.start.lat - route.start.lat) > 0.00005 || 
+      Math.abs(last.start.lng - route.start.lng) > 0.00005;
+    const endChanged = !last.end || 
+      Math.abs(last.end.lat - route.end.lat) > 0.00005 || 
+      Math.abs(last.end.lng - route.end.lng) > 0.00005;
+
+    if (startChanged || endChanged) {
       lastRouteUpdateRef.current = now;
       drawRoute(route.start, route.end);
-      console.log('🔄 Route updated:', {
-        phase: order?.deliveryState?.currentPhase,
-        status: order?.deliveryState?.status,
-        from: route.start,
-        to: route.end,
-        hasBikeMarker: !!bikeMarkerRef.current
-      });
-
-      // Force show bike if delivery partner is assigned but bike marker doesn't exist
-      if (hasDeliveryPartnerByPhase && !bikeMarkerRef.current && mapInstance.current) {
-        console.log('🚴🚴🚴 FORCING bike marker creation after route update!', {
-          phase: currentPhase,
-          routeStart: route.start,
-          routeEnd: route.end,
-          restaurantCoords
-        });
-
-        // ONLY use real delivery boy location - NEVER use restaurant
-        // Priority 1: Use delivery boy's REAL location from socket/state
-        if (deliveryBoyLat && deliveryBoyLng) {
-          console.log('✅✅✅ Creating bike at REAL delivery boy location:', { lat: deliveryBoyLat, lng: deliveryBoyLng });
-          moveBikeSmoothly(deliveryBoyLat, deliveryBoyLng, deliveryBoyHeading || 0);
-        }
-        // No live location yet: request it and wait (don't show bike near restaurant)
-        else {
-          console.log('⏳⏳⏳ No real location yet - requesting from socket and waiting...');
-          if (socketRef.current && socketRef.current.connected) {
-            socketRef.current.emit('request-current-location', orderId);
-          }
-          console.log('✅ Bike will be created when real location is received from socket');
-        }
-      }
     }
-  }, [isMapLoaded, deliveryBoyLat, deliveryBoyLng, order?.deliveryState?.currentPhase, order?.deliveryState?.status, restaurantLat, restaurantLng, customerCoords?.lat, customerCoords?.lng, moveBikeSmoothly, getRouteToShow, drawRoute, hasDeliveryPartner]);
+  }, [
+    isMapLoaded, 
+    null, // Fixed size for HMR/React: placeholder for deliveryBoyLat
+    null, // Fixed size for HMR/React: placeholder for deliveryBoyLng
+    order?.deliveryState?.currentPhase, 
+    order?.deliveryState?.status, 
+    restaurantLat, 
+    restaurantLng, 
+    customerCoords?.lat, 
+    customerCoords?.lng, 
+    moveBikeSmoothly, 
+    getRouteToShow, 
+    drawRoute, 
+    hasDeliveryPartner
+  ]);
 
-  // Update bike when REAL location changes (from socket)
-  useEffect(() => {
-    if (isMapLoaded && currentLocation && currentLocation.lat && currentLocation.lng) {
-      console.log('🔄🔄🔄 Updating bike to REAL location:', currentLocation);
-      // Always update to real location - this takes priority over restaurant location
-      // Important: ignore stale pull updates (request-current-location) until rider is actually assigned,
-      // but once assigned (or we restored a recent location), keep the marker stable.
-      if (hasLivePushRef.current || allowPulledLocationForBike) {
-        moveBikeSmoothly(currentLocation.lat, currentLocation.lng, currentLocation.heading || 0);
-      }
-    }
-  }, [isMapLoaded, currentLocation?.lat, currentLocation?.lng, currentLocation?.heading, moveBikeSmoothly, allowPulledLocationForBike]);
 
   // Create bike marker when map loads if we have stored location
   useEffect(() => {
@@ -2415,4 +2312,4 @@ const DeliveryTrackingMap = ({
   );
 };
 
-export default DeliveryTrackingMap;
+export default React.memo(DeliveryTrackingMap);

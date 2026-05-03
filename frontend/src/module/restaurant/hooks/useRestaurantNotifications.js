@@ -488,9 +488,20 @@ export const useRestaurantNotifications = () => {
       } catch (_) {}
 
       // Live servers sometimes emit a stale "last pending order" burst on connect/reconnect.
-      // Ignore orders created before this tab/session started (small tolerance for clock skew).
+      // We ignore extremely old orders, but are more lenient with orders that are still actionable.
       const createdAtMs = orderData?.createdAt ? new Date(orderData.createdAt).getTime() : Date.now();
-      if (createdAtMs < sessionStartMsRef.current - 5000) {
+      const orderStatus = (orderData?.status || "").toLowerCase();
+      
+      // If it's a confirmed order, we generally want to show it unless it's very old (e.g. > 5 mins)
+      const isActionable = orderStatus === 'confirmed';
+      const maxAgeMs = isActionable ? 300000 : 30000; // 5 mins for actionable, 30s otherwise
+      
+      if (createdAtMs < sessionStartMsRef.current - maxAgeMs) {
+        console.log('📢 Ignoring stale socket order notification:', orderData.orderId, {
+          createdAt: orderData.createdAt,
+          sessionStart: new Date(sessionStartMsRef.current).toISOString(),
+          status: orderStatus
+        });
         return;
       }
 

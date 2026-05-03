@@ -232,6 +232,26 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
             null,
         };
 
+        // Resolve hotel details for QR/Hotel orders if not already resolved
+        let resolvedHotelName = payload.hotelName || null;
+        let resolvedHotelMongoId = (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null;
+
+        if (payload.hotelReference && (!resolvedHotelName || !resolvedHotelMongoId)) {
+          try {
+            const { default: Hotel } = await import('../hotel/models/Hotel.js');
+            const hotelDoc = mongoose.Types.ObjectId.isValid(payload.hotelReference)
+              ? await Hotel.findById(payload.hotelReference).select('hotelName _id').lean()
+              : await Hotel.findOne({ hotelId: payload.hotelReference }).select('hotelName _id').lean();
+
+            if (hotelDoc) {
+              resolvedHotelName = hotelDoc.hotelName || resolvedHotelName;
+              resolvedHotelMongoId = hotelDoc._id || resolvedHotelMongoId;
+            }
+          } catch (e) {
+            logger.warn('Could not resolve hotel details during verify:', e?.message);
+          }
+        }
+
         // Minimal, safe order creation that matches existing schema, with pickup location
         const orderDoc = new Order({
           orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -248,9 +268,9 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
           status: 'confirmed',
           // Preserve hotel/QR metadata for orders placed via hotel QR flow
           hotelReference: payload.hotelReference || null,
-          hotelId: (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null,
+          hotelId: resolvedHotelMongoId,
           qrReferenceId: payload.qrReferenceId || null,
-          hotelName: payload.hotelName || null,
+          hotelName: resolvedHotelName,
           orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
           roomNumber: payload.roomNumber || null,
           payment: {
@@ -630,6 +650,26 @@ router.post('/razorpay/webhook', async (req, res) => {
               null,
           };
 
+          // Resolve hotel details for QR/Hotel orders if not already resolved
+          let resolvedHotelName = payload.hotelName || null;
+          let resolvedHotelMongoId = (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null;
+
+          if (payload.hotelReference && (!resolvedHotelName || !resolvedHotelMongoId)) {
+            try {
+              const { default: Hotel } = await import('../hotel/models/Hotel.js');
+              const hotelDoc = mongoose.Types.ObjectId.isValid(payload.hotelReference)
+                ? await Hotel.findById(payload.hotelReference).select('hotelName _id').lean()
+                : await Hotel.findOne({ hotelId: payload.hotelReference }).select('hotelName _id').lean();
+
+              if (hotelDoc) {
+                resolvedHotelName = hotelDoc.hotelName || resolvedHotelName;
+                resolvedHotelMongoId = hotelDoc._id || resolvedHotelMongoId;
+              }
+            } catch (e) {
+              logger.warn('Could not resolve hotel details during webhook:', e?.message);
+            }
+          }
+
           const orderDoc = new Order({
             orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: fresh.userId,
@@ -645,9 +685,9 @@ router.post('/razorpay/webhook', async (req, res) => {
             status: 'confirmed',
           // Preserve hotel/QR metadata for webhook-driven creation
           hotelReference: payload.hotelReference || null,
-          hotelId: (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null,
+          hotelId: resolvedHotelMongoId,
           qrReferenceId: payload.qrReferenceId || null,
-          hotelName: payload.hotelName || null,
+          hotelName: resolvedHotelName,
           orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
           roomNumber: payload.roomNumber || null,
             payment: {

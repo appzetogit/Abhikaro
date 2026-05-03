@@ -616,6 +616,8 @@ export const getOrders = asyncHandler(async (req, res) => {
           (order.hotelId && typeof order.hotelId === "object"
             ? order.hotelId.hotelName || null
             : null) ||
+          hotelConfigByKey.get(String(order.hotelId || ""))?.hotelName ||
+          hotelConfigByKey.get(String(order.hotelReference || ""))?.hotelName ||
           null,
         hotelReference:
           order.hotelReference ||

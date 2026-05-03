@@ -649,6 +649,7 @@ export default function UserOrderDetails() {
 
       {/* Fixed Bottom Buttons */}
       <div className="fixed bottom-0 w-full bg-white border-t border-gray-200 p-4 flex gap-3 z-20">
+      {isDelivered && (
         <button
           type="button"
           onClick={() => {
@@ -685,6 +686,7 @@ export default function UserOrderDetails() {
           <RotateCcw className="w-4 h-4" />
           Reorder
         </button>
+      )}
         <button
           type="button"
           onClick={handleDownloadSummary}

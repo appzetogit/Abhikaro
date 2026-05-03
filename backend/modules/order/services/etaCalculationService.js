@@ -39,7 +39,8 @@ class ETACalculationService {
       restaurantId,
       restaurantLocation,
       userLocation,
-      riderLocation = null // Optional: if rider is already assigned
+      riderLocation = null, // Optional: if rider is already assigned
+      maxPreparationTime = null // Optional: specific prep time from items
     } = orderData;
 
     try {
@@ -50,7 +51,10 @@ class ETACalculationService {
       }
 
       // 2. Calculate restaurant preparation time
-      const restaurantPrepTime = await this.getRestaurantPrepTime(restaurantId);
+      // Use provided maxPreparationTime if available, otherwise fallback to restaurant default
+      const restaurantPrepTime = maxPreparationTime !== null 
+        ? maxPreparationTime 
+        : await this.getRestaurantPrepTime(restaurantId);
       
       // 3. Calculate restaurant load delay (pending orders)
       const restaurantLoadDelay = await this.getRestaurantLoadDelay(restaurantId);
@@ -243,6 +247,12 @@ class ETACalculationService {
           reason = 'RIDER_NEARING_DROP';
           break;
 
+        case 'FOOD_READY':
+          // Food marked ready, recalculate for delivery only
+          newETA = await this.recalculateAfterPickup(order);
+          reason = 'FOOD_READY';
+          break;
+
         default:
           // Default: recalculate from scratch
           newETA = await this.calculateInitialETA({
@@ -260,6 +270,23 @@ class ETACalculationService {
               : null
           });
           reason = 'MANUAL_UPDATE';
+      }
+
+      // Calculate elapsed time since order creation
+      const createdAt = new Date(order.createdAt);
+      const elapsedMinutes = Math.floor((new Date() - createdAt) / 1000 / 60);
+
+      // If newETA is from a calculation that returns REMAINING time (like recalculateAfterPickup),
+      // we need to add elapsedMinutes to it to get the "Total Time from Creation"
+      if (['RIDER_REACHED_RESTAURANT', 'RIDER_STARTED_DELIVERY', 'TRAFFIC_UPDATE', 'RIDER_NEARING_DROP', 'FOOD_READY'].includes(eventType) || reason?.includes('PICKUP') || reason?.includes('DELIVERY')) {
+        const remainingMin = newETA.minETA || newETA.min;
+        const remainingMax = newETA.maxETA || newETA.max;
+        
+        newETA = {
+          min: elapsedMinutes + remainingMin,
+          max: elapsedMinutes + remainingMax,
+          breakdown: newETA.breakdown
+        };
       }
 
       // Update order with new ETA

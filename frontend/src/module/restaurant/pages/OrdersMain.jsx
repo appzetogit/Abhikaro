@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import Lenis from "lenis"
-import { Printer, ChevronDown, ChevronUp, Minus, Plus, X, AlertCircle, Loader2, Calendar, Clock, Users, MessageSquare, PhoneCall, Bell } from "lucide-react"
+import { Printer, ChevronDown, ChevronUp, Minus, Plus, X, AlertCircle, Loader2, Calendar, Clock, Users, MessageSquare, PhoneCall, Bell, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import BottomNavOrders from "../components/BottomNavOrders"
 import RestaurantNavbar from "../components/RestaurantNavbar"
@@ -596,6 +596,29 @@ export default function OrdersMain() {
   // IMPORTANT: Admin "reassign to restaurant" reuses the same orderId; backend sets `createdAt`
   // to `assignmentInfo.assignedAt` for the popup timer, so dedupe must include createdAt.
   const shownOrdersRef = useRef(new Set())
+  
+  // Persistence for shown orders to avoid duplicate popups across refreshes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('restaurant_shown_orders_cache')
+      if (saved) {
+        const list = JSON.parse(saved)
+        if (Array.isArray(list)) {
+          list.forEach(key => shownOrdersRef.current.add(key))
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }, [])
+
+  const markAsShown = useCallback((key) => {
+    if (!key) return
+    shownOrdersRef.current.add(key)
+    try {
+      // Keep only last 100 to avoid localStorage bloat
+      const list = Array.from(shownOrdersRef.current).slice(-100)
+      localStorage.setItem('restaurant_shown_orders_cache', JSON.stringify(list))
+    } catch (e) { /* ignore */ }
+  }, [])
   const [currentRestaurantData, setCurrentRestaurantData] = useState(null)
   const [restaurantStatus, setRestaurantStatus] = useState({
     isActive: null,
@@ -617,7 +640,7 @@ export default function OrdersMain() {
   })
   
   // Shared function to fetch all orders (used by multiple order components)
-  const fetchAllOrders = async (forceRefresh = false) => {
+  const fetchAllOrders = useCallback(async (forceRefresh = false) => {
     const now = Date.now()
     // Return cached data if available and not expired
     if (!forceRefresh && ordersCacheRef.current.data && 
@@ -644,7 +667,7 @@ export default function OrdersMain() {
       throw error
     }
     return []
-  }
+  }, []) // Empty dependency array as it only uses restaurantAPI which is stable
 
   // Synchronous accessor for cached orders to enable instant tab render
   const getCachedOrders = () =>
@@ -842,7 +865,7 @@ export default function OrdersMain() {
       const popupKey = orderId ? `${String(orderId)}:${String(createdAtMs)}` : null
       // If we can't identify the order, still show the popup (best-effort). Dedupe only when we have a stable key.
       if (popupKey && shownOrdersRef.current.has(popupKey)) return
-      if (popupKey) shownOrdersRef.current.add(popupKey)
+      if (popupKey) markAsShown(popupKey)
 
       // Build initial normalized address
       let normalizedAddress =
@@ -1088,7 +1111,7 @@ export default function OrdersMain() {
             console.log('📦 Found confirmed order (fallback):', orderForPopup)
             const createdAtMs = orderForPopup?.createdAt ? new Date(orderForPopup.createdAt).getTime() : Date.now()
             const popupKey = orderId ? `${String(orderId)}:${String(createdAtMs)}` : null
-            if (popupKey) shownOrdersRef.current.add(popupKey)
+            if (popupKey) markAsShown(popupKey)
             setPopupOrder(orderForPopup)
             setShowNewOrderPopup(true)
             acceptDeadlineMsRef.current = createdAtMs + (ACCEPT_WINDOW_SECONDS * 1000)
@@ -1118,13 +1141,29 @@ export default function OrdersMain() {
     }
 
     // Check every 5 seconds for new confirmed orders (fallback mechanism)
-    const interval = setInterval(checkConfirmedOrders, 5000)
+    const interval = setInterval(() => {
+      // Small optimization: only check if tab is active to save resources
+      if (document.visibilityState === 'visible') {
+        checkConfirmedOrders()
+      }
+    }, 5000)
+    
+    // Also check when tab becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkConfirmedOrders()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     // Check immediately on mount
     checkConfirmedOrders()
 
-    return () => clearInterval(interval)
-  }, [fetchAllOrders]) // Include fetchAllOrders in dependencies
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [fetchAllOrders]) // Now fetchAllOrders is stable via useCallback
 
   // Sound for new orders is handled by `useRestaurantNotifications` (socket event gating + autoplay policy).
   // This page intentionally does NOT play any audio on popup open.
@@ -1927,21 +1966,41 @@ export default function OrdersMain() {
       {/* Restaurant Navbar - Sticky at top */}
       <div className="sticky top-0 z-50 bg-white">
         <RestaurantNavbar showNotifications={false} />
+        <div className="px-4 py-2 flex items-center justify-between border-t border-gray-50">
+          <div className="flex items-center gap-2">
+             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500 animate-pulse'}`}></div>
+             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+               {isConnected ? 'Real-time Live' : 'Connecting...'}
+             </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {!isSoundUnlocked && (
+              <button 
+                onClick={() => unlockSound?.()}
+                className="text-[10px] font-bold text-blue-600 uppercase"
+              >
+                Enable Sound
+              </button>
+            )}
+            <button 
+              onClick={() => {
+                toast.promise(fetchAllOrders(true), {
+                  loading: 'Syncing orders...',
+                  success: 'Orders synced',
+                  error: 'Sync failed'
+                })
+              }}
+              className="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-100 rounded-md active:scale-95 transition-transform"
+            >
+              <RefreshCw className="w-2.5 h-2.5 text-gray-600" />
+              <span className="text-[10px] font-bold text-gray-600 uppercase">Sync</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Top Filter Bar - Sticky below navbar */}
       <div className="sticky top-[50px] z-40 pb-2 bg-gray-100">
-        {!isSoundUnlocked && (
-          <div className="px-4 pt-2">
-            <button
-              type="button"
-              onClick={() => unlockSound?.()}
-              className="w-full rounded-xl bg-black text-white px-4 py-3 text-sm font-semibold"
-            >
-              Tap to enable order sound
-            </button>
-          </div>
-        )}
         <div
           ref={filterBarRef}
           className="flex gap-2 overflow-x-auto scrollbar-hide bg-transparent rounded-full px-3 py-2 mt-2"

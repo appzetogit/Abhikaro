@@ -1572,8 +1572,13 @@ export const markOrderReady = asyncHandler(async (req, res) => {
 
     try {
       await notifyRestaurantOrderUpdate(order._id.toString(), "ready");
+      
+      // Trigger ETA recalculation for food ready event
+      const etaEventService = (await import("../../order/services/etaEventService.js")).default;
+      await etaEventService.handleFoodReady(order._id.toString());
+      console.log(`✅ ETA updated for order ${order.orderId} (Food Ready)`);
     } catch (notifError) {
-      console.error("Error sending restaurant notification:", notifError);
+      console.error("Error sending restaurant notification or updating ETA:", notifError);
     }
 
     // Realtime notify CUSTOMER UI so it can update instantly (e.g. hide "Cancel order")

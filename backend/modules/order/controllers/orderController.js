@@ -76,19 +76,19 @@ export const createOrder = async (req, res) => {
     // We resolve hotelName on backend so admin UI can always display hotel name.
     let resolvedHotelName = hotelName || null;
     let resolvedHotelMongoId = null;
-    if (normalizedPaymentMethod === "pay_at_hotel" && hotelReference && !resolvedHotelName) {
+    if (hotelReference && (!resolvedHotelName || !resolvedHotelMongoId)) {
       try {
         const Hotel = (await import("../../hotel/models/Hotel.js")).default;
         const hotelDoc = mongoose.Types.ObjectId.isValid(hotelReference)
           ? await Hotel.findById(hotelReference).lean()
           : await Hotel.findOne({ hotelId: hotelReference }).lean();
 
-        resolvedHotelName = hotelDoc?.hotelName || null;
-        resolvedHotelMongoId = hotelDoc?._id || null;
+        if (hotelDoc) {
+          resolvedHotelName = hotelDoc.hotelName || resolvedHotelName;
+          resolvedHotelMongoId = hotelDoc._id || null;
+        }
       } catch (_) {
         // Non-blocking: order can still be created without hotelName.
-        resolvedHotelName = hotelName || null;
-        resolvedHotelMongoId = null;
       }
     }
 
@@ -809,13 +809,14 @@ export const createOrder = async (req, res) => {
           restaurantId: assignedRestaurantId,
           restaurantLocation,
           userLocation,
+          maxPreparationTime: maxPreparationTime || null
         });
 
-        // Add preparation time to ETA (use max preparation time)
-        const finalMinETA = etaResult.minETA + maxPreparationTime;
-        const finalMaxETA = etaResult.maxETA + maxPreparationTime;
+        // ETA service now returns total ETA including preparation time
+        const finalMinETA = etaResult.minETA;
+        const finalMaxETA = etaResult.maxETA;
 
-        // Update order with ETA (including preparation time)
+        // Update order with ETA (already includes preparation time)
         order.eta = {
           min: finalMinETA,
           max: finalMaxETA,

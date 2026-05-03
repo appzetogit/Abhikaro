@@ -315,7 +315,20 @@ export default function DeliveryHome() {
   const { newOrder, clearNewOrder, markOrderRejected, orderReady, clearOrderReady, orderTaken, clearOrderTaken, isConnected, stopNotificationSound } = notifications || {}
 
   // Default location - will be set from saved location or GPS, not hardcoded
-  const [riderLocation, setRiderLocation] = useState(null) // Will be set from GPS or saved location
+  const [riderLocation, setRiderLocation] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem('delivery:lastKnownLocation');
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved && typeof saved.lat === 'number' && typeof saved.lng === 'number') {
+          return [saved.lat, saved.lng];
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  }) // Will be set from GPS or saved location
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false)
   const [bankDetailsFilled, setBankDetailsFilled] = useState(false)
   const [deliveryStatus, setDeliveryStatus] = useState(null) // Store delivery partner status
@@ -383,21 +396,21 @@ export default function DeliveryHome() {
   const mapContainerRef = useRef(null)
   const directionsMapContainerRef = useRef(null)
   const watchPositionIdRef = useRef(null) // Store watchPosition ID for cleanup
-  const lastLocationRef = useRef(null) // Store last location for heading calculation
+  const lastLocationRef = useRef(riderLocation) // Store last location for heading calculation
   const bikeMarkerRef = useRef(null) // Store bike marker instance
   const isUserPanningRef = useRef(false) // Track if user manually panned the map
   // If the map was initialized with a fallback/default center (GPS not ready),
   // we should force ONE recenter when the first valid GPS location arrives.
   const mapInitializedWithDefaultCenterRef = useRef(false)
   const routePolylineRef = useRef(null) // Store route polyline instance (legacy - for fallback)
-  const routeHistoryRef = useRef([]) // Store route history for traveled path
+  const routeHistoryRef = useRef(riderLocation ? [{ lat: riderLocation[0], lng: riderLocation[1] }] : []) // Store route history for traveled path
   const isOnlineRef = useRef(false) // Store online status for use in callbacks
 
   // Stable tracking system - Rapido/Uber style
-  const locationHistoryRef = useRef([]) // Store last 5 valid GPS points for smoothing
-  const lastValidLocationRef = useRef(null) // Last valid smoothed location
-  const lastLocationTimeRef = useRef(null) // Timestamp of last location update
-  const smoothedLocationRef = useRef(null) // Current smoothed location
+  const locationHistoryRef = useRef(riderLocation ? [riderLocation] : []) // Store last 5 valid GPS points for smoothing
+  const lastValidLocationRef = useRef(riderLocation) // Last valid smoothed location
+  const lastLocationTimeRef = useRef(riderLocation ? Date.now() : null) // Timestamp of last location update
+  const smoothedLocationRef = useRef(riderLocation) // Current smoothed location
   const markerAnimationRef = useRef(null) // Track ongoing marker animation
   const zonesPolygonsRef = useRef([]) // Store zone polygons
   // Google Maps Directions API refs
@@ -768,33 +781,7 @@ export default function DeliveryHome() {
     }
   }
 
-  // Preload last known location immediately on app open to avoid map showing wrong/blank center
-  // while GPS permission prompt/first fix is pending.
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem('delivery:lastKnownLocation')
-      const saved = raw ? JSON.parse(raw) : null
-      const lat = saved?.lat
-      const lng = saved?.lng
-
-      if (
-        typeof lat === 'number' &&
-        typeof lng === 'number' &&
-        !isNaN(lat) &&
-        !isNaN(lng) &&
-        lat >= -90 && lat <= 90 &&
-        lng >= -180 && lng <= 180
-      ) {
-        // Only set if we don't already have a live location
-        setRiderLocation(prev => (Array.isArray(prev) && prev.length === 2 ? prev : [lat, lng]))
-        lastLocationRef.current = [lat, lng]
-        smoothedLocationRef.current = [lat, lng]
-        lastValidLocationRef.current = [lat, lng]
-      }
-    } catch {
-      // ignore
-    }
-  }, []) // run once on mount
+  // Online status sync logic continues...
 
   // Sync online status with localStorage changes (from FeedNavbar or other tabs)
   useEffect(() => {
@@ -4537,53 +4524,153 @@ export default function DeliveryHome() {
   useEffect(() => {
     if (!newOrder) return
 
+    const orderId = newOrder.orderMongoId || newOrder.orderId;
+
+    // Check if this order has already been accepted
+    if (acceptedOrderIdsRef.current.has(orderId)) {
+      clearNewOrder();
+      return;
+    }
+
+    // Transform newOrder data to match selectedRestaurant format
+    // Extract restaurant address with proper priority
+    let restaurantAddress = 'Restaurant address';
+    if (newOrder.restaurantLocation?.address) {
+      restaurantAddress = newOrder.restaurantLocation.address;
+    } else if (newOrder.restaurantLocation?.formattedAddress) {
+      restaurantAddress = newOrder.restaurantLocation.formattedAddress;
+    } else if (newOrder.restaurantAddress) {
+      restaurantAddress = newOrder.restaurantAddress;
+    }
+
+    // Extract earnings from notification
+    const deliveryFee = newOrder.deliveryFee ?? 0;
+    const earned = newOrder.estimatedEarnings;
+    let earnedValue = 0;
+
+    if (earned) {
+      if (typeof earned === 'object' && earned.totalEarning != null) {
+        earnedValue = Number(earned.totalEarning) || 0;
+      } else if (typeof earned === 'number') {
+        earnedValue = earned;
+      }
+    }
+
+    // Use calculated earnings if available, otherwise fallback to deliveryFee
+    const effectiveEarnings = earnedValue > 0 ? earned : (deliveryFee > 0 ? deliveryFee : 0);
+
+    // Calculate pickup distance if not provided
+    let pickupDistance = newOrder.pickupDistance;
+    if ((!pickupDistance || pickupDistance === '0 km') && newOrder.assignmentInfo?.distance != null) {
+      const d = Number(newOrder.assignmentInfo.distance);
+      pickupDistance = d > 100 ? `${(d / 1000).toFixed(2)} km` : `${d.toFixed(2)} km`;
+    }
+
+    // Try to pull restaurant location from multiple possible paths in payload
+    const payloadRestaurant =
+      newOrder.restaurant ||
+      newOrder.restaurantId ||
+      (newOrder.fullOrder && (newOrder.fullOrder.restaurant || newOrder.fullOrder.restaurantId)) ||
+      {}
+    const payloadLocation =
+      payloadRestaurant?.location ||
+      newOrder.restaurantLocation ||
+      (newOrder.fullOrder && (newOrder.fullOrder.restaurantLocation || newOrder.fullOrder.restaurant?.location || newOrder.fullOrder.restaurantId?.location)) ||
+      {}
+
+    let payloadLat = undefined
+    let payloadLng = undefined
+    if (Array.isArray(payloadLocation.coordinates) && payloadLocation.coordinates.length >= 2) {
+      payloadLng = Number(payloadLocation.coordinates[0])
+      payloadLat = Number(payloadLocation.coordinates[1])
+    } else {
+      if (payloadLocation.latitude != null) payloadLat = Number(payloadLocation.latitude)
+      if (payloadLocation.longitude != null) payloadLng = Number(payloadLocation.longitude)
+    }
+
+    // Fallbacks: many notification payloads send pickup/restaurant coords as flat fields
+    if ((payloadLat == null || isNaN(payloadLat)) && newOrder.pickupLat != null) {
+      payloadLat = Number(newOrder.pickupLat)
+    }
+    if ((payloadLng == null || isNaN(payloadLng)) && newOrder.pickupLng != null) {
+      payloadLng = Number(newOrder.pickupLng)
+    }
+    if ((payloadLat == null || isNaN(payloadLat)) && newOrder.restaurantLat != null) {
+      payloadLat = Number(newOrder.restaurantLat)
+    }
+    if ((payloadLng == null || isNaN(payloadLng)) && newOrder.restaurantLng != null) {
+      payloadLng = Number(newOrder.restaurantLng)
+    }
+
+    let mappedAddress = restaurantAddress
+    if (!mappedAddress || mappedAddress === 'Restaurant address') {
+      mappedAddress =
+        payloadRestaurant?.address ||
+        payloadLocation?.formattedAddress ||
+        payloadLocation?.address ||
+        'Restaurant address'
+    }
+
+    const fullOrder = newOrder.fullOrder || {}
+    const rawPay =
+      newOrder.paymentMethod ??
+      fullOrder.payment?.method ??
+      newOrder.payment?.method ??
+      ''
+    const normalizedPay =
+      rawPay === 'cod' || rawPay === 'cash' ? 'cash' : (rawPay || 'razorpay')
+
+    const restaurantData = {
+      id: newOrder.orderMongoId || newOrder.orderId,
+      orderId: newOrder.orderId,
+      name: newOrder.restaurantName || payloadRestaurant?.name || 'New Order',
+      address: mappedAddress,
+      lat: payloadLat,
+      lng: payloadLng,
+      distance: pickupDistance || 'Calculating...',
+      timeAway: (pickupDistance && pickupDistance !== 'Calculating...') ? calculateTimeAway(pickupDistance) : 'Calculating...',
+      dropDistance: newOrder.deliveryDistance || 
+        (newOrder.assignmentInfo?.routeToDelivery?.distance
+          ? `${Number(newOrder.assignmentInfo.routeToDelivery.distance).toFixed(2)} km`
+          : 'Calculating...'),
+      pickupDistance: pickupDistance || 'Calculating...',
+      estimatedEarnings: effectiveEarnings,
+      deliveryFee,
+      amount: earnedValue > 0 ? earnedValue : (deliveryFee > 0 ? deliveryFee : 0),
+      customerName: newOrder.customerName || 'Customer',
+      customerAddress: newOrder.customerLocation?.address || newOrder.deliveryAddress || 'Customer address',
+      customerLat: newOrder.customerLocation?.latitude ?? newOrder.deliveryLat,
+      customerLng: newOrder.customerLocation?.longitude ?? newOrder.deliveryLng,
+      items: newOrder.items || fullOrder.items || [],
+      total: newOrder.total ?? newOrder.totalAmount ?? fullOrder.pricing?.total ?? 0,
+      paymentMethod: normalizedPay,
+      orderType: newOrder.orderType ?? fullOrder.orderType ?? null,
+      hotelReference: newOrder.hotelReference ?? fullOrder.hotelReference ?? null,
+      hotelId:
+        newOrder.hotelId ??
+        fullOrder.hotelId?._id?.toString?.() ??
+        fullOrder.hotelId?.toString?.() ??
+        (typeof fullOrder.hotelId === 'string' ? fullOrder.hotelId : null),
+      hotelName: newOrder.hotelName ?? fullOrder.hotelName ?? null,
+      hotelCashSettled: newOrder.hotelCashSettled === true || fullOrder.hotelCashSettled === true,
+      cashCollected: newOrder.cashCollected === true || fullOrder.cashCollected === true,
+    }
+
+    // SHOW POPUP IMMEDIATELY - Don't wait for background calculations
+    setSelectedRestaurant(restaurantData)
+    setShowNewOrderPopup(true)
+    setIsNewOrderPopupMinimized(false)
+    setNewOrderDragY(0)
+    setCountdownSeconds(300) // Reset countdown to 5 minutes
+
+    // Start background background enrichment (distance, missing address)
     ;(async () => {
-      const orderId = newOrder.orderMongoId || newOrder.orderId;
-
-      // Check if this order has already been accepted
-      if (acceptedOrderIdsRef.current.has(orderId)) {
-
-        clearNewOrder();
-        return;
-      }
-
-      // Transform newOrder data to match selectedRestaurant format
-      // Extract restaurant address with proper priority
-      let restaurantAddress = 'Restaurant address';
-      if (newOrder.restaurantLocation?.address) {
-        restaurantAddress = newOrder.restaurantLocation.address;
-      } else if (newOrder.restaurantLocation?.formattedAddress) {
-        restaurantAddress = newOrder.restaurantLocation.formattedAddress;
-      } else if (newOrder.restaurantAddress) {
-        restaurantAddress = newOrder.restaurantAddress;
-      }
-
-      // Extract earnings from notification - backend now calculates and sends estimatedEarnings
-      const deliveryFee = newOrder.deliveryFee ?? 0;
-      const earned = newOrder.estimatedEarnings;
-      let earnedValue = 0;
-
-      if (earned) {
-        if (typeof earned === 'object' && earned.totalEarning != null) {
-          earnedValue = Number(earned.totalEarning) || 0;
-        } else if (typeof earned === 'number') {
-          earnedValue = earned;
-        }
-      }
-
-      // Use calculated earnings if available, otherwise fallback to deliveryFee
-      const effectiveEarnings = earnedValue > 0 ? earned : (deliveryFee > 0 ? deliveryFee : 0);
-
-      // Calculate pickup distance if not provided
-      let pickupDistance = newOrder.pickupDistance;
-      if ((!pickupDistance || pickupDistance === '0 km') && newOrder.assignmentInfo?.distance != null) {
-        const d = Number(newOrder.assignmentInfo.distance);
-        pickupDistance = d > 100 ? `${(d / 1000).toFixed(2)} km` : `${d.toFixed(2)} km`;
-      }
-      if (!pickupDistance || pickupDistance === '0 km') {
-        // Ensure restaurant coordinates (fallback fetch when missing - typical for online orders)
-        let restaurantLat = newOrder.restaurantLocation?.latitude;
-        let restaurantLng = newOrder.restaurantLocation?.longitude;
+      let finalUpdates = {}
+      
+      // If distance is missing, try to calculate it
+      if (!pickupDistance || pickupDistance === '0 km' || pickupDistance === 'Calculating...') {
+        let restaurantLat = payloadLat;
+        let restaurantLng = payloadLng;
 
         if ((restaurantLat == null || restaurantLng == null) && newOrder.restaurantId && typeof newOrder.restaurantId === 'string') {
           try {
@@ -4594,177 +4681,27 @@ export default function DeliveryHome() {
               restaurantLng = coords[0];
               restaurantLat = coords[1];
             }
-            if (!restaurantAddress || restaurantAddress === 'Restaurant address' || restaurantAddress === 'Restaurant Address') {
-              restaurantAddress = rest?.location?.formattedAddress || rest?.address || restaurantAddress;
+            if (!mappedAddress || mappedAddress === 'Restaurant address') {
+              finalUpdates.address = rest?.location?.formattedAddress || rest?.address || mappedAddress;
             }
-          } catch (_) {
-            // ignore
-          }
+          } catch (_) {}
         }
 
-        // Try to calculate from driver's current location to restaurant
         const currentLocation = riderLocation || lastLocationRef.current;
-
-        if (currentLocation && currentLocation.length === 2 &&
-          restaurantLat && restaurantLng &&
-          !isNaN(restaurantLat) && !isNaN(restaurantLng)) {
-          // Calculate distance in meters, then convert to km
-          const distanceInMeters = calculateDistance(
-            currentLocation[0],
-            currentLocation[1],
-            restaurantLat,
-            restaurantLng
-          );
+        if (currentLocation && currentLocation.length === 2 && restaurantLat && restaurantLng) {
+          const distanceInMeters = calculateDistance(currentLocation[0], currentLocation[1], restaurantLat, restaurantLng);
           const distanceInKm = distanceInMeters / 1000;
-          pickupDistance = `${distanceInKm.toFixed(2)} km`;
-
+          finalUpdates.distance = `${distanceInKm.toFixed(2)} km`;
+          finalUpdates.pickupDistance = finalUpdates.distance;
+          finalUpdates.timeAway = calculateTimeAway(finalUpdates.distance);
+          finalUpdates.lat = restaurantLat;
+          finalUpdates.lng = restaurantLng;
         }
       }
 
-      // Default to 'Calculating...' if still no distance
-      if (!pickupDistance || pickupDistance === '0 km') {
-        pickupDistance = 'Calculating...';
+      if (Object.keys(finalUpdates).length > 0) {
+        setSelectedRestaurant(prev => ({ ...prev, ...finalUpdates }));
       }
-
-      // Try to pull restaurant location from multiple possible paths in payload
-      const payloadRestaurant =
-        newOrder.restaurant ||
-        newOrder.restaurantId ||
-        (newOrder.fullOrder && (newOrder.fullOrder.restaurant || newOrder.fullOrder.restaurantId)) ||
-        {}
-      const payloadLocation =
-        payloadRestaurant?.location ||
-        newOrder.restaurantLocation ||
-        (newOrder.fullOrder && (newOrder.fullOrder.restaurantLocation || newOrder.fullOrder.restaurant?.location || newOrder.fullOrder.restaurantId?.location)) ||
-        {}
-
-      let payloadLat = undefined
-      let payloadLng = undefined
-      if (Array.isArray(payloadLocation.coordinates) && payloadLocation.coordinates.length >= 2) {
-        payloadLng = Number(payloadLocation.coordinates[0])
-        payloadLat = Number(payloadLocation.coordinates[1])
-      } else {
-        if (payloadLocation.latitude != null) payloadLat = Number(payloadLocation.latitude)
-        if (payloadLocation.longitude != null) payloadLng = Number(payloadLocation.longitude)
-      }
-      // Fallbacks: many notification payloads send pickup/restaurant coords as flat fields
-      if ((payloadLat == null || isNaN(payloadLat)) && newOrder.pickupLat != null) {
-        payloadLat = Number(newOrder.pickupLat)
-      }
-      if ((payloadLng == null || isNaN(payloadLng)) && newOrder.pickupLng != null) {
-        payloadLng = Number(newOrder.pickupLng)
-      }
-      if ((payloadLat == null || isNaN(payloadLat)) && newOrder.restaurantLat != null) {
-        payloadLat = Number(newOrder.restaurantLat)
-      }
-      if ((payloadLng == null || isNaN(payloadLng)) && newOrder.restaurantLng != null) {
-        payloadLng = Number(newOrder.restaurantLng)
-      }
-
-      let mappedAddress = restaurantAddress
-      if (!mappedAddress) {
-        mappedAddress =
-          payloadRestaurant?.address ||
-          payloadLocation?.formattedAddress ||
-          payloadLocation?.address ||
-          'Restaurant address'
-      }
-
-      // If this is a resend for the same order, preserve any known lat/lng/address
-      if (selectedRestaurant && selectedRestaurant.orderId === newOrder.orderId) {
-        if ((payloadLat == null || isNaN(payloadLat)) && selectedRestaurant.lat) {
-          payloadLat = selectedRestaurant.lat
-        }
-        if ((payloadLng == null || isNaN(payloadLng)) && selectedRestaurant.lng) {
-          payloadLng = selectedRestaurant.lng
-        }
-        if ((!mappedAddress || mappedAddress === 'Restaurant address') && selectedRestaurant.address) {
-          mappedAddress = selectedRestaurant.address
-        }
-        try {
-          console.log('[DeliveryHome][NewOrderPopup] preserving known coords/address for resend:', {
-            preservedLat: selectedRestaurant.lat,
-            preservedLng: selectedRestaurant.lng,
-            preservedAddress: selectedRestaurant.address
-          })
-        } catch (_) {}
-      }
-
-      // Compute initial drop distance if coords available immediately
-      let initialDropDistance = newOrder.deliveryDistance || newOrder.dropDistance || null
-      if (!initialDropDistance && payloadLat != null && !isNaN(payloadLat) && payloadLng != null && !isNaN(payloadLng)) {
-        const custLatNow = newOrder.customerLocation?.latitude ?? newOrder.deliveryLat
-        const custLngNow = newOrder.customerLocation?.longitude ?? newOrder.deliveryLng
-        if (custLatNow != null && custLngNow != null && !isNaN(Number(custLatNow)) && !isNaN(Number(custLngNow))) {
-          try {
-            const metersNow = calculateDistance(Number(payloadLat), Number(payloadLng), Number(custLatNow), Number(custLngNow))
-            const kmNow = metersNow / 1000
-            initialDropDistance = `${kmNow.toFixed(2)} km`
-            console.log('[DeliveryHome][DropDistance][Initial] computed from payload coords:', initialDropDistance)
-          } catch (e) {
-            // ignore
-          }
-        }
-      }
-
-      const fullOrder = newOrder.fullOrder || {}
-      const rawPay =
-        newOrder.paymentMethod ??
-        fullOrder.payment?.method ??
-        newOrder.payment?.method ??
-        ''
-      const normalizedPay =
-        rawPay === 'cod' || rawPay === 'cash' ? 'cash' : (rawPay || 'razorpay')
-
-      const restaurantData = {
-        id: newOrder.orderMongoId || newOrder.orderId,
-        orderId: newOrder.orderId,
-        name: newOrder.restaurantName,
-        address: mappedAddress,
-        lat: payloadLat,
-        lng: payloadLng,
-        distance: pickupDistance,
-        timeAway: pickupDistance !== 'Calculating...' ? calculateTimeAway(pickupDistance) : 'Calculating...',
-        dropDistance: initialDropDistance ||
-          (newOrder.assignmentInfo?.routeToDelivery?.distance
-            ? `${Number(newOrder.assignmentInfo.routeToDelivery.distance).toFixed(2)} km`
-            : 'Calculating...'),
-        pickupDistance: pickupDistance,
-        estimatedEarnings: effectiveEarnings,
-        deliveryFee,
-        amount: earnedValue > 0 ? earnedValue : (deliveryFee > 0 ? deliveryFee : 0),
-        customerName: newOrder.customerName,
-        customerAddress: newOrder.customerLocation?.address || newOrder.deliveryAddress || 'Customer address',
-        customerLat: newOrder.customerLocation?.latitude ?? newOrder.deliveryLat,
-        customerLng: newOrder.customerLocation?.longitude ?? newOrder.deliveryLng,
-        items: newOrder.items || fullOrder.items || [],
-        total: newOrder.total ?? newOrder.totalAmount ?? fullOrder.pricing?.total ?? 0,
-        paymentMethod: normalizedPay,
-        orderType: newOrder.orderType ?? fullOrder.orderType ?? null,
-        hotelReference: newOrder.hotelReference ?? fullOrder.hotelReference ?? null,
-        hotelId:
-          newOrder.hotelId ??
-          fullOrder.hotelId?._id?.toString?.() ??
-          fullOrder.hotelId?.toString?.() ??
-          (typeof fullOrder.hotelId === 'string' ? fullOrder.hotelId : null),
-        hotelName: newOrder.hotelName ?? fullOrder.hotelName ?? null,
-        hotelCashSettled: newOrder.hotelCashSettled === true || fullOrder.hotelCashSettled === true,
-        cashCollected: newOrder.cashCollected === true || fullOrder.cashCollected === true,
-      }
-
-      // Debug: new order popup mapped payload
-      try {
-        console.log('[DeliveryHome][NewOrderPopup] incoming newOrder payload:', newOrder)
-        console.log('[DeliveryHome][NewOrderPopup] mapped restaurantData:', {
-          ...restaurantData,
-          // avoid logging big arrays fully
-          items: Array.isArray(restaurantData.items) ? restaurantData.items.length : 0
-        })
-      } catch (_) {}
-
-      setSelectedRestaurant(restaurantData)
-      setShowNewOrderPopup(true)
-      setCountdownSeconds(300) // Reset countdown to 5 minutes
     })()
   }, [newOrder, calculateTimeAway, riderLocation])
 
@@ -4801,7 +4738,6 @@ export default function DeliveryHome() {
   }, [orderTaken, selectedRestaurant, newOrder, notifications?.deliveryPartnerId])
 
   // Also show new order popup when a FOREGROUND FCM push arrives.
-  // In many setups the push contains only { type: 'new_order', orderId }, so we fetch details.
   useEffect(() => {
     const handleForegroundNotification = async (event) => {
       const detail = event?.detail || {}
@@ -4818,6 +4754,32 @@ export default function DeliveryHome() {
 
       const orderId = data.orderId || data.id || data.orderMongoId
       if (!orderId) return
+
+      // SHOW A MINIMAL POPUP IMMEDIATELY if we have basic data in push
+      const pushRestName = data.restaurantName || data.title || "New Order"
+      const pushEarnings = data.estimatedEarnings || data.amount || 0
+      
+      const initialData = {
+        id: orderId,
+        orderId: orderId,
+        name: pushRestName,
+        address: "Loading details...",
+        distance: "Calculating...",
+        pickupDistance: "Calculating...",
+        timeAway: "Calculating...",
+        dropDistance: "Calculating...",
+        estimatedEarnings: pushEarnings,
+        amount: Number(pushEarnings) || 0,
+        items: [],
+        total: 0,
+        paymentMethod: 'razorpay'
+      }
+      
+      setSelectedRestaurant(initialData)
+      setShowNewOrderPopup(true)
+      setIsNewOrderPopupMinimized(false)
+      setNewOrderDragY(0)
+      setCountdownSeconds(300)
 
       try {
         const res = await deliveryAPI.getOrderDetails(orderId)
@@ -4889,22 +4851,9 @@ export default function DeliveryHome() {
           cashCollected: payload.cashCollected === true,
         }
 
-        // Debug: foreground notification mapped payload
-        try {
-          console.log('[DeliveryHome][ForegroundNotification] fetched order payload:', payload)
-          console.log('[DeliveryHome][ForegroundNotification] mapped restaurantData:', {
-            ...restaurantData,
-            items: Array.isArray(restaurantData.items) ? restaurantData.items.length : 0
-          })
-        } catch (_) {}
-
         setSelectedRestaurant(restaurantData)
-        setShowNewOrderPopup(true)
-        setIsNewOrderPopupMinimized(false)
-        setNewOrderDragY(0)
-        setCountdownSeconds(300)
       } catch (e) {
-        // ignore - toast is already shown by useForegroundNotifications if enabled
+        // ignore - minimal popup is already shown
       }
     }
 

@@ -109,11 +109,10 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     let coords = null;
 
     // Priority 1: restaurantLocation.coordinates (already extracted in transformed order)
-    if (order?.restaurantLocation?.coordinates &&
-      Array.isArray(order.restaurantLocation.coordinates) &&
-      order.restaurantLocation.coordinates.length >= 2) {
-      coords = order.restaurantLocation.coordinates;
-      console.log('✅ Using restaurantLocation.coordinates:', coords);
+    const resLocCoords = order?.restaurantLocation?.coordinates || order?.restaurantLocation?.location?.coordinates;
+    if (resLocCoords && Array.isArray(resLocCoords) && resLocCoords.length >= 2) {
+      coords = resLocCoords;
+      console.log('✅ Using restaurantLocation coordinates:', coords);
     }
     // Priority 2: restaurantId.location.coordinates (if restaurantId is populated)
     else if (order?.restaurantId?.location?.coordinates &&
@@ -138,7 +137,7 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
       const candidateGeoJSON = { lat: a1, lng: a0 };
       const candidateAlt = { lat: a0, lng: a1 };
 
-      const customerCoordsArray = order?.address?.coordinates;
+      const customerCoordsArray = order?.address?.coordinates || order?.address?.location?.coordinates;
       const hasRealCustomerCoords =
         Array.isArray(customerCoordsArray) &&
         customerCoordsArray.length >= 2 &&
@@ -188,11 +187,16 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
   };
 
   const getCustomerCoords = () => {
-    if (order?.address?.coordinates) {
-      return {
-        lat: order.address.coordinates[1],
-        lng: order.address.coordinates[0]
-      };
+    // Try multiple sources for customer coordinates
+    const coords = order?.address?.coordinates || order?.address?.location?.coordinates;
+    
+    if (coords && Array.isArray(coords) && coords.length >= 2) {
+      const lat = Number(coords[1]);
+      const lng = Number(coords[0]);
+      
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return { lat, lng };
+      }
     }
     return null;
   };
@@ -258,11 +262,14 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
     ) ||
     String(order?.status || "").toLowerCase() === "out_for_delivery";
 
-  // Delivery boy data
-  const deliveryBoyData = order?.deliveryPartner ? {
-    name: order.deliveryPartner.name || 'Delivery Partner',
-    avatar: order.deliveryPartner.avatar || null
-  } : null;
+  // Delivery boy data - memoized to keep identity stable
+  const deliveryBoyData = useMemo(() => {
+    if (!order?.deliveryPartner) return null;
+    return {
+      name: order.deliveryPartner.name || 'Delivery Partner',
+      avatar: order.deliveryPartner.avatar || null
+    };
+  }, [order?.deliveryPartner?.name, order?.deliveryPartner?.avatar]);
 
   // IMPORTANT: keep tracking ids array stable across re-renders.
   // Otherwise `DeliveryTrackingMap`'s socket effect will reconnect repeatedly and cause flicker over time.
@@ -274,9 +281,8 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
   return (
     <motion.div
       className="relative h-64 w-full"
-      initial={{ opacity: 0 }}
+      initial={{ opacity: 1 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
     >
       {/* Delivery partner banner (replaces generic high-demand style banner) */}
       {hasAcceptedByDelivery && (
@@ -300,10 +306,6 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
         order={order}
       />
 
-      {/* Lightweight loading overlay (keeps map mounted, prevents "blank" experience) */}
-      {!customerCoords && (
-        <div className="absolute inset-0 bg-gradient-to-b from-gray-100 to-gray-200 animate-pulse" />
-      )}
     </motion.div>
   );
 }
@@ -345,9 +347,9 @@ export default function OrderTracking() {
   const { getOrderById } = useOrders()
   const { profile, getDefaultAddress } = useProfile()
 
-  // State for order data
-  const [order, setOrder] = useState(null)
-  const [loading, setLoading] = useState(true)
+  // State for order data - initialize from context to avoid loading flicker
+  const [order, setOrder] = useState(() => getOrderById(orderId) || null)
+  const [loading, setLoading] = useState(!order)
   const [error, setError] = useState(null)
   const [restaurantPhone, setRestaurantPhone] = useState(null)
   
@@ -946,15 +948,21 @@ export default function OrderTracking() {
             }
 
             // Calculate remaining time
-            const remainingTime = Math.max(0, initialETA - elapsedMinutes)
+            let remainingTime = Math.max(0, initialETA - elapsedMinutes)
             
-            console.log('⏱️ ETA Calculation:', {
-              initialETA,
-              elapsedMinutes,
-              remainingTime,
-              orderStatus: apiOrder.status,
-              eta: apiOrder.eta
-            })
+            // If remaining time is 0 or negative but order is still active, show 1 minute.
+            // Do not jump back to initialETA.
+            if (remainingTime <= 0) {
+              const currentStatus = String(apiOrder.status || "").toLowerCase();
+              const terminal = new Set(['delivered', 'completed', 'cancelled', 'restaurant_cancelled']);
+              if (!terminal.has(currentStatus)) {
+                remainingTime = 1;
+              }
+            }
+            
+            if (remainingTime < 1 && !['delivered', 'completed', 'cancelled'].includes(String(apiOrder.status).toLowerCase())) {
+              remainingTime = 1;
+            }
 
             return remainingTime
           }
@@ -1685,7 +1693,7 @@ export default function OrderTracking() {
       {true && (
         <motion.div
           className={`${currentStatus.color} text-white sticky top-0 z-40`}
-          initial={{ opacity: 0 }}
+          initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
         >
            {/* Navigation bar */}

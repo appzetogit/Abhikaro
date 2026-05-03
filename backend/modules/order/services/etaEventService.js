@@ -340,6 +340,41 @@ class ETAEventService {
       throw error;
     }
   }
+  /**
+   * Handle food ready event (restaurant marked ready)
+   * @param {String} orderId - Order ID
+   */
+  async handleFoodReady(orderId) {
+    try {
+      const order = await Order.findById(orderId);
+      if (!order) {
+        throw new Error('Order not found');
+      }
+
+      const readyAt = new Date();
+
+      // Create event
+      const event = await OrderEvent.create({
+        orderId: order._id,
+        eventType: 'FOOD_READY',
+        data: {
+          readyAt
+        },
+        timestamp: readyAt
+      });
+
+      // Recalculate ETA - after food is ready, only delivery time remains
+      const newETA = await etaCalculationService.recalculateAfterPickup(order);
+
+      // Emit WebSocket update
+      await etaWebSocketService.emitETAUpdate(orderId, newETA);
+
+      return { event, newETA };
+    } catch (error) {
+      console.error('Error handling food ready event:', error);
+      throw error;
+    }
+  }
 }
 
 export default new ETAEventService();
