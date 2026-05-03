@@ -459,11 +459,11 @@ export const useDeliveryNotifications = () => {
         !!orderData?.restaurantAddress ||
         !!orderData?.deliveryDistance;
 
-      // Show immediately but DO NOT trust socket `estimatedEarnings` (can be stale/static like ₹40).
-      // We'll fetch canonical details from API and then populate earnings.
+      // Show immediately. We still perform a background fetch to ensure
+      // the popup has canonical details (restaurant coords, phone, etc.),
+      // but we keep the socket earnings as a temporary value if available.
       setNewOrder({
         ...orderData,
-        estimatedEarnings: null,
         _clientNeedsNormalization: true,
       });
 
@@ -522,10 +522,9 @@ export const useDeliveryNotifications = () => {
         !!orderData?.restaurantAddress ||
         !!orderData?.deliveryDistance;
 
-      // Treat it the same as new_order: show immediately, but clear untrusted socket earnings.
+      // Treat it the same as new_order: show immediately.
       setNewOrder({
         ...orderData,
-        estimatedEarnings: null,
         _clientNeedsNormalization: true,
       });
 

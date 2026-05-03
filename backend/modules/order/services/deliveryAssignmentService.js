@@ -477,6 +477,15 @@ export async function assignOrderToDeliveryBoy(order, restaurantLat, restaurantL
     
     await order.save();
 
+    // Recalculate order settlement to include delivery partner earnings
+    try {
+      const { calculateOrderSettlement } = await import('./orderSettlementService.js');
+      await calculateOrderSettlement(order._id);
+      console.log(`✅ Recalculated order settlement after assignment for order ${order.orderId}`);
+    } catch (settlementError) {
+      console.warn(`⚠️ Failed to recalculate settlement for order ${order.orderId}:`, settlementError.message);
+    }
+
     // Save order tracking to Firebase Realtime Database (with polyline)
     try {
       const { saveOrderTrackingToFirebase } = await import('./firebaseTrackingService.js');

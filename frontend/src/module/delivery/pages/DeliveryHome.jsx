@@ -12616,16 +12616,12 @@ export default function DeliveryHome() {
                       if (orderEarningsBreakdown?.basePayout != null) {
                         return Number(orderEarningsBreakdown.basePayout).toFixed(2)
                       }
-                      // Fallback: assume small fixed base (e.g. previous legacy ₹5)
-                      const earnings = orderEarnings > 0
-                        ? orderEarnings
-                        : (() => {
-                            const est = selectedRestaurant?.amount || selectedRestaurant?.estimatedEarnings || 0
-                            if (typeof est === 'object' && est.totalEarning) return est.totalEarning
-                            if (typeof est === 'number') return est
-                            return 0
-                          })()
-                      return Math.max(0, earnings - 5).toFixed(2)
+                      
+                      // Calculate from total if breakdown missing
+                      const total = orderEarnings > 0 ? orderEarnings : 0;
+                      // With new rules, if total is >= 20, base is likely 20
+                      if (total >= 20) return "20.00";
+                      return total.toFixed(2);
                     })()}</span>
                   </div>
 
@@ -12635,8 +12631,9 @@ export default function DeliveryHome() {
                       if (orderEarningsBreakdown?.distanceCommission != null) {
                         return Number(orderEarningsBreakdown.distanceCommission).toFixed(2)
                       }
-                      // Legacy fallback: fixed 5 as earlier UI showed
-                      return "5.00"
+                      // Calculate from total if breakdown missing
+                      const total = orderEarnings > 0 ? orderEarnings : 0;
+                      return Math.max(0, total - 20).toFixed(2);
                     })()}</span>
                   </div>
 

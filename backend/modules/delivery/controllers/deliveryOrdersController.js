@@ -14,6 +14,7 @@ import RestaurantWallet from "../../restaurant/models/RestaurantWallet.js";
 import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
 import AdminCommission from "../../admin/models/AdminCommission.js";
 import { calculateRoute } from "../../order/services/routeCalculationService.js";
+import { calculateHaversineDistance, calculateEstimatedEarnings } from "../utils/earningsCalculator.js";
 import mongoose from "mongoose";
 import winston from "winston";
 
@@ -277,10 +278,19 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
       }
     }
 
-    // Delivery/customer coords
     const deliveryCoords = Array.isArray(order.address?.location?.coordinates)
       ? order.address.location.coordinates
       : null;
+
+    // Calculate estimated earnings if missing (e.g. for unassigned orders being viewed in notification popup)
+    let estimatedEarnings = order.estimatedEarnings;
+    if (!estimatedEarnings && effectiveRestaurantCoords && deliveryCoords) {
+      const distance = calculateHaversineDistance(
+        effectiveRestaurantCoords[1], effectiveRestaurantCoords[0],
+        deliveryCoords[1], deliveryCoords[0]
+      );
+      estimatedEarnings = await calculateEstimatedEarnings(distance);
+    }
 
     const orderWithPayment = {
       ...order,
@@ -290,6 +300,9 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
       restaurantLng: effectiveRestaurantCoords ? effectiveRestaurantCoords[0] : null,
       deliveryLat: deliveryCoords ? deliveryCoords[1] : null,
       deliveryLng: deliveryCoords ? deliveryCoords[0] : null,
+      estimatedEarnings: estimatedEarnings || null,
+      pickupDistance: order.pickupDistance || "Calculating...",
+      deliveryDistance: order.deliveryDistance || "Calculating..."
     };
 
     return successResponse(res, 200, "Order details retrieved successfully", {
@@ -613,6 +626,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           assignedAt: new Date(),
           assignedBy: "delivery_accept",
           acceptedFromNotification: true,
+          // Distance will be updated later in the function after haversine calculation
         };
         await orderDoc.save();
         console.log(
@@ -1186,85 +1200,54 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       const [customerLng, customerLat] =
         updatedOrder.address.location.coordinates;
 
-      // Calculate distance using Haversine formula
-      const R = 6371; // Earth radius in km
-      const dLat = ((customerLat - restaurantLat) * Math.PI) / 180;
-      const dLng = ((customerLng - restaurantLng) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((restaurantLat * Math.PI) / 180) *
-          Math.cos((customerLat * Math.PI) / 180) *
-          Math.sin(dLng / 2) *
-          Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      deliveryDistance = R * c;
+      deliveryDistance = calculateHaversineDistance(restaurantLat, restaurantLng, customerLat, customerLng);
     }
 
     // Calculate estimated earnings based on delivery distance
-    let estimatedEarnings = null;
+    let estimatedEarningsData = null;
     try {
-      const DeliveryBoyCommission = (
-        await import("../../admin/models/DeliveryBoyCommission.js")
-      ).default;
-      const commissionResult =
-        await DeliveryBoyCommission.calculateCommission(deliveryDistance);
-
-      // Validate commission result
-      if (
-        !commissionResult ||
-        !commissionResult.breakdown ||
-        typeof commissionResult.commission !== "number" ||
-        isNaN(commissionResult.commission)
-      ) {
-        throw new Error("Invalid commission result structure");
-      }
-
-      const breakdown = commissionResult.breakdown || {};
-      const rule = commissionResult.rule || { minDistance: 4 };
-
-      estimatedEarnings = {
-        basePayout: Math.round((breakdown.basePayout || 10) * 100) / 100,
-        distance: Math.round(deliveryDistance * 100) / 100,
-        commissionPerKm:
-          Math.round((breakdown.commissionPerKm || 5) * 100) / 100,
-        distanceCommission:
-          Math.round((breakdown.distanceCommission || 0) * 100) / 100,
-        totalEarning: Math.round(commissionResult.commission * 100) / 100,
-        breakdown: {
-          basePayout: breakdown.basePayout || 10,
-          distance: deliveryDistance,
-          commissionPerKm: breakdown.commissionPerKm || 5,
-          distanceCommission: breakdown.distanceCommission || 0,
-          minDistance: rule.minDistance || 4,
-        },
-      };
+      estimatedEarningsData = await calculateEstimatedEarnings(deliveryDistance);
 
       console.log(
-        `💰 Estimated earnings calculated: ₹${estimatedEarnings.totalEarning} for ${deliveryDistance.toFixed(2)} km`,
+        `💰 Estimated earnings calculated: ₹${estimatedEarningsData.totalEarning} for ${deliveryDistance.toFixed(2)} km`,
       );
+      
+      // Update order with distance in assignmentInfo and calculated earnings
+      try {
+        await Order.findByIdAndUpdate(updatedOrder._id, {
+          $set: {
+            "assignmentInfo.distance": deliveryDistance,
+            estimatedEarnings: estimatedEarningsData
+          }
+        });
+        console.log(`✅ Updated assignmentInfo distance and estimatedEarnings for order ${updatedOrder.orderId}`);
+        
+        // Refresh Order Settlement to include delivery partner earnings
+        try {
+          const { calculateOrderSettlement } = await import("../../order/services/orderSettlementService.js");
+          await calculateOrderSettlement(updatedOrder._id);
+          console.log(`✅ Recalculated order settlement for order ${updatedOrder.orderId}`);
+        } catch (settlementError) {
+          console.warn("⚠️ Failed to recalculate settlement during acceptOrder:", settlementError.message);
+        }
+      } catch (saveError) {
+        console.warn("⚠️ Failed to save distance/earnings to order:", saveError.message);
+      }
     } catch (earningsError) {
       console.error("❌ Error calculating estimated earnings:", earningsError);
-      console.error("❌ Earnings error stack:", earningsError.stack);
       // Fallback to default
-      estimatedEarnings = {
-        basePayout: 10,
+      estimatedEarningsData = {
+        basePayout: 20, // Match new rules
         distance: Math.round(deliveryDistance * 100) / 100,
-        commissionPerKm: 5,
-        distanceCommission:
-          deliveryDistance > 4
-            ? Math.round(deliveryDistance * 5 * 100) / 100
-            : 0,
-        totalEarning:
-          10 +
-          (deliveryDistance > 4
-            ? Math.round(deliveryDistance * 5 * 100) / 100
-            : 0),
+        commissionPerKm: 0,
+        distanceCommission: 0,
+        totalEarning: 20,
         breakdown: {
-          basePayout: 10,
+          basePayout: 20,
           distance: deliveryDistance,
-          commissionPerKm: 5,
-          distanceCommission: deliveryDistance > 4 ? deliveryDistance * 5 : 0,
-          minDistance: 4,
+          commissionPerKm: 0,
+          distanceCommission: 0,
+          minDistance: 0,
         },
       };
     }
@@ -1282,7 +1265,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
         duration: routeData.duration,
         method: routeData.method,
       },
-      estimatedEarnings: estimatedEarnings,
+      estimatedEarnings: estimatedEarningsData,
       deliveryDistance: deliveryDistance,
     });
   } catch (error) {
@@ -2403,6 +2386,15 @@ export const completeDelivery = asyncHandler(async (req, res) => {
 
     // Release escrow and distribute funds (this handles all wallet credits)
     try {
+      // First, ensure settlement is up-to-date with final earnings and distance
+      try {
+        const { calculateOrderSettlement } = await import("../../order/services/orderSettlementService.js");
+        await calculateOrderSettlement(orderMongoId);
+        console.log(`✅ Refreshed order settlement before escrow release for ${orderIdForLog}`);
+      } catch (settlementRefreshError) {
+        console.warn(`⚠️ Could not refresh settlement: ${settlementRefreshError.message}`);
+      }
+
       const { releaseEscrow } =
         await import("../../order/services/escrowWalletService.js");
       await releaseEscrow(orderMongoId);

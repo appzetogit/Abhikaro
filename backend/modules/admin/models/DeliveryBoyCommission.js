@@ -177,10 +177,10 @@ deliveryBoyCommissionSchema.statics.calculateCommission = async function(distanc
   // - Distance = 6 km: commission = ₹10 + (6 × ₹5) = ₹40
   // - Distance = 2 km: commission = ₹10 (base only, 2 < 4)
   if (distance > applicableRule.minDistance) {
-    // Apply per km commission for the entire distance if distance > minDistance
-    // Example: If minDistance = 4, commissionPerKm = 5, distance = 5
-    // Then: 5 × 5 = ₹25 additional, total = ₹10 + ₹25 = ₹35
-    distanceCommission = distance * applicableRule.commissionPerKm;
+    // Apply per km commission for the distance EXCEEDING minDistance
+    // Example: If minDistance = 5, commissionPerKm = 7, distance = 6
+    // Then: (6 - 5) × 7 = ₹7 additional, total = ₹20 + ₹7 = ₹27
+    distanceCommission = (distance - applicableRule.minDistance) * applicableRule.commissionPerKm;
   }
   // If distance <= minDistance, only base payout is given (distanceCommission = 0)
   
@@ -192,7 +192,7 @@ deliveryBoyCommissionSchema.statics.calculateCommission = async function(distanc
     maxDistance: applicableRule.maxDistance,
     basePayout: basePayout,
     commissionPerKm: applicableRule.commissionPerKm,
-    perKmApplied: distance >= applicableRule.minDistance,
+    perKmApplied: distance > applicableRule.minDistance,
     distanceCommission: distanceCommission,
     totalCommission: commission
   });

@@ -58,6 +58,7 @@ import CategoryCarousel from "../components/CategoryCarousel"
 import { RestaurantImageCarousel } from "../components/RestaurantImageCarousel"
 
 const RATING_POPUP_STORAGE_KEY = "ratedOrdersForFeedback"
+const GLOBAL_RATING_DISMISSED_KEY = "global_rating_popup_dismissed"
 
 export default function Home() {
   const navigate = useNavigate()
@@ -288,6 +289,8 @@ export default function Home() {
     // If user dismisses (X), don't show again for the same order.
     // They can still rate later from Orders page if needed.
     try {
+      localStorage.setItem(GLOBAL_RATING_DISMISSED_KEY, "true")
+      
       const ids = getAllOrderIdsForDedupe(ratingModal?.order)
       if (ids.length) {
         setShownRatingForOrders((prev) => new Set([...prev, ...ids]))
@@ -353,6 +356,13 @@ export default function Home() {
   // Poll user orders and show rating modal as soon as an unrated delivered order is detected.
   useEffect(() => {
     if (ratingModal.open) return
+    
+    // Global suppression check
+    try {
+      if (localStorage.getItem(GLOBAL_RATING_DISMISSED_KEY) === "true") return
+    } catch {
+      // ignore
+    }
 
     const getDeliveredAtValue = (order) => {
       // Support multiple backend field names (some UI components use these fallbacks)

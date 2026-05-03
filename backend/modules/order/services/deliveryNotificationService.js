@@ -1,7 +1,9 @@
 import Order from '../models/Order.js';
 import Delivery from '../../delivery/models/Delivery.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
+import { calculateHaversineDistance, calculateEstimatedEarnings as sharedCalculateEstimatedEarnings } from '../../delivery/utils/earningsCalculator.js';
 import mongoose from 'mongoose';
+import winston from 'winston';
 
 // Dynamic import to avoid circular dependency
 let getIO = null;
@@ -1062,67 +1064,6 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
  * Uses DeliveryBoyCommission model to calculate: Base Payout + (Distance × Per Km) if distance > minDistance
  */
 async function calculateEstimatedEarnings(deliveryDistance) {
-  try {
-    const DeliveryBoyCommission = (await import('../../admin/models/DeliveryBoyCommission.js')).default;
-    
-    // Always use calculateCommission method which handles all cases including distance = 0
-    // It will return base payout even if distance is 0
-    const deliveryDistanceForCalc = deliveryDistance || 0;
-    const commissionResult = await DeliveryBoyCommission.calculateCommission(deliveryDistanceForCalc);
-    
-    // If distance is 0 or not provided, still return base payout
-    if (!deliveryDistance || deliveryDistance <= 0) {
-      console.log(`💰 Distance is 0 or missing, returning base payout only: ₹${commissionResult.breakdown.basePayout}`);
-      return {
-        basePayout: commissionResult.breakdown.basePayout,
-        distance: 0,
-        commissionPerKm: commissionResult.breakdown.commissionPerKm,
-        distanceCommission: 0,
-        totalEarning: commissionResult.breakdown.basePayout, // Base payout only when distance is 0
-        breakdown: `Base payout: ₹${commissionResult.breakdown.basePayout}`,
-        minDistance: commissionResult.rule.minDistance,
-        maxDistance: commissionResult.rule.maxDistance
-      };
-    }
-
-    // Use the already calculated commissionResult for distance > 0
-    
-    const basePayout = commissionResult.breakdown.basePayout;
-    const distance = deliveryDistance;
-    const commissionPerKm = commissionResult.breakdown.commissionPerKm;
-    const distanceCommission = commissionResult.breakdown.distanceCommission;
-    const totalEarning = commissionResult.commission;
-
-    // Create breakdown text
-    let breakdown = `Base payout: ₹${basePayout}`;
-    if (distance > commissionResult.rule.minDistance) {
-      breakdown += ` + Distance (${distance.toFixed(1)} km × ₹${commissionPerKm}/km) = ₹${distanceCommission.toFixed(0)}`;
-    } else {
-      breakdown += ` (Distance ${distance.toFixed(1)} km ≤ ${commissionResult.rule.minDistance} km, per km not applicable)`;
-    }
-    breakdown += ` = ₹${totalEarning.toFixed(0)}`;
-
-    return {
-      basePayout: Math.round(basePayout * 100) / 100,
-      distance: Math.round(distance * 100) / 100,
-      commissionPerKm: Math.round(commissionPerKm * 100) / 100,
-      distanceCommission: Math.round(distanceCommission * 100) / 100,
-      totalEarning: Math.round(totalEarning * 100) / 100,
-      breakdown: breakdown,
-      minDistance: commissionResult.rule.minDistance,
-      maxDistance: commissionResult.rule.maxDistance
-    };
-  } catch (error) {
-    console.error('Error calculating estimated earnings:', error);
-    // Fallback to default calculation
-    return {
-      basePayout: 10,
-      distance: deliveryDistance || 0,
-      commissionPerKm: 5,
-      distanceCommission: deliveryDistance && deliveryDistance > 4 ? deliveryDistance * 5 : 0,
-      totalEarning: 10 + (deliveryDistance && deliveryDistance > 4 ? deliveryDistance * 5 : 0),
-      breakdown: 'Default calculation'
-    };
-  }
+  return await sharedCalculateEstimatedEarnings(deliveryDistance);
 }
 

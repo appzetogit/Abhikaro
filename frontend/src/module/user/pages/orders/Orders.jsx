@@ -7,6 +7,7 @@ import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
 import { API_BASE_URL } from "@/lib/api/config"
 
 const RATING_POPUP_STORAGE_KEY = "ratedOrdersForFeedback"
+const GLOBAL_RATING_DISMISSED_KEY = "global_rating_popup_dismissed"
 
 const pickUrl = (...candidates) => {
   for (const c of candidates) {
@@ -138,6 +139,13 @@ export default function Orders() {
   useEffect(() => {
     if (orders.length === 0 || ratingModal.open) {
       return
+    }
+
+    // Global suppression check
+    try {
+      if (localStorage.getItem(GLOBAL_RATING_DISMISSED_KEY) === "true") return
+    } catch {
+      // ignore
     }
 
     console.log('🔍 Checking for delivered orders to show rating popup...', {
@@ -558,6 +566,8 @@ Order again from this restaurant in the ${companyName} app.`
     // If user closes the popup, don't auto-show it again for the same order.
     // (They can still rate later from order actions if needed.)
     try {
+      localStorage.setItem(GLOBAL_RATING_DISMISSED_KEY, "true")
+      
       const o = ratingModal?.order
       const ids = getAllOrderIdsForDedupe(o)
       if (ids.length) {

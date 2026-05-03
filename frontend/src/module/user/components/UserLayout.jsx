@@ -1,7 +1,6 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useEffect, useState, createContext, useContext, lazy, Suspense, useMemo, useCallback } from "react"
 import { ProfileProvider } from "../context/ProfileContext"
-import LocationPrompt from "./LocationPrompt"
 import { CartProvider } from "../context/CartContext"
 import { OrdersProvider } from "../context/OrdersContext"
 // Lazy load overlays to reduce initial bundle size
@@ -333,7 +332,6 @@ export default function UserLayout() {
               <LocationSelectorProvider>
                 {/* Desktop navbar (hidden on pages where showBottomNav is false) */}
                 {showBottomNav && <DesktopNavbar />}
-                <LocationPrompt />
                 <ReplaceCartDialog />
                 <main>
                   <Outlet />
