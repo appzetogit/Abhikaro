@@ -19,20 +19,20 @@ export function useFirebaseLocationUpdate(deliveryBoyId, lat, lng, orderId = nul
       return;
     }
 
-    // Throttle updates: only update if location changed significantly or 2 seconds passed
+    // Throttle updates: only update if location changed significantly or 5 seconds passed
     const shouldUpdate = () => {
       const now = Date.now();
       const lastUpdate = lastUpdateRef.current;
       
-      // Update if 2 seconds passed
-      if (now - lastUpdate.timestamp > 2000) {
+      // Update if 5 seconds passed
+      if (now - lastUpdate.timestamp > 5000) {
         return true;
       }
 
-      // Update if location changed significantly (> 3 meters)
+      // Update if location changed significantly (> 10 meters)
       if (lastUpdate.lat !== null && lastUpdate.lng !== null) {
         const distance = calculateDistance(lastUpdate.lat, lastUpdate.lng, lat, lng);
-        if (distance > 0.003) { // ~3 meters
+        if (distance > 0.01) { // ~10 meters
           return true;
         }
       }
@@ -50,8 +50,8 @@ export function useFirebaseLocationUpdate(deliveryBoyId, lat, lng, orderId = nul
     // Update immediately
     updateLocation();
 
-    // Set up interval to update every 2 seconds
-    intervalRef.current = setInterval(updateLocation, 2000);
+    // Set up interval to update every 5 seconds
+    intervalRef.current = setInterval(updateLocation, 5000);
 
     return () => {
       if (intervalRef.current) {

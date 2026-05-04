@@ -1026,7 +1026,7 @@ const DeliveryTrackingMap = ({
             socketRef.current.emit('request-current-location', id);
           })
         }
-      }, 4000); // Light polling until push starts (then it becomes a no-op)
+      }, 8000); // Light polling until push starts (then it becomes a no-op)
 
       // Store interval ID for cleanup
       socketRef.current._locationRequestInterval = locationRequestInterval;
@@ -1103,7 +1103,7 @@ const DeliveryTrackingMap = ({
           // Priority 1: Use strict polyline controller (marker always on polyline center)
           if (strictPolylineControllerRef.current && routePolylinePointsRef.current) {
             // GPS is used only to calculate progress, marker position comes from polyline
-            strictPolylineControllerRef.current.updateFromGPS({ lat: norm.lat, lng: norm.lng }, 1800);
+            strictPolylineControllerRef.current.updateFromGPS({ lat: norm.lat, lng: norm.lng }, 900);
             console.log('🛵 Strict polyline tracking: Marker on polyline center');
           }
           // Priority 2: Use backend progress if available

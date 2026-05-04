@@ -2168,8 +2168,8 @@ export default function DeliveryHome() {
             const lastSentTime = window.lastLocationSentTime || 0;
             const timeSinceLastSend = now - lastSentTime;
 
-            // Send location every 2 seconds even if not smoothed
-            if (timeSinceLastSend >= 2000) {
+            // Send location every 5 seconds even if not smoothed
+            if (timeSinceLastSend >= 5000) {
               if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
                 deliveryAPI.updateLocation(lat, lng, true)
                   .then(() => {
@@ -2276,10 +2276,10 @@ export default function DeliveryHome() {
           // Get last sent location for distance check
           const lastSentLocation = window.lastSentLocation || null;
 
-          // Send location every 2 seconds OR if location changed significantly (>3m)
-          const shouldSend = timeSinceLastSend >= 2000 ||
+          // Send location every 5 seconds OR if location changed significantly (>50m)
+          const shouldSend = timeSinceLastSend >= 5000 ||
             (lastSentLocation &&
-              calculateDistance(lastSentLocation[0], lastSentLocation[1], smoothedLat, smoothedLng) > 0.003);
+              calculateDistance(lastSentLocation[0], lastSentLocation[1], smoothedLat, smoothedLng) > 0.05);
 
           if (shouldSend) {
             // Final validation before sending to backend
