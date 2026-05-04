@@ -54,6 +54,28 @@ const DeliveryTrackingMap = ({
   const [mapLoadTimeoutError, setMapLoadTimeoutError] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [deliveryBoyLocation, setDeliveryBoyLocation] = useState(null);
+  
+  // Initialize delivery boy location from order data if available
+  useEffect(() => {
+    if (order?.deliveryPartnerId?.availability && !deliveryBoyLocation) {
+      const avail = order.deliveryPartnerId.availability;
+      const lat = avail.latitude || (avail.currentLocation?.coordinates && avail.currentLocation.coordinates[1]);
+      const lng = avail.longitude || (avail.currentLocation?.coordinates && avail.currentLocation.coordinates[0]);
+      
+      if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+        console.log("📍 Initializing bike location from order data:", { lat, lng });
+        const initialLoc = { 
+          lat, 
+          lng, 
+          heading: avail.heading || 0,
+          timestamp: Date.now()
+        };
+        setDeliveryBoyLocation(initialLoc);
+        setCurrentLocation(initialLoc);
+      }
+    }
+  }, [order, deliveryBoyLocation]);
+
   // True only after we receive rider "push" updates (location-receive-<orderId>).
   // This prevents showing stale coordinates from request-current-location.
   const hasLivePushRef = useRef(false);
@@ -1039,6 +1061,7 @@ const DeliveryTrackingMap = ({
         setFollowRiderUI(true);
       }
       effectiveTrackingIds.forEach((id) => {
+        console.log(`📡 Joining tracking room: order:${id}`);
         socketRef.current.emit('join-order-tracking', id);
         socketRef.current.emit('request-current-location', id);
       })
@@ -1223,8 +1246,15 @@ const DeliveryTrackingMap = ({
     }
 
     effectiveTrackingIds.forEach((id) => {
+      console.log(`📡 Attaching listeners for tracking ID: ${id}`);
       socketRef.current.on(`location-receive-${id}`, handleLocationReceive);
       socketRef.current.on(`current-location-${id}`, handleCurrentLocation);
+      
+      // Ensure rooms are joined and location requested if socket is already connected
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit('join-order-tracking', id);
+        socketRef.current.emit('request-current-location', id);
+      }
     })
 
     // Listen for route initialization from backend

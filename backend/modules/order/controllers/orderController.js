@@ -1791,7 +1791,7 @@ export const getOrderDetails = async (req, res) => {
         _id: id,
         userId,
       })
-        .populate("deliveryPartnerId", "name email phone")
+        .populate("deliveryPartnerId", "name email phone availability")
         .populate("userId", "name fullName phone email")
         .lean();
     }
@@ -1802,7 +1802,7 @@ export const getOrderDetails = async (req, res) => {
         orderId: id,
         userId,
       })
-        .populate("deliveryPartnerId", "name email phone")
+        .populate("deliveryPartnerId", "name email phone availability")
         .populate("userId", "name fullName phone email")
         .lean();
     }

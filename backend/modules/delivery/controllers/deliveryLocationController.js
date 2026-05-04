@@ -288,9 +288,11 @@ export const updateLocation = asyncHandler(async (req, res) => {
 
           // Broadcast location to each order's tracking room with bearing - use final snapped coordinates
           activeOrders.forEach(order => {
-            const orderId = order.orderId || order._id.toString();
+            const mongoId = order._id.toString();
+            const orderIdStr = order.orderId ? String(order.orderId) : mongoId;
+            
             const locationData = {
-              orderId: orderId,
+              orderId: orderIdStr,
               lat: finalLat,
               lng: finalLng,
               bearing: finalHeading,
@@ -298,31 +300,25 @@ export const updateLocation = asyncHandler(async (req, res) => {
               timestamp: Date.now()
             };
 
-            // Send to order tracking room (customer tracking this order)
-            io.to(`order:${order._id.toString()}`).emit(`location-receive-${orderId}`, locationData);
+            // Emit to both mongoId and string orderId for maximum compatibility
+            const targetIds = new Set([mongoId, orderIdStr]);
             
-            console.log(`📍 Location broadcasted to order room ${orderId} for delivery partner ${delivery._id}:`, {
-              lat: finalLat,
-              lng: finalLng,
-              bearing: finalHeading || 'N/A',
-              snapped: locationSnapped || false
-            });
-          });
-
-          // Also emit via socket 'update-location' event for backward compatibility
-          if (activeOrders.length > 0) {
-            activeOrders.forEach(order => {
-              const orderId = order.orderId || order._id.toString();
-              io.to(`order:${order._id.toString()}`).emit('update-location', {
-                orderId: orderId,
-                lat: finalLat,
-                lng: finalLng,
-                bearing: finalHeading,
-                heading: finalHeading, // Alias for compatibility
-                timestamp: Date.now()
+            targetIds.forEach(id => {
+              // Send to order tracking room (customer tracking this order)
+              io.to(`order:${id}`).emit(`location-receive-${id}`, {
+                ...locationData,
+                orderId: id // Ensure payload matches event ID
+              });
+              
+              // Also emit 'update-location' for backward compatibility
+              io.to(`order:${id}`).emit('update-location', {
+                ...locationData,
+                orderId: id
               });
             });
-          }
+            
+            console.log(`📍 Location broadcasted to order rooms ${Array.from(targetIds).join(', ')} for delivery partner ${delivery._id}`);
+          });
 
           // Emit to delivery namespace for delivery boy's own app - use final snapped coordinates
           try {
