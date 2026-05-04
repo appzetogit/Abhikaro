@@ -77,7 +77,7 @@ export function updateMarkerIconRotation(marker, bearing) {
       // - caching rotated dataURLs per marker instance
       // - reusing the base image element per marker
 
-      const step = 5; // degrees (lower = smoother, higher = less churn)
+      const step = 10; // degrees (increased to 10 for less churn)
       const rounded = Math.round((((bearing % 360) + 360) % 360) / step) * step;
 
       // Per-marker cache
@@ -107,8 +107,8 @@ export function updateMarkerIconRotation(marker, bearing) {
         marker.setIcon({
           ...currentIcon,
           url: cachedUrl,
-          scaledSize: currentIcon.scaledSize || new window.google.maps.Size(60, 60),
-          anchor: currentIcon.anchor || new window.google.maps.Point(30, 30),
+          scaledSize: currentIcon.scaledSize || new window.google.maps.Size(50, 50),
+          anchor: currentIcon.anchor || new window.google.maps.Point(25, 25),
         });
         return;
       }
@@ -118,8 +118,8 @@ export function updateMarkerIconRotation(marker, bearing) {
       cache.pending = true;
 
       const canvas = document.createElement('canvas');
-      canvas.width = 60;
-      canvas.height = 60;
+      canvas.width = 100; // Larger canvas for better quality
+      canvas.height = 100;
       const ctx = canvas.getContext('2d');
 
       const img = cache.img || new Image();
@@ -128,11 +128,11 @@ export function updateMarkerIconRotation(marker, bearing) {
 
       img.onload = () => {
         cache.img = img;
-        ctx.clearRect(0, 0, 60, 60);
+        ctx.clearRect(0, 0, 100, 100);
         ctx.save();
-        ctx.translate(30, 30);
+        ctx.translate(50, 50);
         ctx.rotate((rounded * Math.PI) / 180);
-        ctx.drawImage(img, -30, -30, 60, 60);
+        ctx.drawImage(img, -50, -50, 100, 100);
         ctx.restore();
 
         const url = canvas.toDataURL();
@@ -142,8 +142,8 @@ export function updateMarkerIconRotation(marker, bearing) {
         marker.setIcon({
           ...currentIcon,
           url,
-          scaledSize: currentIcon.scaledSize || new window.google.maps.Size(60, 60),
-          anchor: currentIcon.anchor || new window.google.maps.Point(30, 30),
+          scaledSize: currentIcon.scaledSize || new window.google.maps.Size(50, 50),
+          anchor: currentIcon.anchor || new window.google.maps.Point(25, 25),
         });
       };
 

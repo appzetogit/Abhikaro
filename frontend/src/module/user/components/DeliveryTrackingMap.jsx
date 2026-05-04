@@ -837,7 +837,7 @@ const DeliveryTrackingMap = ({
           // Use strict polyline controller if available (preferred method)
           if (strictPolylineControllerRef.current) {
             // GPS is used only to calculate progress, marker position comes from polyline
-            strictPolylineControllerRef.current.updateFromGPS({ lat, lng }, 900);
+            strictPolylineControllerRef.current.updateFromGPS({ lat, lng }, 3500);
             console.log('🛵 Strict polyline tracking: Marker always on polyline center');
           } else {
             // Initialize strict polyline controller
@@ -1100,11 +1100,18 @@ const DeliveryTrackingMap = ({
 
         // STRICT POLYLINE TRACKING: Marker always on polyline center
         if (isMapLoaded && mapInstance.current) {
+          // Ensure strict controller is initialized if we have polyline
+          if (!strictPolylineControllerRef.current && routePolylinePointsRef.current && routePolylinePointsRef.current.length > 0 && bikeMarkerRef.current) {
+            strictPolylineControllerRef.current = new StrictPolylineController(
+              bikeMarkerRef.current,
+              routePolylinePointsRef.current,
+              (bearing) => updateMarkerIconRotation(bikeMarkerRef.current, bearing)
+            );
+          }
+
           // Priority 1: Use strict polyline controller (marker always on polyline center)
-          if (strictPolylineControllerRef.current && routePolylinePointsRef.current) {
-            // GPS is used only to calculate progress, marker position comes from polyline
-            strictPolylineControllerRef.current.updateFromGPS({ lat: norm.lat, lng: norm.lng }, 900);
-            console.log('🛵 Strict polyline tracking: Marker on polyline center');
+          if (strictPolylineControllerRef.current && routePolylinePointsRef.current && routePolylinePointsRef.current.length > 0) {
+            strictPolylineControllerRef.current.updateFromGPS({ lat: norm.lat, lng: norm.lng }, 3500); // Gliding duration
           }
           // Priority 2: Use backend progress if available
           else if (data.progress !== undefined && animationControllerRef.current && routePolylinePointsRef.current) {
@@ -1530,7 +1537,7 @@ const DeliveryTrackingMap = ({
           const restaurantHomeIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
               <path d="M20 0 C9 0 0 9 0 20 C0 35 20 50 20 50 C20 50 40 35 40 20 C40 9 31 0 20 0 Z" fill="#22c55e" stroke="#ffffff" stroke-width="2"/>
-              <path d="M20 12 L12 18 L12 28 L16 28 L16 24 L24 24 L24 28 L28 28 L28 18 Z" fill="white" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M20 12 L12 18 L12 28 L16 28 L16 24 L24 24 L24 24 L24 28 L28 28 L28 18 Z" fill="white" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M16 24 L16 20 L20 17 L24 20 L24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           `);
@@ -1931,17 +1938,17 @@ const DeliveryTrackingMap = ({
         }
       }, 500);
     } else if (shouldShowBike && bikeMarkerRef.current) {
-      // Bike marker exists, just update position if needed
-      if (deliveryBoyLat && deliveryBoyLng) {
+      // If we are NOT receiving live push updates (socket), update from state (polling).
+      // If socket is active, we skip this to avoid dual-triggering animations (flicker).
+      if (!hasLivePushRef.current && deliveryBoyLat && deliveryBoyLng) {
         moveBikeSmoothly(deliveryBoyLat, deliveryBoyLng, deliveryBoyHeading || 0);
       }
     } else {
-      // Do NOT remove the bike marker on transient status jitter.
-      // Keeping it avoids flicker when deliveryState/status toggles briefly during refresh.
-      // We'll only remove it when the order is delivered/cancelled (handled by page-level hiding).
       if (bikeMarkerRef.current) {
         try {
-          bikeMarkerRef.current.setVisible(true);
+          if (!bikeMarkerRef.current.getVisible()) {
+            bikeMarkerRef.current.setVisible(true);
+          }
           if (bikeMarkerRef.current.getMap() == null) {
             bikeMarkerRef.current.setMap(mapInstance.current);
           }

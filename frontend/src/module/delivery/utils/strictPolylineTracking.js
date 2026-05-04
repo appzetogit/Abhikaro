@@ -33,8 +33,8 @@ export function calculateProgressOnPolyline(polyline, rawGPS, lastProgress = 0) 
 
   // Search forward from last known position (forward-only)
   const lastSegmentIndex = Math.floor(lastProgress * (polyline.length - 1));
-  const searchStart = Math.max(0, lastSegmentIndex - 1);
-  const searchEnd = Math.min(polyline.length - 1, lastSegmentIndex + 15);
+  const searchStart = Math.max(0, lastSegmentIndex - 2); // Small look-back for jitter
+  const searchEnd = polyline.length - 1; // Search the rest of the route
 
   for (let i = searchStart; i < searchEnd; i++) {
     if (i >= polyline.length - 1) break;
