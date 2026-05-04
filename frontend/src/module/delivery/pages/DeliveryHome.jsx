@@ -335,6 +335,10 @@ export default function DeliveryHome() {
   const [rejectionReason, setRejectionReason] = useState(null) // Store rejection reason
   const [isReverifying, setIsReverifying] = useState(false) // Loading state for reverify
   const [hasInitiallyCenteredOnBike, setHasInitiallyCenteredOnBike] = useState(false) // Track if map has been initially centered on bike
+  // Track if the current riderLocation is from cache (localStorage) or fresh (GPS)
+  const [isLocationCached, setIsLocationCached] = useState(() => {
+    return !!window.localStorage.getItem('delivery:lastKnownLocation');
+  });
 
   // Firebase live location update: always enabled so long as we have a location and delivery partner is online
   const deliveryBoyId = notifications?.deliveryPartnerId || null
@@ -1867,6 +1871,7 @@ export default function DeliveryHome() {
                       lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
                       setRiderLocation([lat, lng])
                       lastLocationRef.current = [lat, lng]
+                      setIsLocationCached(false)
                     }
                   },
                   (err) => {
@@ -1895,6 +1900,7 @@ export default function DeliveryHome() {
                       lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
                       setRiderLocation([lat, lng])
                       lastLocationRef.current = [lat, lng]
+                      setIsLocationCached(false)
                     }
                   },
                   (err) => {
@@ -1950,6 +1956,7 @@ export default function DeliveryHome() {
 
           setRiderLocation(smoothedLocation)
           lastLocationRef.current = smoothedLocation
+          setIsLocationCached(false)
 
           // Initialize map if not already initialized (will use this location)
           if (!window.deliveryMapInstance && window.google && window.google.maps && mapContainerRef.current) {
@@ -1958,7 +1965,7 @@ export default function DeliveryHome() {
           } else if (window.deliveryMapInstance) {
             // Map already initialized - only recenter if not already centered initially
             // After initial centering, only update marker position, not map viewport
-            if (!hasInitiallyCenteredOnBike) {
+            if (!hasInitiallyCenteredOnBike || isLocationCached) {
               window.deliveryMapInstance.setCenter({ lat: smoothedLocation[0], lng: smoothedLocation[1] })
               window.deliveryMapInstance.setZoom(18)
               setHasInitiallyCenteredOnBike(true)
@@ -1985,6 +1992,7 @@ export default function DeliveryHome() {
                     const newLocation = [lat, lng]
                     setRiderLocation(newLocation)
                     lastLocationRef.current = newLocation
+                    setIsLocationCached(false)
                     smoothedLocationRef.current = newLocation
                     lastValidLocationRef.current = newLocation
                     locationHistoryRef.current = [newLocation]
@@ -2125,6 +2133,7 @@ export default function DeliveryHome() {
           if (!lastLocationRef.current) {
             setRiderLocation(newLocation)
             lastLocationRef.current = newLocation
+            setIsLocationCached(false)
             routeHistoryRef.current = [{
               lat: newLocation[0],
               lng: newLocation[1]
@@ -2225,6 +2234,7 @@ export default function DeliveryHome() {
         // Update state with smoothed location FIRST
         setRiderLocation(smoothedLocation)
         lastLocationRef.current = smoothedLocation
+        setIsLocationCached(false)
 
         // CRITICAL: Update bike marker directly from GPS updates to ensure it's always visible
         // Don't rely only on Firebase listener - update marker immediately when GPS data arrives
@@ -2327,6 +2337,32 @@ export default function DeliveryHome() {
       }
     }
   }, [isOnline]) // Re-run when online status changes - this controls start/stop of tracking
+
+  // Reset initial centering when going online to ensure map follows the rider instantly
+  useEffect(() => {
+    if (isOnline) {
+      setHasInitiallyCenteredOnBike(false)
+      // Also try to get fresh location immediately when going online
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            if (lat && lng) {
+              setIsLocationCached(false);
+              setRiderLocation([lat, lng]);
+              if (window.deliveryMapInstance && !isUserPanningRef.current) {
+                window.deliveryMapInstance.panTo({ lat, lng });
+                setHasInitiallyCenteredOnBike(true);
+              }
+            }
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+      }
+    }
+  }, [isOnline])
 
   // Handle new order popup accept button swipe
   const handleNewOrderAcceptTouchStart = (e) => {
@@ -5944,17 +5980,22 @@ export default function DeliveryHome() {
           if (!bikeMarkerRef.current) {
 
             createOrUpdateBikeMarker(riderLocation[0], riderLocation[1], null, true);
-            // Set flag after initial bike marker creation
-            setHasInitiallyCenteredOnBike(true)
+            // ONLY set initial centered flag if location is NOT from cache
+            // If it IS from cache, we center now but allow a re-center when real GPS arrives
+            if (!isLocationCached) {
+              setHasInitiallyCenteredOnBike(true)
+            }
           } else {
             // Ensure marker is on map
             if (bikeMarkerRef.current.getMap() === null) {
               bikeMarkerRef.current.setMap(map);
             }
             // Only pan on initial setup
-            if (!hasInitiallyCenteredOnBike) {
+            if (!hasInitiallyCenteredOnBike || isLocationCached) {
               map.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
-              setHasInitiallyCenteredOnBike(true)
+              if (!isLocationCached) {
+                setHasInitiallyCenteredOnBike(true)
+              }
             }
           }
         }
@@ -6538,6 +6579,7 @@ export default function DeliveryHome() {
                 // Update state for consistency
                 setRiderLocation([lat, lng]);
                 lastLocationRef.current = [lat, lng];
+                setIsLocationCached(false);
 
                 // Log Firebase update (not GPS direct update)
 
@@ -9435,10 +9477,12 @@ export default function DeliveryHome() {
 
       // Auto-center map on bike location (like Zomato) - only if user hasn't manually panned and not already centered initially
       // After initial centering, don't auto-pan to prevent map jumping
-      if (shouldCenterMap && !isUserPanningRef.current && !hasInitiallyCenteredOnBike) {
+      if (shouldCenterMap && !isUserPanningRef.current && (!hasInitiallyCenteredOnBike || isLocationCached)) {
         // Smooth pan to bike location
         map.panTo(position);
-        setHasInitiallyCenteredOnBike(true)
+        if (!isLocationCached) {
+          setHasInitiallyCenteredOnBike(true)
+        }
       }
 
       // Double-check marker is still on map after update

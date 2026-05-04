@@ -162,88 +162,113 @@ export function clearAuthData() {
 }
 
 // Dedupe and throttle refresh attempts to avoid duplicate 401 spam
-let restoreUserSessionInFlight = null;
-let restoreUserSessionLastFailedAt = 0;
+let restoreSessionInFlight = new Map();
+let restoreSessionLastFailedAt = new Map();
 const RESTORE_SESSION_FAILURE_COOLDOWN_MS = 60 * 1000;
 
 /**
- * Try to restore user session using refresh token cookie.
- * - If access token already exists for user module, does nothing.
- * - If not, calls /auth/refresh-token (cookie-based) and stores new token.
+ * Try to restore module session using refresh token cookie.
+ * - If access token already exists for the module, does nothing.
+ * - If not, calls the module's refresh-token endpoint (cookie-based) and stores new token.
  * - Intended to be called once on app startup (e.g. in App.jsx).
  *
  * This keeps users logged in across app restarts as long as the refresh
  * token cookie is valid, even if the app process or WebView is killed.
  *
+ * @param {string} module - Module name (admin, restaurant, delivery, user, hotel)
  * @returns {Promise<boolean>} true if session was restored, false otherwise
  */
-export async function restoreUserSession() {
-  // If a refresh attempt is already running (e.g. React StrictMode double-effect), reuse it.
-  if (restoreUserSessionInFlight) {
-    return restoreUserSessionInFlight;
+export async function restoreModuleSession(module = 'user') {
+  // If a refresh attempt is already running for this module, reuse it.
+  if (restoreSessionInFlight.has(module)) {
+    return restoreSessionInFlight.get(module);
   }
 
-  // If refresh just failed recently, skip repeated attempts for a short cooldown.
+  // If refresh just failed recently for this module, skip repeated attempts.
   const now = Date.now();
-  if (
-    restoreUserSessionLastFailedAt &&
-    now - restoreUserSessionLastFailedAt < RESTORE_SESSION_FAILURE_COOLDOWN_MS
-  ) {
+  const lastFailed = restoreSessionLastFailedAt.get(module) || 0;
+  if (now - lastFailed < RESTORE_SESSION_FAILURE_COOLDOWN_MS) {
     return false;
   }
 
-  restoreUserSessionInFlight = (async () => {
-  try {
-    // If user already has an access token, don't do anything.
-    const existingToken = getModuleToken('user');
-    if (existingToken) {
-      return false;
-    }
-
-    // Lazy-load API client to avoid circular deps
-    const { default: apiClient } = await import('../api/axios.js');
-    const { API_ENDPOINTS } = await import('../api/config.js');
-
-    // Call refresh-token endpoint; refresh token is sent via httpOnly cookie.
-    const response = await apiClient.post(
-      API_ENDPOINTS.AUTH.REFRESH_TOKEN,
-      {},
-      {
-        withCredentials: true,
-      },
-    );
-
-    const data = response?.data?.data || response?.data || {};
-    const accessToken = data.accessToken;
-    const user = data.user || null;
-
-    if (!accessToken) {
-      return false;
-    }
-
-    // Persist new access token so that subsequent requests are authenticated.
-    setAuthData('user', accessToken, user, { persistent: true });
-
-    // Notify listeners that auth has changed so UI can update.
+  const promise = (async () => {
     try {
-      window.dispatchEvent(new Event('userAuthChanged'));
-    } catch (_) {
-      // Ignore if window is not available (e.g. SSR, tests)
-    }
+      // If module already has an access token, don't do anything.
+      const existingToken = getModuleToken(module);
+      if (existingToken) {
+        return false;
+      }
 
-    return true;
-  } catch (error) {
-    // If refresh fails (e.g. no cookie, expired token), just treat as logged out.
-    // Do not throw; app will naturally show login screen where required.
-    restoreUserSessionLastFailedAt = Date.now();
-    log.warn('restoreUserSession failed:', error?.message || error);
-    return false;
-  } finally {
-    restoreUserSessionInFlight = null;
-  }
+      // Lazy-load API client to avoid circular deps
+      const { default: apiClient } = await import('../api/axios.js');
+      const { API_ENDPOINTS } = await import('../api/config.js');
+
+      // Determine which module's refresh endpoint to use
+      let refreshEndpoint = API_ENDPOINTS.AUTH.REFRESH_TOKEN; // default to user auth
+
+      if (module === 'admin') {
+        refreshEndpoint = API_ENDPOINTS.ADMIN.AUTH?.REFRESH_TOKEN || '/admin/auth/refresh-token';
+      } else if (module === 'restaurant') {
+        refreshEndpoint = API_ENDPOINTS.RESTAURANT.AUTH.REFRESH_TOKEN;
+      } else if (module === 'delivery') {
+        refreshEndpoint = API_ENDPOINTS.DELIVERY.AUTH.REFRESH_TOKEN;
+      } else if (module === 'hotel') {
+        refreshEndpoint = API_ENDPOINTS.HOTEL.AUTH.REFRESH_TOKEN;
+      }
+
+      // Call refresh-token endpoint; refresh token is sent via httpOnly cookie.
+      const response = await apiClient.post(
+        refreshEndpoint,
+        {},
+        {
+          withCredentials: true,
+        },
+      );
+
+      const data = response?.data?.data || response?.data || {};
+      const accessToken = data.accessToken;
+      const user = data.user || null;
+
+      if (!accessToken) {
+        return false;
+      }
+
+      // Persist new access token so that subsequent requests are authenticated.
+      // Use persistent: true so it stays in localStorage (Remember Me behavior)
+      setAuthData(module, accessToken, user, { persistent: true });
+
+      // Notify listeners that auth has changed so UI can update.
+      try {
+        const eventName = `${module}AuthChanged`;
+        window.dispatchEvent(new Event(eventName));
+        if (module === 'user') {
+          window.dispatchEvent(new Event('userAuthChanged')); // Legacy compat
+        }
+      } catch (_) {
+        // Ignore if window is not available
+      }
+
+      return true;
+    } catch (error) {
+      // If refresh fails (e.g. no cookie, expired token), just treat as logged out.
+      restoreSessionLastFailedAt.set(module, Date.now());
+      log.warn(`restoreModuleSession (${module}) failed:`, error?.message || error);
+      return false;
+    } finally {
+      restoreSessionInFlight.delete(module);
+    }
   })();
 
-  return restoreUserSessionInFlight;
+  restoreSessionInFlight.set(module, promise);
+  return promise;
+}
+
+/**
+ * Try to restore user session using refresh token cookie.
+ * @deprecated Use restoreModuleSession('user') instead
+ */
+export async function restoreUserSession() {
+  return restoreModuleSession('user');
 }
 
 /**

@@ -48,7 +48,7 @@ export default function DeliverySignIn() {
   const [formData, setFormData] = useState({
     phone: "",
     countryCode: "+91",
-    rememberMe: false,
+    rememberMe: true,
   })
   const [error, setError] = useState("")
   const [isSending, setIsSending] = useState(false)

@@ -6,7 +6,7 @@ import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
 
 import { Suspense, lazy, useEffect, useState, useRef } from "react"
 import Loader from "@/components/Loader"
-import { restoreUserSession, isModuleAuthenticated, getModuleToken } from "@/lib/utils/auth.js"
+import { restoreModuleSession, isModuleAuthenticated, getModuleToken } from "@/lib/utils/auth.js"
 import { registerFcmToken, registerNativeFcmToken } from "@/lib/fcmService.js"
 
 // Lazy Loading Components
@@ -163,21 +163,21 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    // On initial app mount, try to restore *user* session using refresh token cookie.
-    // Restrict to user-facing routes so that admin/restaurant/delivery/hotel apps
-    // don't trigger unnecessary refresh calls or re-renders.
+    // On initial app mount, try to restore session using refresh token cookie.
     const path = window.location.pathname;
-    const isUserRoute =
-      path === "/" ||
-      path.startsWith("/restaurants") ||
-      path.startsWith("/hotel-menu");
-
-    if (!isUserRoute) {
-      setSessionRestored(true)
-      return;
+    
+    let moduleToRestore = 'user';
+    if (path.startsWith('/admin')) {
+      moduleToRestore = 'admin';
+    } else if (path.startsWith('/restaurant') && !path.startsWith('/restaurants')) {
+      moduleToRestore = 'restaurant';
+    } else if (path.startsWith('/delivery')) {
+      moduleToRestore = 'delivery';
+    } else if (path.startsWith('/hotel')) {
+      moduleToRestore = 'hotel';
     }
 
-    restoreUserSession()
+    restoreModuleSession(moduleToRestore)
       .catch(() => {})
       .finally(() => {
         setSessionRestored(true)
@@ -292,8 +292,11 @@ export default function App() {
     <Suspense fallback={<Loader />}>
       <NetworkStatusProvider>
         <NetworkStatusBanner />
-        <UserReloadHandler>
-        <Routes>
+        {!sessionRestored ? (
+          <Loader />
+        ) : (
+          <UserReloadHandler>
+            <Routes>
         <Route path="/user" element={<Navigate to="/" replace />} />
         <Route path="/user/*" element={<UserPathRedirect />} />
 
@@ -1042,8 +1045,9 @@ export default function App() {
           path="/*"
           element={<UserRouter />}
         />
-      </Routes>
-      </UserReloadHandler>
+            </Routes>
+          </UserReloadHandler>
+        )}
       </NetworkStatusProvider>
     </Suspense>
   )

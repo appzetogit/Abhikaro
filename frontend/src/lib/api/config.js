@@ -366,6 +366,7 @@ export const API_ENDPOINTS = {
       LOGIN: "/admin/auth/login",
       LOGOUT: "/admin/auth/logout",
       ME: "/admin/auth/me",
+      REFRESH_TOKEN: "/admin/auth/refresh-token",
     },
     PROFILE: "/admin/profile",
     CHANGE_PASSWORD: "/admin/settings/change-password",
