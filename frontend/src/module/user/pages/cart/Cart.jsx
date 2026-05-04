@@ -93,15 +93,15 @@ export default function Cart() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("razorpay") // razorpay | wallet | pay_at_hotel (COD disabled)
   const [hasHotelReference, setHasHotelReference] = useState(false) // Track if hotel reference exists
   const [isHotelOrder, setIsHotelOrder] = useState(false) // Track if this is a hotel order
-  const [roomNumber, setRoomNumber] = useState('') // Room number for pay_at_hotel
+  const [roomNumber, setRoomNumber] = useState(() => sessionStorage.getItem("checkout_room_number") || '') // Room number for pay_at_hotel
   const [hotelName, setHotelName] = useState('') // Hotel name for display
   const [walletBalance, setWalletBalance] = useState(0)
   const [isLoadingWallet, setIsLoadingWallet] = useState(false)
   const [deliveryFleet, setDeliveryFleet] = useState("standard") // Default to standard fleet
   const [showFleetOptions, setShowFleetOptions] = useState(false)
-  const [note, setNote] = useState("")
+  const [note, setNote] = useState(() => sessionStorage.getItem("checkout_note") || "")
   const [showNoteInput, setShowNoteInput] = useState(false)
-  const [additionalAddress, setAdditionalAddress] = useState("")
+  const [additionalAddress, setAdditionalAddress] = useState(() => sessionStorage.getItem("checkout_additional_address") || "")
   const [addressError, setAddressError] = useState(false)
   const [roomError, setRoomError] = useState(false)
   const [deliveryAddressError, setDeliveryAddressError] = useState(false)
@@ -163,6 +163,34 @@ export default function Cart() {
       // ignore
     }
   }, [contactName, contactPhone])
+
+  // Persist additional checkout fields for refresh resilience
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("checkout_additional_address", additionalAddress || "")
+    } catch {}
+  }, [additionalAddress])
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("checkout_note", note || "")
+    } catch {}
+  }, [note])
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("checkout_room_number", roomNumber || "")
+    } catch {}
+  }, [roomNumber])
+
+  // Clear checkout drafts when order is successfully placed
+  useEffect(() => {
+    if (showOrderSuccess) {
+      sessionStorage.removeItem("checkout_additional_address")
+      sessionStorage.removeItem("checkout_note")
+      sessionStorage.removeItem("checkout_room_number")
+    }
+  }, [showOrderSuccess])
 
   const handleSaveContact = async () => {
     const trimmedName = String(contactName || "").trim()
