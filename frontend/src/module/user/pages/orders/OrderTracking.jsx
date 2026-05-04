@@ -532,6 +532,11 @@ export default function OrderTracking() {
           return { uiStatus: "picked_up", estimatedTimeOverride: null }
         }
       }
+      
+      if (currentPhase === "at_delivery" || deliveryStatus === "reached_delivery") {
+        return { uiStatus: "arrived", estimatedTimeOverride: 0 }
+      }
+      
       return { uiStatus: "on_way", estimatedTimeOverride: null }
     }
 
@@ -651,10 +656,11 @@ export default function OrderTracking() {
               deliveryPartner: apiOrder.deliveryPartnerId ? {
                 name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
                 avatar: null,
-                phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null
+                phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null,
+                availability: apiOrder.deliveryPartnerId.availability || null
               } : order?.deliveryPartner || null,
               deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || order?.deliveryPartnerPhone || null,
-              deliveryPartnerId: apiOrder.deliveryPartnerId?._id || apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
+              deliveryPartnerId: apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
               assignmentInfo: apiOrder.assignmentInfo || null,
               deliveryState: apiOrder.deliveryState || null
             };
@@ -685,10 +691,11 @@ export default function OrderTracking() {
             deliveryPartner: apiOrder.deliveryPartnerId ? {
               name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
               avatar: null,
-              phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null
+              phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null,
+              availability: apiOrder.deliveryPartnerId.availability || null
             } : order?.deliveryPartner || null,
             deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || order?.deliveryPartnerPhone || null,
-              deliveryPartnerId: apiOrder.deliveryPartnerId?._id || apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
+              deliveryPartnerId: apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
               assignmentInfo: apiOrder.assignmentInfo || null,
               deliveryState: apiOrder.deliveryState || null
             };
@@ -889,10 +896,11 @@ export default function OrderTracking() {
             deliveryPartner: apiOrder.deliveryPartnerId ? {
               name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
               avatar: null,
-              phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null
+              phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null,
+              availability: apiOrder.deliveryPartnerId.availability || null
             } : null,
             deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || null,
-            deliveryPartnerId: apiOrder.deliveryPartnerId?._id || apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
+            deliveryPartnerId: apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
             assignmentInfo: apiOrder.assignmentInfo || null,
             tracking: apiOrder.tracking || {},
             deliveryState: apiOrder.deliveryState || null,
@@ -1098,6 +1106,8 @@ export default function OrderTracking() {
         ].includes(s)
       ) {
         setOrderStatus("on_way")
+      } else if (s === "reached_delivery" || s === "arrived") {
+        setOrderStatus("arrived")
       } else if (["preparing", "processing", "cooking", "confirmed", "accepted"].includes(s)) {
         setOrderStatus("preparing")
       } else if (s) {
@@ -1613,6 +1623,11 @@ export default function OrderTracking() {
         estimatedTime !== null && estimatedTime > 0
           ? `Arriving in ${estimatedTime} mins`
           : "Your delivery partner is on the way",
+      color: "bg-green-700",
+    },
+    arrived: {
+      title: "Rider Arrived",
+      subtitle: "Your delivery partner has reached the drop location!",
       color: "bg-green-700",
     },
     delivered: {

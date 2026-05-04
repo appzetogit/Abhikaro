@@ -2021,7 +2021,7 @@ export const confirmReachedDrop = asyncHandler(async (req, res) => {
     if (order.deliveryState.currentPhase !== "at_delivery") {
       try {
         // Update the order document directly since we have it
-        order.deliveryState.status = "en_route_to_delivery";
+        order.deliveryState.status = "reached_delivery";
         order.deliveryState.currentPhase = "at_delivery";
         order.deliveryState.reachedDropAt = new Date();
 
@@ -2082,6 +2082,28 @@ export const confirmReachedDrop = asyncHandler(async (req, res) => {
     console.log(
       `✅ Delivery partner ${delivery._id} reached drop location for order ${orderIdForLog}`,
     );
+
+    // Emit socket event to customer asynchronously (don't block response)
+    (async () => {
+      try {
+        const serverModule = await import("../../../server.js");
+        const getIO = serverModule.getIO;
+        const io = getIO ? getIO() : null;
+
+        if (io) {
+          io.to(`order:${order._id.toString()}`).emit("order_status_update", {
+            title: "Rider Arrived",
+            message: "Your delivery partner has reached the drop location! 📍",
+            status: "reached_delivery",
+            orderId: order.orderId,
+            reachedDropAt: new Date()
+          });
+          console.log(`📢 Notified customer for order ${order.orderId} - Reached drop`);
+        }
+      } catch (notifError) {
+        console.error("Error sending reached drop notification:", notifError);
+      }
+    })();
 
     return successResponse(res, 200, "Reached drop confirmed", {
       order: finalOrder,

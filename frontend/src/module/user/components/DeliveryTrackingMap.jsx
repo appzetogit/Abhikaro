@@ -46,72 +46,42 @@ const DeliveryTrackingMap = ({
   const socketRef = useRef(null);
   const directionsServiceRef = useRef(null);
   const directionsRendererRef = useRef(null);
+  const isMapLoadedRef = useRef(false);
+  const mapLoadTimeoutRef = useRef(null);
+  const routePolylineRef = useRef(null);
+  const routePolylinePointsRef = useRef(null);
+  const animationControllerRef = useRef(null);
+  const polylineAnimationControllerRef = useRef(null);
+  const strictPolylineControllerRef = useRef(null);
+  const previousLocationRef = useRef(null);
+  const lastBearingRef = useRef(0);
+  const lastBearingTsRef = useRef(0);
+  const lastLocationUpdateTsRef = useRef(0);
+  const lastIncomingPosRef = useRef(null);
+  const lastProcessedSocketTsRef = useRef(0);
+  const followRiderRef = useRef(true);
+  const lastCameraUpdateTsRef = useRef(0);
+  const lastSnappedPositionRef = useRef(null);
+  const lastProgressRef = useRef(0);
+  const isReRoutingRef = useRef(false);
+  const lastRouteUpdateRef = useRef(null);
+  const userHasInteractedRef = useRef(false);
+  const hasLivePushRef = useRef(false);
+  const orderRef = useRef(order);
+  const restaurantCoordsRef = useRef(restaurantCoords);
+  const socketCandidateIdxRef = useRef(0);
+  const isProgrammaticChangeRef = useRef(false);
+  const mapInitializedRef = useRef(false);
+  const directionsCacheRef = useRef(new Map());
+  const lastRouteRequestRef = useRef({ start: null, end: null, timestamp: 0 });
+  const lastDirectionsRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [mapLoadTimeoutError, setMapLoadTimeoutError] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [deliveryBoyLocation, setDeliveryBoyLocation] = useState(null);
-  const lastBearingRef = useRef(0);
-
-  /**
-   * Stable marker rotation wrapper
-   * Prevents 'spinning' by implementing a threshold and smoothing.
-   */
-  const stableRotateBike = useCallback((bearing) => {
-    if (bearing === null || bearing === undefined || isNaN(bearing) || !bikeMarkerRef.current) return;
-    
-    // Normalize to 0-360
-    const targetBearing = (bearing + 360) % 360;
-    
-    // Smoothing: Calculate the shortest distance between current and target bearing
-    let diff = targetBearing - lastBearingRef.current;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-
-    // Threshold: Ignore changes less than 10 degrees to prevent jitter/spinning
-    // Increased to 10 for better stability on live GPS
-    if (Math.abs(diff) < 10) return;
-
-    // Apply smoothing - don't jump all the way to target immediately
-    const smoothedBearing = (lastBearingRef.current + diff * 0.5 + 360) % 360;
-    lastBearingRef.current = smoothedBearing;
-    
-    // Use the high-quality canvas-based rotation utility
-    updateMarkerIconRotation(bikeMarkerRef.current, smoothedBearing);
-  }, []);
-  
-  // Initialize delivery boy location from order data if available
-  useEffect(() => {
-    if (order?.deliveryPartnerId?.availability && !deliveryBoyLocation) {
-      const avail = order.deliveryPartnerId.availability;
-      const lat = avail.latitude || (avail.currentLocation?.coordinates && avail.currentLocation.coordinates[1]);
-      const lng = avail.longitude || (avail.currentLocation?.coordinates && avail.currentLocation.coordinates[0]);
-      
-      if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
-        console.log("📍 Initializing bike location from order data:", { lat, lng });
-        const initialLoc = { 
-          lat, 
-          lng, 
-          heading: avail.heading || 0,
-          timestamp: Date.now()
-        };
-        setDeliveryBoyLocation(initialLoc);
-        setCurrentLocation(initialLoc);
-        lastBearingRef.current = initialLoc.heading || 0;
-      }
-    }
-  }, [order, deliveryBoyLocation]);
-
-  // True only after we receive rider "push" updates (location-receive-<orderId>).
-  // This prevents showing stale coordinates from request-current-location.
-  const hasLivePushRef = useRef(false);
-
-  const orderRef = useRef(order);
-  const restaurantCoordsRef = useRef(restaurantCoords);
-
-  useEffect(() => {
-    orderRef.current = order;
-  }, [order]);
+  const [followRiderUI, setFollowRiderUI] = useState(true);
 
   const isOrderDelivered = useMemo(() => {
     const s = String(order?.status || '').toLowerCase()
@@ -129,37 +99,42 @@ const DeliveryTrackingMap = ({
     )
   }, [order])
 
-  useEffect(() => {
-    restaurantCoordsRef.current = restaurantCoords;
-  }, [restaurantCoords?.lat, restaurantCoords?.lng]);
-  const isMapLoadedRef = useRef(false);
-  const mapLoadTimeoutRef = useRef(null);
-  const routePolylineRef = useRef(null);
-  const routePolylinePointsRef = useRef(null); // Store decoded polyline points for route-based animation
-  const animationControllerRef = useRef(null); // Route-based animation controller
-  const polylineAnimationControllerRef = useRef(null); // Enhanced polyline animation controller
-  const strictPolylineControllerRef = useRef(null); // Strict polyline controller (marker always on polyline center)
-  const previousLocationRef = useRef(null); // Store previous location for bearing calculation
-  const lastBearingRef = useRef(0);
-  const lastBearingTsRef = useRef(0);
-  const lastLocationUpdateTsRef = useRef(0);
-  const lastIncomingPosRef = useRef(null);
-  const lastProcessedSocketTsRef = useRef(0);
-  const followRiderRef = useRef(true);
-  const lastCameraUpdateTsRef = useRef(0);
+  const socketCandidates = useMemo(() => {
+    try {
+      if (API_BASE_URL.startsWith("/")) {
+        return [
+          { url: window.location.origin, path: "/socket.io" },
+          { url: window.location.origin, path: "/api/socket.io" },
+        ]
+      }
+      const u = new URL(API_BASE_URL)
+      const origin = `${u.protocol}//${u.host}`
+      const basePath = String(u.pathname || "").replace(/\/api\/?$/i, "")
+      const withBase = (p) => (basePath ? `${basePath}${p}` : p)
+      return [
+        { url: origin, path: withBase("/socket.io") },
+        { url: origin, path: withBase("/api/socket.io") },
+        { url: origin, path: "/socket.io" },
+      ]
+    } catch {
+      return [{ url: window.location.origin, path: "/socket.io" }]
+    }
+  }, [])
 
-  const [followRiderUI, setFollowRiderUI] = useState(true);
+  const effectiveTrackingIds = useMemo(() => {
+    const ids = Array.isArray(trackingRoomIds) && trackingRoomIds.length > 0
+      ? trackingRoomIds
+      : [orderId]
+    return [...new Set(ids.filter(Boolean).map(String))]
+  }, [trackingRoomIds, orderId])
 
   const normalizeIncomingLatLng = useCallback((rawLat, rawLng) => {
     const lat = Number(rawLat);
     const lng = Number(rawLng);
     if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
-
-    // Heuristic swap fix: sometimes values come swapped (lat>90, lng within lat-range)
     const looksSwapped = (lat > 90 || lat < -90) && (lng >= -90 && lng <= 90);
     const finalLat = looksSwapped ? lng : lat;
     const finalLng = looksSwapped ? lat : lng;
-
     if (finalLat < -90 || finalLat > 90 || finalLng < -180 || finalLng > 180) return null;
     return { lat: finalLat, lng: finalLng };
   }, []);
@@ -171,105 +146,95 @@ const DeliveryTrackingMap = ({
     return mod;
   }, []);
 
-  // Rotate smoothly + avoid circular spinning due to jitter
   const stableRotateBike = useCallback((bearing) => {
     if (!bikeMarkerRef.current) return;
-
     const now = Date.now();
     const target = normalizeBearing(bearing);
     const prev = normalizeBearing(lastBearingRef.current);
-
-    // Compute shortest signed angle diff in [-180, 180]
     let diff = ((target - prev + 540) % 360) - 180;
-
-    // Rate limit: max 35 deg/sec (prevents rapid spins on noisy bearings)
     const dt = Math.max(16, now - (lastBearingTsRef.current || now));
     const maxStep = (35 * dt) / 1000;
     if (Math.abs(diff) > maxStep) diff = Math.sign(diff) * maxStep;
-
     const next = normalizeBearing(prev + diff);
     lastBearingRef.current = next;
     lastBearingTsRef.current = now;
-
-    updateBikeMarkerRotation(bikeMarkerRef.current, next);
+    updateMarkerIconRotation(bikeMarkerRef.current, next);
   }, [normalizeBearing]);
-  const lastSnappedPositionRef = useRef(null); // Last snapped position for forward-only movement
-  const lastProgressRef = useRef(0); // Last progress on polyline (0-1)
-  const isReRoutingRef = useRef(false); // Flag to prevent multiple simultaneous re-routes
-  const lastRouteUpdateRef = useRef(null);
-  const userHasInteractedRef = useRef(false);
-  const isProgrammaticChangeRef = useRef(false);
-  const mapInitializedRef = useRef(false);
-  const directionsCacheRef = useRef(new Map()); // Cache for Directions API calls
-  const lastRouteRequestRef = useRef({ start: null, end: null, timestamp: 0 });
-  const lastDirectionsRef = useRef(null); // Track last rendered directions to avoid flicker
-  const isMountedRef = useRef(true); // Track if component is mounted
 
-  // Socket connection can be tricky in production depending on reverse-proxy rules.
-  // We'll try a small set of candidate (origin, path) combinations to make sure
-  // live rider marker works both locally and on the deployed server.
-  const socketCandidates = useMemo(() => {
-    try {
-      // Relative API base (e.g. "/api") => same origin, but socket may be proxied either at
-      // "/socket.io" (root) or "/api/socket.io" (API-prefixed).
-      if (API_BASE_URL.startsWith("/")) {
-        return [
-          { url: window.location.origin, path: "/socket.io" },
-          { url: window.location.origin, path: "/api/socket.io" },
-        ]
-      }
-
-      // Absolute API base (e.g. "https://example.com/api")
-      const u = new URL(API_BASE_URL)
-      const origin = `${u.protocol}//${u.host}`
-      const basePath = String(u.pathname || "").replace(/\/api\/?$/i, "")
-      const withBase = (p) => (basePath ? `${basePath}${p}` : p)
-      return [
-        { url: origin, path: withBase("/socket.io") },
-        { url: origin, path: withBase("/api/socket.io") },
-        { url: origin, path: "/socket.io" },
-      ]
-    } catch {
-      // Last resort: same origin default path
-      return [{ url: window.location.origin, path: "/socket.io" }]
+  const moveBikeSmoothly = useCallback((lat, lng, heading) => {
+    if (!mapInstance.current || !isMapLoaded) {
+      setCurrentLocation({ lat, lng, heading });
+      return;
     }
-  }, [])
-  const socketCandidateIdxRef = useRef(0)
+    try {
+      if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return;
+      let calculatedBearing = heading;
+      if ((calculatedBearing === null || calculatedBearing === undefined || calculatedBearing === 0) && previousLocationRef.current) {
+        calculatedBearing = calculateBearingFromLocations(previousLocationRef.current, { lat, lng });
+      }
+      const targetBearing = calculatedBearing || 0;
+      if (previousLocationRef.current) {
+        const d = calculateHaversineDistance(previousLocationRef.current.lat, previousLocationRef.current.lng, lat, lng);
+        if (d < 6) calculatedBearing = lastBearingRef.current;
+      }
+      const position = new window.google.maps.LatLng(lat, lng);
+      if (!bikeMarkerRef.current) {
+        const bikeSvg = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">
+            <circle cx="30" cy="30" r="28" fill="rgba(34, 197, 94, 0.2)" />
+            <circle cx="30" cy="30" r="22" fill="#22c55e" stroke="white" stroke-width="3" />
+            <path d="M30 15 L42 40 L30 34 L18 40 Z" fill="white" />
+          </svg>
+        `);
+        try {
+          bikeMarkerRef.current = new window.google.maps.Marker({
+            position,
+            map: mapInstance.current,
+            icon: { url: bikeSvg, scaledSize: new window.google.maps.Size(50, 50), anchor: new window.google.maps.Point(25, 25), rotation: 0 },
+            optimized: false, zIndex: 999999, title: 'Delivery Partner', visible: true
+          });
+          updateMarkerIconRotation(bikeMarkerRef.current, targetBearing);
+          if (routePolylinePointsRef.current?.length > 0) {
+            animationControllerRef.current = new RouteBasedAnimationController(bikeMarkerRef.current, routePolylinePointsRef.current);
+          }
+        } catch (e) { console.error(e); }
+      } else {
+        if (strictPolylineControllerRef.current) {
+          strictPolylineControllerRef.current.updateFromGPS({ lat, lng }, 3500);
+        } else if (routePolylinePointsRef.current?.length > 0) {
+          const nearest = findNearestPointOnPolyline(routePolylinePointsRef.current, { lat, lng });
+          if (nearest?.nearestPoint) {
+            bikeMarkerRef.current.setPosition(nearest.nearestPoint);
+            stableRotateBike(targetBearing);
+          }
+        } else {
+          bikeMarkerRef.current.setPosition({ lat, lng });
+          stableRotateBike(targetBearing);
+        }
+      }
+      previousLocationRef.current = { lat, lng };
+      if (followRiderRef.current && !userHasInteractedRef.current && Date.now() - (lastCameraUpdateTsRef.current || 0) > 900) {
+        lastCameraUpdateTsRef.current = Date.now();
+        isProgrammaticChangeRef.current = true;
+        mapInstance.current.panTo({ lat, lng });
+        setTimeout(() => { isProgrammaticChangeRef.current = false; }, 200);
+      }
+    } catch (e) { console.error(e); }
+  }, [isMapLoaded, stableRotateBike]);
 
-  const effectiveTrackingIds = useMemo(() => {
-    const ids = Array.isArray(trackingRoomIds) && trackingRoomIds.length > 0
-      ? trackingRoomIds
-      : [orderId]
-    return [...new Set(ids.filter(Boolean).map(String))]
-  }, [trackingRoomIds, orderId])
-
-  // Build a simple curved arc between two points (3-point polyline: start -> mid -> end)
   const buildCurvedArcPath = useCallback((start, end) => {
     if (!start || !end) return null;
     const a = { lat: Number(start.lat), lng: Number(start.lng) };
     const b = { lat: Number(end.lat), lng: Number(end.lng) };
-    if ([a.lat, a.lng, b.lat, b.lng].some((n) => Number.isNaN(n))) return null;
-
-    // Midpoint
+    if ([a.lat, a.lng, b.lat, b.lng].some(isNaN)) return null;
     const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
-
-    // Perpendicular offset for curve (scale with distance)
     const dx = b.lng - a.lng;
     const dy = b.lat - a.lat;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-    // 0.12 of segment length gives a nice visible curve on city-scale distances
     const curvature = 0.12 * dist;
-    const off = {
-      lat: mid.lat + (-dx / dist) * curvature,
-      lng: mid.lng + (dy / dist) * curvature,
-    };
-
-    return [a, off, b];
+    return [a, { lat: mid.lat + (-dx / dist) * curvature, lng: mid.lng + (dy / dist) * curvature }, b];
   }, []);
 
-  // Kick off Google Maps script load ASAP (don't wait for coords/map init).
-  // This reduces the "blank map" time on the tracking screen.
   const ensureGoogleMapsReady = useCallback(async () => {
     try {
       if (window.google?.maps?.Map) return true;
@@ -284,11 +249,22 @@ const DeliveryTrackingMap = ({
   }, []);
 
   useEffect(() => {
-    // Fire-and-forget preload; actual init effect will await readiness when needed.
     ensureGoogleMapsReady();
   }, [ensureGoogleMapsReady]);
 
-  // Track mount/unmount ONLY (do not flip this on dependency-change cleanups)
+  useEffect(() => {
+    orderRef.current = order;
+  }, [order]);
+
+  useEffect(() => {
+    restaurantCoordsRef.current = restaurantCoords;
+  }, [restaurantCoords?.lat, restaurantCoords?.lng]);
+
+  useEffect(() => {
+    isMapLoadedRef.current = isMapLoaded;
+  }, [isMapLoaded]);
+
+  // Track mount/unmount ONLY
   useEffect(() => {
     isMountedRef.current = true
     return () => {
@@ -296,11 +272,7 @@ const DeliveryTrackingMap = ({
     }
   }, [])
 
-  useEffect(() => {
-    isMapLoadedRef.current = isMapLoaded;
-  }, [isMapLoaded]);
-
-  // Restore last known rider location after refresh for instant route rendering
+  // Restore last known rider location after refresh
   useEffect(() => {
     try {
       if (!orderId) return;
@@ -308,7 +280,6 @@ const DeliveryTrackingMap = ({
       const raw = localStorage.getItem(key);
       if (!raw) return;
       const data = JSON.parse(raw);
-      // Consider fresh if within 30 minutes
       if (data && data.lat && data.lng && Number(Date.now() - (data.ts || 0)) < 30 * 60 * 1000) {
         const loc = { 
           lat: Number(data.lat), 
@@ -319,14 +290,48 @@ const DeliveryTrackingMap = ({
         };
         setCurrentLocation(loc);
         setDeliveryBoyLocation(loc);
-        // Use restored location only for instant rendering after refresh/back.
-        // We still keep polling until real push updates arrive.
         lastIncomingPosRef.current = { lat: loc.lat, lng: loc.lng };
-        lastLocationUpdateTsRef.current = Date.now();
-        if (data.ts) lastProcessedSocketTsRef.current = Number(data.ts) || 0;
+        if (data.ts) lastProcessedSocketTsRef.current = Math.max(lastProcessedSocketTsRef.current, Number(data.ts));
       }
-    } catch {}
+    } catch (e) {
+      console.error(e);
+    }
   }, [orderId]);
+
+  // Auto-create bike
+  useEffect(() => {
+    if (isMapLoaded && currentLocation && !bikeMarkerRef.current) {
+      moveBikeSmoothly(currentLocation.lat, currentLocation.lng, currentLocation.heading || 0);
+    }
+  }, [isMapLoaded, currentLocation, moveBikeSmoothly]);
+
+  // Initialize delivery boy location from order data if available
+  useEffect(() => {
+    const avail = order?.deliveryPartnerId?.availability || order?.deliveryPartner?.availability;
+    
+    if (avail && !deliveryBoyLocation) {
+      const lat = avail.latitude || (avail.currentLocation?.coordinates && avail.currentLocation.coordinates[1]);
+      const lng = avail.longitude || (avail.currentLocation?.coordinates && avail.currentLocation.coordinates[0]);
+      
+      if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+        console.log("📍 Initializing bike location from order data:", { lat, lng });
+        const initialLoc = { 
+          lat, 
+          lng, 
+          heading: avail.heading || 0,
+        };
+        setDeliveryBoyLocation(initialLoc);
+        setCurrentLocation(initialLoc);
+        lastBearingRef.current = initialLoc.heading || 0;
+        console.log("✅ Initialized delivery boy location from order data:", initialLoc);
+      }
+    }
+  }, [order?.deliveryPartnerId?.availability, order?.deliveryPartner?.availability, deliveryBoyLocation]);
+
+  // True only after we receive rider "push" updates (location-receive-<orderId>).
+  // This prevents showing stale coordinates from request-current-location.
+
+
 
   // Allow using non-push ("current-location") updates for bike only when partner is actually assigned/accepted.
   const allowPulledLocationForBike = useMemo(() => {
@@ -663,6 +668,7 @@ const DeliveryTrackingMap = ({
       currentPhase === 'en_route_to_delivery' || 
       currentPhase === 'at_delivery' ||
       status === 'en_route_to_delivery' || 
+      status === 'order_confirmed' ||
       status === 'picked_up' ||
       status === 'pickedup' ||
       status === 'reached_delivery' ||
@@ -696,7 +702,7 @@ const DeliveryTrackingMap = ({
       }
 
       // Phase 2: Delivery boy at restaurant - show static route to customer
-      if (currentPhase === 'at_pickup' || status === 'reached_pickup' || status === 'at_pickup' || status === 'order_confirmed') {
+      if (currentPhase === 'at_pickup' || status === 'reached_pickup' || status === 'at_pickup') {
         console.log('🛣️ Route selection: Restaurant to Customer (At Pickup)', { restaurant: restaurantCoords, customer: customerCoords });
         return {
           start: restaurantCoords,
@@ -738,325 +744,7 @@ const DeliveryTrackingMap = ({
     isPickedUp
   ]);
 
-  // Move bike smoothly with rotation
-  const moveBikeSmoothly = useCallback((lat, lng, heading) => {
-    if (!mapInstance.current || !isMapLoaded) {
-      console.log('⏳ Map not loaded yet, storing location for later:', { lat, lng, heading });
-      setCurrentLocation({ lat, lng, heading });
-      return;
-    }
 
-    try {
-      if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) {
-        console.error('❌ Invalid coordinates:', { lat, lng });
-        return;
-      }
-
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        console.error('❌ Coordinates out of range:', { lat, lng });
-        return;
-      }
-
-      // Calculate bearing if not provided
-      let calculatedBearing = heading;
-      if ((calculatedBearing === null || calculatedBearing === undefined || calculatedBearing === 0) && previousLocationRef.current) {
-        calculatedBearing = calculateBearingFromLocations(
-          previousLocationRef.current,
-          { lat, lng }
-        );
-      }
-      
-      const targetBearing = calculatedBearing || 0;
-
-      // Ignore jitter: if rider hasn't moved meaningfully, don't update rotation
-      if (previousLocationRef.current) {
-        const d = calculateHaversineDistance(
-          previousLocationRef.current.lat,
-          previousLocationRef.current.lng,
-          lat,
-          lng
-        );
-        if (d < 6) {
-          calculatedBearing = lastBearingRef.current;
-        }
-      }
-
-      const position = new window.google.maps.LatLng(lat, lng);
-
-      if (!bikeMarkerRef.current) {
-        // Create bike marker with a high-visibility SVG to ensure it's always seen
-        // even if the high-res PNG takes time to load or fail.
-        const bikeSvg = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-          <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">
-            <!-- Outer Glow -->
-            <circle cx="30" cy="30" r="28" fill="rgba(34, 197, 94, 0.2)" />
-            <!-- Inner Circle -->
-            <circle cx="30" cy="30" r="22" fill="#22c55e" stroke="white" stroke-width="3" />
-            <!-- Directional Pointer (North oriented) -->
-            <path d="M30 15 L42 40 L30 34 L18 40 Z" fill="white" />
-          </svg>
-        `);
-
-        console.log('🚴🚴🚴 Creating bike marker with high-visibility SVG');
-        
-        try {
-          bikeMarkerRef.current = new window.google.maps.Marker({
-          position: position,
-          map: mapInstance.current,
-          icon: {
-            url: bikeSvg,
-            scaledSize: new window.google.maps.Size(50, 50),
-            anchor: new window.google.maps.Point(25, 25),
-            rotation: 0 // Will be updated by stableRotateBike
-          },
-          optimized: false,
-          zIndex: 999999, // Absolute top
-          title: 'Delivery Partner',
-          visible: true
-        });
-
-        // After creation, we'll try to swap in the real logo if it's available and not too huge
-        // but the SVG ensures the user sees tracking IMMEDIATELY.
-        const img = new Image();
-        img.onload = () => {
-          if (bikeMarkerRef.current) {
-            // Only swap if the image is actually loaded and ready
-            console.log('✅ Real bike logo ready, but keeping SVG for better visibility at high z-index');
-          }
-        };
-        img.src = bikeLogo;
-          
-          // Apply initial rotation immediately
-          if (bikeMarkerRef.current) {
-            updateMarkerIconRotation(bikeMarkerRef.current, targetBearing);
-          }
-          
-          // Force marker to be visible
-          bikeMarkerRef.current.setVisible(true);
-
-          // Initialize route-based animation controller if polyline is available
-          if (routePolylinePointsRef.current && routePolylinePointsRef.current.length > 0) {
-            animationControllerRef.current = new RouteBasedAnimationController(
-              bikeMarkerRef.current,
-              routePolylinePointsRef.current
-            );
-            console.log('✅ Route-based animation controller initialized with bike marker');
-          }
-
-          // Verify marker is on map
-          const markerMap = bikeMarkerRef.current.getMap();
-          const markerVisible = bikeMarkerRef.current.getVisible();
-          const markerPosition = bikeMarkerRef.current.getPosition();
-
-          console.log('✅✅✅ Bike marker created and visible at:', {
-            lat,
-            lng,
-            heading,
-            marker: bikeMarkerRef.current,
-            isVisible: markerVisible,
-            position: markerPosition ? { lat: markerPosition.lat(), lng: markerPosition.lng() } : null,
-            map: markerMap,
-            iconUrl: bikeLogo,
-            mapBounds: markerMap ? markerMap.getBounds() : null,
-            hasRouteAnimation: !!animationControllerRef.current
-          });
-
-          if (!markerMap) {
-            console.error('❌ Bike marker created but not on map! Re-adding...');
-            bikeMarkerRef.current.setMap(mapInstance.current);
-          }
-          if (!markerVisible) {
-            console.error('❌ Bike marker created but not visible! Making visible...');
-            bikeMarkerRef.current.setVisible(true);
-          }
-
-          // Double check after a moment
-          setTimeout(() => {
-            if (bikeMarkerRef.current) {
-              const finalMap = bikeMarkerRef.current.getMap();
-              const finalVisible = bikeMarkerRef.current.getVisible();
-              console.log('🔍 Bike marker verification after 500ms:', {
-                exists: !!bikeMarkerRef.current,
-                onMap: !!finalMap,
-                visible: finalVisible,
-                position: bikeMarkerRef.current.getPosition()
-              });
-            }
-          }, 500);
-        } catch (markerError) {
-          console.error('❌ Error creating bike marker:', markerError);
-          // Try fallback simple marker
-          try {
-            bikeMarkerRef.current = new window.google.maps.Marker({
-              position: position,
-              map: mapInstance.current,
-              icon: {
-                path: window.google.maps.SymbolPath.CIRCLE,
-                scale: 12,
-                fillColor: '#FF6B00',
-                fillOpacity: 1,
-                strokeColor: '#FFFFFF',
-                strokeWeight: 3
-              },
-              title: 'Delivery Partner',
-              visible: true,
-              zIndex: window.google.maps.Marker.MAX_ZINDEX + 3
-            });
-            console.log('✅ Created fallback marker (orange circle)');
-          } catch (fallbackError) {
-            console.error('❌ Even fallback marker failed:', fallbackError);
-          }
-        }
-      } else {
-        // STRICT POLYLINE TRACKING: Marker ALWAYS on polyline center, NEVER deviates
-        // GPS is used ONLY to calculate progress, position comes from polyline
-        if (routePolylinePointsRef.current && routePolylinePointsRef.current.length > 0) {
-          // Use strict polyline controller if available (preferred method)
-          if (strictPolylineControllerRef.current) {
-            // GPS is used only to calculate progress, marker position comes from polyline
-            strictPolylineControllerRef.current.updateFromGPS({ lat, lng }, 3500);
-            console.log('🛵 Strict polyline tracking: Marker always on polyline center');
-          } else {
-            // Initialize strict polyline controller
-            if (bikeMarkerRef.current) {
-              strictPolylineControllerRef.current = new StrictPolylineController(
-                bikeMarkerRef.current,
-                routePolylinePointsRef.current,
-                (bearing) => {
-                  // Update marker rotation when bearing changes
-                  stableRotateBike(bearing);
-                }
-              );
-              
-              // Calculate progress from GPS and update
-              const progressData = calculateProgressOnPolyline(
-                routePolylinePointsRef.current,
-                { lat, lng },
-                lastProgressRef.current
-              );
-              
-              // Get exact point on polyline at this progress (ALWAYS on polyline center)
-              const pointOnPolyline = progressData.pointOnPolyline;
-              
-              // Update marker to exact polyline point
-              bikeMarkerRef.current.setPosition(pointOnPolyline);
-              
-              // Calculate and update bearing
-              const bearing = calculateBearingAtProgress(routePolylinePointsRef.current, progressData.progress);
-              stableRotateBike(bearing);
-              
-              // Update last progress
-              lastProgressRef.current = progressData.progress;
-              
-              console.log('✅ Strict polyline controller initialized, marker on polyline center:', {
-                progress: progressData.progress.toFixed(3),
-                pointOnPolyline
-              });
-            } else {
-              // Fallback: Use legacy method but ensure marker is on polyline
-              const nearest = findNearestPointOnPolyline(routePolylinePointsRef.current, { lat, lng });
-              
-              if (nearest && nearest.nearestPoint) {
-                // Calculate progress
-                let distanceToNearest = 0;
-                for (let i = 0; i < nearest.segmentIndex; i++) {
-                  const p1 = routePolylinePointsRef.current[i];
-                  const p2 = routePolylinePointsRef.current[i + 1];
-                  distanceToNearest += calculateHaversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-                }
-                
-                const segmentStart = routePolylinePointsRef.current[nearest.segmentIndex];
-                const segmentEnd = routePolylinePointsRef.current[nearest.segmentIndex + 1] || segmentStart;
-                const segmentDistance = calculateHaversineDistance(segmentStart.lat, segmentStart.lng, segmentEnd.lat, segmentEnd.lng);
-                const segmentProgress = calculateHaversineDistance(segmentStart.lat, segmentStart.lng, nearest.nearestPoint.lat, nearest.nearestPoint.lng) / (segmentDistance || 1);
-                distanceToNearest += segmentDistance * segmentProgress;
-                
-                let totalDistance = 0;
-                for (let i = 0; i < routePolylinePointsRef.current.length - 1; i++) {
-                  const p1 = routePolylinePointsRef.current[i];
-                  const p2 = routePolylinePointsRef.current[i + 1];
-                  totalDistance += calculateHaversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-                }
-                
-                let progress = totalDistance > 0 ? Math.min(1, Math.max(0, distanceToNearest / totalDistance)) : 0;
-                
-                // Forward-only constraint
-                if (progress < lastProgressRef.current) {
-                  progress = lastProgressRef.current;
-                }
-                
-                // Get exact point on polyline (ALWAYS on polyline center)
-                const pointOnPolyline = getPointOnPolylineByProgress(routePolylinePointsRef.current, progress);
-                
-                // Update marker to exact polyline point (not nearest point from GPS)
-                bikeMarkerRef.current.setPosition(pointOnPolyline);
-                
-                // Calculate bearing
-                const bearing = calculateBearingAtProgress(routePolylinePointsRef.current, progress);
-                stableRotateBike(bearing);
-                
-                lastProgressRef.current = progress;
-                
-                console.log('🛣️ Marker updated to polyline center (fallback):', {
-                  progress: progress.toFixed(3),
-                  pointOnPolyline
-                });
-              }
-            }
-          }
-        } else {
-          // Fallback (prod resilience):
-          // If polyline isn't available yet (Directions API slow/blocked), we still want to show a live bike marker
-          // so the user sees tracking. We'll place it at the incoming rider location and keep it visible.
-          // When polyline becomes available later, strict/polyline-based tracking will take over automatically.
-          try {
-            if (bikeMarkerRef.current) {
-              bikeMarkerRef.current.setPosition({ lat, lng });
-              stableRotateBike(calculatedBearing || 0);
-            }
-          } catch {
-            // ignore
-          }
-        }
-
-        // Update previous location for next bearing calculation
-        previousLocationRef.current = { lat, lng };
-        
-        // Ensure bike is visible
-        bikeMarkerRef.current.setVisible(true);
-
-        // Verify bike is on map
-        if (!bikeMarkerRef.current.getMap()) {
-          console.log('⚠️ Bike marker not on map, re-adding...');
-          bikeMarkerRef.current.setMap(mapInstance.current);
-        }
-
-        // DO NOT auto-pan map - keep it stable
-        // Map should remain stable unless follow mode is enabled
-      }
-
-      // Zomato-like camera follow: keep rider in view unless user interacted.
-      // Throttle camera updates to avoid jitter.
-      try {
-        const nowTs = Date.now();
-        const canFollow = followRiderRef.current && !userHasInteractedRef.current;
-        if (canFollow && mapInstance.current && nowTs - (lastCameraUpdateTsRef.current || 0) > 900) {
-          lastCameraUpdateTsRef.current = nowTs;
-          const target = { lat, lng };
-          isProgrammaticChangeRef.current = true;
-          mapInstance.current.panTo(target);
-          // Keep a reasonable zoom if user never touched the map
-          setTimeout(() => {
-            isProgrammaticChangeRef.current = false;
-          }, 200);
-        }
-      } catch {
-        // ignore
-      }
-    } catch (error) {
-      console.error('❌ Error moving bike:', error);
-    }
-  }, [isMapLoaded, bikeLogo, stableRotateBike]);
 
   // Initialize Socket.io connection
   useEffect(() => {
@@ -1821,21 +1509,17 @@ const DeliveryTrackingMap = ({
             hasBikeMarker: !!bikeMarkerRef.current
           });
 
-          // DO NOT create bike at restaurant on map load
-          // Wait for real location from socket - bike will be created when real location is received
-          if (hasDeliveryPartnerOnLoad && !bikeMarkerRef.current) {
-            // If we have a stored location, create the bike immediately even without socket yet
-            if (currentLocation && currentLocation.lat && currentLocation.lng) {
-              console.log('🚴 Creating bike from stored location immediately on map load:', currentLocation);
-              moveBikeSmoothly(currentLocation.lat, currentLocation.lng, currentLocation.heading || 0);
-            } else {
-              console.log('🚴 Map loaded - Delivery partner detected, waiting for REAL location from socket...');
-              // Request current location immediately
-              if (socketRef.current && socketRef.current.connected) {
-                effectiveTrackingIds.forEach((id) => {
-                  socketRef.current.emit('request-current-location', id);
-                })
-              }
+          // Ensure bike is created if we have ANY location
+          if (!bikeMarkerRef.current && currentLocation) {
+            console.log('🚴 Map tiles loaded - Creating bike from current state:', currentLocation);
+            moveBikeSmoothly(currentLocation.lat, currentLocation.lng, currentLocation.heading || 0);
+          } else if (hasDeliveryPartnerOnLoad && !bikeMarkerRef.current) {
+            console.log('🚴 Map loaded - Waiting for location from socket...');
+            // Request current location immediately
+            if (socketRef.current && socketRef.current.connected) {
+              effectiveTrackingIds.forEach((id) => {
+                socketRef.current.emit('request-current-location', id);
+              })
             }
           }
 

@@ -463,6 +463,7 @@ const orderSchema = new mongoose.Schema(
           "reached_pickup",
           "order_confirmed",
           "en_route_to_delivery",
+          "reached_delivery",
           "delivered",
         ],
         default: "pending",
