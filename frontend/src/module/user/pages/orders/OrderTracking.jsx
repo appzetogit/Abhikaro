@@ -285,16 +285,6 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
       animate={{ opacity: 1 }}
     >
       {/* Delivery partner banner (replaces generic high-demand style banner) */}
-      {hasAcceptedByDelivery && (
-        <div className="absolute top-3 left-3 right-3 z-20">
-          <div className="bg-black/65 text-white text-xs sm:text-sm px-3 py-2 rounded-xl backdrop-blur-sm shadow">
-            <span className="font-semibold">
-              {deliveryPartnerName ? `${deliveryPartnerName}` : "Your delivery partner"}
-            </span>
-            {" "}will deliver your order after a quick delivery on the way
-          </div>
-        </div>
-      )}
 
       <DeliveryTrackingMap
         orderId={orderId}

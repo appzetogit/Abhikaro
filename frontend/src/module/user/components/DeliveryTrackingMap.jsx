@@ -969,10 +969,6 @@ const DeliveryTrackingMap = ({
           isProgrammaticChangeRef.current = true;
           mapInstance.current.panTo(target);
           // Keep a reasonable zoom if user never touched the map
-          const z = mapInstance.current.getZoom();
-          if (typeof z === "number" && z < 16) {
-            mapInstance.current.setZoom(16);
-          }
           setTimeout(() => {
             isProgrammaticChangeRef.current = false;
           }, 200);
@@ -1030,7 +1026,7 @@ const DeliveryTrackingMap = ({
             socketRef.current.emit('request-current-location', id);
           })
         }
-      }, 8000); // Light polling until push starts (then it becomes a no-op)
+      }, 4000); // Light polling until push starts (then it becomes a no-op)
 
       // Store interval ID for cleanup
       socketRef.current._locationRequestInterval = locationRequestInterval;
@@ -1107,7 +1103,7 @@ const DeliveryTrackingMap = ({
           // Priority 1: Use strict polyline controller (marker always on polyline center)
           if (strictPolylineControllerRef.current && routePolylinePointsRef.current) {
             // GPS is used only to calculate progress, marker position comes from polyline
-            strictPolylineControllerRef.current.updateFromGPS({ lat: norm.lat, lng: norm.lng }, 900);
+            strictPolylineControllerRef.current.updateFromGPS({ lat: norm.lat, lng: norm.lng }, 1800);
             console.log('🛵 Strict polyline tracking: Marker on polyline center');
           }
           // Priority 2: Use backend progress if available
@@ -1388,6 +1384,8 @@ const DeliveryTrackingMap = ({
         mapInstance.current = new window.google.maps.Map(mapRef.current, {
           center: { lat: centerLat, lng: centerLng },
           zoom: 15,
+          minZoom: 13,
+          maxZoom: 18,
           mapTypeId: mapTypeId,
           tilt: 0, // Flat 2D view for stability
           heading: 0,
@@ -1395,8 +1393,10 @@ const DeliveryTrackingMap = ({
           fullscreenControl: false, // Hide fullscreen button
           streetViewControl: false, // Hide street view control
           zoomControl: false, // Hide zoom controls
+          scrollwheel: true, // Allow mouse wheel zoom
+          disableDoubleClickZoom: false, // Allow double click zoom
           disableDefaultUI: true, // Hide all default UI controls
-          gestureHandling: 'greedy', // Allow hand gestures for zoom and pan
+          gestureHandling: 'greedy', // Allow single-finger panning on mobile
           // Prevent automatic viewport changes
           restriction: null,
           // Keep map stable - no auto-fit bounds
@@ -1563,16 +1563,21 @@ const DeliveryTrackingMap = ({
           const hasCustomerCoords = !Number.isNaN(ccLat) && !Number.isNaN(ccLng);
 
           if (hasCustomerCoords && !mapInstance.current._customerMarker) {
+            const customerPinIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
+                <path d="M20 0 C9 0 0 9 0 20 C0 35 20 50 20 50 C20 50 40 35 40 20 C40 9 31 0 20 0 Z" fill="#4285F4" stroke="#ffffff" stroke-width="2"/>
+                <circle cx="20" cy="20" r="7" fill="white"/>
+              </svg>
+            `);
+
             mapInstance.current._customerMarker = new window.google.maps.Marker({
               position: { lat: ccLat, lng: ccLng },
               map: mapInstance.current,
               icon: {
-                path: window.google.maps.SymbolPath.CIRCLE,
-                scale: 12,
-                fillColor: '#4285F4', // blue dot
-                fillOpacity: 1,
-                strokeColor: '#FFFFFF',
-                strokeWeight: 3
+                url: customerPinIconUrl,
+                scaledSize: new window.google.maps.Size(30, 38),
+                anchor: new window.google.maps.Point(15, 38),
+                origin: new window.google.maps.Point(0, 0)
               },
               zIndex: window.google.maps.Marker.MAX_ZINDEX + 2,
               optimized: false,
@@ -1630,8 +1635,8 @@ const DeliveryTrackingMap = ({
                     map: mapInstance.current,
                     icon: {
                       url: restaurantHomeIconUrl,
-                      scaledSize: new window.google.maps.Size(40, 50),
-                      anchor: new window.google.maps.Point(20, 50),
+                      scaledSize: new window.google.maps.Size(30, 38),
+                      anchor: new window.google.maps.Point(15, 38),
                       origin: new window.google.maps.Point(0, 0)
                     },
                     zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
@@ -1677,20 +1682,8 @@ const DeliveryTrackingMap = ({
 
               isProgrammaticChangeRef.current = true;
 
-              // If restaurant is > ~1.2km away, show both points so restaurant icon is visible.
-              if (hasRestaurant && distanceToRestaurant > 1200 && window.google?.maps?.LatLngBounds) {
-                const bounds = new window.google.maps.LatLngBounds()
-                bounds.extend({ lat: customerCoords.lat, lng: customerCoords.lng })
-                bounds.extend({ lat: rrLat, lng: rrLng })
-                mapInstance.current.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 })
-              } else {
-                mapInstance.current.panTo({ lat: customerCoords.lat, lng: customerCoords.lng });
-                // A slightly closer zoom makes the blue dot + bike discoverable quickly.
-                const z = mapInstance.current.getZoom();
-                if (typeof z === 'number' && z < 16) {
-                  mapInstance.current.setZoom(16);
-                }
-              }
+              // Always pan to customer location and maintain fixed zoom 15
+              mapInstance.current.panTo({ lat: customerCoords.lat, lng: customerCoords.lng });
 
               setTimeout(() => {
                 isProgrammaticChangeRef.current = false;
@@ -2000,16 +1993,21 @@ const DeliveryTrackingMap = ({
       if (userLocationMarkerRef.current) {
         userLocationMarkerRef.current.setPosition(userPos);
       } else {
+        const userPinIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
+            <path d="M20 0 C9 0 0 9 0 20 C0 35 20 50 20 50 C20 50 40 35 40 20 C40 9 31 0 20 0 Z" fill="#4285F4" stroke="#ffffff" stroke-width="2"/>
+            <circle cx="20" cy="20" r="7" fill="white"/>
+          </svg>
+        `);
+
         userLocationMarkerRef.current = new window.google.maps.Marker({
           position: userPos,
           map: mapInstance.current,
           icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 12,
-            fillColor: '#4285F4',
-            fillOpacity: 1,
-            strokeColor: '#FFFFFF',
-            strokeWeight: 3
+            url: userPinIconUrl,
+            scaledSize: new window.google.maps.Size(30, 38),
+            anchor: new window.google.maps.Point(15, 38),
+            origin: new window.google.maps.Point(0, 0)
           },
           zIndex: window.google.maps.Marker.MAX_ZINDEX + 2,
           optimized: false,
@@ -2047,16 +2045,21 @@ const DeliveryTrackingMap = ({
     const pos = { lat: ccLat, lng: ccLng };
     try {
       if (!mapInstance.current._customerMarker) {
+        const customerPinIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
+            <path d="M20 0 C9 0 0 9 0 20 C0 35 20 50 20 50 C20 50 40 35 40 20 C40 9 31 0 20 0 Z" fill="#4285F4" stroke="#ffffff" stroke-width="2"/>
+            <circle cx="20" cy="20" r="7" fill="white"/>
+          </svg>
+        `);
+
         mapInstance.current._customerMarker = new window.google.maps.Marker({
           position: pos,
           map: mapInstance.current,
           icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 12,
-            fillColor: '#4285F4',
-            fillOpacity: 1,
-            strokeColor: '#FFFFFF',
-            strokeWeight: 3
+            url: customerPinIconUrl,
+            scaledSize: new window.google.maps.Size(30, 38),
+            anchor: new window.google.maps.Point(15, 38),
+            origin: new window.google.maps.Point(0, 0)
           },
           zIndex: window.google.maps.Marker.MAX_ZINDEX + 2,
           optimized: false,
@@ -2067,6 +2070,20 @@ const DeliveryTrackingMap = ({
           mapInstance.current._customerMarker.setMap(mapInstance.current);
         }
         mapInstance.current._customerMarker.setPosition(pos);
+
+        // Ensure icon is also updated if needed
+        const customerPinIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
+            <path d="M20 0 C9 0 0 9 0 20 C0 35 20 50 20 50 C20 50 40 35 40 20 C40 9 31 0 20 0 Z" fill="#4285F4" stroke="#ffffff" stroke-width="2"/>
+            <circle cx="20" cy="20" r="7" fill="white"/>
+          </svg>
+        `);
+        mapInstance.current._customerMarker.setIcon({
+          url: customerPinIconUrl,
+          scaledSize: new window.google.maps.Size(30, 38),
+          anchor: new window.google.maps.Point(15, 38),
+          origin: new window.google.maps.Point(0, 0)
+        });
       }
     } catch {}
 
@@ -2125,8 +2142,8 @@ const DeliveryTrackingMap = ({
         map: mapInstance.current,
         icon: {
           url: restaurantHomeIconUrl,
-          scaledSize: new window.google.maps.Size(40, 50),
-          anchor: new window.google.maps.Point(20, 50),
+          scaledSize: new window.google.maps.Size(30, 38),
+          anchor: new window.google.maps.Point(15, 38),
           origin: new window.google.maps.Point(0, 0)
         },
         zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
@@ -2281,7 +2298,6 @@ const DeliveryTrackingMap = ({
                 isProgrammaticChangeRef.current = true;
                 mapInstance.current.panTo({ lat: p.lat(), lng: p.lng() });
                 const z = mapInstance.current.getZoom();
-                if (typeof z === "number" && z < 16) mapInstance.current.setZoom(16);
                 setTimeout(() => {
                   isProgrammaticChangeRef.current = false;
                 }, 200);
