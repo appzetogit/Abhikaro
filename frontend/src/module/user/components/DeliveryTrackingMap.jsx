@@ -23,9 +23,6 @@ function calculateHaversineDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
-// Helper function to update bike marker rotation (uses imported function)
-const updateBikeMarkerRotation = updateMarkerIconRotation;
-
 const DeliveryTrackingMap = ({
   orderId,
   trackingRoomIds = null,
@@ -54,6 +51,34 @@ const DeliveryTrackingMap = ({
   const [mapLoadTimeoutError, setMapLoadTimeoutError] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [deliveryBoyLocation, setDeliveryBoyLocation] = useState(null);
+  const lastBearingRef = useRef(0);
+
+  /**
+   * Stable marker rotation wrapper
+   * Prevents 'spinning' by implementing a threshold and smoothing.
+   */
+  const stableRotateBike = useCallback((bearing) => {
+    if (bearing === null || bearing === undefined || isNaN(bearing) || !bikeMarkerRef.current) return;
+    
+    // Normalize to 0-360
+    const targetBearing = (bearing + 360) % 360;
+    
+    // Smoothing: Calculate the shortest distance between current and target bearing
+    let diff = targetBearing - lastBearingRef.current;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+
+    // Threshold: Ignore changes less than 10 degrees to prevent jitter/spinning
+    // Increased to 10 for better stability on live GPS
+    if (Math.abs(diff) < 10) return;
+
+    // Apply smoothing - don't jump all the way to target immediately
+    const smoothedBearing = (lastBearingRef.current + diff * 0.5 + 360) % 360;
+    lastBearingRef.current = smoothedBearing;
+    
+    // Use the high-quality canvas-based rotation utility
+    updateMarkerIconRotation(bikeMarkerRef.current, smoothedBearing);
+  }, []);
   
   // Initialize delivery boy location from order data if available
   useEffect(() => {
@@ -72,6 +97,7 @@ const DeliveryTrackingMap = ({
         };
         setDeliveryBoyLocation(initialLoc);
         setCurrentLocation(initialLoc);
+        lastBearingRef.current = initialLoc.heading || 0;
       }
     }
   }, [order, deliveryBoyLocation]);
@@ -738,12 +764,9 @@ const DeliveryTrackingMap = ({
           previousLocationRef.current,
           { lat, lng }
         );
-        if (calculatedBearing === null) {
-          calculatedBearing = 0; // Default to North if calculation fails
-        }
-      } else if (!calculatedBearing) {
-        calculatedBearing = 0; // Default to North
       }
+      
+      const targetBearing = calculatedBearing || 0;
 
       // Ignore jitter: if rider hasn't moved meaningfully, don't update rotation
       if (previousLocationRef.current) {
@@ -769,8 +792,8 @@ const DeliveryTrackingMap = ({
             <circle cx="30" cy="30" r="28" fill="rgba(34, 197, 94, 0.2)" />
             <!-- Inner Circle -->
             <circle cx="30" cy="30" r="22" fill="#22c55e" stroke="white" stroke-width="3" />
-            <!-- Motorcycle Icon -->
-            <path d="M42 32 C42 35.3 39.3 38 36 38 C32.7 38 30 35.3 30 32 C30 28.7 32.7 26 36 26 C39.3 26 42 28.7 42 32 Z M18 32 C18 35.3 15.3 38 12 38 C8.7 38 6 35.3 6 32 C6 28.7 8.7 26 12 26 C15.3 26 18 28.7 18 32 Z M40 24 L30 18 L20 18 L16 24 L10 24 L10 28 L14 28 L18 22 L28 22 L36 28 L46 28 L46 24 L40 24 Z" fill="white" />
+            <!-- Directional Pointer (North oriented) -->
+            <path d="M30 15 L42 40 L30 34 L18 40 Z" fill="white" />
           </svg>
         `);
 
@@ -804,7 +827,9 @@ const DeliveryTrackingMap = ({
         img.src = bikeLogo;
           
           // Apply initial rotation immediately
-          stableRotateBike(calculatedBearing || 0);
+          if (bikeMarkerRef.current) {
+            updateMarkerIconRotation(bikeMarkerRef.current, targetBearing);
+          }
           
           // Force marker to be visible
           bikeMarkerRef.current.setVisible(true);
@@ -1031,7 +1056,7 @@ const DeliveryTrackingMap = ({
     } catch (error) {
       console.error('❌ Error moving bike:', error);
     }
-  }, [isMapLoaded, bikeLogo]);
+  }, [isMapLoaded, bikeLogo, stableRotateBike]);
 
   // Initialize Socket.io connection
   useEffect(() => {
