@@ -654,44 +654,51 @@ const DeliveryTrackingMap = ({
 
     const currentPhase = String(order.deliveryState?.currentPhase || 'assigned').toLowerCase();
     const status = String(order.deliveryState?.status || 'pending').toLowerCase();
-    const orderStatus = String(order.status || '').toLowerCase();
 
-    // Phase 1: Delivery boy going to restaurant
-    // Use stable anchors: START (rider loc when assigned) -> END (restaurant)
-    // For now, if we don't have rider loc, fallback to restaurant->customer
-    if (currentPhase === 'en_route_to_pickup' || status === 'accepted' || status === 'assigned') {
-      if (deliveryBoyLocation) {
-        return {
-          start: { lat: deliveryBoyLocation.lat, lng: deliveryBoyLocation.lng },
-          end: restaurantCoords
-        };
+    const route = (() => {
+      // Phase 1: Delivery boy going to restaurant
+      if (currentPhase === 'en_route_to_pickup' || status === 'accepted' || status === 'assigned') {
+        if (deliveryBoyLocation) {
+          console.log('🛣️ Route selection: Rider to Restaurant', { rider: deliveryBoyLocation, restaurant: restaurantCoords });
+          return {
+            start: { lat: deliveryBoyLocation.lat, lng: deliveryBoyLocation.lng },
+            end: restaurantCoords
+          };
+        }
+        console.log('🛣️ Route selection fallback: Restaurant to Customer (Phase is pickup but no rider loc)', { restaurant: restaurantCoords, customer: customerCoords });
+        return { start: restaurantCoords, end: customerCoords };
       }
-      return { start: restaurantCoords, end: customerCoords };
-    }
 
-    // Phase 2: Delivery boy at restaurant - show static route to customer
-    if (currentPhase === 'at_pickup' || status === 'reached_pickup' || status === 'at_pickup' || status === 'order_confirmed') {
-      return {
-        start: restaurantCoords,
-        end: customerCoords
-      };
-    }
-
-    if (isPickedUp) {
-      if (deliveryBoyLocation) {
+      // Phase 2: Delivery boy at restaurant - show static route to customer
+      if (currentPhase === 'at_pickup' || status === 'reached_pickup' || status === 'at_pickup' || status === 'order_confirmed') {
+        console.log('🛣️ Route selection: Restaurant to Customer (At Pickup)', { restaurant: restaurantCoords, customer: customerCoords });
         return {
-          start: { lat: deliveryBoyLocation.lat, lng: deliveryBoyLocation.lng },
+          start: restaurantCoords,
           end: customerCoords
         };
       }
-      return {
-        start: restaurantCoords,
-        end: customerCoords
-      };
-    }
 
-    // Default: Show restaurant to customer
-    return { start: restaurantCoords, end: customerCoords };
+      if (isPickedUp) {
+        if (deliveryBoyLocation) {
+          console.log('🛣️ Route selection: Rider to Customer (Picked Up)', { rider: deliveryBoyLocation, customer: customerCoords });
+          return {
+            start: { lat: deliveryBoyLocation.lat, lng: deliveryBoyLocation.lng },
+            end: customerCoords
+          };
+        }
+        console.log('🛣️ Route selection fallback: Restaurant to Customer (Picked up but no rider loc)', { restaurant: restaurantCoords, customer: customerCoords });
+        return {
+          start: restaurantCoords,
+          end: customerCoords
+        };
+      }
+
+      // Default: Show restaurant to customer
+      console.log('🛣️ Route selection: Default (Restaurant to Customer)', { restaurant: restaurantCoords, customer: customerCoords });
+      return { start: restaurantCoords, end: customerCoords };
+    })();
+
+    return route;
   }, [
     order?.deliveryState?.currentPhase, 
     order?.deliveryState?.status, 
@@ -701,7 +708,8 @@ const DeliveryTrackingMap = ({
     restaurantCoords?.lat, 
     restaurantCoords?.lng, 
     customerCoords?.lat, 
-    customerCoords?.lng
+    customerCoords?.lng,
+    isPickedUp
   ]);
 
   // Move bike smoothly with rotation
@@ -753,51 +761,47 @@ const DeliveryTrackingMap = ({
       const position = new window.google.maps.LatLng(lat, lng);
 
       if (!bikeMarkerRef.current) {
-        // Create bike marker with the same icon as delivery boy's map
-        console.log('🚴🚴🚴 Creating bike marker with logo path:', bikeLogo);
-        console.log('🚴 Map instance:', !!mapInstance.current);
-        console.log('🚴 Position:', { lat, lng, heading });
+        // Create bike marker with a high-visibility SVG to ensure it's always seen
+        // even if the high-res PNG takes time to load or fail.
+        const bikeSvg = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">
+            <!-- Outer Glow -->
+            <circle cx="30" cy="30" r="28" fill="rgba(34, 197, 94, 0.2)" />
+            <!-- Inner Circle -->
+            <circle cx="30" cy="30" r="22" fill="#22c55e" stroke="white" stroke-width="3" />
+            <!-- Motorcycle Icon -->
+            <path d="M42 32 C42 35.3 39.3 38 36 38 C32.7 38 30 35.3 30 32 C30 28.7 32.7 26 36 26 C39.3 26 42 28.7 42 32 Z M18 32 C18 35.3 15.3 38 12 38 C8.7 38 6 35.3 6 32 C6 28.7 8.7 26 12 26 C15.3 26 18 28.7 18 32 Z M40 24 L30 18 L20 18 L16 24 L10 24 L10 28 L14 28 L18 22 L28 22 L36 28 L46 28 L46 24 L40 24 Z" fill="white" />
+          </svg>
+        `);
 
-        // Create bike icon configuration with rotation
-        let bikeIcon = {
-          url: bikeLogo,
-          scaledSize: new window.google.maps.Size(50, 50), // Slightly larger for better visibility
-          anchor: new window.google.maps.Point(25, 25),
-          rotation: normalizeBearing(calculatedBearing || 0)
-        };
-
+        console.log('🚴🚴🚴 Creating bike marker with high-visibility SVG');
+        
         try {
-          // Test if image loads (but don't wait for it - create marker immediately)
-          const img = new Image();
-          img.onload = () => {
-            console.log('✅ Bike logo image loaded successfully:', bikeLogo);
-          };
-          img.onerror = () => {
-            console.error('❌ Bike logo image failed to load:', bikeLogo);
-            // If image fails, update marker with fallback icon
-            if (bikeMarkerRef.current) {
-              bikeMarkerRef.current.setIcon({
-                path: window.google.maps.SymbolPath.CIRCLE,
-                scale: 12,
-                fillColor: '#FF6B00',
-                fillOpacity: 1,
-                strokeColor: '#FFFFFF',
-                strokeWeight: 3
-              });
-            }
-          };
-          img.src = bikeLogo;
-
           bikeMarkerRef.current = new window.google.maps.Marker({
-            position: position,
-            map: mapInstance.current,
-            icon: bikeIcon,
-            optimized: false,
-            zIndex: window.google.maps.Marker.MAX_ZINDEX + 3, // Above other markers
-            title: 'Delivery Partner',
-            visible: true,
-            // Removed DROP animation to prevent flickering during rapid updates or re-renders
-          });
+          position: position,
+          map: mapInstance.current,
+          icon: {
+            url: bikeSvg,
+            scaledSize: new window.google.maps.Size(50, 50),
+            anchor: new window.google.maps.Point(25, 25),
+            rotation: 0 // Will be updated by stableRotateBike
+          },
+          optimized: false,
+          zIndex: 999999, // Absolute top
+          title: 'Delivery Partner',
+          visible: true
+        });
+
+        // After creation, we'll try to swap in the real logo if it's available and not too huge
+        // but the SVG ensures the user sees tracking IMMEDIATELY.
+        const img = new Image();
+        img.onload = () => {
+          if (bikeMarkerRef.current) {
+            // Only swap if the image is actually loaded and ready
+            console.log('✅ Real bike logo ready, but keeping SVG for better visibility at high z-index');
+          }
+        };
+        img.src = bikeLogo;
           
           // Apply initial rotation immediately
           stableRotateBike(calculatedBearing || 0);
@@ -1608,7 +1612,7 @@ const DeliveryTrackingMap = ({
               anchor: new window.google.maps.Point(20, 50),
               origin: new window.google.maps.Point(0, 0)
             },
-            zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
+            zIndex: window.google.maps.Marker.MAX_ZINDEX + 10
           });
         }
         try {
@@ -1795,16 +1799,19 @@ const DeliveryTrackingMap = ({
           // DO NOT create bike at restaurant on map load
           // Wait for real location from socket - bike will be created when real location is received
           if (hasDeliveryPartnerOnLoad && !bikeMarkerRef.current) {
-            console.log('🚴 Map loaded - Delivery partner detected, waiting for REAL location from socket...');
-            // Request current location immediately
-            if (socketRef.current && socketRef.current.connected) {
-              // Request for all possible room ids (mongo _id + custom orderId) so refresh always works
-              effectiveTrackingIds.forEach((id) => {
-                socketRef.current.emit('request-current-location', id);
-              })
-              console.log('📡 Requested current location immediately on map load');
+            // If we have a stored location, create the bike immediately even without socket yet
+            if (currentLocation && currentLocation.lat && currentLocation.lng) {
+              console.log('🚴 Creating bike from stored location immediately on map load:', currentLocation);
+              moveBikeSmoothly(currentLocation.lat, currentLocation.lng, currentLocation.heading || 0);
+            } else {
+              console.log('🚴 Map loaded - Delivery partner detected, waiting for REAL location from socket...');
+              // Request current location immediately
+              if (socketRef.current && socketRef.current.connected) {
+                effectiveTrackingIds.forEach((id) => {
+                  socketRef.current.emit('request-current-location', id);
+                })
+              }
             }
-            // Don't create bike at restaurant - wait for real location
           }
 
           // DO NOT draw default route - only draw when delivery partner is assigned

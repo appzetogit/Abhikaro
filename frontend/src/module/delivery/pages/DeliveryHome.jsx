@@ -6480,13 +6480,11 @@ export default function DeliveryHome() {
     // After initial centering, marker will update but map viewport stays stable
     if (
       window.deliveryMapInstance &&
-      (!hasInitiallyCenteredOnBike || mapInitializedWithDefaultCenterRef.current || selectedRestaurant)
+      (!hasInitiallyCenteredOnBike || mapInitializedWithDefaultCenterRef.current)
     ) {
       try {
         window.deliveryMapInstance.panTo({ lat: riderLocation[0], lng: riderLocation[1] });
-        if (!selectedRestaurant) {
-          setHasInitiallyCenteredOnBike(true)
-        }
+        setHasInitiallyCenteredOnBike(true)
         mapInitializedWithDefaultCenterRef.current = false
       } catch (error) {
 
@@ -6573,11 +6571,9 @@ export default function DeliveryHome() {
 
                 // Auto-center map only on initial setup if user hasn't manually panned
                 // After initial centering, don't auto-pan to prevent map jumping
-                if (!isUserPanningRef.current && (!hasInitiallyCenteredOnBike || selectedRestaurant)) {
+                if (!isUserPanningRef.current && !hasInitiallyCenteredOnBike) {
                   window.deliveryMapInstance.panTo(position);
-                  if (!selectedRestaurant) {
-                    setHasInitiallyCenteredOnBike(true)
-                  }
+                  setHasInitiallyCenteredOnBike(true)
                 }
 
                 // Update state for consistency
@@ -9481,10 +9477,10 @@ export default function DeliveryHome() {
 
       // Auto-center map on bike location (like Zomato) - only if user hasn't manually panned and not already centered initially
       // After initial centering, don't auto-pan to prevent map jumping
-      if (shouldCenterMap && !isUserPanningRef.current && (!hasInitiallyCenteredOnBike || isLocationCached || selectedRestaurant)) {
+      if (shouldCenterMap && !isUserPanningRef.current && (!hasInitiallyCenteredOnBike || isLocationCached)) {
         // Smooth pan to bike location
         map.panTo(position);
-        if (!isLocationCached && !selectedRestaurant) {
+        if (!isLocationCached) {
           setHasInitiallyCenteredOnBike(true)
         }
       }
@@ -10124,8 +10120,8 @@ export default function DeliveryHome() {
         onHelpClick={() => setShowHelpPopup(true)}
       />
 
-      {/* Carousel - Only show if there are slides and NO active order */}
-      {carouselSlides.length > 0 && !selectedRestaurant && (
+      {/* Carousel - Only show if there are slides */}
+      {carouselSlides.length > 0 && (
         <div
           ref={carouselRef}
           className="relative overflow-hidden bg-gray-700 cursor-grab active:cursor-grabbing select-none flex-shrink-0"
@@ -10357,7 +10353,6 @@ export default function DeliveryHome() {
         {/* Floating Action Button - My Location */}
         <motion.button
           onClick={() => {
-            isUserPanningRef.current = false
             if (navigator.geolocation) {
               setIsRefreshingLocation(true)
               navigator.geolocation.getCurrentPosition(
@@ -10657,8 +10652,8 @@ export default function DeliveryHome() {
                 WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
               }}
             >
-              {/* Earnings Guarantee Card - Only show when there's an active earning addon offer AND no active order */}
-              {activeEarningAddon && !selectedRestaurant && (
+              {/* Earnings Guarantee Card - Only show when there's an active earning addon offer */}
+              {activeEarningAddon && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
