@@ -1926,15 +1926,26 @@ export default function OrdersMain() {
     setSelectedOrder(order)
     setIsSheetOpen(true)
   }
+  
+  const handleShowPopup = (order) => {
+    // If order is already accepted, the countdown should not be shown or should be bypassed
+    // We'll set a flag to hide the accept/reject buttons if the status is not 'confirmed'
+    setPopupOrder({
+      ...order,
+      orderMongoId: order.mongoId, // Ensure mapping for popup
+      isViewOnly: order.status !== 'confirmed' && order.status !== 'pending'
+    })
+    setShowNewOrderPopup(true)
+  }
 
   const renderContent = () => {
     switch (activeFilter) {
       case "preparing":
-        return <PreparingOrders onSelectOrder={handleSelectOrder} onCancel={handleCancelClick} fetchAllOrders={fetchAllOrders} getCachedOrders={getCachedOrders} />
+        return <PreparingOrders onSelectOrder={handleSelectOrder} onCancel={handleCancelClick} onShowPopup={handleShowPopup} fetchAllOrders={fetchAllOrders} getCachedOrders={getCachedOrders} />
       case "ready":
-        return <ReadyOrders onSelectOrder={handleSelectOrder} fetchAllOrders={fetchAllOrders} getCachedOrders={getCachedOrders} />
+        return <ReadyOrders onSelectOrder={handleSelectOrder} onShowPopup={handleShowPopup} fetchAllOrders={fetchAllOrders} getCachedOrders={getCachedOrders} />
       case "out-for-delivery":
-        return <OutForDeliveryOrders onSelectOrder={handleSelectOrder} fetchAllOrders={fetchAllOrders} />
+        return <OutForDeliveryOrders onSelectOrder={handleSelectOrder} onShowPopup={handleShowPopup} fetchAllOrders={fetchAllOrders} />
       case "scheduled":
         return <EmptyState message="Scheduled orders will appear here" />
       case "completed":
@@ -2449,56 +2460,70 @@ export default function OrdersMain() {
                   {/* Payment row removed: shown near time above */}
 
                   {/* Preparation time */}
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-gray-700">Preparation time</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setPrepTime(Math.max(1, prepTime - 1))}
-                          className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-                        >
-                          <Minus className="w-4 h-4 text-gray-700" />
-                        </button>
-                        <span className="text-base font-semibold text-gray-900 min-w-[60px] text-center">
-                          {prepTime} mins
-                        </span>
-                        <button
-                          onClick={() => setPrepTime(prepTime + 1)}
-                          className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-                        >
-                          <Plus className="w-4 h-4 text-gray-700" />
-                        </button>
+                  {!(popupOrder?.isViewOnly) && (
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-gray-700">Preparation time</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setPrepTime(Math.max(1, prepTime - 1))}
+                            className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                          >
+                            <Minus className="w-4 h-4 text-gray-700" />
+                          </button>
+                          <span className="text-base font-semibold text-gray-900 min-w-[60px] text-center">
+                            {prepTime} mins
+                          </span>
+                          <button
+                            onClick={() => setPrepTime(prepTime + 1)}
+                            className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                          >
+                            <Plus className="w-4 h-4 text-gray-700" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Accept and Reject buttons */}
-                  <div className="space-y-3">
-                    {/* Accept button with countdown */}
-                    <div className="relative">
+                  {!(popupOrder?.isViewOnly) ? (
+                    <div className="space-y-3">
+                      {/* Accept button with countdown */}
+                      <div className="relative">
+                        <button
+                          onClick={handleAcceptOrder}
+                          className="w-full bg-black text-white py-3.5 rounded-lg font-semibold text-sm hover:bg-gray-800 transition-colors relative overflow-hidden"
+                        >
+                          {/* Loading background */}
+                          <motion.div
+                            className="absolute inset-0 bg-blue-600"
+                            initial={{ width: "100%" }}
+                            animate={{ width: `${(countdown / ACCEPT_WINDOW_SECONDS) * 100}%` }}
+                            transition={{ duration: 1, ease: "linear" }}
+                          />
+                          <span className="relative z-10">Accept ({formatTime(countdown)})</span>
+                        </button>
+                      </div>
+
+                      {/* Reject button */}
                       <button
-                        onClick={handleAcceptOrder}
-                        className="w-full bg-black text-white py-3.5 rounded-lg font-semibold text-sm hover:bg-gray-800 transition-colors relative overflow-hidden"
+                        onClick={handleRejectClick}
+                        className="w-full bg-white border-2 border-red-500 text-red-600 py-3 rounded-lg font-semibold text-sm hover:bg-red-50 transition-colors"
                       >
-                        {/* Loading background */}
-                        <motion.div
-                          className="absolute inset-0 bg-blue-600"
-                          initial={{ width: "100%" }}
-                          animate={{ width: `${(countdown / ACCEPT_WINDOW_SECONDS) * 100}%` }}
-                          transition={{ duration: 1, ease: "linear" }}
-                        />
-                        <span className="relative z-10">Accept ({formatTime(countdown)})</span>
+                        Reject Order
                       </button>
                     </div>
-
-                    {/* Reject button */}
+                  ) : (
                     <button
-                      onClick={handleRejectClick}
-                      className="w-full bg-white border-2 border-red-500 text-red-600 py-3 rounded-lg font-semibold text-sm hover:bg-red-50 transition-colors"
+                      onClick={() => {
+                        setShowNewOrderPopup(false)
+                        setPopupOrder(null)
+                      }}
+                      className="w-full bg-black text-white py-4 rounded-xl font-bold text-sm hover:bg-gray-900 transition-all active:scale-95 shadow-lg"
                     >
-                      Reject Order
+                      CLOSE DETAILS
                     </button>
-                  </div>
+                  )}
                 </div>
 
                 {/* Footer removed (Need help with this order?) */}
@@ -2913,6 +2938,8 @@ function OrderCard({
   onSelect,
   onCancel,
   onMarkReady,
+  onShowPopup,
+  rawOrder,
 }) {
   const isReady = String(status).toLowerCase() === "ready"
 
@@ -2958,6 +2985,7 @@ function OrderCard({
       >
         <Printer className="w-6 h-6" />
       </button>
+
       <div
         onClick={() =>
           onSelect?.({
@@ -2989,7 +3017,7 @@ function OrderCard({
               </p>
             </div>
 
-            <div className={`flex flex-col items-end gap-1 ${status === 'preparing' ? 'mr-7' : ''}`}>
+            <div className="flex flex-col items-end gap-1">
               <span
                 className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium border ${isReady
                   ? "border-green-500 text-green-600"
@@ -3094,12 +3122,46 @@ function OrderCard({
           </div>
         </div>
       </div>
+
+      {/* View Arrival Popup - Centered at bottom - ONLY show for unaccepted (confirmed) orders */}
+      {status === 'confirmed' && (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onShowPopup?.(rawOrder || {
+                orderId,
+                mongoId,
+                status,
+                customerName,
+                type,
+                tableOrToken,
+                timePlaced,
+                eta,
+                itemsSummary,
+                note,
+                paymentMethod,
+                paymentStatus,
+                deliveryPartnerId,
+                deliveryPartnerName,
+                deliveryPartnerPhone
+              })
+            }}
+            className="px-4 py-1.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 text-[10px] font-bold hover:bg-blue-100 transition-all active:scale-95 shadow-sm uppercase flex items-center gap-1.5"
+            title="View Arrival Popup"
+          >
+            <Bell className="w-3 h-3" />
+            See Order
+          </button>
+        </div>
+      )}
     </div>
   )
 }
 
 // Preparing Orders List
-function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders, getCachedOrders }) {
+function PreparingOrders({ onSelectOrder, onCancel, onShowPopup, fetchAllOrders, getCachedOrders }) {
   // Instant render from cache if available
   const buildPreparing = (allOrders) => {
     const preparingOrders = (allOrders || []).filter(
@@ -3111,6 +3173,7 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders, getCachedOrd
         ? new Date(order.tracking.preparing.timestamp)
         : new Date(order.createdAt)
       return {
+        ...order,
         orderId: order.orderId || order._id,
         mongoId: order._id,
         status: order.status || 'preparing',
@@ -3426,6 +3489,8 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders, getCachedOrd
                 onSelect={onSelectOrder}
                 onCancel={onCancel}
                 onMarkReady={handleMarkReady}
+                onShowPopup={onShowPopup}
+                rawOrder={order}
               />
             )
           })}
@@ -3436,10 +3501,11 @@ function PreparingOrders({ onSelectOrder, onCancel, fetchAllOrders, getCachedOrd
 }
 
 // Ready Orders List
-function ReadyOrders({ onSelectOrder, fetchAllOrders, getCachedOrders }) {
+function ReadyOrders({ onSelectOrder, onShowPopup, fetchAllOrders, getCachedOrders }) {
   const buildReady = (allOrders) => {
     const readyOrders = (allOrders || []).filter(order => order.status === 'ready')
     return readyOrders.map(order => ({
+      ...order,
       orderId: order.orderId || order._id,
       mongoId: order._id,
       status: order.status || 'ready',
@@ -3600,6 +3666,8 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders, getCachedOrders }) {
               {...order}
               onSelect={onSelectOrder}
               onMarkReady={undefined}
+              onShowPopup={onShowPopup}
+              rawOrder={order}
               // Show resend button on ready tab as well
               // (OrderCard will render it via ResendNotificationButton)
             />
@@ -3611,7 +3679,7 @@ function ReadyOrders({ onSelectOrder, fetchAllOrders, getCachedOrders }) {
 }
 
 // Out for Delivery Orders List
-const OutForDeliveryOrders = ({ onSelectOrder, fetchAllOrders }) => {
+const OutForDeliveryOrders = ({ onSelectOrder, onShowPopup, fetchAllOrders }) => {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -3635,6 +3703,7 @@ const OutForDeliveryOrders = ({ onSelectOrder, fetchAllOrders }) => {
           )
 
           const transformedOrders = outForDeliveryOrders.map(order => ({
+            ...order,
             orderId: order.orderId || order._id,
             mongoId: order._id,
             status: order.status || 'out_for_delivery',
@@ -3736,6 +3805,8 @@ const OutForDeliveryOrders = ({ onSelectOrder, fetchAllOrders }) => {
               key={order.orderId || order.mongoId}
               {...order}
               onSelect={onSelectOrder}
+              onShowPopup={onShowPopup}
+              rawOrder={order}
             />
           ))}
         </div>

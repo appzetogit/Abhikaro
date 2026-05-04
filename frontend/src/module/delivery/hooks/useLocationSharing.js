@@ -49,11 +49,12 @@ export const useLocationSharing = (orderId, enabled = false) => {
     // Initialize socket connection
     if (!socketRef.current) {
       socketRef.current = io(backendUrl, {
-        transports: ["polling"],
-        upgrade: false,
+        // Prefer WebSockets for instant location sharing, fallback to polling
+        transports: ["websocket", "polling"],
         reconnection: true,
         reconnectionDelay: 1000,
-        reconnectionAttempts: 5
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: Infinity
       });
 
       socketRef.current.on('connect', () => {

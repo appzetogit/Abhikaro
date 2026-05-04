@@ -262,7 +262,13 @@ const DeliveryTrackingMap = ({
       const data = JSON.parse(raw);
       // Consider fresh if within 30 minutes
       if (data && data.lat && data.lng && Number(Date.now() - (data.ts || 0)) < 30 * 60 * 1000) {
-        const loc = { lat: Number(data.lat), lng: Number(data.lng), heading: Number(data.heading || 0) };
+        const loc = { 
+          lat: Number(data.lat), 
+          lng: Number(data.lng), 
+          heading: Number(data.heading || 0),
+          isRestored: true,
+          ts: Number(data.ts)
+        };
         setCurrentLocation(loc);
         setDeliveryBoyLocation(loc);
         // Use restored location only for instant rendering after refresh/back.
@@ -598,6 +604,25 @@ const DeliveryTrackingMap = ({
     buildCurvedArcPath,
   ]);
 
+  // Determine if order is in "Picked Up" phase
+  const isPickedUp = useMemo(() => {
+    if (!order) return false;
+    const currentPhase = String(order.deliveryState?.currentPhase || 'assigned').toLowerCase();
+    const status = String(order.deliveryState?.status || 'pending').toLowerCase();
+    const orderStatus = String(order.status || '').toLowerCase();
+
+    return (
+      currentPhase === 'en_route_to_delivery' || 
+      currentPhase === 'at_delivery' ||
+      status === 'en_route_to_delivery' || 
+      status === 'picked_up' ||
+      status === 'pickedup' ||
+      status === 'reached_delivery' ||
+      orderStatus === 'out_for_delivery' ||
+      orderStatus === 'picked_up'
+    );
+  }, [order?.deliveryState?.currentPhase, order?.deliveryState?.status, order?.status]);
+
   // Determine which route to show based on order phase
   const getRouteToShow = useCallback(() => {
     if (!order) {
@@ -630,15 +655,13 @@ const DeliveryTrackingMap = ({
       };
     }
 
-    // Phase 3: Delivery boy going to customer
-    // Show FULL route from Restaurant to Customer to prevent red line flickering
-    if (
-      currentPhase === 'en_route_to_delivery' || 
-      status === 'en_route_to_delivery' || 
-      status === 'picked_up' ||
-      status === 'reached_delivery' ||
-      orderStatus === 'out_for_delivery'
-    ) {
+    if (isPickedUp) {
+      if (deliveryBoyLocation) {
+        return {
+          start: { lat: deliveryBoyLocation.lat, lng: deliveryBoyLocation.lng },
+          end: customerCoords
+        };
+      }
       return {
         start: restaurantCoords,
         end: customerCoords
@@ -753,7 +776,10 @@ const DeliveryTrackingMap = ({
             visible: true,
             // Removed DROP animation to prevent flickering during rapid updates or re-renders
           });
-
+          
+          // Apply initial rotation immediately
+          stableRotateBike(calculatedBearing || 0);
+          
           // Force marker to be visible
           bikeMarkerRef.current.setVisible(true);
 
@@ -992,12 +1018,13 @@ const DeliveryTrackingMap = ({
       console.log("🔌 Connecting socket:", { url: c.url, path: c.path })
       return io(c.url, {
         path: c.path,
-        transports: ["polling"],
-        upgrade: false,
+        // Prefer WebSockets for instant tracking updates, fallback to polling
+        transports: ["websocket", "polling"],
         reconnection: true,
-        reconnectionDelay: 500,
-        reconnectionAttempts: 5,
-        timeout: 5000
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: Infinity,
+        timeout: 10000
       })
     }
 
@@ -1804,24 +1831,36 @@ const DeliveryTrackingMap = ({
       Math.abs(last.end.lat - route.end.lat) > 0.00005 || 
       Math.abs(last.end.lng - route.end.lng) > 0.00005;
 
-    if (startChanged || endChanged) {
-      lastRouteUpdateRef.current = now;
-      drawRoute(route.start, route.end);
+    const lastPhase = lastRouteRequestRef.current.phase;
+    const currentRoutePhase = isPickedUp ? 'picked_up' : currentPhase;
+
+    if (startChanged || endChanged || lastPhase !== currentRoutePhase) {
+      // Throttle Directions API: don't call more than once every 10s unless phase changed
+      const lastApiCall = lastRouteRequestRef.current.timestamp;
+      
+      // Force immediate redraw if phase changed (e.g. just picked up)
+      const forceRedraw = lastPhase !== currentRoutePhase;
+      
+      if (now - lastApiCall > 10000 || startChanged || forceRedraw) {
+         lastRouteUpdateRef.current = now;
+         lastRouteRequestRef.current.phase = currentRoutePhase;
+         drawRoute(route.start, route.end);
+      }
     }
   }, [
     isMapLoaded, 
-    null, // Fixed size for HMR/React: placeholder for deliveryBoyLat
-    null, // Fixed size for HMR/React: placeholder for deliveryBoyLng
     order?.deliveryState?.currentPhase, 
     order?.deliveryState?.status, 
     restaurantLat, 
     restaurantLng, 
     customerCoords?.lat, 
     customerCoords?.lng, 
-    moveBikeSmoothly, 
-    getRouteToShow, 
     drawRoute, 
-    hasDeliveryPartner
+    deliveryBoyLat,
+    deliveryBoyLng,
+    hasDeliveryPartner,
+    order?.status,
+    isPickedUp
   ]);
 
 
@@ -1829,7 +1868,11 @@ const DeliveryTrackingMap = ({
   useEffect(() => {
     if (isMapLoaded && mapInstance.current && currentLocation && !bikeMarkerRef.current) {
       // If we restored a recent location from storage (or already have push), create bike immediately.
-      if (!hasLivePushRef.current && !allowPulledLocationForBike) return;
+      // Fresh restored locations (less than 30 mins) are allowed to skip the phase-check
+      // to ensure the bike is visible IMMEDIATELY after refresh.
+      const isFreshRestored = currentLocation.isRestored && (Date.now() - (currentLocation.ts || 0) < 30 * 60 * 1000);
+      
+      if (!hasLivePushRef.current && !allowPulledLocationForBike && !isFreshRestored) return;
 
       console.log('🚴 Creating bike marker from stored/current location on map load:', currentLocation);
       moveBikeSmoothly(currentLocation.lat, currentLocation.lng, currentLocation.heading || 0);
@@ -1857,7 +1900,8 @@ const DeliveryTrackingMap = ({
       deliveryStateStatus === 'order_confirmed' ||
       deliveryStateStatus === 'en_route_to_delivery';
 
-    const shouldShowBike = hasDeliveryPartner || hasPartnerByPhase;
+    const isFreshRestored = currentLocation?.isRestored && (Date.now() - (currentLocation.ts || 0) < 30 * 60 * 1000);
+    const shouldShowBike = hasDeliveryPartner || hasPartnerByPhase || isFreshRestored;
 
     console.log('🚴🚴🚴 BIKE VISIBILITY CHECK:', {
       shouldShowBike,
@@ -1923,27 +1967,24 @@ const DeliveryTrackingMap = ({
               lat: markerPosition.lat(),
               lng: markerPosition.lng()
             } : null,
-            iconUrl: bikeLogo
           });
 
           // Force visibility if needed
           if (!markerVisible) {
-            console.warn('⚠️ Bike marker not visible, forcing visibility...');
             marker.setVisible(true);
           }
           if (!markerMap) {
-            console.warn('⚠️ Bike marker not on map, re-adding...');
             marker.setMap(mapInstance.current);
           }
         }
       }, 500);
     } else if (shouldShowBike && bikeMarkerRef.current) {
       // If we are NOT receiving live push updates (socket), update from state (polling).
-      // If socket is active, we skip this to avoid dual-triggering animations (flicker).
       if (!hasLivePushRef.current && deliveryBoyLat && deliveryBoyLng) {
         moveBikeSmoothly(deliveryBoyLat, deliveryBoyLng, deliveryBoyHeading || 0);
       }
     } else {
+      // Bike marker exists. Ensure visibility without redundant setMap calls
       if (bikeMarkerRef.current) {
         try {
           if (!bikeMarkerRef.current.getVisible()) {
@@ -1964,8 +2005,6 @@ const DeliveryTrackingMap = ({
     restaurantLat,
     restaurantLng,
     moveBikeSmoothly,
-    // Avoid re-running this effect on every `order` object identity change.
-    // Only depend on the specific fields that affect bike visibility.
     order?.deliveryState?.status,
     order?.deliveryState?.currentPhase,
     order?.status,

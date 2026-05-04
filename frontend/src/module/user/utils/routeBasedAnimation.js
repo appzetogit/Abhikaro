@@ -77,7 +77,7 @@ export function updateMarkerIconRotation(marker, bearing) {
       // - caching rotated dataURLs per marker instance
       // - reusing the base image element per marker
 
-      const step = 10; // degrees (increased to 10 for less churn)
+      const step = 3; // degrees (reduced for smoother rotation)
       const rounded = Math.round((((bearing % 360) + 360) % 360) / step) * step;
 
       // Per-marker cache
@@ -146,6 +146,12 @@ export function updateMarkerIconRotation(marker, bearing) {
           anchor: currentIcon.anchor || new window.google.maps.Point(25, 25),
         });
       };
+
+      if (img.complete && img.src === currentIcon.url) {
+        img.onload();
+      } else {
+        img.src = currentIcon.url;
+      }
 
       img.onerror = () => {
         cache.pending = false;

@@ -84,12 +84,12 @@ export default function OrderChat({ orderId: orderIdProp = null, onClose = null 
     socketRef.current = io(socketUrl, {
       // Explicit Socket.IO path for reverse proxies (Nginx, etc)
       path: "/socket.io/",
-      // Proxy-safe: start and stay on HTTP long-polling
-      transports: ["polling"],
-      upgrade: false,
+      // Prefer WebSockets for instant chat, fallback to polling
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
     });
 
     const socket = socketRef.current;
