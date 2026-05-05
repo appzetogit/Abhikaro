@@ -151,13 +151,21 @@ const DeliveryTrackingMap = ({
     const now = Date.now();
     const target = normalizeBearing(bearing);
     const prev = normalizeBearing(lastBearingRef.current);
+    
+    // Calculate shortest path for rotation
     let diff = ((target - prev + 540) % 360) - 180;
+    
+    // Increased responsiveness: max rotation speed from 35 to 180 degrees per second
     const dt = Math.max(16, now - (lastBearingTsRef.current || now));
-    const maxStep = (35 * dt) / 1000;
+    const maxStep = (180 * dt) / 1000; 
+    
     if (Math.abs(diff) > maxStep) diff = Math.sign(diff) * maxStep;
+    
     const next = normalizeBearing(prev + diff);
     lastBearingRef.current = next;
     lastBearingTsRef.current = now;
+    
+    // Use the optimized rotation utility
     updateMarkerIconRotation(bikeMarkerRef.current, next);
   }, [normalizeBearing]);
 
@@ -168,15 +176,29 @@ const DeliveryTrackingMap = ({
     }
     try {
       if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return;
+      
       let calculatedBearing = heading;
+      
+      // If heading is missing or 0, calculate from movement history
       if ((calculatedBearing === null || calculatedBearing === undefined || calculatedBearing === 0) && previousLocationRef.current) {
-        calculatedBearing = calculateBearingFromLocations(previousLocationRef.current, { lat, lng });
-      }
-      const targetBearing = calculatedBearing || 0;
-      if (previousLocationRef.current) {
         const d = calculateHaversineDistance(previousLocationRef.current.lat, previousLocationRef.current.lng, lat, lng);
-        if (d < 6) calculatedBearing = lastBearingRef.current;
+        // Only calculate new bearing if we moved significantly (> 2 meters) to avoid jitter
+        if (d > 2) {
+          calculatedBearing = calculateBearingFromLocations(previousLocationRef.current, { lat, lng });
+        } else {
+          calculatedBearing = lastBearingRef.current;
+        }
+      } 
+      
+      // If still 0 (no history), use destination as a hint so marker doesn't just point North
+      if (!calculatedBearing || calculatedBearing === 0) {
+        const dest = isPickedUp ? customerCoords : restaurantCoords;
+        if (dest && dest.lat && dest.lng) {
+          calculatedBearing = calculateBearingFromLocations({ lat, lng }, dest);
+        }
       }
+
+      const targetBearing = calculatedBearing || 0;
       const position = new window.google.maps.LatLng(lat, lng);
       if (!bikeMarkerRef.current) {
         const bikeSvg = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
@@ -193,7 +215,12 @@ const DeliveryTrackingMap = ({
             icon: { url: bikeSvg, scaledSize: new window.google.maps.Size(50, 50), anchor: new window.google.maps.Point(25, 25), rotation: 0 },
             optimized: false, zIndex: 999999, title: 'Delivery Partner', visible: true
           });
+          
+          // Set initial rotation and store it
           updateMarkerIconRotation(bikeMarkerRef.current, targetBearing);
+          lastBearingRef.current = targetBearing;
+          lastBearingTsRef.current = Date.now();
+
           if (routePolylinePointsRef.current?.length > 0) {
             animationControllerRef.current = new RouteBasedAnimationController(bikeMarkerRef.current, routePolylinePointsRef.current);
           }
@@ -872,7 +899,7 @@ const DeliveryTrackingMap = ({
             strictPolylineControllerRef.current = new StrictPolylineController(
               bikeMarkerRef.current,
               routePolylinePointsRef.current,
-              (bearing) => updateMarkerIconRotation(bikeMarkerRef.current, bearing)
+              (bearing) => stableRotateBike(bearing) // Use smoothed rotation
             );
           }
 
@@ -985,9 +1012,7 @@ const DeliveryTrackingMap = ({
           strictPolylineControllerRef.current = new StrictPolylineController(
             bikeMarkerRef.current,
             data.points,
-            (bearing) => {
-              updateMarkerIconRotation(bikeMarkerRef.current, bearing);
-            }
+            (bearing) => stableRotateBike(bearing) // Use smoothed rotation
           );
           
           lastProgressRef.current = 0;
@@ -1159,7 +1184,7 @@ const DeliveryTrackingMap = ({
         const centerLat = cLat;
 
         // Get MapTypeId safely (default to terrain; fallback-safe if MapTypeId isn't ready)
-        const mapTypeId = window.google.maps.MapTypeId?.TERRAIN || 'terrain';
+        const mapTypeId = window.google.maps.MapTypeId?.ROADMAP || 'roadmap';
 
         // Initialize map - center between user and restaurant, stable view
         mapInstance.current = new window.google.maps.Map(mapRef.current, {

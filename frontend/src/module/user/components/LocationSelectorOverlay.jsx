@@ -492,7 +492,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         const map = new google.maps.Map(mapContainerRef.current, {
           center: initialLocation,
           zoom: 15,
-          mapTypeId: google.maps.MapTypeId?.TERRAIN || 'terrain',
+          mapTypeId: google.maps.MapTypeId?.ROADMAP || 'roadmap',
           disableDefaultUI: true, // Zomato-style clean look
           zoomControl: true,
           mapTypeControl: false,

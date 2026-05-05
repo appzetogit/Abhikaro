@@ -108,6 +108,7 @@ function shouldAcceptLocation(position, lastValidLocation, lastLocationTime) {
   const accuracy = position.coords.accuracy || 0
   const latitude = position.coords.latitude
   const longitude = position.coords.longitude
+  const now = Date.now()
 
   // CRITICAL: Always accept first location (no previous location) to ensure admin map shows delivery boy
   // Even if accuracy is poor, we need at least one location update
@@ -116,14 +117,18 @@ function shouldAcceptLocation(position, lastValidLocation, lastLocationTime) {
   if (isFirstLocation) {
     // For first location, accept if accuracy < 1000m (very lenient)
     if (accuracy > 1000) {
+      console.warn(`[GPS] First location rejected: accuracy=${accuracy.toFixed(1)}m > 1000m`);
       return false
     }
     return true
   }
 
-  // Filter 1: For subsequent locations, use relaxed accuracy threshold (200m instead of 30m)
-  // This allows GPS to work even in areas with poor signal
-  if (accuracy > 200) {
+  // Filter 1: Relaxed accuracy threshold (350m instead of 200m)
+  // Urban environments often have jitter; being too strict causes "frozen" markers.
+  if (accuracy > 350) {
+    if (Math.floor(now / 1000) % 5 === 0) { // Throttle logs to every 5s
+      console.warn(`[GPS] Location rejected (Poor Accuracy): ${accuracy.toFixed(1)}m (Threshold: 350m)`);
+    }
     return false
   }
 
@@ -131,17 +136,21 @@ function shouldAcceptLocation(position, lastValidLocation, lastLocationTime) {
   if (lastValidLocation && lastLocationTime) {
     const [prevLat, prevLng] = lastValidLocation
     const distance = haversineDistance(prevLat, prevLng, latitude, longitude)
-    const timeDiff = (Date.now() - lastLocationTime) / 1000 // seconds
+    const timeDiff = (now - lastLocationTime) / 1000 // seconds
 
-    // Filter 2a: Ignore if distance jump > 50 meters within 2 seconds
-    if (distance > 50 && timeDiff < 2) {
+    // Filter 2a: Ignore if distance jump > 100 meters within 1 second (impossible teleportation)
+    if (distance > 100 && timeDiff < 1) {
+      console.warn(`[GPS] Location rejected (Jump): ${distance.toFixed(1)}m in ${timeDiff.toFixed(2)}s`);
       return false
     }
 
-    // Filter 2b: Ignore if calculated speed > 60 km/h (bike speed limit)
-    if (timeDiff > 0) {
-      const speedKmh = (distance / timeDiff) * 3.6 // Convert m/s to km/h
-      if (speedKmh > 60) {
+    // Filter 2b: Ignore if calculated speed > 80 km/h (allowing for highway travel)
+    if (timeDiff > 0.1) {
+      const speedKmh = (distance / timeDiff) * 3.6 
+      if (speedKmh > 80) {
+        if (Math.floor(now / 1000) % 5 === 0) {
+          console.warn(`[GPS] Location rejected (High Speed): ${speedKmh.toFixed(1)}km/h (Limit: 80km/h)`);
+        }
         return false
       }
     }
@@ -156,18 +165,22 @@ function shouldAcceptLocation(position, lastValidLocation, lastLocationTime) {
  * @returns {Array|null} Smoothed [lat, lng] or null if not enough points
  */
 function smoothLocation(locationHistory) {
-  if (locationHistory.length < 2) {
-    return locationHistory.length === 1 ? locationHistory[0] : null
+  if (locationHistory.length === 0) return null
+  if (locationHistory.length === 1) return locationHistory[0]
+
+  // Exponentially Weighted Moving Average (EWMA)
+  // More weight to recent points to reduce lag while filtering jitter
+  const alpha = 0.6 // Smoothing factor (higher = more weight to new data, less lag)
+  
+  let smoothedLat = locationHistory[0][0]
+  let smoothedLng = locationHistory[0][1]
+
+  for (let i = 1; i < locationHistory.length; i++) {
+    smoothedLat = alpha * locationHistory[i][0] + (1 - alpha) * smoothedLat
+    smoothedLng = alpha * locationHistory[i][1] + (1 - alpha) * smoothedLng
   }
 
-  // Use last 5 points for moving average
-  const pointsToUse = locationHistory.slice(-5)
-
-  // Calculate average latitude and longitude
-  const avgLat = pointsToUse.reduce((sum, point) => sum + point[0], 0) / pointsToUse.length
-  const avgLng = pointsToUse.reduce((sum, point) => sum + point[1], 0) / pointsToUse.length
-
-  return [avgLat, avgLng]
+  return [smoothedLat, smoothedLng]
 }
 
 /**
@@ -443,6 +456,13 @@ export default function DeliveryHome() {
   const isInitializingMapRef = useRef(false)
   const mapPanTimeoutRef = useRef(null) // For cleanup of pan re-enable timeout
   const mapRetryTimeoutRef = useRef(null) // For cleanup of dimension-retry timeout
+  const [gpsDiagnostics, setGpsDiagnostics] = useState({
+    accuracy: 0,
+    speed: 0,
+    lastUpdate: null,
+    status: 'Initializing',
+    rejections: 0
+  })
 
   const fitRouteBoundsOnce = (bounds) => {
     if (!window.deliveryMapInstance || !bounds || !shouldAutoFitRouteBoundsRef.current) return
@@ -2081,6 +2101,15 @@ export default function DeliveryHome() {
         )
 
         if (!shouldAccept) {
+          // Update diagnostics on rejection
+          setGpsDiagnostics(prev => ({
+            ...prev,
+            accuracy,
+            status: 'Rejected (Filter)',
+            rejections: prev.rejections + 1,
+            lastUpdate: new Date().toLocaleTimeString()
+          }))
+
           // Location rejected by filter - but send to backend if it's been > 30 seconds since last update
           // This ensures admin map always shows delivery boy even with poor GPS
           if (isOnlineRef.current && lastValidLocationRef.current) {
@@ -2305,6 +2334,14 @@ export default function DeliveryHome() {
             }
           }
         }
+        // Update diagnostics on success
+        setGpsDiagnostics(prev => ({
+          ...prev,
+          accuracy,
+          speed: position.coords.speed || 0,
+          status: 'Accepted',
+          lastUpdate: new Date().toLocaleTimeString()
+        }))
       },
       (error) => {
 
@@ -5873,7 +5910,7 @@ export default function DeliveryHome() {
 
         // Use google.maps.Map directly - with the direct script tag loading approach,
         // this is the real Map constructor (not a bootstrap stub)
-        let mapTypeId = window.google.maps.MapTypeId?.TERRAIN || 'terrain';
+        let mapTypeId = window.google.maps.MapTypeId?.ROADMAP || 'roadmap';
 
         // Wrap map initialization in try-catch to handle any Google Maps internal errors
         let map;
@@ -7298,7 +7335,7 @@ export default function DeliveryHome() {
           zoom: 18,
           minZoom: 10, // Minimum zoom level (city/area view)
           maxZoom: 21, // Maximum zoom level - allow full zoom
-          mapTypeId: window.google.maps.MapTypeId?.TERRAIN || 'terrain',
+          mapTypeId: window.google.maps.MapTypeId?.ROADMAP || 'roadmap',
           disableDefaultUI: true, // Hide all default UI controls
           zoomControl: false,
           mapTypeControl: false,
@@ -7314,13 +7351,13 @@ export default function DeliveryHome() {
 
         directionsMapInstanceRef.current = map;
 
-        // Explicitly set terrain map type for directions map
+        // Explicitly set default map type for directions map
         try {
-          if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.TERRAIN) {
-            map.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
+          if (window.google.maps.MapTypeId && window.google.maps.MapTypeId.ROADMAP) {
+            map.setMapTypeId(window.google.maps.MapTypeId.ROADMAP);
 
           } else {
-            map.setMapTypeId('terrain');
+            map.setMapTypeId('roadmap');
           }
         } catch (e) {
 
@@ -9447,7 +9484,13 @@ export default function DeliveryHome() {
       if (typeof latitude === 'number' && typeof longitude === 'number' &&
         !isNaN(latitude) && !isNaN(longitude) &&
         latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
-        bikeMarkerRef.current.setPosition(position);
+        
+        // Use smooth animation if requested, otherwise set instantly
+        if (shouldCenterMap === false) { // Assuming shouldCenterMap=false means a movement update
+          animateMarkerSmoothly(bikeMarkerRef.current, position, 1000, markerAnimationRef);
+        } else {
+          bikeMarkerRef.current.setPosition(position);
+        }
       } else {
         return; // Don't update if coordinates are invalid
       }
