@@ -49,7 +49,7 @@ import { useDeliveryNotificationsContext } from "../context/DeliveryNotification
 import { useFirebaseLocationUpdate } from "../hooks/useFirebaseLocationUpdate"
 import { getGoogleMapsApiKey } from "@/lib/utils/googleMapsApiKey"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
-// Loader import removed - using direct script tag for Google Maps loading
+import { preloadGoogleMaps } from "@/lib/utils/googleMapsLoader"
 // import { Loader } from "@googlemaps/js-api-loader"
 import {
   decodePolyline,
@@ -6358,10 +6358,10 @@ export default function DeliveryHome() {
   // STEP 2 & 3: Initialize Google Map - Correct lifecycle flow
   // React renders UI → Map container becomes visible → Container gets real width and height → Initialize Google Map
   useEffect(() => {
-    // Don't initialize if home sections are showing
-    if (showHomeSections) {
-      return;
-    }
+    // Preloading allowed even if home sections are showing to ensure "instant" load
+    // if (showHomeSections) {
+    //   return;
+    // }
 
     // Cap retries at 3 - avoid infinite retry loop
     if (mapInitRetry > 3) {
@@ -6408,102 +6408,18 @@ export default function DeliveryHome() {
       return;
     }
 
-    // Check if container is visible
+    // Check if container is visible - Allow background initialization for preloading
     const computedStyle = window.getComputedStyle(container);
-    if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden' || computedStyle.opacity === '0') {
-
+    if (computedStyle.display === 'none') {
       return;
     }
 
     // STEP 7: Ensure Google Maps API loads fully before map initialization
-    // Uses direct script tag (proven reliable) instead of @googlemaps/js-api-loader
-    // which causes blue screen with version:"weekly" + importLibrary approach
     const loadGoogleMapsIfNeeded = async () => {
-      // Check if already loaded
-      if (window.google && window.google.maps && typeof window.google.maps.Map === 'function') {
-
-        await initializeGoogleMap();
-        return;
-      }
-
-      // Check if script tag is already present and wait for it
-      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
-      if (existingScript || window.__googleMapsLoading) {
-
-        let attempts = 0;
-        const maxAttempts = 50;
-
-        while ((!window.google || !window.google.maps || typeof window.google.maps.Map !== 'function') && attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-          attempts++;
-        }
-
-        if (window.google && window.google.maps && typeof window.google.maps.Map === 'function') {
-
-          await initializeGoogleMap();
-        } else {
-
-          setMapLoading(false);
-        }
-        return;
-      }
-
-      // Load Google Maps API via direct script tag (most reliable method)
-
-      window.__googleMapsLoading = true;
       try {
-        const apiKey = await getGoogleMapsApiKey(true);
-
-        if (apiKey && apiKey.trim().length > 0) {
-          // Create a promise that resolves when Google Maps is fully loaded
-          await new Promise((resolve, reject) => {
-            // Set up the callback that Google Maps will call when ready
-            const callbackName = '__onGoogleMapsLoaded_' + Date.now();
-            window[callbackName] = () => {
-
-              window.__googleMapsLoaded = true;
-              window.__googleMapsLoading = false;
-              delete window[callbackName];
-              resolve();
-            };
-
-            // Also set up auth failure detection
-            window.gm_authFailure = () => {
-
-              window.__googleMapsLoading = false;
-              reject(new Error('Google Maps API key is invalid or restricted'));
-            };
-
-            const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey.trim()}&libraries=places,geometry&callback=${callbackName}`;
-            script.async = true;
-            script.defer = true;
-            script.onerror = () => {
-              window.__googleMapsLoading = false;
-              delete window[callbackName];
-              reject(new Error('Failed to load Google Maps script'));
-            };
-            document.head.appendChild(script);
-          });
-
-          await initializeGoogleMap();
-        } else {
-          const errorMsg = 'Google Maps API key not found. Set VITE_GOOGLE_MAPS_API_KEY in frontend .env and backend .env';
-
-          window.__googleMapsLoading = false;
-          setMapLoading(false);
-          setMapError(errorMsg);
-        }
+        await preloadGoogleMaps();
+        await initializeGoogleMap();
       } catch (error) {
-        const errorMsg = error.message?.includes('InvalidKey') || error.message?.includes('invalid')
-          ? 'Invalid Google Maps API Key. Check VITE_GOOGLE_MAPS_API_KEY in .env'
-          : error.message?.includes('Billing') || error.message?.includes('billing')
-            ? 'Google Maps billing not enabled. Please enable billing in Google Cloud Console'
-            : `Failed to load Google Maps: ${error.message || 'Unknown error'}`;
-
-        window.__googleMapsLoading = false;
-        setMapLoading(false);
-        setMapError(errorMsg);
       }
     };
 
@@ -10085,8 +10001,8 @@ export default function DeliveryHome() {
         onHelpClick={() => setShowHelpPopup(true)}
       />
 
-      {/* Carousel - Only show if there are slides */}
-      {carouselSlides.length > 0 && (
+      {/* Carousel moved to showHomeSections */}
+      {false && (
         <div
           ref={carouselRef}
           className="relative overflow-hidden bg-gray-700 cursor-grab active:cursor-grabbing select-none flex-shrink-0"
@@ -10436,7 +10352,7 @@ export default function DeliveryHome() {
                 }
               }}
             >
-              <MapPin
+            <TargetIcon
                 className={`w-6 h-6 transition-colors duration-500 ease-in-out ${isRefreshingLocation ? 'text-blue-600' : 'text-gray-700'
                   }`}
               />

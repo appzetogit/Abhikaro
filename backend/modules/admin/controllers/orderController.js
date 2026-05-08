@@ -381,6 +381,8 @@ export const getOrders = asyncHandler(async (req, res) => {
           orderStatusDisplay = 'Cancelled by Restaurant';
         } else if (order.cancelledBy === 'user') {
           orderStatusDisplay = 'Cancelled by User';
+        } else if (order.cancelledBy === 'admin') {
+          orderStatusDisplay = 'Cancelled by System';
         } else {
           // Fallback: check cancellation reason pattern for old orders
           const cancellationReason = order.cancellationReason || '';

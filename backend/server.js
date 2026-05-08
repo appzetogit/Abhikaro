@@ -1133,6 +1133,25 @@ function initializeScheduledTasks() {
     console.error('❌ Failed to initialize auto-cancel-ready service:', error);
   });
 
+  // Import auto-cancel-accepted service (Accepted but not delivered within 2h)
+  import('./modules/order/services/autoCancelAcceptedService.js').then(({ processAutoCancelAcceptedOrders }) => {
+    // Run every 5 minutes
+    cron.schedule('*/5 * * * *', async () => {
+      try {
+        const result = await processAutoCancelAcceptedOrders();
+        if (result.processed > 0) {
+          console.log(`[Auto Cancel Accepted Cron] ${result.message}`);
+        }
+      } catch (error) {
+        console.error('[Auto Cancel Accepted Cron] Error:', error);
+      }
+    });
+
+    console.log('✅ Auto-cancel accepted order scheduler initialized (runs every 5 minutes)');
+  }).catch((error) => {
+    console.error('❌ Failed to initialize auto-cancel-accepted service:', error);
+  });
+
   // Expire stale payment intents (runs every minute)
   import('./modules/payment/services/intentExpiryService.js').then(({ expireStalePaymentIntents }) => {
     cron.schedule('* * * * *', async () => {

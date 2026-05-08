@@ -56,6 +56,7 @@ import VegModePopup from "../components/VegModePopup"
 import SwitchOffVegModePopup from "../components/SwitchOffVegModePopup"
 import CategoryCarousel from "../components/CategoryCarousel"
 import { RestaurantImageCarousel } from "../components/RestaurantImageCarousel"
+import HomeSkeleton from "../components/HomeSkeleton"
 
 const RATING_POPUP_STORAGE_KEY = "ratedOrdersForFeedback"
 const GLOBAL_RATING_DISMISSED_KEY = "global_rating_popup_dismissed"
@@ -1733,6 +1734,11 @@ export default function Home() {
     )
   }
 
+  // Show HomeSkeleton while initial data is loading
+  if ((loading || zoneLoading || loadingRestaurants) && restaurantsData.length === 0) {
+    return <HomeSkeleton />
+  }
+
   return (
     <div className="relative min-h-screen bg-white dark:bg-[#0a0a0a] pb-28 md:pb-24">
       {/* Unified Background for Entire Page - Vibrant Food Theme */}
@@ -2093,8 +2099,13 @@ export default function Home() {
             }}
           >
             {loadingLandingConfig ? (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              <div className="flex gap-4 overflow-hidden py-2">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex flex-col items-center gap-2.5 w-[88px] sm:w-[104px] md:w-[112px] flex-shrink-0">
+                    <div className="w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] md:w-[96px] md:h-[96px] rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                    <div className="h-3 w-16 bg-gray-100 dark:bg-gray-800 animate-pulse rounded" />
+                  </div>
+                ))}
               </div>
             ) : landingExploreMore.length === 0 ? (
               // Fallback to hardcoded explore more if API returns empty
@@ -2953,7 +2964,14 @@ export default function Home() {
               {/* Categories Grid - Scrollable */}
               <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 sm:py-5">
                 <div className="grid grid-cols-3 gap-4 sm:gap-5 md:gap-6">
-                  {(allCategories.length > 0 ? allCategories : (realCategories.length > 0 ? realCategories : landingCategories)).map((category, index) => {
+                  {loadingAllCategories ? (
+                    [...Array(12)].map((_, i) => (
+                      <div key={i} className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                        <div className="h-3 w-16 bg-gray-100 dark:bg-gray-800 animate-pulse rounded" />
+                      </div>
+                    ))
+                  ) : (allCategories.length > 0 ? allCategories : (realCategories.length > 0 ? realCategories : landingCategories)).map((category, index) => {
                     const isAdminCategory = allCategories.length > 0 || realCategories.length > 0
                     const categoryData = isAdminCategory
                       ? { name: category.name, image: category.image, slug: category.slug }

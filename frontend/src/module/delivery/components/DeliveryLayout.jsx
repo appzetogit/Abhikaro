@@ -9,6 +9,7 @@ import alertSound from "@/assets/audio/alert.mp3"
 import io from "socket.io-client"
 import { BACKEND_ORIGIN } from "@/lib/api/config"
 import { toast } from "sonner"
+import { preloadGoogleMaps } from "@/lib/utils/googleMapsLoader"
 
 export default function DeliveryLayout({
   children,
@@ -22,6 +23,13 @@ export default function DeliveryLayout({
   const [requestBadgeCount, setRequestBadgeCount] = useState(() =>
     getUnreadDeliveryNotificationCount()
   )
+
+  // Preload Google Maps as soon as the delivery layout is rendered
+  useEffect(() => {
+    preloadGoogleMaps().catch(err => {
+      console.warn('Failed to preload Google Maps in Layout:', err);
+    });
+  }, []);
 
   // Background chat notifications (user <-> delivery)
   useEffect(() => {

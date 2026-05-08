@@ -137,10 +137,12 @@ export default function HeroBannerCarousel({ banners, loading }) {
 
   if (loading) {
     return (
-      <div className="absolute top-0 left-0 right-0 bottom-0 z-0 bg-white flex items-center justify-center">
-        <div className="text-gray-600 text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-          <p className="text-sm">Loading banners...</p>
+      <div className="absolute top-0 md:top-16 lg:top-20 left-0 right-0 bottom-0 z-0 px-4 sm:px-6">
+        <div className="w-full h-full bg-gray-100 dark:bg-gray-800 animate-pulse sm:rounded-2xl lg:rounded-3xl flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            <p className="text-sm text-gray-400">Loading banners...</p>
+          </div>
         </div>
       </div>
     )

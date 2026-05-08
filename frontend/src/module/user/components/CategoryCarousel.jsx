@@ -19,8 +19,13 @@ export default function CategoryCarousel({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-4">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      <div className="flex gap-3 sm:gap-4 lg:gap-5 xl:gap-6 overflow-x-hidden px-2 sm:px-3 lg:px-4 py-2 sm:py-3 lg:py-4">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="flex flex-col items-center gap-2 flex-shrink-0">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+            <div className="h-3 w-12 bg-gray-100 dark:bg-gray-800 animate-pulse rounded" />
+          </div>
+        ))}
       </div>
     )
   }
