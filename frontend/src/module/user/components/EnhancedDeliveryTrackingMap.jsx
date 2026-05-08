@@ -54,8 +54,8 @@ const EnhancedDeliveryTrackingMap = ({
       map: mapInstance,
       icon: {
         url: bikeLogo,
-        scaledSize: new window.google.maps.Size(60, 60),
-        anchor: new window.google.maps.Point(30, 30)
+        scaledSize: new window.google.maps.Size(42, 42),
+        anchor: new window.google.maps.Point(21, 21)
       },
       optimized: false,
       zIndex: window.google.maps.Marker.MAX_ZINDEX + 3,

@@ -205,6 +205,7 @@ export class StrictPolylineController {
     this.animationFrameId = null;
     this.isAnimating = false;
     this.lastProgress = 0;
+    this.lastBearing = 0;
   }
 
   /**
@@ -268,10 +269,11 @@ export class StrictPolylineController {
       // Update marker position (always on polyline)
       this.marker.setPosition(pointOnPolyline);
 
-      // Calculate and update bearing
+      // Calculate and update bearing (throttled to 5-degree steps to prevent flicker)
       const bearing = calculateBearingAtProgress(this.polyline, currentProgress);
-      if (this.onBearingUpdate) {
+      if (this.onBearingUpdate && Math.abs(bearing - this.lastBearing) >= 10) {
         this.onBearingUpdate(bearing);
+        this.lastBearing = bearing;
       }
 
       if (progress < 1) {
@@ -280,8 +282,9 @@ export class StrictPolylineController {
         // Animation complete
         this.marker.setPosition(endPoint);
         const finalBearing = calculateBearingAtProgress(this.polyline, endProgress);
-        if (this.onBearingUpdate) {
+        if (this.onBearingUpdate && Math.abs(finalBearing - this.lastBearing) >= 10) {
           this.onBearingUpdate(finalBearing);
+          this.lastBearing = finalBearing;
         }
         this.isAnimating = false;
       }

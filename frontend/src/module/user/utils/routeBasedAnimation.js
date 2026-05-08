@@ -77,7 +77,7 @@ export function updateMarkerIconRotation(marker, bearing) {
       // - caching rotated dataURLs per marker instance
       // - reusing the base image element per marker
 
-      const step = 3; // degrees (reduced for smoother rotation)
+      const step = 5; // degrees (decreased from 10 to 5 for smoother rotation without flicker)
       const rounded = Math.round((((bearing % 360) + 360) % 360) / step) * step;
 
       // Per-marker cache
@@ -104,12 +104,12 @@ export function updateMarkerIconRotation(marker, bearing) {
 
       const cachedUrl = cache.urlsByBearing.get(rounded);
       if (cachedUrl) {
-        marker.setIcon({
+        // Fast path: reuse cached data URL synchronously to prevent flicker
+        const nextIcon = {
           ...currentIcon,
-          url: cachedUrl,
-          scaledSize: currentIcon.scaledSize || new window.google.maps.Size(50, 50),
-          anchor: currentIcon.anchor || new window.google.maps.Point(25, 25),
-        });
+          url: cachedUrl
+        };
+        marker.setIcon(nextIcon);
         return;
       }
 
@@ -183,6 +183,7 @@ export function animateMarkerSmoothly(marker, currentPos, targetPos, duration = 
   
   // Easing function (ease-out for natural deceleration)
   const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+  let lastBearing = 0;
   
   const animate = () => {
     const elapsed = Date.now() - startTime;
@@ -202,9 +203,11 @@ export function animateMarkerSmoothly(marker, currentPos, targetPos, duration = 
               lng: startLng + deltaLng * easeOutCubic(Math.max(0, progress - 0.1)) }
           : currentPos;
       
-      const bearing = calculateBearing(prevPos, { lat: currentLat, lng: currentLng });
-      // Update icon rotation instead of setRotation (Google Maps doesn't support setRotation)
-      updateMarkerIconRotation(marker, bearing);
+      // Update icon rotation (throttled to 10-degree steps to prevent flicker)
+      if (Math.abs(bearing - lastBearing) >= 10) {
+        updateMarkerIconRotation(marker, bearing);
+        lastBearing = bearing;
+      }
       
       requestAnimationFrame(animate);
     } else {

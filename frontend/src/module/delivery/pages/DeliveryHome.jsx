@@ -68,6 +68,8 @@ import {
 import alertSound from "../../../assets/audio/alert.mp3"
 import originalSound from "../../../assets/audio/original.mp3"
 import bikeLogo from "../../../assets/bikelogo.png"
+import restaurantIcon from "../../../assets/restauranticon.png"
+import homeIcon from "../../../assets/homeicon.png"
 
 // Ola Maps API Key removed
 
@@ -435,6 +437,7 @@ export default function DeliveryHome() {
   const directionsRendererRef = useRef(null) // Directions Renderer instance
   const directionsMapInstanceRef = useRef(null) // Directions map instance
   const restaurantMarkerRef = useRef(null) // Restaurant marker on directions map
+  const customerMarkerRef = useRef(null) // Customer marker on main map
   const directionsBikeMarkerRef = useRef(null) // Bike marker on directions map
   const lastRouteRecalculationRef = useRef(null) // Track last route recalculation time (API cost optimization)
   const lastBikePositionRef = useRef(null) // Track last bike position for deviation detection
@@ -805,7 +808,683 @@ export default function DeliveryHome() {
     }
   }
 
+  // ============================================
+  // MAP UTILITIES & HELPER FUNCTIONS
+  // ============================================
+
+  // Calculate heading from two coordinates (in degrees, 0-360)
+  const calculateHeading = (lat1, lng1, lat2, lng2) => {
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const lat1Rad = lat1 * Math.PI / 180
+    const lat2Rad = lat2 * Math.PI / 180
+
+    const y = Math.sin(dLng) * Math.cos(lat2Rad)
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng)
+
+    let heading = Math.atan2(y, x) * 180 / Math.PI
+    heading = (heading + 360) % 360 // Normalize to 0-360
+
+    return heading
+  }
+
+  // Cache for rotated icons to avoid recreating them
+  const rotatedIconCache = useRef(new Map());
+  // Prevent unnecessary setIcon() churn (reduces flicker)
+  const lastAppliedHeadingStepRef = useRef(null);
+  const lastIconUpdateTsRef = useRef(0);
+
+  // Function to rotate bike logo image based on heading
+  const getRotatedBikeIcon = (heading = 0) => {
+    // Round heading to nearest 5 degrees for caching
+    const roundedHeading = Math.round(heading / 5) * 5;
+    const cacheKey = `${roundedHeading}`;
+
+    // Check cache first
+    if (rotatedIconCache.current.has(cacheKey)) {
+      return Promise.resolve(rotatedIconCache.current.get(cacheKey));
+    }
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      // Don't set crossOrigin for local images - it causes CORS issues
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const size = 60; // Icon size
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+
+          // Clear canvas
+          ctx.clearRect(0, 0, size, size);
+
+          // Move to center, rotate, then draw image
+          ctx.save();
+          ctx.translate(size / 2, size / 2);
+          ctx.rotate((roundedHeading * Math.PI) / 180); // Convert degrees to radians
+          ctx.drawImage(img, -size / 2, -size / 2, size, size);
+          ctx.restore();
+
+          // Get data URL and cache it
+          const dataUrl = canvas.toDataURL();
+          rotatedIconCache.current.set(cacheKey, dataUrl);
+          resolve(dataUrl);
+        } catch (error) {
+
+          // Fallback to original image if rotation fails
+          resolve(bikeLogo);
+        }
+      };
+      img.onerror = () => {
+
+        // Fallback to original image if loading fails
+        resolve(bikeLogo);
+      };
+      img.src = bikeLogo;
+
+      // If image is already loaded (cached), resolve immediately
+      if (img.complete) {
+        // Image already loaded, process it
+        img.onload();
+      }
+    });
+  };
+
+  // Google Maps marker functions - Zomato style exact location tracking
+  const createOrUpdateBikeMarker = async (latitude, longitude, heading = null, shouldCenterMap = true) => {
+    if (!window.google || !window.google.maps || !window.deliveryMapInstance) {
+
+      return;
+    }
+
+    // Use object literal instead of deprecated LatLng constructor
+    const position = { lat: latitude, lng: longitude };
+    const map = window.deliveryMapInstance;
+
+    // Normalize + snap heading to a small step (matches getRotatedBikeIcon caching)
+    const rawHeading = heading !== null && heading !== undefined ? Number(heading) : 0;
+    const normalizedHeading = Number.isNaN(rawHeading) ? 0 : ((rawHeading % 360) + 360) % 360;
+    const headingStep = Math.round(normalizedHeading / 5) * 5;
+
+    if (!bikeMarkerRef.current) {
+      // IMPORTANT:
+      // This function is async (icon rotation). If multiple location updates arrive quickly,
+      // two concurrent calls can both see `!bikeMarkerRef.current` and create TWO markers.
+      // We lock marker creation so only one marker instance is ever created.
+      const existingCreatePromise = bikeMarkerRef.__createInFlightPromise;
+      if (existingCreatePromise) {
+        try {
+          await existingCreatePromise;
+        } catch {
+          // ignore - next block may recreate if needed
+        }
+      }
+
+      if (!bikeMarkerRef.current) {
+        const createPromise = (async () => {
+          // Double-check inside lock in case another call created it.
+          if (bikeMarkerRef.current) return;
+
+          // Get rotated icon URL (first render)
+          const rotatedIconUrl = await getRotatedBikeIcon(headingStep);
+          // Create bike marker with rotated icon - exact position
+          const bikeIcon = {
+            url: rotatedIconUrl,
+            scaledSize: new window.google.maps.Size(60, 60), // Larger size for better visibility
+            anchor: new window.google.maps.Point(30, 30) // Center point
+          };
+
+          const marker = new window.google.maps.Marker({
+            position: position,
+            map: map,
+            icon: bikeIcon,
+            optimized: false, // Disable optimization for exact positioning
+            animation: window.google.maps.Animation.DROP, // Drop animation on first appearance
+            zIndex: 1000 // High z-index to ensure it's above other markers
+          });
+
+          bikeMarkerRef.current = marker;
+          lastAppliedHeadingStepRef.current = headingStep;
+          lastIconUpdateTsRef.current = Date.now();
+
+          // Center map on bike location initially - preserve current zoom if user has zoomed in
+          // Only center if not already centered initially (prevents map jumping after initial setup)
+          if (shouldCenterMap && !hasInitiallyCenteredOnBike) {
+            const currentZoom = map.getZoom();
+            map.setCenter(position);
+            // Only set zoom to 18 if current zoom is less than 18 (don't reduce user's zoom)
+            if (currentZoom < 18) {
+              map.setZoom(18); // Full zoom in for better visibility
+            }
+            setHasInitiallyCenteredOnBike(true)
+          }
+
+          // Remove animation after drop completes
+          setTimeout(() => {
+            if (bikeMarkerRef.current) {
+              bikeMarkerRef.current.setAnimation(null);
+            }
+          }, 2000);
+        })();
+
+        bikeMarkerRef.__createInFlightPromise = createPromise;
+        try {
+          await createPromise;
+        } finally {
+          // Clear only if we still point to the same promise
+          if (bikeMarkerRef.__createInFlightPromise === createPromise) {
+            bikeMarkerRef.__createInFlightPromise = null;
+          }
+        }
+      }
+    } else {
+      // ALWAYS ensure marker is on the map (prevent it from disappearing)
+      const currentMap = bikeMarkerRef.current.getMap();
+      if (currentMap === null || currentMap !== map) {
+
+        bikeMarkerRef.current.setMap(map);
+      }
+
+      // Update position EXACTLY - use setPosition for precise location
+      // Validate coordinates before setting
+      if (typeof latitude === 'number' && typeof longitude === 'number' &&
+        !isNaN(latitude) && !isNaN(longitude) &&
+        latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+        
+        // Use smooth animation if requested, otherwise set instantly
+        if (shouldCenterMap === false) { // Assuming shouldCenterMap=false means a movement update
+          animateMarkerSmoothly(bikeMarkerRef.current, position, 1000, markerAnimationRef);
+        } else {
+          bikeMarkerRef.current.setPosition(position);
+        }
+      } else {
+        return; // Don't update if coordinates are invalid
+      }
+
+      // Update icon only when needed (step changed) and not too frequently (throttle)
+      const nowTs = Date.now();
+      const shouldUpdateIcon =
+        lastAppliedHeadingStepRef.current === null ||
+        headingStep !== lastAppliedHeadingStepRef.current;
+
+      // Throttle to avoid visible flicker on low-end devices
+      const throttleMs = 250;
+      if (shouldUpdateIcon && nowTs - (lastIconUpdateTsRef.current || 0) >= throttleMs) {
+        const rotatedIconUrl = await getRotatedBikeIcon(headingStep);
+        const bikeIcon = {
+          url: rotatedIconUrl,
+          scaledSize: new window.google.maps.Size(60, 60),
+          anchor: new window.google.maps.Point(30, 30)
+        };
+        bikeMarkerRef.current.setIcon(bikeIcon);
+        lastAppliedHeadingStepRef.current = headingStep;
+        lastIconUpdateTsRef.current = nowTs;
+      }
+
+      // Ensure z-index is high
+      bikeMarkerRef.current.setZIndex(1000);
+
+      // Auto-center map on bike location (like Zomato) - only if user hasn't manually panned and not already centered initially
+      // After initial centering, don't auto-pan to prevent map jumping
+      if (shouldCenterMap && !isUserPanningRef.current && (!hasInitiallyCenteredOnBike || isLocationCached)) {
+        // Smooth pan to bike location
+        map.panTo(position);
+        if (!isLocationCached) {
+          setHasInitiallyCenteredOnBike(true)
+        }
+      }
+
+      // Double-check marker is still on map after update
+      if (bikeMarkerRef.current.getMap() === null) {
+
+        bikeMarkerRef.current.setMap(map);
+      }
+    }
+  }
+
+  // Update restaurant and customer markers on main map
+  const updateDeliveryMarkers = useCallback(() => {
+    if (!window.google || !window.google.maps || !window.deliveryMapInstance || !selectedRestaurant) {
+      if (restaurantMarkerRef.current) {
+        restaurantMarkerRef.current.setMap(null);
+        restaurantMarkerRef.current = null;
+      }
+      if (customerMarkerRef.current) {
+        customerMarkerRef.current.setMap(null);
+        customerMarkerRef.current = null;
+      }
+      return;
+    }
+
+    const map = window.deliveryMapInstance;
+
+    // 1. Restaurant Marker - ALWAYS show at restaurant location
+    if (selectedRestaurant.lat && selectedRestaurant.lng) {
+      const restaurantLocation = {
+        lat: Number(selectedRestaurant.lat),
+        lng: Number(selectedRestaurant.lng)
+      };
+
+      if (!restaurantMarkerRef.current) {
+        restaurantMarkerRef.current = new window.google.maps.Marker({
+          position: restaurantLocation,
+          map: map,
+          icon: {
+            url: restaurantIcon,
+            scaledSize: new window.google.maps.Size(48, 48),
+            anchor: new window.google.maps.Point(24, 24)
+          },
+          title: selectedRestaurant.name || 'Restaurant',
+          zIndex: 10
+        });
+      } else {
+        restaurantMarkerRef.current.setMap(map);
+        restaurantMarkerRef.current.setPosition(restaurantLocation);
+        restaurantMarkerRef.current.setIcon({
+          url: restaurantIcon,
+          scaledSize: new window.google.maps.Size(48, 48),
+          anchor: new window.google.maps.Point(24, 24)
+        });
+      }
+    } else if (restaurantMarkerRef.current) {
+      restaurantMarkerRef.current.setMap(null);
+      restaurantMarkerRef.current = null;
+    }
+
+    // 2. Customer Marker - ALWAYS show at customer location if available
+    if (selectedRestaurant.customerLat && selectedRestaurant.customerLng) {
+      const customerLocation = {
+        lat: Number(selectedRestaurant.customerLat),
+        lng: Number(selectedRestaurant.customerLng)
+      };
+
+      if (!customerMarkerRef.current) {
+        customerMarkerRef.current = new window.google.maps.Marker({
+          position: customerLocation,
+          map: map,
+          icon: {
+            url: homeIcon,
+            scaledSize: new window.google.maps.Size(48, 48),
+            anchor: new window.google.maps.Point(24, 24)
+          },
+          title: selectedRestaurant.customerName || 'Customer',
+          zIndex: 11
+        });
+      } else {
+        customerMarkerRef.current.setMap(map);
+        customerMarkerRef.current.setPosition(customerLocation);
+        customerMarkerRef.current.setIcon({
+          url: homeIcon,
+          scaledSize: new window.google.maps.Size(48, 48),
+          anchor: new window.google.maps.Point(24, 24)
+        });
+      }
+    } else if (customerMarkerRef.current) {
+      customerMarkerRef.current.setMap(null);
+      customerMarkerRef.current = null;
+    }
+  }, [selectedRestaurant, restaurantIcon, homeIcon]);
+
+  // Helper function to calculate distance in meters (Haversine formula)
+  const calculateDistanceInMeters = useCallback((lat1, lng1, lat2, lng2) => {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in meters
+  }, []);
+
+  // Create or update route polyline (blue line showing traveled path) - LEGACY/FALLBACK
+  // Accepts optional coordinates parameter to draw route immediately without waiting for state update
+  // This is a FALLBACK polyline - should only be used when DirectionsRenderer is NOT available
+  const updateRoutePolyline = (coordinates = null) => {
+    // Only show route if there's an active order (selectedRestaurant)
+    if (!selectedRestaurant) {
+      // Clear route if no active order
+      if (routePolylineRef.current) {
+        routePolylineRef.current.setMap(null);
+      }
+      return;
+    }
+
+    // Don't show fallback polyline if DirectionsRenderer is active (it handles road-snapped routes)
+    if (directionsRendererRef.current && directionsRendererRef.current.getDirections()) {
+      // DirectionsRenderer is active, hide fallback polyline
+      if (routePolylineRef.current) {
+        routePolylineRef.current.setMap(null);
+      }
+      return;
+    }
+
+    if (!window.google || !window.google.maps || !window.deliveryMapInstance) {
+
+      return;
+    }
+
+    const map = window.deliveryMapInstance;
+
+    // Use provided coordinates or fallback to state
+    const coordsToUse = coordinates || routePolyline;
+
+    if (coordsToUse && coordsToUse.length > 0) {
+      // Convert coordinates to object literal format (deprecated LatLng constructor replaced)
+      const path = coordsToUse.map(coord => {
+        if (Array.isArray(coord) && coord.length >= 2) {
+          // Route coordinates are stored as [lat, lng] (already converted from GeoJSON at save time)
+          return { lat: coord[0], lng: coord[1] }; // coord[0]=lat, coord[1]=lng
+        }
+        if (coord && typeof coord.lat === 'number' && typeof coord.lng === 'number') {
+          // Already a {lat, lng} object (from Directions API polyline)
+          return { lat: coord.lat, lng: coord.lng };
+        }
+        return null;
+      }).filter(coord => coord !== null);
+
+      if (path.length > 0) {
+        // Don't create main route polyline - only live tracking polyline will be shown
+        // Remove old custom polyline if exists (cleanup)
+        if (routePolylineRef.current) {
+          routePolylineRef.current.setMap(null);
+          routePolylineRef.current = null;
+        }
+
+        // Fit map bounds to show entire route only once per active order
+        if (path.length > 1) {
+          const bounds = new window.google.maps.LatLngBounds();
+          path.forEach(point => bounds.extend(point));
+          fitRouteBoundsOnce(bounds);
+        }
+      }
+    } else {
+      // Hide polyline if no route data
+      if (routePolylineRef.current) {
+        routePolylineRef.current.setMap(null);
+      }
+    }
+  }
+
+  // Calculate route using Google Maps Directions API (Zomato-style road-based routing)
+  // Optimized for TWO_WHEELER mode with DRIVING fallback
+  // NOTE: Must be defined BEFORE the useEffect that uses it (Rules of Hooks)
+  const calculateRouteWithDirectionsAPI = useCallback(async (origin, destination) => {
+    if (!window.google || !window.google.maps || !window.google.maps.DirectionsService) {
+
+      return null;
+    }
+
+    try {
+      // Check cache first before making API call
+      try {
+        const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
+        if (cacheModule) {
+          const { getCached, setCached, shouldMakeApiCall } = cacheModule;
+
+          // Check cache
+          const originObj = { lat: origin[0], lng: origin[1] };
+          const cachedResult = getCached('directions', originObj, destination);
+          if (cachedResult) {
+
+            setDirectionsResponse(cachedResult);
+            directionsResponseRef.current = cachedResult;
+            return cachedResult;
+          }
+
+          // Check rate limit - but allow critical calls (user-initiated navigation)
+          // Only skip if it's an automatic/background update
+          if (!shouldMakeApiCall('directions')) {
+
+            // Return null to use fallback route (straight line or cached)
+            // This ensures app still works but with reduced accuracy
+            return null;
+          }
+        }
+      } catch (error) {
+
+      }
+
+      // Initialize Directions Service if not already created
+      if (!directionsServiceRef.current) {
+        directionsServiceRef.current = new window.google.maps.DirectionsService();
+      }
+
+      // Try TWO_WHEELER first (optimized for bike/delivery), fallback to DRIVING
+      const tryRoute = (travelMode, modeName) => {
+        return new Promise((resolve, reject) => {
+          directionsServiceRef.current.route(
+            {
+              origin: { lat: origin[0], lng: origin[1] },
+              destination: { lat: destination.lat, lng: destination.lng },
+              travelMode: travelMode,
+              provideRouteAlternatives: false, // Save API cost - don't get alternatives
+              avoidHighways: false,
+              avoidTolls: false,
+              optimizeWaypoints: false
+            },
+            async (result, status) => {
+              if (status === window.google.maps.DirectionsStatus.OK) {
+                // Directions API succeeded - cache and resolve
+                try {
+                  const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
+                  if (cacheModule) {
+                    const { setCached } = cacheModule;
+                    const originObj = { lat: origin[0], lng: origin[1] };
+                    setCached('directions', result, originObj, destination);
+                  }
+                } catch (error) {
+                  // Ignore cache errors; they are non-fatal
+                }
+
+                setDirectionsResponse(result);
+                directionsResponseRef.current = result; // Store in ref for callbacks
+                resolve(result);
+              } else {
+                // Handle specific error cases - suppress console errors for REQUEST_DENIED
+                if (status === 'REQUEST_DENIED') {
+                  // Don't log as error - this is expected when billing is not enabled
+                  // Just reject silently to trigger fallback
+                  reject(new Error(`Directions API not available: ${status}`));
+                } else if (status === 'OVER_QUERY_LIMIT') {
+                  reject(new Error(`Directions request failed: ${status}`));
+                } else {
+                  reject(new Error(`Directions request failed: ${status}`));
+                }
+              }
+            }
+          );
+        });
+      };
+
+      // Try TWO_WHEELER first (if available in region)
+      try {
+        if (window.google.maps.TravelMode.TWO_WHEELER) {
+          return await tryRoute(window.google.maps.TravelMode.TWO_WHEELER, 'TWO_WHEELER');
+        }
+      } catch (twoWheelerError) {
+
+      }
+
+      // Fallback to DRIVING mode
+      return await tryRoute(window.google.maps.TravelMode.DRIVING, 'DRIVING');
+    } catch (error) {
+      // Handle REQUEST_DENIED and other errors gracefully
+      if (error.message?.includes('REQUEST_DENIED') || error.message?.includes('not available')) {
+        // Directions API not available; will use fallback route
+      }
+      return null; // Return null to trigger fallback
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Update live tracking polyline - Rapido/Zomato style
+   * Removes polyline points behind the rider and keeps only forward route
+   * @param {Object} directionsResult - Google Maps DirectionsResult
+   * @param {Array} riderPosition - [lat, lng] Current rider position
+   */
+  const updateLiveTrackingPolyline = useCallback((directionsResult, riderPosition) => {
+    if (!directionsResult || !riderPosition || !window.google || !window.google.maps) {
+      return;
+    }
+
+    // CRITICAL: Don't create/update polyline if there's no active order
+    // This prevents showing default/mock polylines on page refresh
+    // But allow it if we're going to restaurant (not customer)
+    // Note: We can't use selectedRestaurant directly in callback, so we'll check it in the calling code
+    // For now, just proceed - the calling code will handle the checks
+
+    try {
+      // Extract and decode full polyline from directions result
+      const fullPolyline = extractPolylineFromDirections(directionsResult);
+
+      if (fullPolyline.length < 2) {
+
+        return;
+      }
+
+      // Store full polyline for future updates
+      fullRoutePolylineRef.current = fullPolyline;
+
+      // Convert rider position to object format
+      const riderPos = { lat: riderPosition[0], lng: riderPosition[1] };
+
+      // Find nearest point on polyline to rider
+      const { segmentIndex, nearestPoint, distance } = findNearestPointOnPolyline(fullPolyline, riderPos);
+
+      // Trim polyline to remove points behind rider
+      const trimmedPolyline = trimPolylineBehindRider(fullPolyline, nearestPoint, segmentIndex);
+
+      // IMPORTANT: Start polyline from bike's actual position, not from nearest point on route
+      // This ensures the polyline always starts at the bike's current location
+      // Use object literals instead of deprecated LatLng constructor
+      const path = [
+        { lat: riderPos.lat, lng: riderPos.lng }, // Start from bike position
+        ...trimmedPolyline.map(point =>
+          ({ lat: point.lat, lng: point.lng })
+        )
+      ];
+
+      // Update or create live tracking polyline with Zomato/Rapido style
+      if (liveTrackingPolylineRef.current) {
+        // Update existing polyline path smoothly
+        liveTrackingPolylineRef.current.setPath(path);
+        // Ensure it's on the map
+        if (liveTrackingPolylineRef.current.getMap() === null) {
+          liveTrackingPolylineRef.current.setMap(window.deliveryMapInstance);
+        }
+        // Update shadow polyline if it exists
+        if (liveTrackingPolylineShadowRef.current) {
+          liveTrackingPolylineShadowRef.current.setPath(path);
+          if (liveTrackingPolylineShadowRef.current.getMap() === null) {
+            liveTrackingPolylineShadowRef.current.setMap(window.deliveryMapInstance);
+          }
+        }
+
+      } else {
+        // Create new polyline with professional Zomato/Rapido styling
+        if (!window.deliveryMapInstance) {
+
+          return;
+        }
+
+        // Create main polyline with vibrant blue color (Zomato style)
+        liveTrackingPolylineRef.current = new window.google.maps.Polyline({
+          path: path,
+          geodesic: true,
+          strokeColor: '#1E88E5', // Vibrant blue like Zomato (more visible than #4285F4)
+          strokeOpacity: 1.0,
+          strokeWeight: 6, // Optimal thickness for visibility
+          zIndex: 1000, // High z-index to be above other map elements
+          icons: [], // No icons/dots - clean solid line
+          map: window.deliveryMapInstance
+        });
+
+        // Create shadow/outline polyline for better visibility (like Zomato/Rapido)
+        // This creates a subtle outline effect for better contrast
+        if (!liveTrackingPolylineShadowRef.current) {
+          liveTrackingPolylineShadowRef.current = new window.google.maps.Polyline({
+            path: path,
+            geodesic: true,
+            // Hide the outline/shadow. The white outline was showing as an unwanted "white polyline".
+            // If we ever want an outline again, prefer a subtle dark stroke with low opacity.
+            strokeColor: '#000000',
+            strokeOpacity: 0,
+            strokeWeight: 10, // Keep weight but invisible (opacity 0)
+            zIndex: 999, // Behind main polyline
+            icons: [],
+            map: window.deliveryMapInstance
+          });
+        } else {
+          liveTrackingPolylineShadowRef.current.setPath(path);
+          // Ensure legacy shadow (if any) is not visible
+          try {
+            liveTrackingPolylineShadowRef.current.setOptions({ strokeOpacity: 0 });
+          } catch (_) {}
+        }
+
+      }
+    } catch (error) {
+      // Swallow live tracking polyline errors to avoid breaking map rendering
+    }
+  }, []);
+
+  /**
+   * Smoothly animate rider marker to new position with rotation
+   * @param {Array} newPosition - [lat, lng] New rider position
+   * @param {number} heading - Heading/bearing in degrees (0-360)
+   */
+  const animateRiderMarker = useCallback((newPosition, heading) => {
+    if (!window.google || !window.google.maps || !bikeMarkerRef.current) {
+      return;
+    }
+
+    const [newLat, newLng] = newPosition;
+    const currentPosition = lastRiderPositionRef.current || { lat: newLat, lng: newLng };
+
+    // Cancel any existing animation
+    if (markerAnimationCancelRef.current) {
+      markerAnimationCancelRef.current();
+    }
+
+    // Animate marker smoothly
+    const cancelAnimation = animateMarker(
+      currentPosition,
+      { lat: newLat, lng: newLng },
+      500, // 500ms animation duration
+      (interpolated) => {
+        if (bikeMarkerRef.current) {
+          // Update marker position
+          bikeMarkerRef.current.setPosition({
+            lat: interpolated.lat,
+            lng: interpolated.lng
+          });
+
+          // Update rotation if heading available
+          if (heading !== null && heading !== undefined) {
+            getRotatedBikeIcon(heading).then(rotatedIconUrl => {
+              if (bikeMarkerRef.current) {
+                const currentIcon = bikeMarkerRef.current.getIcon();
+                bikeMarkerRef.current.setIcon({
+                  url: rotatedIconUrl,
+                  scaledSize: currentIcon?.scaledSize || new window.google.maps.Size(60, 60),
+                  anchor: currentIcon?.anchor || new window.google.maps.Point(30, 30)
+                });
+              }
+            });
+          }
+        }
+      }
+    );
+
+    markerAnimationCancelRef.current = cancelAnimation;
+    lastRiderPositionRef.current = { lat: newLat, lng: newLng };
+  }, []);
+
   // Online status sync logic continues...
+
 
   // Sync online status with localStorage changes (from FeedNavbar or other tabs)
   useEffect(() => {
@@ -1246,6 +1925,16 @@ export default function DeliveryHome() {
           } catch (e) {
             console.warn('⚠️ Failed to fetch restaurant details for coordinates after refresh:', e?.message)
           }
+        }
+
+        // Restore navigation mode based on order phase
+        if (restoredRestaurant.orderStatus === 'out_for_delivery' ||
+            restoredRestaurant.deliveryPhase === 'en_route_to_delivery' ||
+            restoredRestaurant.deliveryPhase === 'picked_up' ||
+            restoredRestaurant.deliveryPhase === 'en_route_to_drop') {
+          setNavigationMode('customer')
+        } else {
+          setNavigationMode('restaurant')
         }
 
         setSelectedRestaurant(restoredRestaurant)
@@ -2531,6 +3220,9 @@ export default function DeliveryHome() {
           const order = orderData.order || orderData // Backend returns { order, route }
           const routeData = response.data.data.route
 
+          // Set navigation mode to restaurant initially
+          setNavigationMode('restaurant');
+
           // Update selectedRestaurant with correct data from backend
           let restaurantInfo = null;
           if (order) {
@@ -3155,40 +3847,9 @@ export default function DeliveryHome() {
                   setRoutePolyline(routeCoordinates);
                 }
 
-                // Add restaurant marker to main map
-                if (restaurantInfo.lat && restaurantInfo.lng) {
-                  const restaurantLocation = {
-                    lat: restaurantInfo.lat,
-                    lng: restaurantInfo.lng
-                  };
+                // Update markers on main map
+                updateDeliveryMarkers();
 
-                  // Remove old restaurant marker if exists
-                  if (restaurantMarkerRef.current) {
-                    restaurantMarkerRef.current.setMap(null);
-                  }
-
-                  // Create restaurant marker on main map with kitchen icon
-                  restaurantMarkerRef.current = new window.google.maps.Marker({
-                    position: restaurantLocation,
-                    map: window.deliveryMapInstance,
-                    icon: {
-                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-                          <circle cx="12" cy="12" r="11" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2"/>
-                          <path d="M8 10c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v6H8v-6z" fill="#FFFFFF"/>
-                          <path d="M7 16h10M10 12h4M9 14h6" stroke="#FF6B35" stroke-width="1.5" stroke-linecap="round"/>
-                          <path d="M10 8h4v2h-4z" fill="#FFFFFF" opacity="0.7"/>
-                        </svg>
-                      `),
-                      scaledSize: new window.google.maps.Size(48, 48),
-                      anchor: new window.google.maps.Point(24, 48)
-                    },
-                    title: restaurantInfo.name || 'Kitchen',
-                    animation: window.google.maps.Animation.DROP,
-                    zIndex: 10
-                  });
-
-                }
               } else {
 
               }
@@ -4104,6 +4765,9 @@ export default function DeliveryHome() {
                   customerLng
                 }
                 setSelectedRestaurant(updatedRestaurant)
+                
+                // Set navigation mode to customer after pickup
+                setNavigationMode('customer')
 
                 // Calculate route from delivery boy's live location to customer using Directions API
                 try {
@@ -6068,35 +6732,10 @@ export default function DeliveryHome() {
             }
           }
 
-          // Ensure restaurant marker is visible if we have a selected restaurant
-          if (selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
+          // Ensure restaurant and customer markers are visible if we have a selected restaurant
+          if (selectedRestaurant) {
             setTimeout(() => {
-              if (!restaurantMarkerRef.current || restaurantMarkerRef.current.getMap() === null) {
-
-                const restaurantLocation = {
-                  lat: selectedRestaurant.lat,
-                  lng: selectedRestaurant.lng
-                };
-
-                restaurantMarkerRef.current = new window.google.maps.Marker({
-                  position: restaurantLocation,
-                  map: window.deliveryMapInstance,
-                  icon: {
-                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="11" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2"/>
-                        <path d="M8 10c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v6H8v-6z" fill="#FFFFFF"/>
-                        <path d="M7 16h10M10 12h4M9 14h6" stroke="#FF6B35" stroke-width="1.5" stroke-linecap="round"/>
-                        <path d="M10 8h4v2h-4z" fill="#FFFFFF" opacity="0.7"/>
-                      </svg>
-                    `),
-                    scaledSize: new window.google.maps.Size(48, 48),
-                    anchor: new window.google.maps.Point(24, 48)
-                  },
-                  title: selectedRestaurant.name || 'Restaurant',
-                  zIndex: 10
-                });
-              }
+              updateDeliveryMarkers();
             }, 500);
           }
 
@@ -6744,87 +7383,8 @@ export default function DeliveryHome() {
       }
       lastRestaurantMarkerCheck = now;
 
-      if (selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng && window.deliveryMapInstance) {
-        // First, verify marker actually doesn't exist (double-check)
-        let markerExists = false;
-        try {
-          if (restaurantMarkerRef.current) {
-            const markerMap = restaurantMarkerRef.current.getMap();
-            markerExists = markerMap === window.deliveryMapInstance;
-          }
-        } catch (error) {
-          // Marker ref exists but getMap() failed - treat as not existing
-          markerExists = false;
-        }
-
-        if (markerExists) {
-          // Marker exists and is on correct map - just update position if needed
-          try {
-            const currentPos = restaurantMarkerRef.current.getPosition();
-            if (currentPos) {
-              const currentLat = currentPos.lat();
-              const currentLng = currentPos.lng();
-              if (Math.abs(currentLat - selectedRestaurant.lat) > 0.0001 ||
-                Math.abs(currentLng - selectedRestaurant.lng) > 0.0001) {
-                restaurantMarkerRef.current.setPosition({
-                  lat: selectedRestaurant.lat,
-                  lng: selectedRestaurant.lng
-                });
-              }
-            }
-          } catch (error) {
-            // Ignore position update errors
-          }
-        } else if (restaurantMarkerRef.current) {
-          // Marker ref exists but is not on map - re-attach
-          try {
-            const restaurantLocation = {
-              lat: selectedRestaurant.lat,
-              lng: selectedRestaurant.lng
-            };
-            restaurantMarkerRef.current.setMap(window.deliveryMapInstance);
-            restaurantMarkerRef.current.setPosition(restaurantLocation);
-          } catch (error) {
-            // If re-attach fails, clear the ref so it can be recreated
-            restaurantMarkerRef.current = null;
-          }
-        } else {
-          // Marker truly doesn't exist - create it only if map is fully ready
-          if (window.deliveryMapInstance && mapContainerRef.current) {
-            // Double-check that useEffect hasn't just created it
-            setTimeout(() => {
-              if (!restaurantMarkerRef.current && selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
-                const restaurantLocation = {
-                  lat: selectedRestaurant.lat,
-                  lng: selectedRestaurant.lng
-                };
-
-                try {
-                  restaurantMarkerRef.current = new window.google.maps.Marker({
-                    position: restaurantLocation,
-                    map: window.deliveryMapInstance,
-                    icon: {
-                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-                          <circle cx="12" cy="12" r="11" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2"/>
-                          <path d="M8 10c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v6H8v-6z" fill="#FFFFFF"/>
-                          <path d="M7 16h10M10 12h4M9 14h6" stroke="#FF6B35" stroke-width="1.5" stroke-linecap="round"/>
-                          <path d="M10 8h4v2h-4z" fill="#FFFFFF" opacity="0.7"/>
-                        </svg>
-                      `),
-                      scaledSize: new window.google.maps.Size(48, 48),
-                      anchor: new window.google.maps.Point(24, 48)
-                    },
-                    title: selectedRestaurant.name || 'Restaurant',
-                    zIndex: 10
-                  });
-                } catch (error) {
-                  // Error handling
-                }
-              }
-            }, 100); // Small delay to let useEffect run first
-          }
-        }
+      if (selectedRestaurant && window.deliveryMapInstance) {
+        updateDeliveryMarkers();
       }
     }, 2000); // Check every 2 seconds
 
@@ -6883,372 +7443,11 @@ export default function DeliveryHome() {
     fetchRestaurantLocationFromFirebase();
   }, [selectedRestaurant?.id, selectedRestaurant?.orderId]);
 
-  // Create restaurant marker when selectedRestaurant changes
+  // Create restaurant and customer markers when selectedRestaurant changes
   useEffect(() => {
-    if (!window.deliveryMapInstance || !selectedRestaurant || !selectedRestaurant.lat || !selectedRestaurant.lng) {
-      // If map is not ready but we have restaurant data, log for debugging
-      if (!window.deliveryMapInstance && selectedRestaurant && selectedRestaurant.lat && selectedRestaurant.lng) {
+    updateDeliveryMarkers();
+  }, [selectedRestaurant?.lat, selectedRestaurant?.lng, selectedRestaurant?.customerLat, selectedRestaurant?.customerLng, selectedRestaurant?.name, navigationMode, updateDeliveryMarkers])
 
-      }
-      return;
-    }
-
-    // Check if marker exists and is on correct map
-    let markerExists = false;
-    try {
-      if (restaurantMarkerRef.current) {
-        const markerMap = restaurantMarkerRef.current.getMap();
-        markerExists = markerMap === window.deliveryMapInstance;
-      }
-    } catch (error) {
-
-      markerExists = false;
-    }
-
-    if (!markerExists) {
-      const restaurantLocation = {
-        lat: selectedRestaurant.lat,
-        lng: selectedRestaurant.lng
-      };
-
-      // Remove old marker if exists (but on wrong map or null)
-      if (restaurantMarkerRef.current) {
-        try {
-          restaurantMarkerRef.current.setMap(null);
-        } catch (error) {
-
-        }
-        restaurantMarkerRef.current = null;
-      }
-
-      // Create new restaurant marker
-      try {
-        restaurantMarkerRef.current = new window.google.maps.Marker({
-          position: restaurantLocation,
-          map: window.deliveryMapInstance,
-          icon: {
-            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="11" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2"/>
-                <path d="M8 10c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v6H8v-6z" fill="#FFFFFF"/>
-                <path d="M7 16h10M10 12h4M9 14h6" stroke="#FF6B35" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M10 8h4v2h-4z" fill="#FFFFFF" opacity="0.7"/>
-              </svg>
-            `),
-            scaledSize: new window.google.maps.Size(48, 48),
-            anchor: new window.google.maps.Point(24, 48)
-          },
-          title: selectedRestaurant.name || 'Restaurant',
-          animation: window.google.maps.Animation.DROP,
-          zIndex: 10
-        });
-
-      } catch (error) {
-
-        restaurantMarkerRef.current = null;
-      }
-    } else {
-      // Marker exists and is on correct map - just update position and title if needed
-      try {
-        const currentPos = restaurantMarkerRef.current.getPosition();
-        if (currentPos) {
-          const currentLat = currentPos.lat();
-          const currentLng = currentPos.lng();
-          if (Math.abs(currentLat - selectedRestaurant.lat) > 0.0001 ||
-            Math.abs(currentLng - selectedRestaurant.lng) > 0.0001) {
-            restaurantMarkerRef.current.setPosition({
-              lat: selectedRestaurant.lat,
-              lng: selectedRestaurant.lng
-            });
-          }
-        } else {
-          restaurantMarkerRef.current.setPosition({
-            lat: selectedRestaurant.lat,
-            lng: selectedRestaurant.lng
-          });
-        }
-        restaurantMarkerRef.current.setTitle(selectedRestaurant.name || 'Restaurant');
-      } catch (error) {
-
-      }
-    }
-  }, [selectedRestaurant?.lat, selectedRestaurant?.lng, selectedRestaurant?.name])
-
-  // Calculate route using Google Maps Directions API (Zomato-style road-based routing)
-  // Optimized for TWO_WHEELER mode with DRIVING fallback
-  // NOTE: Must be defined BEFORE the useEffect that uses it (Rules of Hooks)
-  const calculateRouteWithDirectionsAPI = useCallback(async (origin, destination) => {
-    if (!window.google || !window.google.maps || !window.google.maps.DirectionsService) {
-
-      return null;
-    }
-
-    try {
-      // Check cache first before making API call
-      try {
-        const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
-        if (cacheModule) {
-          const { getCached, setCached, shouldMakeApiCall } = cacheModule;
-
-          // Check cache
-          const originObj = { lat: origin[0], lng: origin[1] };
-          const cachedResult = getCached('directions', originObj, destination);
-          if (cachedResult) {
-
-            setDirectionsResponse(cachedResult);
-            directionsResponseRef.current = cachedResult;
-            return cachedResult;
-          }
-
-          // Check rate limit - but allow critical calls (user-initiated navigation)
-          // Only skip if it's an automatic/background update
-          if (!shouldMakeApiCall('directions')) {
-
-            // Return null to use fallback route (straight line or cached)
-            // This ensures app still works but with reduced accuracy
-            return null;
-          }
-        }
-      } catch (error) {
-
-      }
-
-      // Initialize Directions Service if not already created
-      if (!directionsServiceRef.current) {
-        directionsServiceRef.current = new window.google.maps.DirectionsService();
-      }
-
-      // Try TWO_WHEELER first (optimized for bike/delivery), fallback to DRIVING
-      const tryRoute = (travelMode, modeName) => {
-        return new Promise((resolve, reject) => {
-          directionsServiceRef.current.route(
-            {
-              origin: { lat: origin[0], lng: origin[1] },
-              destination: { lat: destination.lat, lng: destination.lng },
-              travelMode: travelMode,
-              provideRouteAlternatives: false, // Save API cost - don't get alternatives
-              avoidHighways: false,
-              avoidTolls: false,
-              optimizeWaypoints: false
-            },
-            async (result, status) => {
-              if (status === window.google.maps.DirectionsStatus.OK) {
-                // Directions API succeeded - cache and resolve
-                try {
-                  const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
-                  if (cacheModule) {
-                    const { setCached } = cacheModule;
-                    const originObj = { lat: origin[0], lng: origin[1] };
-                    setCached('directions', result, originObj, destination);
-                  }
-                } catch (error) {
-                  // Ignore cache errors; they are non-fatal
-                }
-
-                setDirectionsResponse(result);
-                directionsResponseRef.current = result; // Store in ref for callbacks
-                resolve(result);
-              } else {
-                // Handle specific error cases - suppress console errors for REQUEST_DENIED
-                if (status === 'REQUEST_DENIED') {
-                  // Don't log as error - this is expected when billing is not enabled
-                  // Just reject silently to trigger fallback
-                  reject(new Error(`Directions API not available: ${status}`));
-                } else if (status === 'OVER_QUERY_LIMIT') {
-                  reject(new Error(`Directions request failed: ${status}`));
-                } else {
-                  reject(new Error(`Directions request failed: ${status}`));
-                }
-              }
-            }
-          );
-        });
-      };
-
-      // Try TWO_WHEELER first (if available in region)
-      try {
-        if (window.google.maps.TravelMode.TWO_WHEELER) {
-          return await tryRoute(window.google.maps.TravelMode.TWO_WHEELER, 'TWO_WHEELER');
-        }
-      } catch (twoWheelerError) {
-
-      }
-
-      // Fallback to DRIVING mode
-      return await tryRoute(window.google.maps.TravelMode.DRIVING, 'DRIVING');
-    } catch (error) {
-      // Handle REQUEST_DENIED and other errors gracefully
-      if (error.message?.includes('REQUEST_DENIED') || error.message?.includes('not available')) {
-        // Directions API not available; will use fallback route
-      }
-      return null; // Return null to trigger fallback
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /**
-   * Update live tracking polyline - Rapido/Zomato style
-   * Removes polyline points behind the rider and keeps only forward route
-   * @param {Object} directionsResult - Google Maps DirectionsResult
-   * @param {Array} riderPosition - [lat, lng] Current rider position
-   */
-  const updateLiveTrackingPolyline = useCallback((directionsResult, riderPosition) => {
-    if (!directionsResult || !riderPosition || !window.google || !window.google.maps) {
-      return;
-    }
-
-    // CRITICAL: Don't create/update polyline if there's no active order
-    // This prevents showing default/mock polylines on page refresh
-    // But allow it if we're going to restaurant (not customer)
-    // Note: We can't use selectedRestaurant directly in callback, so we'll check it in the calling code
-    // For now, just proceed - the calling code will handle the checks
-
-    try {
-      // Extract and decode full polyline from directions result
-      const fullPolyline = extractPolylineFromDirections(directionsResult);
-
-      if (fullPolyline.length < 2) {
-
-        return;
-      }
-
-      // Store full polyline for future updates
-      fullRoutePolylineRef.current = fullPolyline;
-
-      // Convert rider position to object format
-      const riderPos = { lat: riderPosition[0], lng: riderPosition[1] };
-
-      // Find nearest point on polyline to rider
-      const { segmentIndex, nearestPoint, distance } = findNearestPointOnPolyline(fullPolyline, riderPos);
-
-      // Trim polyline to remove points behind rider
-      const trimmedPolyline = trimPolylineBehindRider(fullPolyline, nearestPoint, segmentIndex);
-
-      // IMPORTANT: Start polyline from bike's actual position, not from nearest point on route
-      // This ensures the polyline always starts at the bike's current location
-      // Use object literals instead of deprecated LatLng constructor
-      const path = [
-        { lat: riderPos.lat, lng: riderPos.lng }, // Start from bike position
-        ...trimmedPolyline.map(point =>
-          ({ lat: point.lat, lng: point.lng })
-        )
-      ];
-
-      // Update or create live tracking polyline with Zomato/Rapido style
-      if (liveTrackingPolylineRef.current) {
-        // Update existing polyline path smoothly
-        liveTrackingPolylineRef.current.setPath(path);
-        // Ensure it's on the map
-        if (liveTrackingPolylineRef.current.getMap() === null) {
-          liveTrackingPolylineRef.current.setMap(window.deliveryMapInstance);
-        }
-        // Update shadow polyline if it exists
-        if (liveTrackingPolylineShadowRef.current) {
-          liveTrackingPolylineShadowRef.current.setPath(path);
-          if (liveTrackingPolylineShadowRef.current.getMap() === null) {
-            liveTrackingPolylineShadowRef.current.setMap(window.deliveryMapInstance);
-          }
-        }
-
-      } else {
-        // Create new polyline with professional Zomato/Rapido styling
-        if (!window.deliveryMapInstance) {
-
-          return;
-        }
-
-        // Create main polyline with vibrant blue color (Zomato style)
-        liveTrackingPolylineRef.current = new window.google.maps.Polyline({
-          path: path,
-          geodesic: true,
-          strokeColor: '#1E88E5', // Vibrant blue like Zomato (more visible than #4285F4)
-          strokeOpacity: 1.0,
-          strokeWeight: 6, // Optimal thickness for visibility
-          zIndex: 1000, // High z-index to be above other map elements
-          icons: [], // No icons/dots - clean solid line
-          map: window.deliveryMapInstance
-        });
-
-        // Create shadow/outline polyline for better visibility (like Zomato/Rapido)
-        // This creates a subtle outline effect for better contrast
-        if (!liveTrackingPolylineShadowRef.current) {
-          liveTrackingPolylineShadowRef.current = new window.google.maps.Polyline({
-            path: path,
-            geodesic: true,
-            // Hide the outline/shadow. The white outline was showing as an unwanted "white polyline".
-            // If we ever want an outline again, prefer a subtle dark stroke with low opacity.
-            strokeColor: '#000000',
-            strokeOpacity: 0,
-            strokeWeight: 10, // Keep weight but invisible (opacity 0)
-            zIndex: 999, // Behind main polyline
-            icons: [],
-            map: window.deliveryMapInstance
-          });
-        } else {
-          liveTrackingPolylineShadowRef.current.setPath(path);
-          // Ensure legacy shadow (if any) is not visible
-          try {
-            liveTrackingPolylineShadowRef.current.setOptions({ strokeOpacity: 0 });
-          } catch (_) {}
-        }
-
-      }
-    } catch (error) {
-      // Swallow live tracking polyline errors to avoid breaking map rendering
-    }
-  }, []);
-
-  /**
-   * Smoothly animate rider marker to new position with rotation
-   * @param {Array} newPosition - [lat, lng] New rider position
-   * @param {number} heading - Heading/bearing in degrees (0-360)
-   */
-  const animateRiderMarker = useCallback((newPosition, heading) => {
-    if (!window.google || !window.google.maps || !bikeMarkerRef.current) {
-      return;
-    }
-
-    const [newLat, newLng] = newPosition;
-    const currentPosition = lastRiderPositionRef.current || { lat: newLat, lng: newLng };
-
-    // Cancel any existing animation
-    if (markerAnimationCancelRef.current) {
-      markerAnimationCancelRef.current();
-    }
-
-    // Animate marker smoothly
-    const cancelAnimation = animateMarker(
-      currentPosition,
-      { lat: newLat, lng: newLng },
-      500, // 500ms animation duration
-      (interpolated) => {
-        if (bikeMarkerRef.current) {
-          // Update marker position
-          bikeMarkerRef.current.setPosition({
-            lat: interpolated.lat,
-            lng: interpolated.lng
-          });
-
-          // Update rotation if heading available
-          if (heading !== null && heading !== undefined) {
-            getRotatedBikeIcon(heading).then(rotatedIconUrl => {
-              if (bikeMarkerRef.current) {
-                const currentIcon = bikeMarkerRef.current.getIcon();
-                bikeMarkerRef.current.setIcon({
-                  url: rotatedIconUrl,
-                  scaledSize: currentIcon?.scaledSize || new window.google.maps.Size(60, 60),
-                  anchor: currentIcon?.anchor || new window.google.maps.Point(30, 30)
-                });
-              }
-            });
-          }
-        }
-      }
-    );
-
-    markerAnimationCancelRef.current = cancelAnimation;
-    lastRiderPositionRef.current = { lat: newLat, lng: newLng };
-  }, []);
 
   // Initialize Directions Map with Google Maps Directions API (Zomato-style)
   useEffect(() => {
@@ -7266,6 +7465,9 @@ export default function DeliveryHome() {
       }
       if (restaurantMarkerRef.current) {
         restaurantMarkerRef.current.setMap(null);
+      }
+      if (customerMarkerRef.current) {
+        customerMarkerRef.current.setMap(null);
       }
       if (directionsBikeMarkerRef.current) {
         directionsBikeMarkerRef.current.setMap(null);
@@ -7415,44 +7617,63 @@ export default function DeliveryHome() {
             map.fitBounds(bounds, { padding: 50 });
           }
 
-          // Add custom Destination Marker (Restaurant or Customer)
-          const markerIcon = navigationMode === 'customer'
-            ? `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="#10B981">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 4.17 4.42 9.92 6.24 12.11.4.48 1.08.48 1.52 0C14.58 18.92 19 13.17 19 9c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5 14.5 7.62 14.5 9 13.38 11.5 12 11.5z"/>
-                  <circle cx="12" cy="9" r="3" fill="#FFFFFF"/>
-                </svg>
-              `)}`
-            : `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="#FF6B35">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 4.17 4.42 9.92 6.24 12.11.4.48 1.08.48 1.52 0C14.58 18.92 19 13.17 19 9c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5 14.5 7.62 14.5 9 13.38 11.5 12 11.5z"/>
-                  <circle cx="12" cy="9" r="3" fill="#FFFFFF"/>
-                  <path d="M8 16h2v6H8zm6 0h2v6h-2z" fill="#FFFFFF"/>
-                </svg>
-              `)}`;
-
-          if (!restaurantMarkerRef.current) {
-            restaurantMarkerRef.current = new window.google.maps.Marker({
-              position: destinationLocation,
-              map: map,
-              icon: {
-                url: markerIcon,
+          // Add custom Destination Markers (Restaurant and Customer)
+          // 1. Restaurant Marker
+          if (selectedRestaurant.lat && selectedRestaurant.lng) {
+            const restaurantLoc = { lat: Number(selectedRestaurant.lat), lng: Number(selectedRestaurant.lng) };
+            if (!restaurantMarkerRef.current) {
+              restaurantMarkerRef.current = new window.google.maps.Marker({
+                position: restaurantLoc,
+                map: map,
+                icon: {
+                  url: restaurantIcon,
+                  scaledSize: new window.google.maps.Size(48, 48),
+                  anchor: new window.google.maps.Point(24, 24)
+                },
+                title: selectedRestaurant.name || 'Restaurant',
+                animation: window.google.maps.Animation.DROP,
+                zIndex: 10
+              });
+            } else {
+              restaurantMarkerRef.current.setPosition(restaurantLoc);
+              restaurantMarkerRef.current.setIcon({
+                url: restaurantIcon,
                 scaledSize: new window.google.maps.Size(48, 48),
-                anchor: new window.google.maps.Point(24, 48)
-              },
-              title: destinationName,
-              animation: window.google.maps.Animation.DROP
-            });
-          } else {
-            restaurantMarkerRef.current.setPosition(destinationLocation);
-            restaurantMarkerRef.current.setIcon({
-              url: markerIcon,
-              scaledSize: new window.google.maps.Size(48, 48),
-              anchor: new window.google.maps.Point(24, 48)
-            });
-            restaurantMarkerRef.current.setTitle(destinationName);
-            restaurantMarkerRef.current.setMap(map);
+                anchor: new window.google.maps.Point(24, 24)
+              });
+              restaurantMarkerRef.current.setTitle(selectedRestaurant.name || 'Restaurant');
+              restaurantMarkerRef.current.setMap(map);
+            }
           }
+
+          // 2. Customer Marker
+          if (selectedRestaurant.customerLat && selectedRestaurant.customerLng) {
+            const customerLoc = { lat: Number(selectedRestaurant.customerLat), lng: Number(selectedRestaurant.customerLng) };
+            if (!customerMarkerRef.current) {
+              customerMarkerRef.current = new window.google.maps.Marker({
+                position: customerLoc,
+                map: map,
+                icon: {
+                  url: homeIcon,
+                  scaledSize: new window.google.maps.Size(48, 48),
+                  anchor: new window.google.maps.Point(24, 24)
+                },
+                title: selectedRestaurant.customerName || 'Customer',
+                animation: window.google.maps.Animation.DROP,
+                zIndex: 11
+              });
+            } else {
+              customerMarkerRef.current.setPosition(customerLoc);
+              customerMarkerRef.current.setIcon({
+                url: homeIcon,
+                scaledSize: new window.google.maps.Size(48, 48),
+                anchor: new window.google.maps.Point(24, 24)
+              });
+              customerMarkerRef.current.setTitle(selectedRestaurant.customerName || 'Customer');
+              customerMarkerRef.current.setMap(map);
+            }
+          }
+
 
           // Reuse the main bike marker on the map.
           // Creating a second bike marker here causes two bikes to appear.
@@ -7507,6 +7728,9 @@ export default function DeliveryHome() {
           if (restaurantMarkerRef.current) {
             restaurantMarkerRef.current.setMap(null);
           }
+          if (customerMarkerRef.current) {
+            customerMarkerRef.current.setMap(null);
+          }
           if (directionsBikeMarkerRef.current) {
             directionsBikeMarkerRef.current.setMap(null);
           }
@@ -7521,18 +7745,6 @@ export default function DeliveryHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDirectionsMap, selectedRestaurant?.id, navigationMode, selectedRestaurant?.customerLat, selectedRestaurant?.customerLng, riderLocation])
 
-  // Helper function to calculate distance in meters (Haversine formula)
-  const calculateDistanceInMeters = useCallback((lat1, lng1, lat2, lng2) => {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // Distance in meters
-  }, []);
 
   // Update bike marker position on directions map when rider location changes
   // Optimized: Only update marker position, don't recalculate route (saves API cost)
@@ -9306,304 +9518,14 @@ export default function DeliveryHome() {
     calculateDistanceInMeters
   ])
 
-  // Calculate heading from two coordinates (in degrees, 0-360)
-  const calculateHeading = (lat1, lng1, lat2, lng2) => {
-    const dLng = (lng2 - lng1) * Math.PI / 180
-    const lat1Rad = lat1 * Math.PI / 180
-    const lat2Rad = lat2 * Math.PI / 180
 
-    const y = Math.sin(dLng) * Math.cos(lat2Rad)
-    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng)
 
-    let heading = Math.atan2(y, x) * 180 / Math.PI
-    heading = (heading + 360) % 360 // Normalize to 0-360
 
-    return heading
-  }
 
-  // Cache for rotated icons to avoid recreating them
-  const rotatedIconCache = useRef(new Map());
-  // Prevent unnecessary setIcon() churn (reduces flicker)
-  const lastAppliedHeadingStepRef = useRef(null);
-  const lastIconUpdateTsRef = useRef(0);
-
-  // Function to rotate bike logo image based on heading
-  const getRotatedBikeIcon = (heading = 0) => {
-    // Round heading to nearest 5 degrees for caching
-    const roundedHeading = Math.round(heading / 5) * 5;
-    const cacheKey = `${roundedHeading}`;
-
-    // Check cache first
-    if (rotatedIconCache.current.has(cacheKey)) {
-      return Promise.resolve(rotatedIconCache.current.get(cacheKey));
-    }
-
-    return new Promise((resolve) => {
-      const img = new Image();
-      // Don't set crossOrigin for local images - it causes CORS issues
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          const size = 60; // Icon size
-          canvas.width = size;
-          canvas.height = size;
-          const ctx = canvas.getContext('2d');
-
-          // Clear canvas
-          ctx.clearRect(0, 0, size, size);
-
-          // Move to center, rotate, then draw image
-          ctx.save();
-          ctx.translate(size / 2, size / 2);
-          ctx.rotate((roundedHeading * Math.PI) / 180); // Convert degrees to radians
-          ctx.drawImage(img, -size / 2, -size / 2, size, size);
-          ctx.restore();
-
-          // Get data URL and cache it
-          const dataUrl = canvas.toDataURL();
-          rotatedIconCache.current.set(cacheKey, dataUrl);
-          resolve(dataUrl);
-        } catch (error) {
-
-          // Fallback to original image if rotation fails
-          resolve(bikeLogo);
-        }
-      };
-      img.onerror = () => {
-
-        // Fallback to original image if loading fails
-        resolve(bikeLogo);
-      };
-      img.src = bikeLogo;
-
-      // If image is already loaded (cached), resolve immediately
-      if (img.complete) {
-        // Image already loaded, process it
-        img.onload();
-      }
-    });
-  };
-
-  // Google Maps marker functions - Zomato style exact location tracking
-  const createOrUpdateBikeMarker = async (latitude, longitude, heading = null, shouldCenterMap = true) => {
-    if (!window.google || !window.google.maps || !window.deliveryMapInstance) {
-
-      return;
-    }
-
-    // Use object literal instead of deprecated LatLng constructor
-    const position = { lat: latitude, lng: longitude };
-    const map = window.deliveryMapInstance;
-
-    // Normalize + snap heading to a small step (matches getRotatedBikeIcon caching)
-    const rawHeading = heading !== null && heading !== undefined ? Number(heading) : 0;
-    const normalizedHeading = Number.isNaN(rawHeading) ? 0 : ((rawHeading % 360) + 360) % 360;
-    const headingStep = Math.round(normalizedHeading / 5) * 5;
-
-    if (!bikeMarkerRef.current) {
-      // IMPORTANT:
-      // This function is async (icon rotation). If multiple location updates arrive quickly,
-      // two concurrent calls can both see `!bikeMarkerRef.current` and create TWO markers.
-      // We lock marker creation so only one marker instance is ever created.
-      const existingCreatePromise = bikeMarkerRef.__createInFlightPromise;
-      if (existingCreatePromise) {
-        try {
-          await existingCreatePromise;
-        } catch {
-          // ignore - next block may recreate if needed
-        }
-      }
-
-      if (!bikeMarkerRef.current) {
-        const createPromise = (async () => {
-          // Double-check inside lock in case another call created it.
-          if (bikeMarkerRef.current) return;
-
-          // Get rotated icon URL (first render)
-          const rotatedIconUrl = await getRotatedBikeIcon(headingStep);
-          // Create bike marker with rotated icon - exact position
-          const bikeIcon = {
-            url: rotatedIconUrl,
-            scaledSize: new window.google.maps.Size(60, 60), // Larger size for better visibility
-            anchor: new window.google.maps.Point(30, 30) // Center point
-          };
-
-          const marker = new window.google.maps.Marker({
-            position: position,
-            map: map,
-            icon: bikeIcon,
-            optimized: false, // Disable optimization for exact positioning
-            animation: window.google.maps.Animation.DROP, // Drop animation on first appearance
-            zIndex: 1000 // High z-index to ensure it's above other markers
-          });
-
-          bikeMarkerRef.current = marker;
-          lastAppliedHeadingStepRef.current = headingStep;
-          lastIconUpdateTsRef.current = Date.now();
-
-          // Center map on bike location initially - preserve current zoom if user has zoomed in
-          // Only center if not already centered initially (prevents map jumping after initial setup)
-          if (shouldCenterMap && !hasInitiallyCenteredOnBike) {
-            const currentZoom = map.getZoom();
-            map.setCenter(position);
-            // Only set zoom to 18 if current zoom is less than 18 (don't reduce user's zoom)
-            if (currentZoom < 18) {
-              map.setZoom(18); // Full zoom in for better visibility
-            }
-            setHasInitiallyCenteredOnBike(true)
-          }
-
-          // Remove animation after drop completes
-          setTimeout(() => {
-            if (bikeMarkerRef.current) {
-              bikeMarkerRef.current.setAnimation(null);
-            }
-          }, 2000);
-        })();
-
-        bikeMarkerRef.__createInFlightPromise = createPromise;
-        try {
-          await createPromise;
-        } finally {
-          // Clear only if we still point to the same promise
-          if (bikeMarkerRef.__createInFlightPromise === createPromise) {
-            bikeMarkerRef.__createInFlightPromise = null;
-          }
-        }
-      }
-    } else {
-      // ALWAYS ensure marker is on the map (prevent it from disappearing)
-      const currentMap = bikeMarkerRef.current.getMap();
-      if (currentMap === null || currentMap !== map) {
-
-        bikeMarkerRef.current.setMap(map);
-      }
-
-      // Update position EXACTLY - use setPosition for precise location
-      // Validate coordinates before setting
-      if (typeof latitude === 'number' && typeof longitude === 'number' &&
-        !isNaN(latitude) && !isNaN(longitude) &&
-        latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
-        
-        // Use smooth animation if requested, otherwise set instantly
-        if (shouldCenterMap === false) { // Assuming shouldCenterMap=false means a movement update
-          animateMarkerSmoothly(bikeMarkerRef.current, position, 1000, markerAnimationRef);
-        } else {
-          bikeMarkerRef.current.setPosition(position);
-        }
-      } else {
-        return; // Don't update if coordinates are invalid
-      }
-
-      // Update icon only when needed (step changed) and not too frequently (throttle)
-      const nowTs = Date.now();
-      const shouldUpdateIcon =
-        lastAppliedHeadingStepRef.current === null ||
-        headingStep !== lastAppliedHeadingStepRef.current;
-
-      // Throttle to avoid visible flicker on low-end devices
-      const throttleMs = 250;
-      if (shouldUpdateIcon && nowTs - (lastIconUpdateTsRef.current || 0) >= throttleMs) {
-        const rotatedIconUrl = await getRotatedBikeIcon(headingStep);
-        const bikeIcon = {
-          url: rotatedIconUrl,
-          scaledSize: new window.google.maps.Size(60, 60),
-          anchor: new window.google.maps.Point(30, 30)
-        };
-        bikeMarkerRef.current.setIcon(bikeIcon);
-        lastAppliedHeadingStepRef.current = headingStep;
-        lastIconUpdateTsRef.current = nowTs;
-      }
-
-      // Ensure z-index is high
-      bikeMarkerRef.current.setZIndex(1000);
-
-      // Auto-center map on bike location (like Zomato) - only if user hasn't manually panned and not already centered initially
-      // After initial centering, don't auto-pan to prevent map jumping
-      if (shouldCenterMap && !isUserPanningRef.current && (!hasInitiallyCenteredOnBike || isLocationCached)) {
-        // Smooth pan to bike location
-        map.panTo(position);
-        if (!isLocationCached) {
-          setHasInitiallyCenteredOnBike(true)
-        }
-      }
-
-      // Double-check marker is still on map after update
-      if (bikeMarkerRef.current.getMap() === null) {
-
-        bikeMarkerRef.current.setMap(map);
-      }
-    }
-  }
 
   // Create or update route polyline (blue line showing traveled path) - LEGACY/FALLBACK
   // Accepts optional coordinates parameter to draw route immediately without waiting for state update
   // This is a FALLBACK polyline - should only be used when DirectionsRenderer is NOT available
-  const updateRoutePolyline = (coordinates = null) => {
-    // Only show route if there's an active order (selectedRestaurant)
-    if (!selectedRestaurant) {
-      // Clear route if no active order
-      if (routePolylineRef.current) {
-        routePolylineRef.current.setMap(null);
-      }
-      return;
-    }
-
-    // Don't show fallback polyline if DirectionsRenderer is active (it handles road-snapped routes)
-    if (directionsRendererRef.current && directionsRendererRef.current.getDirections()) {
-      // DirectionsRenderer is active, hide fallback polyline
-      if (routePolylineRef.current) {
-        routePolylineRef.current.setMap(null);
-      }
-      return;
-    }
-
-    if (!window.google || !window.google.maps || !window.deliveryMapInstance) {
-
-      return;
-    }
-
-    const map = window.deliveryMapInstance;
-
-    // Use provided coordinates or fallback to state
-    const coordsToUse = coordinates || routePolyline;
-
-    if (coordsToUse && coordsToUse.length > 0) {
-      // Convert coordinates to object literal format (deprecated LatLng constructor replaced)
-      const path = coordsToUse.map(coord => {
-        if (Array.isArray(coord) && coord.length >= 2) {
-          // Route coordinates are stored as [lat, lng] (already converted from GeoJSON at save time)
-          return { lat: coord[0], lng: coord[1] }; // coord[0]=lat, coord[1]=lng
-        }
-        if (coord && typeof coord.lat === 'number' && typeof coord.lng === 'number') {
-          // Already a {lat, lng} object (from Directions API polyline)
-          return { lat: coord.lat, lng: coord.lng };
-        }
-        return null;
-      }).filter(coord => coord !== null);
-
-      if (path.length > 0) {
-        // Don't create main route polyline - only live tracking polyline will be shown
-        // Remove old custom polyline if exists (cleanup)
-        if (routePolylineRef.current) {
-          routePolylineRef.current.setMap(null);
-          routePolylineRef.current = null;
-        }
-
-        // Fit map bounds to show entire route only once per active order
-        if (path.length > 1) {
-          const bounds = new window.google.maps.LatLngBounds();
-          path.forEach(point => bounds.extend(point));
-          fitRouteBoundsOnce(bounds);
-        }
-      }
-    } else {
-      // Hide polyline if no route data
-      if (routePolylineRef.current) {
-        routePolylineRef.current.setMap(null);
-      }
-    }
-  }
 
   // Removed createOrUpdateBlueDotMarker - not needed, using bike icon instead
 
