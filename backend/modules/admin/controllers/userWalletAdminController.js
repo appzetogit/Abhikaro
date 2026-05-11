@@ -119,7 +119,7 @@ export const getUserWalletHistory = asyncHandler(async (req, res) => {
   }
 
   const { id } = req.params;
-  const { page = 1, limit = 20, onlyAdjustments = "true" } = req.query || {};
+  const { page = 1, limit = 15, onlyAdjustments = "true" } = req.query || {};
 
   const user = await User.findById(id).lean();
   if (!user || user.role !== "user") {
@@ -136,7 +136,7 @@ export const getUserWalletHistory = asyncHandler(async (req, res) => {
       transactions: [],
       pagination: {
         page: 1,
-        limit: parseInt(limit, 10) || 20,
+        limit: parseInt(limit, 10) || 15,
         total: 0,
         pages: 0,
       },
@@ -155,7 +155,7 @@ export const getUserWalletHistory = asyncHandler(async (req, res) => {
   }
 
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 15));
   const total = transactions.length;
   const skip = (pageNum - 1) * limitNum;
   const paginated = transactions.slice(skip, skip + limitNum);

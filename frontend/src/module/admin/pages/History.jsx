@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, Search, Users, Store, Package, Building2, Wallet, IndianRupee, Eye, Info } from "lucide-react"
+import { Loader2, Search, Users, Store, Package, Building2, Wallet, IndianRupee, Eye, Info, ChevronLeft, ChevronRight } from "lucide-react"
 import ViewOrderDialog from "../components/orders/ViewOrderDialog"
 
 function formatCurrency(amount) {
@@ -32,6 +32,58 @@ function EmptyState({ title, subtitle }) {
     <div className="flex h-64 flex-col items-center justify-center text-center">
       <p className="text-sm font-semibold text-slate-900">{title}</p>
       {subtitle ? <p className="mt-1 max-w-md text-sm text-slate-600">{subtitle}</p> : null}
+    </div>
+  )
+}
+
+function Pagination({ pagination, onPageChange }) {
+  if (!pagination || pagination.pages <= 1) return null
+  const { page, pages, total } = pagination
+
+  return (
+    <div className="flex items-center justify-between border-t border-slate-100 bg-white px-4 py-3 mt-2 rounded-xl shadow-sm">
+      <div className="flex flex-1 justify-between sm:hidden">
+        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          Previous
+        </Button>
+        <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onPageChange(page + 1)}>
+          Next
+        </Button>
+      </div>
+      <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs text-slate-500">
+            Showing page <span className="font-bold text-slate-900">{page}</span> of{" "}
+            <span className="font-bold text-slate-900">{pages}</span>
+            <span className="ml-1">({total} total records)</span>
+          </p>
+        </div>
+        <div>
+          <nav className="isolate inline-flex -space-x-px rounded-lg shadow-sm" aria-label="Pagination">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 rounded-l-lg border-slate-200"
+              disabled={page <= 1}
+              onClick={() => onPageChange(page - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center px-4 py-1 text-xs font-bold text-slate-700 border-y border-slate-200 bg-slate-50/50">
+              {page} / {pages}
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 rounded-r-lg border-slate-200"
+              disabled={page >= pages}
+              onClick={() => onPageChange(page + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </nav>
+        </div>
+      </div>
     </div>
   )
 }
@@ -508,6 +560,8 @@ function CustomerHistory({ onViewOrder, onViewTx }) {
   const [orders, setOrders] = useState([])
   const [walletLoading, setWalletLoading] = useState(false)
   const [walletTx, setWalletTx] = useState([])
+  const [walletPage, setWalletPage] = useState(1)
+  const [walletPagination, setWalletPagination] = useState(null)
   const [detailTab, setDetailTab] = useState("orders")
 
   const [range, setRange] = useState(() => defaultRange(30))
@@ -578,25 +632,31 @@ function CustomerHistory({ onViewOrder, onViewTx }) {
 
   useEffect(() => {
     fetchOrders()
-    fetchWallet()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setWalletPage(1)
+    // fetchWallet is handled by the walletPage effect
   }, [selectedUserId, range.startDate, range.endDate])
+
+  useEffect(() => {
+    fetchWallet()
+  }, [selectedUserId, range.startDate, range.endDate, walletPage])
 
   const fetchWallet = async () => {
     if (!selectedUserId) return
     try {
       setWalletLoading(true)
       const res = await adminAPI.getUserWalletHistory(selectedUserId, {
-        page: 1,
-        limit: 100,
+        page: walletPage,
+        limit: 15,
         onlyAdjustments: false,
         fromDate: range.startDate,
         toDate: range.endDate,
       })
       if (res?.data?.success) {
         setWalletTx(res.data.data?.transactions || [])
+        setWalletPagination(res.data.data?.pagination || null)
       } else {
         setWalletTx([])
+        setWalletPagination(null)
       }
     } catch (e) {
       console.error(e)
@@ -740,7 +800,10 @@ function CustomerHistory({ onViewOrder, onViewTx }) {
                     <p className="text-sm text-slate-600">Loading wallet history…</p>
                   </div>
                 ) : (
-                  <WalletTxTable title="wallet history" rows={walletTx} onViewDetails={onViewTx} />
+                  <>
+                    <WalletTxTable title="wallet history" rows={walletTx} onViewDetails={onViewTx} />
+                    <Pagination pagination={walletPagination} onPageChange={setWalletPage} />
+                  </>
                 )}
               </TabsContent>
             </Tabs>
@@ -765,6 +828,8 @@ function RestaurantHistoryTab({ onViewOrder, onViewTx }) {
   const [orders, setOrders] = useState([])
   const [walletLoading, setWalletLoading] = useState(false)
   const [walletTx, setWalletTx] = useState([])
+  const [walletPage, setWalletPage] = useState(1)
+  const [walletPagination, setWalletPagination] = useState(null)
 
   const fetchList = async (q = "") => {
     try {
@@ -800,16 +865,36 @@ function RestaurantHistoryTab({ onViewOrder, onViewTx }) {
     if (!selected?._id) return
     try {
       setWalletLoading(true)
-      const res = await adminAPI.getRestaurantWalletHistory(selected._id, { page: 1, limit: 50, onlyAdjustments: false })
-      if (res?.data?.success) setWalletTx(res.data.data?.transactions || [])
-      else setWalletTx([])
+      const res = await adminAPI.getRestaurantWalletHistory(selected._id, {
+        page: walletPage,
+        limit: 15,
+        onlyAdjustments: false,
+      })
+      if (res?.data?.success) {
+        setWalletTx(res.data.data?.transactions || [])
+        setWalletPagination(res.data.data?.pagination || null)
+      } else {
+        setWalletTx([])
+        setWalletPagination(null)
+      }
     } catch (e) {
       console.error(e)
       setWalletTx([])
+      setWalletPagination(null)
     } finally {
       setWalletLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchOrders()
+    fetchReport()
+    setWalletPage(1)
+  }, [selected?._id, range.startDate, range.endDate])
+
+  useEffect(() => {
+    fetchWallet()
+  }, [selected?._id, walletPage])
 
   const fetchOrders = async () => {
     if (!selected?._id) return
@@ -1038,7 +1123,10 @@ function RestaurantHistoryTab({ onViewOrder, onViewTx }) {
                     <p className="text-sm text-slate-600">Loading wallet history…</p>
                   </div>
                 ) : (
-                  <WalletTxTable title="wallet entries" rows={walletTx} />
+                  <>
+                    <WalletTxTable title="wallet entries" rows={walletTx} onViewDetails={onViewTx} />
+                    <Pagination pagination={walletPagination} onPageChange={setWalletPage} />
+                  </>
                 )}
               </TabsContent>
             </Tabs>
@@ -1063,6 +1151,8 @@ function DeliveryHistoryTab({ onViewOrder, onViewTx }) {
   const [orders, setOrders] = useState([])
   const [walletLoading, setWalletLoading] = useState(false)
   const [walletTx, setWalletTx] = useState([])
+  const [walletPage, setWalletPage] = useState(1)
+  const [walletPagination, setWalletPagination] = useState(null)
 
   const fetchList = async (q = "") => {
     try {
@@ -1119,16 +1209,36 @@ function DeliveryHistoryTab({ onViewOrder, onViewTx }) {
     if (!selected?.walletId) return
     try {
       setWalletLoading(true)
-      const res = await adminAPI.getDeliveryBoyWalletHistory(selected.walletId, { page: 1, limit: 50, onlyAdjustments: false })
-      if (res?.data?.success) setWalletTx(res.data.data?.transactions || [])
-      else setWalletTx([])
+      const res = await adminAPI.getDeliveryBoyWalletHistory(selected.walletId, {
+        page: walletPage,
+        limit: 15,
+        onlyAdjustments: false,
+      })
+      if (res?.data?.success) {
+        setWalletTx(res.data.data?.transactions || [])
+        setWalletPagination(res.data.data?.pagination || null)
+      } else {
+        setWalletTx([])
+        setWalletPagination(null)
+      }
     } catch (e) {
       console.error(e)
       setWalletTx([])
+      setWalletPagination(null)
     } finally {
       setWalletLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchOrders()
+    fetchReport()
+    setWalletPage(1)
+  }, [selected?._id, range.startDate, range.endDate])
+
+  useEffect(() => {
+    fetchWallet()
+  }, [selected?._id, walletPage])
 
   const fetchReport = async () => {
     if (!selected?.deliveryId) return

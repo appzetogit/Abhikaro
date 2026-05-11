@@ -275,6 +275,10 @@ import {
   updateCustomerContactMessageStatus,
 } from "../controllers/customerContactMessageController.js";
 import {
+  getHotelPrivacy,
+  updateHotelPrivacy
+} from "../controllers/hotelPrivacyPolicyController.js";
+import {
   getOrders,
   getOrderById,
   bulkDeleteOrders,
@@ -791,6 +795,10 @@ router.put("/privacy", updatePrivacy);
 // Restaurant Privacy Policy Management
 router.get("/restaurant-privacy", getRestaurantPrivacy);
 router.put("/restaurant-privacy", updateRestaurantPrivacy);
+
+// Hotel Privacy Policy Management
+router.get("/hotel-privacy", getHotelPrivacy);
+router.put("/hotel-privacy", updateHotelPrivacy);
 
 // Refund Policy Management
 router.get("/refund", getRefund);

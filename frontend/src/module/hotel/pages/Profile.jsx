@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Building2, Phone, Mail, MapPin, Upload, X, LogOut, QrCode, Download, Loader2, ChevronDown, ChevronUp, Trophy, ChevronRight } from "lucide-react"
+import { Building2, Phone, Mail, MapPin, Upload, X, LogOut, QrCode, Download, Loader2, ChevronDown, ChevronUp, Trophy, ChevronRight, FileText, ShieldCheck, Headphones } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
@@ -49,6 +49,9 @@ export default function HotelProfile() {
     bankPassbookFront: null,
   })
   const [documentsExpanded, setDocumentsExpanded] = useState(false)
+  const [qrExpanded, setQrExpanded] = useState(false)
+  const [standExpanded, setStandExpanded] = useState(false)
+  const [supportExpanded, setSupportExpanded] = useState(false)
 
   const normalizeHotelQrValue = (rawValue, hotelId) => {
     const origin = window.location.origin
@@ -1208,91 +1211,162 @@ export default function HotelProfile() {
 
         {/* QR Code Section */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Hotel QR Code</h2>
-          <div className="space-y-4">
-            {!qrCodeData ? (
-              <div className="text-center py-8">
-                <QrCode className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-sm text-gray-600 mb-4">
-                  Generate a unique QR code for your hotel
-                </p>
-                <Button
-                  onClick={handleGenerateQR}
-                  disabled={loadingQR}
-                  className="bg-[#ff8100] hover:bg-[#ff8100]/90 text-white"
-                >
-                  {loadingQR ? "Generating..." : "Generate QR Code"}
-                </Button>
-              </div>
+          <button
+            onClick={() => setQrExpanded(!qrExpanded)}
+            className="w-full flex items-center justify-between"
+          >
+            <h2 className="text-lg font-semibold text-gray-900">Hotel QR Code</h2>
+            {qrExpanded ? (
+              <ChevronUp className="h-5 w-5 text-gray-600" />
             ) : (
-              <div className="flex flex-col items-center space-y-4">
-                <div
-                  id="hotel-qr-code"
-                  className="bg-white p-4 rounded-lg border-2 border-gray-200"
-                >
-                  <QRCodeSVG
-                    value={normalizeHotelQrValue(qrCodeData, hotel?.hotelId || hotel?._id)}
-                    size={200}
-                    level="H"
-                    includeMargin={true}
-                  />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-medium text-gray-900 mb-1">
-                    {hotel.hotelName}
+              <ChevronDown className="h-5 w-5 text-gray-600" />
+            )}
+          </button>
+          
+          {qrExpanded && (
+            <div className="space-y-4 mt-6">
+              {!qrCodeData ? (
+                <div className="text-center py-8">
+                  <QrCode className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-sm text-gray-600 mb-4">
+                    Generate a unique QR code for your hotel
                   </p>
-                  <p className="text-xs text-gray-500">
-                    Hotel ID: {hotel.hotelId || hotel._id}
-                  </p>
-                </div>
-                <div className="flex gap-2">
                   <Button
-                    onClick={handleDownloadQR}
-                    variant="outline"
-                    className="flex items-center gap-2"
-                    disabled={downloadingQR}
+                    onClick={handleGenerateQR}
+                    disabled={loadingQR}
+                    className="bg-[#ff8100] hover:bg-[#ff8100]/90 text-white"
                   >
-                    {downloadingQR ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-4 h-4" />
-                        Download
-                      </>
-                    )}
+                    {loadingQR ? "Generating..." : "Generate QR Code"}
                   </Button>
                 </div>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="flex flex-col items-center space-y-4">
+                  <div
+                    id="hotel-qr-code"
+                    className="bg-white p-4 rounded-lg border-2 border-gray-200"
+                  >
+                    <QRCodeSVG
+                      value={normalizeHotelQrValue(qrCodeData, hotel?.hotelId || hotel?._id)}
+                      size={200}
+                      level="H"
+                      includeMargin={true}
+                    />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-gray-900 mb-1">
+                      {hotel.hotelName}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Hotel ID: {hotel.hotelId || hotel._id}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleDownloadQR}
+                      variant="outline"
+                      className="flex items-center gap-2"
+                      disabled={downloadingQR}
+                    >
+                      {downloadingQR ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          Download
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Hotel Stand Request */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Request Hotel Stand
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Request a branded stand for your hotel to display the QR code and promote orders.
-          </p>
-          <Button
-            onClick={handleStandRequest}
-            disabled={standRequestStatus === "requested" || standRequestStatus === "approved"}
-            className={`w-full max-w-xs ${
-              standRequestStatus === "approved"
-                ? "bg-green-600 hover:bg-green-700"
-                : "bg-[#ff8100] hover:bg-[#ff8100]/90"
-            } text-white`}
+          <button
+            onClick={() => setStandExpanded(!standExpanded)}
+            className="w-full flex items-center justify-between"
           >
-            {standRequestStatus === "approved"
-              ? "Approved"
-              : standRequestStatus === "requested"
-              ? "Requested"
-              : "Request Stand"}
-          </Button>
+            <h2 className="text-lg font-semibold text-gray-900">Request Hotel Stand</h2>
+            {standExpanded ? (
+              <ChevronUp className="h-5 w-5 text-gray-600" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-gray-600" />
+            )}
+          </button>
+          
+          {standExpanded && (
+            <div className="mt-6">
+              <p className="text-sm text-gray-600 mb-4">
+                Request a branded stand for your hotel to display the QR code and promote orders.
+              </p>
+              <Button
+                onClick={handleStandRequest}
+                disabled={standRequestStatus === "requested" || standRequestStatus === "approved"}
+                className={`w-full max-w-xs ${
+                  standRequestStatus === "approved"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-[#ff8100] hover:bg-[#ff8100]/90"
+                } text-white`}
+              >
+                {standRequestStatus === "approved"
+                  ? "Approved"
+                  : standRequestStatus === "requested"
+                  ? "Requested"
+                  : "Request Stand"}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Information & Support */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Support & Information</h2>
+          <div className="space-y-3">
+            <button
+              onClick={() => navigate("/hotel/support")}
+              className="w-full flex items-center justify-between p-3.5 rounded-xl hover:bg-orange-50/50 transition-all border border-gray-100 hover:border-orange-100 group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-50 rounded-lg group-hover:bg-orange-100 transition-colors">
+                  <Headphones className="w-5 h-5 text-orange-600" />
+                </div>
+                <span className="text-sm font-semibold text-gray-700">Help & Support</span>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-orange-500 transition-colors" />
+            </button>
+
+            <button
+              onClick={() => navigate("/hotel/legal/terms")}
+              className="w-full flex items-center justify-between p-3.5 rounded-xl hover:bg-blue-50/50 transition-all border border-gray-100 hover:border-blue-100 group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                </div>
+                <span className="text-sm font-semibold text-gray-700">Terms & Conditions</span>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
+            </button>
+
+            <button
+              onClick={() => navigate("/hotel/legal/privacy")}
+              className="w-full flex items-center justify-between p-3.5 rounded-xl hover:bg-indigo-50/50 transition-all border border-gray-100 hover:border-indigo-100 group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors">
+                  <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                </div>
+                <span className="text-sm font-semibold text-gray-700">Privacy Policy</span>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 transition-colors" />
+            </button>
+          </div>
         </div>
 
         {/* Logout */}

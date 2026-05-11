@@ -469,6 +469,8 @@ export const API_ENDPOINTS = {
     BUSINESS_SETTINGS_PUBLIC: "/business-settings/public",
     HOTEL_TERMS: "/admin/hotel-terms",
     HOTEL_TERMS_PUBLIC: "/hotel-terms/public",
+    HOTEL_PRIVACY: "/admin/hotel-privacy",
+    HOTEL_PRIVACY_PUBLIC: "/hotel-privacy/public",
     ANALYTICS: "/admin/analytics",
     DASHBOARD_STATS: "/admin/dashboard/stats",
     CATEGORIES: "/admin/categories",

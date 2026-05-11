@@ -228,6 +228,13 @@ export const sidebarMenuData = [
         icon: "FileText",
         permissionId: "hotels.view",
       },
+      {
+        type: "link",
+        label: "Hotel Privacy Policy",
+        path: "/admin/hotel-privacy",
+        icon: "FileText",
+        permissionId: "hotels.view",
+      },
     ],
   },
   {

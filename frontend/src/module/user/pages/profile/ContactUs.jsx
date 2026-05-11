@@ -157,10 +157,7 @@ export default function ContactUs() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  window.location.href = "tel:6001756001";
-                }}
-                className="w-full border-gray-300 text-gray-800 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-100 dark:hover:bg-gray-800"
+                className="w-full border-gray-300 text-gray-800 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-100 dark:hover:bg-gray-800 cursor-default"
               >
                 Call: 6001756001
               </Button>

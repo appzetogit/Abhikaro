@@ -49,6 +49,7 @@ import businessSettingsPublicRoutes from './modules/admin/routes/businessSetting
 import termsPublicRoutes from './modules/admin/routes/termsPublicRoutes.js';
 import deliveryTermsPublicRoutes from './modules/admin/routes/deliveryTermsPublicRoutes.js';
 import hotelTermsPublicRoutes from './modules/admin/routes/hotelTermsPublicRoutes.js';
+import hotelPrivacyPublicRoutes from './modules/admin/routes/hotelPrivacyPublicRoutes.js';
 import deliveryPrivacyPublicRoutes from './modules/admin/routes/deliveryPrivacyPublicRoutes.js';
 import privacyPublicRoutes from './modules/admin/routes/privacyPublicRoutes.js';
 import refundPublicRoutes from './modules/admin/routes/refundPublicRoutes.js';
@@ -686,6 +687,7 @@ app.use('/api', businessSettingsPublicRoutes);
 app.use('/api', termsPublicRoutes);
 app.use('/api', deliveryTermsPublicRoutes);
 app.use('/api', hotelTermsPublicRoutes);
+app.use('/api', hotelPrivacyPublicRoutes);
 app.use('/api', deliveryPrivacyPublicRoutes);
 app.use('/api', privacyPublicRoutes);
 app.use('/api', refundPublicRoutes);

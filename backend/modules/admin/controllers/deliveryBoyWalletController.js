@@ -233,7 +233,7 @@ export const getDeliveryBoyWalletHistory = asyncHandler(async (req, res) => {
   }
 
   const { id } = req.params;
-  const { page = 1, limit = 20, onlyAdjustments = 'true' } = req.query || {};
+  const { page = 1, limit = 15, onlyAdjustments = 'true' } = req.query || {};
 
   if (!id || !mongoose.Types.ObjectId.isValid(id)) {
     return errorResponse(res, 400, 'Valid wallet ID is required');
@@ -261,7 +261,7 @@ export const getDeliveryBoyWalletHistory = asyncHandler(async (req, res) => {
   }
 
   const pageNum = Math.max(1, parseInt(page));
-  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 15));
   const total = transactions.length;
   const skip = (pageNum - 1) * limitNum;
   const paginated = transactions.slice(skip, skip + limitNum);
