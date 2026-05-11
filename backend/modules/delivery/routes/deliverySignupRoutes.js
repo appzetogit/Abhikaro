@@ -9,11 +9,8 @@ import Joi from 'joi';
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(authenticate);
-
 // Signup routes
-router.post('/signup/details', validate(Joi.object({
+router.post('/signup/details', authenticate, validate(Joi.object({
   name: Joi.string().trim().min(2).max(100).required(),
   email: Joi.string().email().lowercase().trim().required(),
   address: Joi.string().trim().required(),
@@ -26,7 +23,7 @@ router.post('/signup/details', validate(Joi.object({
   aadharNumber: Joi.string().trim().required()
 })), submitSignupDetails);
 
-router.post('/signup/documents', validate(Joi.object({
+router.post('/signup/documents', authenticate, validate(Joi.object({
   profilePhoto: Joi.object({
     url: Joi.string().uri().required(),
     publicId: Joi.string().trim().required()

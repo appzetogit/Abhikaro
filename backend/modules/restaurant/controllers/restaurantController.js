@@ -1368,6 +1368,14 @@ export const updateDeliveryStatus = asyncHandler(async (req, res) => {
   }
 });
 
+import Inventory from '../models/Inventory.js';
+import MenuItemSchedule from '../models/MenuItemSchedule.js';
+import Offer from '../models/Offer.js';
+import OutletTimings from '../models/OutletTimings.js';
+import RestaurantWallet from '../models/RestaurantWallet.js';
+import StaffManagement from '../models/StaffManagement.js';
+import RestaurantDiningOffer from '../models/RestaurantDiningOffer.js';
+
 /**
  * Delete restaurant account
  * DELETE /api/restaurant/profile
@@ -1381,6 +1389,19 @@ export const deleteRestaurantAccount = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, 'Restaurant not found');
     }
 
+    // Check for active orders
+    const activeOrders = await Order.findOne({
+      $or: [
+        { restaurantId: restaurantId.toString() },
+        { restaurantId: restaurant.restaurantId }
+      ],
+      status: { $in: ['pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery'] }
+    });
+
+    if (activeOrders) {
+      return errorResponse(res, 400, 'Cannot delete account with active orders. Please complete or cancel them first.');
+    }
+
     // Delete Cloudinary images if they exist
     try {
       // Delete profile image
@@ -1389,7 +1410,6 @@ export const deleteRestaurantAccount = asyncHandler(async (req, res) => {
           await deleteFromCloudinary(restaurant.profileImage.publicId);
         } catch (error) {
           console.error('Error deleting profile image from Cloudinary:', error);
-          // Continue with account deletion even if image deletion fails
         }
       }
 
@@ -1401,18 +1421,32 @@ export const deleteRestaurantAccount = asyncHandler(async (req, res) => {
               await deleteFromCloudinary(menuImage.publicId);
             } catch (error) {
               console.error('Error deleting menu image from Cloudinary:', error);
-              // Continue with account deletion even if image deletion fails
             }
           }
         }
       }
     } catch (error) {
       console.error('Error deleting images from Cloudinary:', error);
-      // Continue with account deletion even if image deletion fails
     }
 
-    // Delete the restaurant from database
-    await Restaurant.findByIdAndDelete(restaurantId);
+    // Delete related data in parallel
+    try {
+      await Promise.all([
+        Menu.deleteMany({ restaurant: restaurantId }),
+        Inventory.deleteMany({ restaurant: restaurantId }),
+        MenuItemSchedule.deleteMany({ restaurant: restaurantId }),
+        Offer.deleteMany({ restaurant: restaurantId }),
+        OutletTimings.deleteMany({ restaurant: restaurantId }),
+        RestaurantWallet.deleteMany({ restaurant: restaurantId }),
+        StaffManagement.deleteMany({ restaurant: restaurantId }),
+        RestaurantDiningOffer.deleteMany({ restaurantId: restaurantId }),
+        // Also delete the main restaurant record
+        Restaurant.findByIdAndDelete(restaurantId)
+      ]);
+    } catch (deleteError) {
+      console.error('Error deleting related restaurant data:', deleteError);
+      // Even if some deletions fail, we've attempted the core ones
+    }
 
     console.log(`Restaurant account deleted: ${restaurantId}`, { 
       restaurantId: restaurant.restaurantId,

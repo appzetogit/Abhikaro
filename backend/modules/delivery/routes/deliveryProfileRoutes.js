@@ -1,6 +1,6 @@
 import express from 'express';
-import { getProfile, updateProfile, reverify } from '../controllers/deliveryProfileController.js';
-import { authenticate } from '../middleware/deliveryAuth.js';
+import { getProfile, updateProfile, reverify, deleteAccount } from '../controllers/deliveryProfileController.js';
+import { authenticate, optionalAuthenticate } from '../middleware/deliveryAuth.js';
 import { validate } from '../../../shared/middleware/validate.js';
 import Joi from 'joi';
 import {
@@ -11,7 +11,10 @@ import {
 
 const router = express.Router();
 
-// All routes require authentication
+// Support tickets routes (Publicly accessible but identifies user if logged in)
+router.get('/support-tickets', optionalAuthenticate, getDeliveryTickets);
+
+// All other routes require authentication
 router.use(authenticate);
 
 // Profile routes
@@ -51,6 +54,9 @@ router.put('/profile', validate(Joi.object({
   }).optional()
 })), updateProfile);
 
+// Delete account route
+router.delete('/profile', deleteAccount);
+
 // Reverify route (resubmit for approval)
 router.post('/reverify', reverify);
 
@@ -72,7 +78,6 @@ router.post('/support-tickets', validate(Joi.object({
   priority: Joi.string().valid('low', 'medium', 'high', 'urgent').optional().allow('', null)
 })), createSupportTicket);
 
-router.get('/support-tickets', getDeliveryTickets);
 router.get('/support-tickets/:id', getTicketById);
 
 export default router;

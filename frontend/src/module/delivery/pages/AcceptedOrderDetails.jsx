@@ -111,7 +111,39 @@ export default function AcceptedOrderDetails() {
 
     return orderName || populatedName || 'Restaurant';
   })()
-  const restaurantAddress = order?.restaurantId?.address ? (typeof order.restaurantId.address === 'string' ? order.restaurantId.address : [order.restaurantId.address?.street, order.restaurantId.address?.city].filter(Boolean).join(', ')) : '—'
+  const restaurantAddress = (() => {
+    // 1. Try formattedAddress from populated restaurantId
+    const formatted = order?.restaurantId?.location?.formattedAddress || order?.restaurantId?.address;
+    if (formatted && typeof formatted === 'string' && formatted.length > 5) return formatted;
+
+    // 2. Try address fields from populated restaurantId
+    if (order?.restaurantId?.address && typeof order.restaurantId.address === 'object') {
+      const parts = [order.restaurantId.address.street, order.restaurantId.address.area, order.restaurantId.address.city, order.restaurantId.address.state].filter(Boolean);
+      if (parts.length > 0) return parts.join(', ');
+    }
+
+    // 3. Try fields on the order object itself
+    const onOrder = 
+      order?.restaurantAddress || 
+      order?.restaurantLocation?.address || 
+      order?.restaurantLocation?.formattedAddress;
+    if (onOrder && typeof onOrder === 'string' && onOrder.length > 5) return onOrder;
+
+    // 4. Try from restaurant sub-object if present
+    const fromRest = 
+      order?.restaurant?.address || 
+      order?.restaurant?.location?.formattedAddress || 
+      order?.restaurant?.location?.address;
+    if (fromRest && typeof fromRest === 'string' && fromRest.length > 5) return fromRest;
+
+    // 5. Final fallback - formatted string from restaurantId location
+    const loc = order?.restaurantId?.location;
+    if (loc?.street || loc?.city) {
+      return [loc.street, loc.area, loc.city, loc.state].filter(Boolean).join(', ');
+    }
+
+    return formatted && typeof formatted === 'string' ? formatted : '—';
+  })()
   const paymentMethodDisplay = order?.paymentMethod === 'cash' || order?.payment?.method === 'cash' ? 'Cash' : 'Online'
 
   const orderData = {

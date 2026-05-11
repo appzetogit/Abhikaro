@@ -175,16 +175,8 @@ export default function UserRouter() {
             <Route path="/profile/favorites" element={<Favorites />} />
             <Route path="/profile/settings" element={<Settings />} />
             <Route path="/profile/coupons" element={<Coupons />} />
-            <Route path="/profile/about" element={<About />} />
-            
-            {/* Protected Terms and Privacy routes (for logged-in users) */}
-            <Route path="/profile/terms" element={<Terms />} />
-            <Route path="/profile/privacy" element={<Privacy />} />
-            <Route path="/profile/refund" element={<Refund />} />
-            <Route path="/profile/shipping" element={<Shipping />} />
-            <Route path="/profile/cancellation" element={<Cancellation />} />
             <Route path="/profile/send-feedback" element={<SendFeedback />} />
-            <Route path="/profile/contact-us" element={<ContactUs />} />
+
             <Route path="/profile/report-safety-emergency" element={<ReportSafetyEmergency />} />
             <Route path="/profile/logout" element={<Logout />} />
 
@@ -208,6 +200,15 @@ export default function UserRouter() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/help" element={<Help />} />
+
+          {/* Public Profile Routes (Required for iOS verification) */}
+          <Route path="/profile/contact-us" element={<ContactUs />} />
+          <Route path="/profile/about" element={<About />} />
+          <Route path="/profile/terms" element={<Terms />} />
+          <Route path="/profile/privacy" element={<Privacy />} />
+          <Route path="/profile/refund" element={<Refund />} />
+          <Route path="/profile/shipping" element={<Shipping />} />
+          <Route path="/profile/cancellation" element={<Cancellation />} />
 
           </Route>
         </Routes>

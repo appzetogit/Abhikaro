@@ -26,7 +26,8 @@ export default function SupportTickets() {
       }
     } catch (error) {
       // Error fetching tickets
-      toast.error("Failed to load tickets")
+      const errorMsg = error.response?.data?.message || error.message || "Failed to load tickets";
+      toast.error(errorMsg);
       setTickets([])
     } finally {
       setLoading(false)

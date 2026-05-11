@@ -40,6 +40,7 @@ export default function ProfilePage() {
     // Load from localStorage, default to "zomato_tone"
     return localStorage.getItem('delivery_alert_sound') || 'zomato_tone'
   })
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   useEffect(() => {
     // Initialize Lenis for smooth scrolling
@@ -200,6 +201,51 @@ export default function ProfilePage() {
     }, 100)
   }
 
+  const handleDeleteAccount = async () => {
+    if (!window.confirm("CRITICAL: Are you sure you want to delete your account? This action is permanent and cannot be undone.")) {
+      return
+    }
+
+    if (isDeletingAccount) return
+    setIsDeletingAccount(true)
+
+    try {
+      // Call backend delete account API
+      await deliveryAPI.deleteAccount()
+
+      // Same cleanup as logout
+      clearModuleAuth("delivery")
+      localStorage.removeItem("delivery_gig_storage")
+      localStorage.removeItem("delivery_module_storage")
+      localStorage.removeItem("app:isOnline")
+      sessionStorage.removeItem("deliveryAuthData")
+      
+      const keysToRemove = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && key.startsWith("delivery_")) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+      
+      window.dispatchEvent(new Event('deliveryAuthChanged'))
+      window.dispatchEvent(new Event('onlineStatusChanged'))
+      
+      toast.success("Account deleted successfully")
+      
+      setTimeout(() => {
+        navigate("/delivery/sign-in", { replace: true })
+      }, 100)
+    } catch (err) {
+      console.error("Error during account deletion:", err)
+      const errorMsg = err.response?.data?.message || "Failed to delete account. Please try again."
+      toast.error(errorMsg)
+    } finally {
+      setIsDeletingAccount(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 font-poppins overflow-x-hidden">
       {/* Main Content */}
@@ -323,6 +369,26 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-3">
                   <LogOut className="w-5 h-5 text-red-600" />
                   <span className="text-sm font-medium text-red-600">Log out</span>
+                </div>
+                <ArrowRight className="w-5 h-5 text-gray-400" />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Delete Account Section */}
+          <div className="pt-2">
+            <Card 
+              onClick={handleDeleteAccount}
+              className="bg-white py-0 border-0 shadow-none rounded-lg cursor-pointer hover:bg-red-50 transition-colors"
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`flex items-center justify-center ${isDeletingAccount ? 'animate-pulse' : ''}`}>
+                    <User className="w-5 h-5 text-red-600" />
+                  </div>
+                  <span className="text-sm font-medium text-red-600">
+                    {isDeletingAccount ? 'Deleting account...' : 'Delete account'}
+                  </span>
                 </div>
                 <ArrowRight className="w-5 h-5 text-gray-400" />
               </CardContent>

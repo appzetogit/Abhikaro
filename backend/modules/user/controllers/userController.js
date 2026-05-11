@@ -8,6 +8,7 @@ import { uploadToCloudinary } from "../../../shared/utils/cloudinaryService.js";
 import axios from "axios";
 import winston from "winston";
 import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from "../../../shared/utils/cache.js";
+import Order from "../../order/models/Order.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -655,5 +656,47 @@ export const deleteUserAddress = asyncHandler(async (req, res) => {
       error: error.stack,
     });
     return errorResponse(res, 500, "Failed to delete address");
+  }
+});
+
+/**
+ * Delete user account
+ * DELETE /api/user/profile
+ */
+export const deleteUserAccount = asyncHandler(async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Check for active orders
+    const activeOrders = await Order.findOne({
+      customer: userId,
+      status: { $in: ['pending', 'confirmed', 'preparing', 'ready', 'picked_up'] }
+    });
+
+    if (activeOrders) {
+      return errorResponse(res, 400, "Cannot delete account with active orders. Please complete or cancel your orders first.");
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return errorResponse(res, 404, "User not found");
+    }
+
+    // Invalidate cache
+    const cacheKey = generateCacheKey('user-profile', userId.toString());
+    await invalidateCachePattern(cacheKey);
+    await invalidateCachePattern(`userAddresses:${userId.toString()}`);
+
+    // Delete user
+    await User.findByIdAndDelete(userId);
+
+    logger.info(`User account deleted: ${userId}`);
+
+    return successResponse(res, 200, "Account deleted successfully");
+  } catch (error) {
+    logger.error(`Error deleting user account: ${error.message}`, {
+      error: error.stack,
+    });
+    return errorResponse(res, 500, "Failed to delete account");
   }
 });

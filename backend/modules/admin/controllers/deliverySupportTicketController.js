@@ -104,6 +104,19 @@ export const getDeliveryTickets = asyncHandler(async (req, res) => {
   try {
     const delivery = req.delivery;
     const { status, page = 1, limit = 50 } = req.query;
+    
+    // If not authenticated, return empty list (for iOS verification public access)
+    if (!delivery) {
+      return successResponse(res, 200, 'Tickets retrieved successfully', {
+        tickets: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: 0
+        }
+      });
+    }
 
     const query = { deliveryId: delivery._id };
     if (status) {

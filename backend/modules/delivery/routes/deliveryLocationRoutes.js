@@ -6,15 +6,12 @@ import Joi from 'joi';
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(authenticate);
-
 // Location routes - validation handled in controller for flexibility
-router.post('/location', updateLocation);
-router.get('/location', getLocation);
+router.post('/location', authenticate, updateLocation);
+router.get('/location', authenticate, getLocation);
 
 // Zones routes
-router.get('/zones/in-radius', getZonesInRadius);
+router.get('/zones/in-radius', authenticate, getZonesInRadius);
 
 export default router;
 

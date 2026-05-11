@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom"
+import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { motion } from "framer-motion"
 import {
   ChevronLeft,
@@ -13,6 +14,7 @@ import BottomNavOrders from "../components/BottomNavOrders"
 
 export default function SupportPage() {
   const navigate = useNavigate()
+  const isAuthenticated = isModuleAuthenticated("restaurant")
 
   const contactMethods = [
     {
@@ -119,7 +121,7 @@ export default function SupportPage() {
       <div className="h-20"></div>
       
       {/* Bottom Navigation */}
-      <BottomNavOrders />
+      {isAuthenticated && <BottomNavOrders />}
     </div>
   )
 }

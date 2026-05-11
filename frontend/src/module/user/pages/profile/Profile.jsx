@@ -54,6 +54,8 @@ export default function Profile() {
   const [vegModeOpen, setVegModeOpen] = useState(false)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   // Settings states
   const [appearance, setAppearance] = useState(() => {
@@ -276,6 +278,47 @@ export default function Profile() {
       navigate("/user/auth/sign-in", { replace: true })
     } finally {
       setIsLoggingOut(false)
+    }
+  }
+
+  // Handle delete account
+  const handleDeleteAccount = async () => {
+    if (isDeletingAccount) return
+
+    setIsDeletingAccount(true)
+
+    try {
+      // Call backend delete account API
+      await userAPI.deleteAccount()
+
+      // Same cleanup as logout
+      try {
+        const { signOut } = await import("firebase/auth")
+        const currentUser = firebaseAuth.currentUser
+        if (currentUser) {
+          await signOut(firebaseAuth)
+        }
+      } catch (firebaseError) {
+        console.warn("Firebase logout failed during account deletion:", firebaseError)
+      }
+
+      clearModuleAuth("user")
+      if (cartContext?.clearCart) cartContext.clearCart()
+      localStorage.removeItem("accessToken")
+      localStorage.removeItem("user_authenticated")
+      localStorage.removeItem("user_user")
+      localStorage.removeItem("user")
+      window.dispatchEvent(new Event("userAuthChanged"))
+
+      navigate("/user/auth/sign-in", { replace: true })
+    } catch (err) {
+      console.error("Error during account deletion:", err)
+      // You might want to show a toast message here if delete fails (e.g. active orders)
+      const errorMsg = err.response?.data?.message || "Failed to delete account. Please try again."
+      alert(errorMsg)
+    } finally {
+      setIsDeletingAccount(false)
+      setDeleteDialogOpen(false)
     }
   }
 
@@ -771,6 +814,36 @@ export default function Profile() {
                 </CardContent>
               </Card>
             </motion.div>
+            <motion.div
+              whileHover={{ x: 4, scale: 1.01 }}
+              transition={{ duration: 0.2, type: "spring", stiffness: 300 }}
+            >
+              <Card
+                className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <motion.div
+                      className="bg-red-50 dark:bg-red-900/20 rounded-full p-2"
+                      whileHover={{ rotate: 15, scale: 1.1 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <Trash2 className="h-5 w-5 text-red-600" />
+                    </motion.div>
+                    <span className="text-base font-medium text-red-600">
+                      Delete account
+                    </span>
+                  </div>
+                  <motion.div
+                    whileHover={{ x: 4 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ChevronRight className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                  </motion.div>
+                </CardContent>
+              </Card>
+            </motion.div>
           </div>
         </div>
       </div>
@@ -886,6 +959,35 @@ export default function Profile() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Account Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-sm md:max-w-md lg:max-w-lg w-[calc(100%-2rem)] rounded-2xl p-0 overflow-hidden bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-gray-800">
+          <DialogHeader className="p-5 pb-3">
+            <DialogTitle className="text-xl font-bold text-red-600">Delete Account</DialogTitle>
+            <DialogDescription className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+              Are you sure you want to delete your account? This action is permanent and all your data, including wallet balance and order history, will be lost forever.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 p-5 pt-2 pb-6">
+            <Button 
+              variant="destructive" 
+              className="w-full h-12 rounded-xl text-base font-semibold"
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+            >
+              {isDeletingAccount ? 'Deleting...' : 'Yes, Delete Account'}
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full h-12 rounded-xl text-base font-semibold border-gray-200 dark:border-gray-800"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeletingAccount}
+            >
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AnimatedPage>
   )
 }

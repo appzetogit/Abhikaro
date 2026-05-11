@@ -335,6 +335,8 @@ export default function ExploreMore() {
   const navigate = useNavigate()
   const [profileOpen, setProfileOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 
   // Schedule off states
@@ -530,22 +532,15 @@ export default function ExploreMore() {
     }
   }
 
-  const handleLogoutAllDevices = async () => {
-    if (isLoggingOut) return // Prevent multiple clicks
-
-    setIsLoggingOut(true)
-    setProfileOpen(false)
+  const handleDeleteAccount = async () => {
+    if (isDeleting) return
+    setIsDeleting(true)
 
     try {
-      // Call backend logout API to invalidate refresh token
-      try {
-        await restaurantAPI.logout()
-      } catch (apiError) {
-        // Continue with logout even if API call fails (network issues, etc.)
-        console.warn("Logout API call failed, continuing with local cleanup:", apiError)
-      }
+      // Call backend delete account API
+      await restaurantAPI.deleteAccount()
 
-      // Sign out from Firebase if restaurant logged in via Google
+      // Sign out from Firebase
       try {
         const { signOut } = await import("firebase/auth")
         const currentUser = firebaseAuth.currentUser
@@ -553,41 +548,36 @@ export default function ExploreMore() {
           await signOut(firebaseAuth)
         }
       } catch (firebaseError) {
-        // Continue even if Firebase logout fails
-        console.warn("Firebase logout failed, continuing with local cleanup:", firebaseError)
+        console.warn("Firebase logout during deletion failed:", firebaseError)
       }
 
-      // Clear auth for all modules (admin, restaurant, delivery, user)
+      // Clear all authentication data
       clearAuthData()
-
-      // Clear sessionStorage for all modules
+      
+      // Clear sessionStorage
       sessionStorage.removeItem("restaurantAuthData")
       sessionStorage.removeItem("adminAuthData")
       sessionStorage.removeItem("deliveryAuthData")
       sessionStorage.removeItem("userAuthData")
 
-      // Dispatch auth change events to notify other components
+      // Dispatch auth change events
       window.dispatchEvent(new Event("restaurantAuthChanged"))
       window.dispatchEvent(new Event("adminAuthChanged"))
       window.dispatchEvent(new Event("deliveryAuthChanged"))
       window.dispatchEvent(new Event("userAuthChanged"))
 
-      // Small delay for UX, then navigate to welcome page
-      setTimeout(() => {
-        navigate("/restaurant/welcome", { replace: true })
-      }, 300)
-    } catch (error) {
-      // Even if there's an error, we should still clear local data and logout
-      console.error("Error during logout from all devices:", error)
-      clearAuthData()
-      sessionStorage.removeItem("restaurantAuthData")
-      sessionStorage.removeItem("adminAuthData")
-      sessionStorage.removeItem("deliveryAuthData")
-      sessionStorage.removeItem("userAuthData")
-      window.dispatchEvent(new Event("restaurantAuthChanged"))
+      // Close modals
+      setShowDeleteConfirm(false)
+      setProfileOpen(false)
+
+      // Navigate to welcome page
       navigate("/restaurant/welcome", { replace: true })
+    } catch (error) {
+      console.error("Error during account deletion:", error)
+      const errorMsg = error?.response?.data?.message || "Failed to delete account. Please try again."
+      alert(errorMsg)
     } finally {
-      setIsLoggingOut(false)
+      setIsDeleting(false)
     }
   }
 
@@ -681,7 +671,7 @@ export default function ExploreMore() {
 
   // Prevent body scroll when popup is open
   useEffect(() => {
-    if (profileOpen || scheduleOffOpen || dateTimePickerOpen || successPopupOpen || existingScheduleOpen || searchOpen) {
+    if (profileOpen || scheduleOffOpen || dateTimePickerOpen || successPopupOpen || existingScheduleOpen || searchOpen || showDeleteConfirm) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = 'unset'
@@ -1175,13 +1165,13 @@ export default function ExploreMore() {
                   {isLoggingOut ? "Logging out..." : "Logout"}
                 </button>
 
-                {/* Logout from all devices Button */}
+                {/* Delete Account Button */}
                 <button
-                  onClick={handleLogoutAllDevices}
+                  onClick={() => setShowDeleteConfirm(true)}
                   disabled={isLoggingOut}
                   className="w-full bg-white border-2 border-red-600 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed font-semibold py-3 px-4 rounded-lg transition-colors"
                 >
-                  {isLoggingOut ? "Logging out..." : "Logout from all devices"}
+                  Delete Account
                 </button>
               </div>
 
@@ -1212,6 +1202,59 @@ export default function ExploreMore() {
                 </div>
               </div>
             </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Account Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-[1000] backdrop-blur-sm"
+              onClick={() => !isDeleting && setShowDeleteConfirm(false)}
+            />
+
+            {/* Modal */}
+            <div className="fixed inset-0 z-[1001] flex items-center justify-center p-4 pointer-events-none">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden pointer-events-auto"
+              >
+                <div className="p-6 text-center">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <X className="w-8 h-8 text-red-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Account?</h3>
+                  <p className="text-gray-600 mb-6">
+                    Are you sure you want to delete your account? This action is permanent and cannot be undone. All your restaurant data will be lost.
+                  </p>
+                  
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={isDeleting}
+                      className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold py-3 px-4 rounded-xl transition-colors"
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, Delete Account"}
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={isDeleting}
+                      className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-xl transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>

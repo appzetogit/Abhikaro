@@ -228,3 +228,40 @@ export const reverify = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Delete delivery partner account
+ * DELETE /api/delivery/profile
+ */
+export const deleteAccount = asyncHandler(async (req, res) => {
+  try {
+    const deliveryId = req.delivery._id;
+
+    // Check for active orders assigned to this delivery partner
+    const activeOrders = await Order.findOne({
+      deliveryPartnerId: deliveryId,
+      status: { $in: ['confirmed', 'preparing', 'ready', 'picked_up'] }
+    });
+
+    if (activeOrders) {
+      return errorResponse(res, 400, "Cannot delete account with active orders assigned. Please complete your current orders first.");
+    }
+
+    const delivery = await Delivery.findById(deliveryId);
+    if (!delivery) {
+      return errorResponse(res, 404, "Delivery partner not found");
+    }
+
+    // Delete delivery partner
+    await Delivery.findByIdAndDelete(deliveryId);
+
+    logger.info(`Delivery partner account deleted: ${deliveryId}`);
+
+    return successResponse(res, 200, "Account deleted successfully");
+  } catch (error) {
+    logger.error(`Error deleting delivery partner account: ${error.message}`, {
+      error: error.stack,
+    });
+    return errorResponse(res, 500, "Failed to delete account");
+  }
+});
+

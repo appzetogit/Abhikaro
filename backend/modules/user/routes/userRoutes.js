@@ -8,7 +8,8 @@ import {
   getUserAddresses,
   addUserAddress,
   updateUserAddress,
-  deleteUserAddress
+  deleteUserAddress,
+  deleteUserAccount
 } from '../controllers/userController.js';
 import { authenticate } from '../../auth/middleware/auth.js';
 import { uploadMiddleware } from '../../../shared/utils/cloudinaryService.js';
@@ -23,6 +24,7 @@ router.use(authenticate);
 // Profile routes
 router.get('/profile', getUserProfile);
 router.put('/profile', updateUserProfile);
+router.delete('/profile', deleteUserAccount);
 
 // Profile image upload
 router.post(

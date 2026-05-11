@@ -59,5 +59,32 @@ export const authenticate = async (req, res, next) => {
   }
 };
 
-export default { authenticate };
+/**
+ * Optional Delivery Authentication Middleware
+ * Attaches delivery boy to request if token is valid, otherwise continues
+ */
+export const optionalAuthenticate = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.substring(7);
+    const decoded = jwtService.verifyAccessToken(token);
+
+    if (decoded.role === 'delivery') {
+      const delivery = await Delivery.findById(decoded.userId).select('-password -refreshToken');
+      if (delivery && (delivery.isActive || delivery.status === 'blocked' || delivery.status === 'pending')) {
+        req.delivery = delivery;
+        req.token = decoded;
+      }
+    }
+    next();
+  } catch (error) {
+    next();
+  }
+};
+
+export default { authenticate, optionalAuthenticate };
 

@@ -173,6 +173,10 @@ export const userAPI = {
   updateProfile: (data) => {
     return apiClient.put(API_ENDPOINTS.USER.PROFILE, data);
   },
+  // Delete user account
+  deleteAccount: () => {
+    return apiClient.delete(API_ENDPOINTS.USER.PROFILE);
+  },
 
   // Upload profile image
   uploadProfileImage: (file) => {
@@ -930,6 +934,11 @@ export const hotelAPI = {
     return apiClient.put(API_ENDPOINTS.HOTEL.PROFILE, data);
   },
 
+  // Delete hotel account
+  deleteAccount: () => {
+    return apiClient.delete(API_ENDPOINTS.HOTEL.PROFILE);
+  },
+
   // Get order requests
   getRequests: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.HOTEL.REQUESTS, { params });
@@ -1097,6 +1106,10 @@ export const deliveryAPI = {
   // Update delivery profile
   updateProfile: (data) => {
     return apiClient.put(API_ENDPOINTS.DELIVERY.PROFILE, data);
+  },
+  // Delete delivery partner account
+  deleteAccount: () => {
+    return apiClient.delete(API_ENDPOINTS.DELIVERY.PROFILE);
   },
   getAvailableOrders: () => {
     return apiClient.get(API_ENDPOINTS.DELIVERY.AVAILABLE_ORDERS);

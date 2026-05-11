@@ -235,7 +235,7 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
     let order = await Order.findOne(query)
       .populate(
         "restaurantId",
-        "name slug profileImage address phone ownerPhone location",
+        "name slug profileImage address phone ownerPhone location onboarding",
       )
       .populate("userId", "name phone email")
       .lean();
@@ -351,7 +351,6 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
     }
 
     // Fallback to populated restaurant document
-    if (!effectiveRestaurantCoords && order.restaurantId && typeof order.restaurantId === "object") {
       const rest = order.restaurantId;
       const coords =
         rest.location?.geoLocation?.coordinates?.length
@@ -359,10 +358,13 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
           : rest.location?.coordinates;
       if (coords && coords.length === 2) {
         effectiveRestaurantCoords = coords;
-        effectiveRestaurantAddress =
-          rest.location?.formattedAddress || rest.address || null;
       }
-    }
+      effectiveRestaurantAddress =
+        rest.location?.formattedAddress || 
+        rest.address || 
+        rest.onboarding?.step1?.location?.formattedAddress ||
+        rest.onboarding?.step1?.location?.address ||
+        null;
 
     // Fallback: Order.restaurantId is often a business string like "REST-...." (not populate-able).
     // Resolve restaurant by Restaurant.restaurantId and use its stored location.
@@ -787,7 +789,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
             { orderId: orderId },
           ],
         })
-          .populate("restaurantId", "name location address phone ownerPhone")
+          .populate("restaurantId", "name location address phone ownerPhone onboarding")
           .populate("userId", "name phone")
           .populate("deliveryPartnerId", "name phone") // Populate deliveryPartnerId to ensure it's included
           .lean();

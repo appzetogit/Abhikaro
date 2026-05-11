@@ -6,6 +6,7 @@ import {
   getHotelProfile,
   updateHotelProfile,
   getHotelQRCode,
+  deleteHotelAccount,
 } from "../controllers/hotelProfileController.js";
 
 const router = express.Router();
@@ -39,6 +40,7 @@ const updateProfileSchema = Joi.object({
 router.get("/", authenticate, getHotelProfile);
 router.put("/", authenticate, validate(updateProfileSchema), updateHotelProfile);
 router.get("/qr-code", authenticate, getHotelQRCode);
+router.delete("/", authenticate, deleteHotelAccount);
 
 export default router;
 

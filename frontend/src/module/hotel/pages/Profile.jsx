@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
+import { motion } from "framer-motion"
 import { useNavigate } from "react-router-dom"
-import { Building2, Phone, Mail, MapPin, Upload, X, LogOut, QrCode, Download, Loader2, ChevronDown, ChevronUp, Trophy, ChevronRight, FileText, ShieldCheck, Headphones } from "lucide-react"
+import { Building2, Phone, Mail, MapPin, Upload, X, LogOut, QrCode, Download, Loader2, ChevronDown, ChevronUp, Trophy, ChevronRight, FileText, ShieldCheck, Headphones, AlertTriangle } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
@@ -52,6 +53,8 @@ export default function HotelProfile() {
   const [qrExpanded, setQrExpanded] = useState(false)
   const [standExpanded, setStandExpanded] = useState(false)
   const [supportExpanded, setSupportExpanded] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const normalizeHotelQrValue = (rawValue, hotelId) => {
     const origin = window.location.origin
@@ -483,6 +486,29 @@ export default function HotelProfile() {
       navigate("/hotel", { replace: true })
     } finally {
       setIsLoggingOut(false)
+    }
+  }
+  
+  const handleDeleteAccount = async () => {
+    if (isDeletingAccount) return
+    setIsDeletingAccount(true)
+    try {
+      const response = await hotelAPI.deleteAccount()
+      if (response.data?.success) {
+        toast.success("Account deleted successfully")
+        clearModuleAuth("hotel")
+        localStorage.removeItem("hotel_accessToken")
+        localStorage.removeItem("hotel_authenticated")
+        localStorage.removeItem("hotel_user")
+        sessionStorage.removeItem("hotelAuthData")
+        window.dispatchEvent(new Event("hotelAuthChanged"))
+        navigate("/hotel", { replace: true })
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to delete account")
+    } finally {
+      setIsDeletingAccount(false)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -1370,7 +1396,7 @@ export default function HotelProfile() {
         </div>
 
         {/* Logout */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <Button
             onClick={handleLogout}
             disabled={isLoggingOut}
@@ -1389,6 +1415,50 @@ export default function HotelProfile() {
               </>
             )}
           </Button>
+        </div>
+
+        {/* Danger Zone / Delete Account Section */}
+        <div className="pb-10">
+          {!showDeleteConfirm ? (
+            <Button
+              onClick={() => setShowDeleteConfirm(true)}
+              variant="outline"
+              className="w-full text-red-600 border-red-200 hover:bg-red-50 transition-all font-semibold h-11"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Delete Hotel Account
+            </Button>
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-5 border border-red-100 bg-red-50/40 rounded-2xl space-y-4 shadow-sm"
+            >
+              <div className="flex items-center gap-3 text-red-600">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm font-bold">Permanently Delete Account?</p>
+              </div>
+              <p className="text-xs text-red-600/80 leading-relaxed">
+                This action is irreversible. All your hotel data, order history, and wallet balance will be permanently removed.
+              </p>
+              <div className="flex gap-3 pt-1">
+                <Button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  variant="outline"
+                  className="flex-1 h-10 text-sm border-gray-200 bg-white"
+                >
+                  Keep Account
+                </Button>
+                <Button
+                  onClick={handleDeleteAccount}
+                  disabled={isDeletingAccount}
+                  className="flex-1 h-10 text-sm bg-red-600 hover:bg-red-700 text-white shadow-sm"
+                >
+                  {isDeletingAccount ? "Deleting..." : "Confirm Delete"}
+                </Button>
+              </div>
+            </motion.div>
+          )}
         </div>
       </div>
 

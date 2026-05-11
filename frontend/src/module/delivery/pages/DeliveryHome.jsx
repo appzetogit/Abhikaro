@@ -5297,6 +5297,10 @@ export default function DeliveryHome() {
       restaurantAddress = newOrder.restaurantLocation.formattedAddress;
     } else if (newOrder.restaurantAddress) {
       restaurantAddress = newOrder.restaurantAddress;
+    } else if (newOrder.restaurantId?.address) {
+      restaurantAddress = newOrder.restaurantId.address;
+    } else if (newOrder.restaurantId?.location?.formattedAddress) {
+      restaurantAddress = newOrder.restaurantId.location.formattedAddress;
     }
 
     // Extract earnings from notification
@@ -5364,6 +5368,7 @@ export default function DeliveryHome() {
         payloadRestaurant?.address ||
         payloadLocation?.formattedAddress ||
         payloadLocation?.address ||
+        newOrder.restaurantAddress ||
         'Restaurant address'
     }
 
@@ -5428,19 +5433,33 @@ export default function DeliveryHome() {
         let restaurantLat = payloadLat;
         let restaurantLng = payloadLng;
 
-        if ((restaurantLat == null || restaurantLng == null) && newOrder.restaurantId && typeof newOrder.restaurantId === 'string') {
+        const needsAddress = !mappedAddress || mappedAddress === 'Restaurant address' || mappedAddress.length < 5;
+        const needsCoords = restaurantLat == null || restaurantLng == null;
+
+        if ((needsCoords || needsAddress) && (newOrder.restaurantId || newOrder.restaurant?._id)) {
           try {
-            const r = await restaurantAPI.getRestaurantById(newOrder.restaurantId);
-            const rest = r?.data?.data?.restaurant || r?.data?.data;
-            const coords = rest?.location?.coordinates;
-            if (Array.isArray(coords) && coords.length >= 2) {
-              restaurantLng = coords[0];
-              restaurantLat = coords[1];
+            const rid = (newOrder.restaurantId?._id || newOrder.restaurantId || newOrder.restaurant?._id)?.toString();
+            if (rid) {
+              const r = await restaurantAPI.getRestaurantById(rid);
+              const rest = r?.data?.data?.restaurant || r?.data?.data;
+              if (rest) {
+                const coords = rest?.location?.coordinates;
+                if (needsCoords && Array.isArray(coords) && coords.length >= 2) {
+                  restaurantLng = coords[0];
+                  restaurantLat = coords[1];
+                  finalUpdates.lat = restaurantLat;
+                  finalUpdates.lng = restaurantLng;
+                }
+                if (needsAddress) {
+                  const fetchedAddr = rest?.location?.formattedAddress || rest?.address || rest?.location?.address;
+                  if (fetchedAddr && fetchedAddr !== 'Restaurant address') {
+                    finalUpdates.address = fetchedAddr;
+                    mappedAddress = fetchedAddr; // Update local for distance calc if needed
+                  }
+                }
+              }
             }
-            if (!mappedAddress || mappedAddress === 'Restaurant address') {
-              finalUpdates.address = rest?.location?.formattedAddress || rest?.address || mappedAddress;
-            }
-          } catch (_) {}
+          } catch (_) { }
         }
 
         const currentLocation = riderLocation || lastLocationRef.current;
@@ -5682,6 +5701,14 @@ export default function DeliveryHome() {
               restaurantAddress = order.restaurantId.location.formattedAddress
             } else if (order.restaurantId?.location?.address) {
               restaurantAddress = order.restaurantId.location.address
+            } else if (order.restaurantAddress) {
+              restaurantAddress = order.restaurantAddress
+            } else if (order.restaurantLocation?.address) {
+              restaurantAddress = order.restaurantLocation.address
+            } else if (order.restaurant?.address) {
+              restaurantAddress = order.restaurant.address
+            } else if (order.restaurant?.location?.formattedAddress) {
+              restaurantAddress = order.restaurant.location.formattedAddress
             }
 
             // Extract restaurant coordinates with multiple fallbacks
@@ -6114,10 +6141,13 @@ export default function DeliveryHome() {
             restaurantAddress = firstOrder.restaurantId.location.formattedAddress;
           } else if (firstOrder.restaurantId?.location?.address) {
             restaurantAddress = firstOrder.restaurantId.location.address;
-          } else if (firstOrder.restaurantId?.location?.street) {
+          } else if (firstOrder.restaurantId?.location?.street || firstOrder.restaurantId?.location?.city) {
             // Build address from location fields
             const loc = firstOrder.restaurantId.location;
-            const parts = [loc.street, loc.city, loc.state, loc.pincode].filter(Boolean);
+            const parts = [loc.street, loc.area, loc.city, loc.state, loc.pincode].filter(Boolean);
+            restaurantAddress = parts.join(', ') || 'Restaurant address';
+          } else if (firstOrder.restaurantId?.addressLine1) {
+            const parts = [firstOrder.restaurantId.addressLine1, firstOrder.restaurantId.addressLine2, firstOrder.restaurantId.city].filter(Boolean);
             restaurantAddress = parts.join(', ') || 'Restaurant address';
           }
 
@@ -8264,7 +8294,11 @@ export default function DeliveryHome() {
         restaurantAddress = restaurantLocation.formattedAddress
       } else if (restaurantLocation?.address) {
         restaurantAddress = restaurantLocation.address
-      } else if (restaurantLocation?.street) {
+      } else if (order.restaurantAddress) {
+        restaurantAddress = order.restaurantAddress
+      } else if (order.restaurantLocation?.address) {
+        restaurantAddress = order.restaurantLocation.address
+      } else if (restaurantLocation?.street || restaurantLocation?.city) {
         const addressParts = [
           restaurantLocation.street,
           restaurantLocation.area,

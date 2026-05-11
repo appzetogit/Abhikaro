@@ -16,22 +16,19 @@ import { authenticate } from "../middleware/deliveryAuth.js";
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(authenticate);
-
 // Orders routes
-router.get("/available-orders", getAvailableOrders);
-router.get("/orders", getOrders);
-router.get("/orders/:orderId", getOrderDetails);
-router.patch("/orders/:orderId/reject", rejectOrder);
-router.patch("/orders/:orderId/accept", acceptOrder);
-router.patch("/orders/:orderId/reached-pickup", confirmReachedPickup);
-router.patch("/orders/:orderId/confirm-order-id", confirmOrderId);
-router.patch("/orders/:orderId/reached-drop", confirmReachedDrop);
-router.patch("/orders/:orderId/complete-delivery", completeDelivery);
-router.patch("/orders/:orderId/hotel-cash-settled", markHotelCashSettled);
+router.get("/available-orders", authenticate, getAvailableOrders);
+router.get("/orders", authenticate, getOrders);
+router.get("/orders/:orderId", authenticate, getOrderDetails);
+router.patch("/orders/:orderId/reject", authenticate, rejectOrder);
+router.patch("/orders/:orderId/accept", authenticate, acceptOrder);
+router.patch("/orders/:orderId/reached-pickup", authenticate, confirmReachedPickup);
+router.patch("/orders/:orderId/confirm-order-id", authenticate, confirmOrderId);
+router.patch("/orders/:orderId/reached-drop", authenticate, confirmReachedDrop);
+router.patch("/orders/:orderId/complete-delivery", authenticate, completeDelivery);
+router.patch("/orders/:orderId/hotel-cash-settled", authenticate, markHotelCashSettled);
 
 // Trip History route
-router.get("/trip-history", getTripHistory);
+router.get("/trip-history", authenticate, getTripHistory);
 
 export default router;

@@ -157,14 +157,18 @@ apiClient.interceptors.request.use(
           requestUrl.match(/\/restaurant\/[^/]+\/inventory/) ||
           requestUrl.match(/\/restaurant\/[^/]+\/offers/)));
 
+    const isPublicDeliveryRoute =
+      requestUrl.includes("/delivery/support-tickets");
+
     const isAuthenticatedRoute =
       (path.startsWith("/admin") ||
         (path.startsWith("/restaurant") &&
           !path.startsWith("/restaurants") &&
           !isPublicRestaurantRoute) ||
-        path.startsWith("/delivery") ||
+        (path.startsWith("/delivery") && !isPublicDeliveryRoute) ||
         path.startsWith("/hotel")) &&
-      !isPublicRestaurantRoute;
+      !isPublicRestaurantRoute &&
+      !isPublicDeliveryRoute;
 
     // For authenticated routes, ALWAYS ensure Authorization header is set if we have a token
     // This ensures FormData requests and other requests always have the token
@@ -413,8 +417,10 @@ apiClient.interceptors.response.use(
       currentPath.startsWith("/admin") ||
       (currentPath.startsWith("/restaurant") &&
         !currentPath.startsWith("/restaurants")) ||
-      currentPath.startsWith("/delivery") ||
-      currentPath.startsWith("/hotel") ||
+      (currentPath.startsWith("/delivery") && 
+       currentPath !== "/delivery/help/tickets" && 
+       !currentPath.startsWith("/delivery/help/tickets/")) ||
+      (currentPath.startsWith("/hotel") && currentPath !== "/hotel/support") ||
       currentPath.startsWith("/cart") ||
       currentPath.startsWith("/orders") ||
       currentPath.startsWith("/profile") ||

@@ -399,6 +399,8 @@ export default function NewOrderPopup({
                      orderData?.restaurantId?.address || 
                      orderData?.restaurantLocation?.address || 
                      orderData?.restaurantId?.location?.formattedAddress ||
+                     orderData?.restaurantId?.onboarding?.step1?.location?.formattedAddress ||
+                     orderData?.restaurantId?.onboarding?.step1?.location?.address ||
                      orderData?.address || 
                      'Address'}
                   </p>

@@ -1,6 +1,8 @@
 import { successResponse, errorResponse } from "../../../shared/utils/response.js";
 import { asyncHandler } from "../../../shared/middleware/asyncHandler.js";
 import Hotel from "../models/Hotel.js";
+import Order from "../../order/models/Order.js";
+import HotelWallet from "../models/HotelWallet.js";
 
 /**
  * GET /api/hotel/profile
@@ -187,4 +189,40 @@ export const getHotelQRCode = asyncHandler(async (req, res) => {
     hotelName: hotel.hotelName,
     alreadyGenerated: false,
   });
+});
+
+/**
+ * DELETE /api/hotel/profile
+ * Deletes the authenticated hotel's account
+ */
+export const deleteHotelAccount = asyncHandler(async (req, res) => {
+  const hotelId = req.hotel?._id;
+  if (!hotelId) return errorResponse(res, 401, "Unauthorized");
+
+  // 1. Check for active orders
+  const activeOrders = await Order.findOne({
+    hotelId,
+    status: { $in: ["pending", "confirmed", "preparing", "ready", "out_for_delivery"] },
+  });
+
+  if (activeOrders) {
+    return errorResponse(
+      res,
+      400,
+      "Cannot delete account while you have active orders. Please complete or cancel them first."
+    );
+  }
+
+  // 2. Perform deletion
+  // Delete wallet first
+  await HotelWallet.findOneAndDelete({ hotelId });
+
+  // Delete hotel account
+  const deletedHotel = await Hotel.findByIdAndDelete(hotelId);
+
+  if (!deletedHotel) {
+    return errorResponse(res, 404, "Hotel account not found");
+  }
+
+  return successResponse(res, 200, "Hotel account deleted successfully");
 });

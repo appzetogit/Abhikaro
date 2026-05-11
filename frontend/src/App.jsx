@@ -107,6 +107,7 @@ const DeliverySignupStep2 = lazy(() => import("@/module/delivery/pages/auth/Sign
 const DeliveryWelcome = lazy(() => import("@/module/delivery/pages/auth/Welcome"))
 const DeliveryTermsPublic = lazy(() => import("@/module/delivery/pages/TermsAndConditions"))
 const DeliveryPrivacyPublic = lazy(() => import("@/module/delivery/pages/PrivacyPolicy"))
+const SupportTickets = lazy(() => import("@/module/delivery/pages/SupportTickets"))
 
 // Hotel Module
 const HotelSignup = lazy(() => import("@/module/hotel/pages/auth/Signup"))
@@ -256,10 +257,19 @@ export default function App() {
           window.location.pathname + window.location.search + window.location.hash;
 
         const routeWithoutQuery = (storedRoute || "").split("?")[0];
+        const isPublicProfileRoute = 
+          routeWithoutQuery.startsWith("/profile/contact-us") ||
+          routeWithoutQuery.startsWith("/profile/about") ||
+          routeWithoutQuery.startsWith("/profile/terms") ||
+          routeWithoutQuery.startsWith("/profile/privacy") ||
+          routeWithoutQuery.startsWith("/profile/refund") ||
+          routeWithoutQuery.startsWith("/profile/shipping") ||
+          routeWithoutQuery.startsWith("/profile/cancellation");
+
         const isProtectedUserRoute =
+          (!isPublicProfileRoute && routeWithoutQuery.startsWith("/profile")) ||
           routeWithoutQuery.startsWith("/cart") ||
           routeWithoutQuery.startsWith("/orders") ||
-          routeWithoutQuery.startsWith("/profile") ||
           routeWithoutQuery.startsWith("/wallet") ||
           routeWithoutQuery.startsWith("/notifications") ||
           routeWithoutQuery.startsWith("/bookings") ||
@@ -319,6 +329,7 @@ export default function App() {
         {/* Restaurant Public Routes */}
         <Route path="/restaurant/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/restaurant/terms-and-conditions" element={<TermsAndConditionsPage />} />
+        <Route path="/restaurant/support" element={<SupportPage />} />
         <Route path="/restaurant/welcome" element={<AuthRedirect module="restaurant"><RestaurantWelcome /></AuthRedirect>} />
         <Route path="/restaurant/login" element={<AuthRedirect module="restaurant"><RestaurantLogin /></AuthRedirect>} />
         <Route path="/restaurant/signup" element={<AuthRedirect module="restaurant"><RestaurantSignup /></AuthRedirect>} />
@@ -589,14 +600,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/restaurant/support"
-          element={
-            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
-              <SupportPage />
-            </ProtectedRoute>
-          }
-        />
+
 
         <Route
           path="/restaurant/outlet-timings"
@@ -932,6 +936,22 @@ export default function App() {
             </Suspense>
           }
         />
+        <Route
+          path="/hotel/support"
+          element={
+            <Suspense fallback={<Loader />}>
+              <HotelSupport />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/delivery/help/tickets"
+          element={
+            <Suspense fallback={<Loader />}>
+              <SupportTickets />
+            </Suspense>
+          }
+        />
 
         {/* Hotel Public Routes */}
         <Route path="/hotel" element={<AuthRedirect module="hotel"><HotelSignup /></AuthRedirect>} />
@@ -1018,14 +1038,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/hotel/support"
-          element={
-            <ProtectedRoute requiredRole="hotel" loginPath="/hotel">
-              <HotelSupport />
-            </ProtectedRoute>
-          }
-        />
+
 
         {/* Delivery Signup Routes (Protected - require authentication) */}
         <Route

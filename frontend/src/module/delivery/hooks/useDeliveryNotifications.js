@@ -92,6 +92,7 @@ export const useDeliveryNotifications = () => {
           restaurantLoc.address ||
           restaurant.address ||
           payload.restaurantAddress ||
+          (restaurantLoc.street ? [restaurantLoc.street, restaurantLoc.city].filter(Boolean).join(', ') : null) ||
           'Restaurant address';
 
         const customerLoc = payload.address?.location || payload.customerLocation || {};
@@ -110,20 +111,21 @@ export const useDeliveryNotifications = () => {
           orderMongoId: payload._id?.toString?.() || payload.orderMongoId?.toString?.(),
           restaurantId: payload.restaurantId?._id?.toString?.() || payload.restaurantId,
           restaurantName: payload.restaurantName || restaurant.name || restaurant.restaurantName,
+          restaurantAddress: restaurantAddress, // Explicitly add at root
           resendVersion: payload.assignmentInfo?.resendVersion ?? payload.resendVersion ?? 0,
           assignedBy: payload.assignmentInfo?.assignedBy ?? payload.assignedBy ?? null,
           isResend: payload.isResend === true || ['manual_resend', 'admin_manual_resend'].includes(payload.assignmentInfo?.assignedBy),
-          restaurantLocation: (restLat != null && restLng != null) ? {
+          restaurantLocation: {
             latitude: restLat,
             longitude: restLng,
             address: restaurantAddress,
             formattedAddress: restaurantAddress
-          } : null,
-          customerLocation: (custLat != null && custLng != null) ? {
+          },
+          customerLocation: {
             latitude: custLat,
             longitude: custLng,
             address: customerAddress
-          } : null,
+          },
           items: Array.isArray(payload.items) ? payload.items : [],
           total: payload.pricing?.total ?? payload.total ?? 0,
           deliveryFee: payload.pricing?.deliveryFee ?? payload.deliveryFee ?? 0,
