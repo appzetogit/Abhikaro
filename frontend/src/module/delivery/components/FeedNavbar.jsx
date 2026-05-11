@@ -2,11 +2,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { HelpCircle, ArrowRight, Phone, Ambulance, AlertTriangle, Shield, ShieldCheck, User } from "lucide-react";
+import { HelpCircle, ArrowRight, Phone, Ambulance, AlertTriangle, Shield, ShieldCheck, User, Package, Clock, MapPin, IndianRupee } from "lucide-react";
 import { toast } from "sonner";
 import { deliveryAPI } from "@/lib/api";
 import { getDeliveryProfilePhotoUrl, getDeliveryUiAvatarUrl } from "../utils/profilePhoto";
 import { useCompanyName } from "@/lib/hooks/useCompanyName";
+import { useDeliveryNotificationsContext } from "../context/DeliveryNotificationsContext";
 
 const LS_KEY = "app:isOnline";
 const TOAST_ID_KEY = "feedNavbar-onlineStatus";
@@ -57,6 +58,11 @@ function BottomPopup({
 export default function FeedNavbar({ className = "" }) {
   const companyName = useCompanyName()
   const navigate = useNavigate();
+  const { orderTaken } = useDeliveryNotificationsContext() || {};
+  const [availableOrders, setAvailableOrders] = useState([]);
+  const [showAvailableOrdersPopup, setShowAvailableOrdersPopup] = useState(false);
+  const [isLoadingAvailable, setIsLoadingAvailable] = useState(false);
+  const [isAccepting, setIsAccepting] = useState(false);
 
   // 1) Init from localStorage (no toast on mount)
   const [isOnline, setIsOnline] = useState(() => {
@@ -109,6 +115,104 @@ export default function FeedNavbar({ className = "" }) {
   };
 
   const handleProfileClick = () => navigate("/delivery/profile");
+
+  // Sync with real-time "order taken" events
+  useEffect(() => {
+    if (orderTaken) {
+      const takenId = orderTaken.orderId || orderTaken.id || orderTaken._id;
+      setAvailableOrders(prev => prev.filter(o => {
+        const oid = o.orderId || o.id || o._id;
+        return oid !== takenId;
+      }));
+    }
+  }, [orderTaken]);
+
+  const fetchAvailableOrders = async () => {
+    if (!isOnline) return;
+    setIsLoadingAvailable(true);
+    try {
+      const res = await deliveryAPI.getAvailableOrders();
+      if (res.data?.success) {
+        setAvailableOrders(res.data.data?.orders || []);
+      }
+    } catch (error) {
+      // ignore
+    } finally {
+      setIsLoadingAvailable(false);
+    }
+  };
+
+  const handleOpenAvailableOrders = () => {
+    if (!isOnline) {
+      toast.error("Please go online to see available orders");
+      return;
+    }
+    setShowAvailableOrdersPopup(true);
+    fetchAvailableOrders();
+  };
+
+  const handleAcceptOrder = async (order) => {
+    if (isAccepting) return;
+    setIsAccepting(true);
+    try {
+      const res = await deliveryAPI.acceptOrder(order.orderId || order._id);
+      if (res.data?.success) {
+        const acceptedOrder = res.data.data?.order || res.data.data;
+        toast.success("Order accepted successfully!");
+        setShowAvailableOrdersPopup(false);
+        
+        // Build the active order object for DeliveryHome
+        // We need to match the shape expected by DeliveryHome.jsx
+        const activeOrderData = {
+          ...acceptedOrder,
+          id: acceptedOrder._id,
+          restaurantName: (() => {
+            const popName = acceptedOrder.restaurantId?.onboarding?.step1?.restaurantName || acceptedOrder.restaurantId?.name;
+            const orderName = acceptedOrder.restaurantName;
+            if (orderName === "Indore" && popName && popName !== "Indore") return popName;
+            return popName || orderName || "Restaurant";
+          })(),
+          lat: acceptedOrder.restaurantLat || (acceptedOrder.restaurantId?.location?.coordinates ? acceptedOrder.restaurantId.location.coordinates[1] : null),
+          lng: acceptedOrder.restaurantLng || (acceptedOrder.restaurantId?.location?.coordinates ? acceptedOrder.restaurantId.location.coordinates[0] : null),
+          customerLat: acceptedOrder.deliveryLat,
+          customerLng: acceptedOrder.deliveryLng,
+          estimatedEarnings: (() => {
+            const val = acceptedOrder.estimatedEarnings || acceptedOrder.amount || 0;
+            if (typeof val === 'object') {
+              return val.totalEarning ?? val.basePayout ?? 0;
+            }
+            return val;
+          })(),
+          customerName: acceptedOrder.userId?.name || acceptedOrder.customerName,
+          customerPhone: acceptedOrder.userId?.phone || acceptedOrder.customerPhone,
+        };
+
+        localStorage.setItem('activeOrder', JSON.stringify(activeOrderData));
+        window.dispatchEvent(new CustomEvent('activeOrderUpdated'));
+        
+        // Clean up context/socket states if needed
+        window.dispatchEvent(new CustomEvent('deliveryOrderAccepted', { detail: activeOrderData }));
+      } else {
+        toast.error(res.data?.message || "Failed to accept order");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to accept order");
+    } finally {
+      setIsAccepting(false);
+    }
+  };
+
+  const handleRejectOrder = async (orderId) => {
+    try {
+      const res = await deliveryAPI.rejectOrder(orderId, "Rejected from list");
+      if (res.data?.success) {
+        toast.success("Order rejected");
+        setAvailableOrders(prev => prev.filter(o => (o.orderId || o._id) !== orderId));
+      }
+    } catch (error) {
+      toast.error("Failed to reject order");
+    }
+  };
 
   const handleToggle = async (e) => {
     e?.preventDefault?.();
@@ -433,6 +537,24 @@ export default function FeedNavbar({ className = "" }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
         </button>
+        
+        {/* Pending Order List Icon */}
+        <button
+          onClick={handleOpenAvailableOrders}
+          className={`w-10 h-10 rounded-full flex items-center justify-center relative transition-all duration-300 ${
+            availableOrders.length > 0 
+              ? "bg-blue-600 text-white shadow-lg shadow-blue-200" 
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+          }`}
+          title="Pending Orders"
+        >
+          <Package className={`w-5 h-5 ${availableOrders.length > 0 ? "text-white" : "text-gray-700"}`} />
+          {isOnline && availableOrders.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white animate-pulse">
+              {availableOrders.length}
+            </span>
+          )}
+        </button>
 
         {/* Help */}
         <button
@@ -465,6 +587,150 @@ export default function FeedNavbar({ className = "" }) {
         </button>
       </div>
     </div>
+
+      {/* Available Orders Popup */}
+      <BottomPopup
+        isOpen={showAvailableOrdersPopup}
+        onClose={() => setShowAvailableOrdersPopup(false)}
+        title="Available Orders"
+        maxHeight="85vh"
+      >
+        <div className="py-2">
+          {isLoadingAvailable ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <p className="text-gray-500 font-medium">Fetching orders...</p>
+            </div>
+          ) : availableOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <Package className="w-10 h-10 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Available Orders</h3>
+              <p className="text-sm text-gray-600">
+                There are no new orders in your area at the moment. We'll notify you when a new order arrives.
+              </p>
+              <button 
+                onClick={fetchAvailableOrders}
+                className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-full font-semibold shadow-md hover:bg-blue-700 transition-all"
+              >
+                Refresh
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4 pb-6">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 px-1">
+                {availableOrders.length} ORDERS NEAR YOU
+              </p>
+              {availableOrders.map((order) => (
+                <div 
+                  key={order._id}
+                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                >
+                  {/* Order Header */}
+                  <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-start">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase">
+                          {order.paymentMethod || 'COD'}
+                        </span>
+                        <span className="text-xs font-medium text-gray-500">
+                          #{order.orderId?.slice(-6) || order._id?.slice(-6)}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-gray-900 text-lg">
+                        {(() => {
+                          const popName = order.restaurantId?.onboarding?.step1?.restaurantName || order.restaurantId?.name;
+                          const orderName = order.restaurantName;
+                          if (orderName === "Indore" && popName && popName !== "Indore") return popName;
+                          return popName || orderName || "Restaurant";
+                        })()}
+                      </h4>
+                    </div>
+                    {order.estimatedEarnings && (
+                      <div className="text-right">
+                        <p className="text-[10px] font-medium text-gray-500 uppercase">Earnings</p>
+                        <p className="text-lg font-bold text-green-600 flex items-center justify-end">
+                          <IndianRupee className="w-4 h-4" />
+                          {(() => {
+                            const val = order.estimatedEarnings || 0;
+                            if (typeof val === 'object') {
+                              return Number(val.totalEarning || val.basePayout || 0).toFixed(0);
+                            }
+                            return Number(val).toFixed(0);
+                          })()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Order Details */}
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 flex flex-col items-center pt-1">
+                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                        <div className="w-0.5 h-6 bg-gray-200 my-1"></div>
+                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                      </div>
+                      <div className="flex-1 space-y-4">
+                        <div>
+                          <p className="text-[10px] font-medium text-gray-400 uppercase">Pickup</p>
+                          <p className="text-sm text-gray-700 line-clamp-1">
+                            {order.restaurantId?.address || 
+                             order.restaurantId?.location?.address || 
+                             order.restaurantId?.location?.formattedAddress || 
+                             'Restaurant Address'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-medium text-gray-400 uppercase">Drop</p>
+                          <p className="text-sm text-gray-700 line-clamp-1">
+                            {order.address?.formattedAddress || order.address?.street || 'Customer Address'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 pt-2 border-t border-gray-50">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs font-medium text-gray-600">30-40 mins</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs font-medium text-gray-600">
+                          {order.assignmentInfo?.distance ? `${order.assignmentInfo.distance.toFixed(1)} km` : 'Calculating...'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="p-4 bg-gray-50/30 flex gap-3">
+                    <button
+                      onClick={() => handleRejectOrder(order.orderId || order._id)}
+                      className="flex-1 py-3 px-4 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors shadow-sm"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleAcceptOrder(order)}
+                      disabled={isAccepting}
+                      className="flex-[2] py-3 px-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isAccepting ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        "Accept Order"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </BottomPopup>
 
       {/* Help Popup */}
       <BottomPopup

@@ -1038,7 +1038,7 @@ const DeliveryTrackingMap = ({
             norm.lat,
             norm.lng,
           );
-          if (d < 5) return; // Ignore small updates to prevent micro-jitter/flicker
+          if (d < 1) return; // Reduced from 5m to 1m for smoother tracking at low speeds
         }
         lastIncomingPosRef.current = norm;
         lastLocationUpdateTsRef.current = Date.now();

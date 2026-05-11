@@ -175,6 +175,8 @@ export const getUserWalletHistory = asyncHandler(async (req, res) => {
         processedBy: t.processedBy
           ? { id: t.processedBy._id, name: t.processedBy.name, email: t.processedBy.email }
           : null,
+        orderId: t.orderId,
+        paymentMethod: t.paymentMethod,
         metadata: md,
       };
     }),

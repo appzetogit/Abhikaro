@@ -387,10 +387,20 @@ export default function NewOrderPopup({
                   </div>
 
                   <h3 className="text-lg font-bold text-gray-900 mb-1">
-                    {orderData?.restaurantName || orderData?.name || 'Restaurant'}
+                    {(() => {
+                      const orderName = orderData?.restaurantName;
+                      const popName = orderData?.name || orderData?.restaurantId?.name || orderData?.restaurantId?.onboarding?.step1?.restaurantName;
+                      if (orderName === "Indore" && popName && popName !== "Indore") return popName;
+                      return orderName || popName || 'Restaurant';
+                    })()}
                   </h3>
                   <p className="text-sm text-gray-600 mb-3 leading-relaxed">
-                    {orderData?.restaurantLocation?.address || orderData?.address || 'Address'}
+                    {orderData?.restaurantAddress || 
+                     orderData?.restaurantId?.address || 
+                     orderData?.restaurantLocation?.address || 
+                     orderData?.restaurantId?.location?.formattedAddress ||
+                     orderData?.address || 
+                     'Address'}
                   </p>
 
                   <div className="flex items-center gap-1.5 text-gray-500 text-sm mb-2">

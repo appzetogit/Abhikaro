@@ -241,10 +241,12 @@ export default function Home() {
       id,
       mongoId: order?._id || order?.mongoId || null,
       restaurantId: order?.restaurantId?._id || order?.restaurantId || null,
-      restaurant:
-        order?.restaurantId?.name ||
-        order?.restaurantName ||
-        "Restaurant",
+      restaurant: (() => {
+        const orderName = order?.restaurantName
+        const popName = order?.restaurantId?.name
+        if (orderName === "Indore" && popName && popName !== "Indore") return popName
+        return orderName || popName || "Restaurant"
+      })(),
       total: order?.pricing?.total || order?.total || 0,
     }
   }, [])

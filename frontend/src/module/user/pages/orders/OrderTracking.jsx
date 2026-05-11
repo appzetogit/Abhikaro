@@ -863,7 +863,18 @@ export default function OrderTracking() {
           const restaurantIdValue = apiOrder.restaurantId || null
           const transformedOrder = {
             id: apiOrder.orderId || apiOrder._id,
-            restaurant: apiOrder.restaurantName || 'Restaurant',
+            restaurant: (() => {
+              const cached = restaurantCacheRef.current.get(apiOrder.restaurantId);
+              const popName = cached?.onboarding?.step1?.restaurantName || cached?.name;
+              const orderName = apiOrder.restaurantName;
+
+              // If orderName is generic "Indore", prefer the populated name from cache if it exists and is different
+              if (orderName === "Indore" && popName && popName !== "Indore") {
+                return popName;
+              }
+
+              return orderName || popName || 'Restaurant';
+            })(),
             hotelName: apiOrder.hotelName || null,
             hotelReference: apiOrder.hotelReference || null,
             restaurantId: restaurantIdValue, // This is a STRING ID, not populated object
@@ -1711,7 +1722,9 @@ export default function OrderTracking() {
                  <ArrowLeft className="w-6 h-6" />
                </motion.button>
              </Link>
-             <h2 className="font-semibold text-lg flex-1 text-center">{order.restaurant}</h2>
+             <h2 className="font-semibold text-lg flex-1 text-center">
+               {(order.restaurant === "Indore" ? (order.restaurantName || "Restaurant") : order.restaurant)}
+             </h2>
            </div>
 
           {/* Status section */}
@@ -1918,7 +1931,7 @@ export default function OrderTracking() {
             </div>
             <div className="flex-1">
               <p className="font-semibold text-gray-900">
-                {isHotelOrder ? (order.hotelName || 'Hotel') : order.restaurant}
+                {isHotelOrder ? (order.hotelName || 'Hotel') : (order.restaurant === "Indore" ? (order.restaurantName || "Restaurant") : order.restaurant)}
               </p>
               <p className="text-sm text-gray-500">
                 {isHotelOrder ? 'Ordered via Hotel' : (order.address?.city || 'Local Area')}

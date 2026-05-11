@@ -319,7 +319,12 @@ export default function Orders() {
               pricing: order.pricing || {}, // Keep full pricing object for discounts, coupons
               payment: order.payment || {},
               paymentMethod: order.payment?.method || order.paymentMethod,
-              restaurant: order.restaurantId?.name || order.restaurantName || 'Restaurant',
+              restaurant: (() => {
+                const popName = order.restaurantId?.name;
+                const orderName = order.restaurantName;
+                if (orderName === "Indore" && popName && popName !== "Indore") return popName;
+                return popName || orderName || "Restaurant";
+              })(),
               restaurantId: order.restaurantId?._id || order.restaurantId,
               // Prefer outlet profile photo; fall back to any order-provided restaurant image.
               restaurantImage: resolveMediaUrl(

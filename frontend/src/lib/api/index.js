@@ -1098,6 +1098,9 @@ export const deliveryAPI = {
   updateProfile: (data) => {
     return apiClient.put(API_ENDPOINTS.DELIVERY.PROFILE, data);
   },
+  getAvailableOrders: () => {
+    return apiClient.get(API_ENDPOINTS.DELIVERY.AVAILABLE_ORDERS);
+  },
 
   // Get orders
   getOrders: (params = {}) => {

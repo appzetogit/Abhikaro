@@ -104,6 +104,113 @@ export const getOrders = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Get Available Orders for Delivery Partner (Unassigned orders)
+ * GET /api/delivery/available-orders
+ */
+export const getAvailableOrders = asyncHandler(async (req, res) => {
+  try {
+    const delivery = req.delivery;
+
+    // 1. Check if delivery boy is already busy.
+    // If they have an active order, they shouldn't see available orders.
+    const activeOrder = await Order.findOne({
+      deliveryPartnerId: delivery._id,
+      status: { $nin: ["delivered", "cancelled"] },
+      $or: [
+        { "deliveryState.currentPhase": { $ne: "completed" } },
+        { "deliveryState.currentPhase": { $exists: false } },
+      ],
+    });
+
+    if (activeOrder) {
+      return successResponse(res, 200, "User is busy with an active order", { orders: [] });
+    }
+
+    // 2. Find orders that are unassigned and in valid status
+    const query = {
+      deliveryPartnerId: { $exists: false },
+      status: { $in: ["confirmed", "preparing", "ready"] },
+    };
+
+    // Filter by notified partners
+    query.$or = [
+      { "assignmentInfo.priorityDeliveryPartnerIds": delivery._id },
+      { "assignmentInfo.expandedDeliveryPartnerIds": delivery._id }
+    ];
+
+    const orders = await Order.find(query)
+      .sort({ createdAt: -1 })
+      .populate("restaurantId", "name slug profileImage address location phone onboarding")
+      .populate("userId", "name phone")
+      .lean();
+
+    // Fix restaurant details: Ensure name and address are available at top level
+    orders.forEach(order => {
+      if (order.restaurantId) {
+        // Fix Name: Prefer onboarding name if available
+        if (order.restaurantId.onboarding?.step1?.restaurantName) {
+          order.restaurantId.name = order.restaurantId.onboarding.step1.restaurantName;
+        }
+        
+        // Fix Address: Check multiple possible locations for the address string
+        const address = order.restaurantId.address || 
+                        order.restaurantId.location?.address || 
+                        order.restaurantId.location?.formattedAddress ||
+                        order.restaurantId.onboarding?.step1?.location?.address ||
+                        order.restaurantId.onboarding?.step1?.location?.formattedAddress;
+        
+        if (address) {
+          order.restaurantId.address = address;
+        }
+      }
+    });
+
+    // Resolve payment method and distances for each order
+    const ordersWithDetails = await Promise.all(
+      orders.map(async (order) => {
+        const paymentMethod = await resolveDeliveryOrderPaymentMethod(order);
+        
+        // Build effective restaurant location
+        let restLat = order.restaurantLocation?.latitude;
+        let restLng = order.restaurantLocation?.longitude;
+        
+        if (restLat == null && order.restaurantId?.location?.coordinates) {
+          [restLng, restLat] = order.restaurantId.location.coordinates;
+        }
+
+        const deliveryCoords = order.address?.location?.coordinates;
+        const deliveryLat = deliveryCoords ? deliveryCoords[1] : (order.address?.latitude || null);
+        const deliveryLng = deliveryCoords ? deliveryCoords[0] : (order.address?.longitude || null);
+
+        // Calculate estimated earnings if missing
+        let estimatedEarnings = order.estimatedEarnings;
+        if (!estimatedEarnings && restLat && restLng && deliveryLat && deliveryLng) {
+          const distance = calculateHaversineDistance(restLat, restLng, deliveryLat, deliveryLng);
+          estimatedEarnings = await calculateEstimatedEarnings(distance);
+        }
+
+        return {
+          ...order,
+          paymentMethod,
+          restaurantLat: restLat,
+          restaurantLng: restLng,
+          deliveryLat,
+          deliveryLng,
+          estimatedEarnings: estimatedEarnings || null
+        };
+      })
+    );
+
+    return successResponse(res, 200, "Available orders retrieved successfully", {
+      orders: ordersWithDetails
+    });
+  } catch (error) {
+    logger.error(`Error fetching available orders: ${error.message}`);
+    return errorResponse(res, 500, "Failed to fetch available orders");
+  }
+});
+
+/**
  * Get Single Order Details
  * GET /api/delivery/orders/:orderId
  */
@@ -453,8 +560,12 @@ export const acceptOrder = asyncHandler(async (req, res) => {
 
     // Find order - try both by _id and orderId
     // First check if order exists (without deliveryPartnerId filter)
+    const isObjectId = mongoose.Types.ObjectId.isValid(orderId);
     let order = await Order.findOne({
-      $or: [{ _id: orderId }, { orderId: orderId }],
+      $or: [
+        ...(isObjectId ? [{ _id: orderId }] : []),
+        { orderId: orderId },
+      ],
     })
       .populate("restaurantId", "name location address phone ownerPhone")
       .populate("userId", "name phone")
@@ -584,8 +695,12 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       // Reload order as document (not lean) to update it
       let orderDoc;
       try {
+        const isObjectIdDoc = mongoose.Types.ObjectId.isValid(orderId);
         orderDoc = await Order.findOne({
-          $or: [{ _id: orderId }, { orderId: orderId }],
+          $or: [
+            ...(isObjectIdDoc ? [{ _id: orderId }] : []),
+            { orderId: orderId },
+          ],
         });
 
         if (!orderDoc) {
@@ -662,8 +777,15 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       // Reload order with populated data (use orderDoc._id to ensure we get the updated order)
       const updatedOrderId = orderDoc._id || orderId;
       try {
+        const isObjectIdReload = mongoose.Types.ObjectId.isValid(updatedOrderId);
+        const isObjectIdParam = mongoose.Types.ObjectId.isValid(orderId);
+        
         order = await Order.findOne({
-          $or: [{ _id: updatedOrderId }, { orderId: orderId }],
+          $or: [
+            ...(isObjectIdReload ? [{ _id: updatedOrderId }] : []),
+            ...(isObjectIdParam ? [{ _id: orderId }] : []),
+            { orderId: orderId },
+          ],
         })
           .populate("restaurantId", "name location address phone ownerPhone")
           .populate("userId", "name phone")
@@ -1493,10 +1615,14 @@ export const confirmOrderId = asyncHandler(async (req, res) => {
 
     // Method 3: Try with string comparison for deliveryPartnerId
     if (!order) {
+      const isObjectId3 = mongoose.Types.ObjectId.isValid(orderId);
       order = await Order.findOne({
         $and: [
           {
-            $or: [{ _id: orderId }, { orderId: orderId }],
+            $or: [
+              ...(isObjectId3 ? [{ _id: orderId }] : []),
+              { orderId: orderId },
+            ],
           },
           {
             deliveryPartnerId: deliveryId.toString(),
@@ -1947,10 +2073,14 @@ export const confirmReachedDrop = asyncHandler(async (req, res) => {
 
     // Try finding order with different deliveryPartnerId comparison methods
     // First try without lean() to get Mongoose document (needed for proper ObjectId comparison)
+    const isObjectIdA = mongoose.Types.ObjectId.isValid(orderId);
     let order = await Order.findOne({
       $and: [
         {
-          $or: [{ _id: orderId }, { orderId: orderId }],
+          $or: [
+            ...(isObjectIdA ? [{ _id: orderId }] : []),
+            { orderId: orderId },
+          ],
         },
         {
           deliveryPartnerId: deliveryId, // Try as ObjectId first (most common)
@@ -1963,10 +2093,14 @@ export const confirmReachedDrop = asyncHandler(async (req, res) => {
       console.log(
         `⚠️ Order not found with ObjectId comparison, trying string comparison...`,
       );
+      const isObjectIdB = mongoose.Types.ObjectId.isValid(orderId);
       order = await Order.findOne({
         $and: [
           {
-            $or: [{ _id: orderId }, { orderId: orderId }],
+            $or: [
+              ...(isObjectIdB ? [{ _id: orderId }] : []),
+              { orderId: orderId },
+            ],
           },
           {
             deliveryPartnerId: deliveryId.toString(), // Try as string

@@ -338,6 +338,7 @@ export const API_ENDPOINTS = {
     WALLET_DEPOSIT_VERIFY: "/delivery/wallet/deposit/verify",
     ORDER_STATS: "/delivery/orders/stats",
     PROFILE: "/delivery/profile",
+    AVAILABLE_ORDERS: "/delivery/available-orders",
     ORDERS: "/delivery/orders",
     ORDER_BY_ID: "/delivery/orders/:orderId",
     ORDER_ACCEPT: "/delivery/orders/:orderId/accept",

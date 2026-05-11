@@ -4,7 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Loader2, Search, Users, Store, Package, Building2, Wallet, IndianRupee } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Loader2, Search, Users, Store, Package, Building2, Wallet, IndianRupee, Eye, Info } from "lucide-react"
 import ViewOrderDialog from "../components/orders/ViewOrderDialog"
 
 function formatCurrency(amount) {
@@ -159,7 +160,7 @@ function OrdersTable({ orders = [], onView, showAmount = false }) {
   )
 }
 
-function WalletTxTable({ title, rows = [] }) {
+function WalletTxTable({ title, rows = [], onViewDetails }) {
   if (!rows?.length) {
     return <EmptyState title={`No ${title} found`} subtitle="There are no wallet entries in this range." />
   }
@@ -169,9 +170,10 @@ function WalletTxTable({ title, rows = [] }) {
       <div className="min-w-[820px]">
         <div className="grid grid-cols-12 bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-700">
           <div className="col-span-2">Type</div>
-          <div className="col-span-6">Description</div>
+          <div className="col-span-5">Description</div>
           <div className="col-span-2 text-right">Amount</div>
           <div className="col-span-2 text-right">Date</div>
+          <div className="col-span-1 text-right">Info</div>
         </div>
         <div className="divide-y divide-slate-100">
           {rows.map((t, idx) => (
@@ -179,27 +181,92 @@ function WalletTxTable({ title, rows = [] }) {
               <div className="col-span-2">
                 {(() => {
                   const raw = String(t.type || "—").toLowerCase()
-                  const isCredit = raw === "bonus" || raw === "credited"
+                  const desc = String(t.description || "").toLowerCase()
+                  const orderId = t.orderId || t.metadata?.orderId
+                  const isRefunded = orderId && rows.some(r => 
+                    String(r.type || "").toLowerCase() === "refund" && 
+                    (String(r.orderId) === String(orderId) || String(r.metadata?.orderId) === String(orderId))
+                  )
+
+                  const isCredit = raw === "bonus" || raw === "credited" || raw === "addition" || raw === "refund"
                   const isDebit = raw === "deduction" || raw === "deducted"
-                  const label = raw === "bonus" ? "Credited" : raw === "deduction" ? "Deducted" : String(t.type || "—")
-                  const cls = isCredit
+                  const labelMap = {
+                    addition: "Added",
+                    refund: "Refund",
+                    deduction: "Deducted",
+                    bonus: "Bonus",
+                    credited: "Credited"
+                  }
+                  let label = labelMap[raw] || String(t.type || "—")
+                  if (raw === "deduction" && desc.includes("order payment")) {
+                    label = isRefunded ? "Refunded" : "Ordered"
+                  }
+                  const cls = (isCredit || label === "Ordered" || label === "Refunded")
                     ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
                     : isDebit
                       ? "bg-red-50 text-red-700 ring-1 ring-red-200"
                       : "bg-slate-100 text-slate-700"
+                  
+                  const pm = String(t.paymentMethod || t.metadata?.paymentMethod || "").toLowerCase()
+                  const isHotel = !!(t.metadata?.hotelId || t.metadata?.isHotelOrder)
+                  let pmLabel = ""
+                  if (pm === "wallet") pmLabel = "Wallet"
+                  else if (pm === "cash") pmLabel = "Pay at Hotel"
+                  else if (["upi", "card", "netbanking", "online"].includes(pm)) {
+                    pmLabel = isHotel ? "Hotel (Online)" : "Online"
+                  }
+
                   return (
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}>
-                      {label}
-                    </span>
+                    <div className="flex flex-col items-start gap-1">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}>
+                        {label}
+                      </span>
+                      {pmLabel && (
+                        <span className="text-[9px] text-slate-500 font-bold uppercase tracking-tight ml-0.5">
+                          {pmLabel}
+                        </span>
+                      )}
+                    </div>
                   )
                 })()}
               </div>
-              <div className="col-span-6 min-w-0">
+              <div className="col-span-5 min-w-0">
                 <p className="truncate text-slate-900">{t.description || "—"}</p>
-                {t.orderId ? <p className="mt-0.5 truncate text-xs text-slate-500">Order: {t.orderId}</p> : null}
+                {(() => {
+                  const pm = String(t.paymentMethod || t.metadata?.paymentMethod || "").toLowerCase()
+                  const desc = String(t.description || "").toLowerCase()
+                  const isHotel = !!(t.metadata?.hotelId || t.metadata?.isHotelOrder || desc.includes("hotel"))
+                  
+                  let pmLabel = ""
+                  if (pm === "wallet") {
+                    pmLabel = "wallet"
+                  } else if (pm === "cash" || pm === "pay_at_hotel") {
+                    pmLabel = "pay at hotel"
+                  } else if (["upi", "card", "netbanking", "online", "razorpay"].includes(pm)) {
+                    pmLabel = isHotel ? "hotel (online)" : "online"
+                  } else {
+                    // Fallback for older transactions without paymentMethod field
+                    if (desc.includes("order payment")) pmLabel = "wallet"
+                    else if (desc.includes("online payment refund")) pmLabel = isHotel ? "hotel (online)" : "online"
+                    else if (desc.includes("refund")) pmLabel = "wallet"
+                  }
+
+                  if (!pmLabel) return null
+                  return <p className="mt-0.5 truncate text-xs text-slate-500 font-medium capitalize">{pmLabel}</p>
+                })()}
               </div>
               <div className="col-span-2 text-right font-semibold text-slate-900">{formatCurrency(t.amount)}</div>
               <div className="col-span-2 text-right text-xs text-slate-600">{formatDate(t.date || t.createdAt)}</div>
+              <div className="col-span-1 text-right">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-slate-400 hover:text-indigo-600"
+                  onClick={() => onViewDetails?.(t)}
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
@@ -215,6 +282,15 @@ export default function History() {
   const [isViewOpen, setIsViewOpen] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [viewLoading, setViewLoading] = useState(false)
+
+  // transaction details dialog
+  const [isTxDetailsOpen, setIsTxDetailsOpen] = useState(false)
+  const [selectedTx, setSelectedTx] = useState(null)
+
+  const openTxDetails = (t) => {
+    setSelectedTx(t)
+    setIsTxDetailsOpen(true)
+  }
 
   const openOrder = async (o) => {
     const identifier = o?.orderId || o?.id || o?._id || null
@@ -307,13 +383,13 @@ export default function History() {
           </div>
 
           <TabsContent value="customers" className="mt-4">
-            <CustomerHistory onViewOrder={openOrder} />
+            <CustomerHistory onViewOrder={openOrder} onViewTx={openTxDetails} />
           </TabsContent>
           <TabsContent value="restaurants" className="mt-4">
-            <RestaurantHistoryTab onViewOrder={openOrder} />
+            <RestaurantHistoryTab onViewOrder={openOrder} onViewTx={openTxDetails} />
           </TabsContent>
           <TabsContent value="delivery" className="mt-4">
-            <DeliveryHistoryTab onViewOrder={openOrder} />
+            <DeliveryHistoryTab onViewOrder={openOrder} onViewTx={openTxDetails} />
           </TabsContent>
           <TabsContent value="hotels" className="mt-4">
             <HotelHistoryTab onViewOrder={openOrder} />
@@ -332,11 +408,97 @@ export default function History() {
           // No-op for this page; individual tabs refresh on selection/date changes.
         }}
       />
+
+      <TransactionDetailsDialog
+        isOpen={isTxDetailsOpen}
+        onOpenChange={setIsTxDetailsOpen}
+        transaction={selectedTx}
+      />
     </div>
   )
 }
 
-function CustomerHistory({ onViewOrder }) {
+function TransactionDetailsDialog({ isOpen, onOpenChange, transaction }) {
+  if (!transaction) return null
+
+  const md = transaction.metadata || {}
+
+  // Extract important fields from metadata for cleaner display
+  const importantFields = {
+    "Payment ID": md.paymentId || md.razorpay_payment_id || md.gateway_id,
+    "UPI ID": md.upiId || md.vpa || md.upi_id,
+    "Order ID": transaction.orderId || md.orderId,
+    Method: md.method || md.paymentMethod,
+    "Bank/Provider": md.bank || md.issuer,
+    Reference: md.reference || md.receipt,
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[400px] rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
+        <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-8 text-white">
+          <div className="flex justify-between items-start mb-6">
+            <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-md">
+              <Wallet className="h-6 w-6 text-white" />
+            </div>
+            <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-bold uppercase tracking-widest">
+              {transaction.status || "Completed"}
+            </span>
+          </div>
+          <p className="text-white/70 text-xs font-bold uppercase tracking-wider mb-1">Transaction Amount</p>
+          <h2 className="text-4xl font-black tracking-tight">{formatCurrency(transaction.amount)}</h2>
+        </div>
+
+        <div className="p-8 space-y-8 bg-white">
+          <div className="grid grid-cols-2 gap-y-6">
+            <div className="space-y-1">
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Type</p>
+              <p className="text-slate-900 font-bold text-sm uppercase">{transaction.type}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Date</p>
+              <p className="text-slate-900 font-bold text-sm">{formatDate(transaction.date || transaction.createdAt)}</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Description</p>
+            <p className="text-slate-700 text-sm font-medium leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              {transaction.description || "—"}
+            </p>
+          </div>
+
+          {Object.entries(importantFields).some(([_, v]) => v) && (
+            <div className="space-y-4">
+              <div className="h-px bg-slate-100 w-full" />
+              <div className="space-y-4">
+                {Object.entries(importantFields).map(([label, value]) =>
+                  value ? (
+                    <div key={label} className="flex justify-between items-center group">
+                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{label}</span>
+                      <span className="text-slate-900 font-bold text-sm select-all">{String(value)}</span>
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="pt-2">
+            <Button
+              onClick={() => onOpenChange(false)}
+              className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition-all shadow-lg hover:shadow-slate-200"
+            >
+              Close Details
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CustomerHistory({ onViewOrder, onViewTx }) {
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [users, setUsers] = useState([])
@@ -344,6 +506,9 @@ function CustomerHistory({ onViewOrder }) {
 
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [orders, setOrders] = useState([])
+  const [walletLoading, setWalletLoading] = useState(false)
+  const [walletTx, setWalletTx] = useState([])
+  const [detailTab, setDetailTab] = useState("orders")
 
   const [range, setRange] = useState(() => defaultRange(30))
 
@@ -413,8 +578,33 @@ function CustomerHistory({ onViewOrder }) {
 
   useEffect(() => {
     fetchOrders()
+    fetchWallet()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUserId, range.startDate, range.endDate])
+
+  const fetchWallet = async () => {
+    if (!selectedUserId) return
+    try {
+      setWalletLoading(true)
+      const res = await adminAPI.getUserWalletHistory(selectedUserId, {
+        page: 1,
+        limit: 100,
+        onlyAdjustments: false,
+        fromDate: range.startDate,
+        toDate: range.endDate,
+      })
+      if (res?.data?.success) {
+        setWalletTx(res.data.data?.transactions || [])
+      } else {
+        setWalletTx([])
+      }
+    } catch (e) {
+      console.error(e)
+      setWalletTx([])
+    } finally {
+      setWalletLoading(false)
+    }
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -504,20 +694,56 @@ function CustomerHistory({ onViewOrder }) {
         </Card>
 
         <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <IndianRupee className="h-4 w-4 text-indigo-600" /> Orders
-            </CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Details</CardTitle>
           </CardHeader>
           <CardContent>
-            {ordersLoading ? (
-              <div className="py-16 text-center">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-600 mb-3" />
-                <p className="text-sm text-slate-600">Loading orders…</p>
-              </div>
-            ) : (
-              <OrdersTable orders={orders} onView={onViewOrder} showAmount />
-            )}
+            <Tabs value={detailTab} onValueChange={setDetailTab}>
+              <TabsList className="grid w-full grid-cols-2 rounded-xl bg-slate-50/70 p-1.5">
+                <TabsTrigger
+                  value="orders"
+                  className="h-10 rounded-lg text-sm font-semibold text-slate-700 transition data-[state=active]:!bg-red-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=active]:ring-2 data-[state=active]:ring-red-200"
+                >
+                  Orders
+                </TabsTrigger>
+                <TabsTrigger
+                  value="wallet"
+                  className="h-10 rounded-lg text-sm font-semibold text-slate-700 transition data-[state=active]:!bg-red-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=active]:ring-2 data-[state=active]:ring-red-200"
+                >
+                  Transaction History
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="orders" className="mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <IndianRupee className="h-4 w-4 text-indigo-600" />
+                  <p className="text-sm font-semibold text-slate-900">Orders</p>
+                </div>
+                {ordersLoading ? (
+                  <div className="py-16 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-600 mb-3" />
+                    <p className="text-sm text-slate-600">Loading orders…</p>
+                  </div>
+                ) : (
+                  <OrdersTable orders={orders} onView={onViewOrder} showAmount />
+                )}
+              </TabsContent>
+
+              <TabsContent value="wallet" className="mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wallet className="h-4 w-4 text-indigo-600" />
+                  <p className="text-sm font-semibold text-slate-900">Wallet history</p>
+                </div>
+                {walletLoading ? (
+                  <div className="py-16 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-600 mb-3" />
+                    <p className="text-sm text-slate-600">Loading wallet history…</p>
+                  </div>
+                ) : (
+                  <WalletTxTable title="wallet history" rows={walletTx} onViewDetails={onViewTx} />
+                )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
@@ -525,7 +751,7 @@ function CustomerHistory({ onViewOrder }) {
   )
 }
 
-function RestaurantHistoryTab({ onViewOrder }) {
+function RestaurantHistoryTab({ onViewOrder, onViewTx }) {
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState([])
@@ -782,7 +1008,7 @@ function RestaurantHistoryTab({ onViewOrder }) {
                     <p className="text-sm text-slate-600">Loading settlement credits…</p>
                   </div>
                 ) : (
-                  <WalletTxTable title="settlement rows" rows={settlementCreditRows} />
+                  <WalletTxTable title="settlement rows" rows={settlementCreditRows} onViewDetails={onViewTx} />
                 )}
               </TabsContent>
 
@@ -823,7 +1049,7 @@ function RestaurantHistoryTab({ onViewOrder }) {
   )
 }
 
-function DeliveryHistoryTab({ onViewOrder }) {
+function DeliveryHistoryTab({ onViewOrder, onViewTx }) {
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState([])
@@ -1080,6 +1306,7 @@ function DeliveryHistoryTab({ onViewOrder }) {
                   <WalletTxTable
                     title="settlement rows"
                     rows={settlementCreditRows}
+                    onViewDetails={onViewTx}
                   />
                 )}
               </TabsContent>
@@ -1110,7 +1337,7 @@ function DeliveryHistoryTab({ onViewOrder }) {
                     <p className="text-sm text-slate-600">Loading wallet history…</p>
                   </div>
                 ) : (
-                  <WalletTxTable title="wallet entries" rows={walletTx} />
+                  <WalletTxTable title="wallet entries" rows={walletTx} onViewDetails={onViewTx} />
                 )}
               </TabsContent>
             </Tabs>

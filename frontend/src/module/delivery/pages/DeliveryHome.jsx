@@ -993,7 +993,7 @@ export default function DeliveryHome() {
         
         // Use smooth animation if requested, otherwise set instantly
         if (shouldCenterMap === false) { // Assuming shouldCenterMap=false means a movement update
-          animateMarkerSmoothly(bikeMarkerRef.current, position, 1000, markerAnimationRef);
+          animateMarkerSmoothly(bikeMarkerRef.current, position, 2000, markerAnimationRef); // Match 2s update interval
         } else {
           bikeMarkerRef.current.setPosition(position);
         }
@@ -1802,12 +1802,20 @@ export default function DeliveryHome() {
           order.restaurantLocation?.address ||
           {}
 
-        const restaurantName =
-          order.restaurantName ||
-          restaurant.onboarding?.step1?.restaurantName ||
-          restaurant.name ||
-          selectedRestaurant?.name ||
-          'Restaurant'
+        const restaurantName = (() => {
+          const rawOrderName = order.restaurantName;
+          const popName = 
+            restaurant.onboarding?.step1?.restaurantName || 
+            restaurant.name || 
+            selectedRestaurant?.name;
+          
+          // If order name is generic city, prefer populated restaurant name
+          if (rawOrderName === "Indore" && popName && popName !== "Indore") {
+            return popName;
+          }
+          
+          return rawOrderName || popName || 'Restaurant';
+        })()
 
         const restaurantAddress =
           (typeof addressObj === 'string' && addressObj) ||
@@ -2886,8 +2894,8 @@ export default function DeliveryHome() {
             const lastSentTime = window.lastLocationSentTime || 0;
             const timeSinceLastSend = now - lastSentTime;
 
-            // Send location every 5 seconds even if not smoothed
-            if (timeSinceLastSend >= 5000) {
+            // Send location every 2 seconds even if not smoothed (Production Level Response)
+            if (timeSinceLastSend >= 2000) {
               if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
                 deliveryAPI.updateLocation(lat, lng, true)
                   .then(() => {
@@ -3317,13 +3325,10 @@ export default function DeliveryHome() {
                         // Priority: location.formattedAddress (this is what user wants)
                         if (restLocation?.formattedAddress) {
                           restaurantAddress = restLocation.formattedAddress
-
-                        } else if (restaurant.address) {
+                        } else if (restaurant.address && typeof restaurant.address === 'string' && restaurant.address !== 'Restaurant address' && restaurant.address !== 'Restaurant Address') {
                           restaurantAddress = restaurant.address
-
-                        } else if (restLocation?.address) {
+                        } else if (restLocation?.address && typeof restLocation.address === 'string' && restLocation.address !== 'Restaurant address' && restLocation.address !== 'Restaurant Address') {
                           restaurantAddress = restLocation.address
-
                         } else if (restLocation?.addressLine1) {
                           const addressParts = [
                             restLocation.addressLine1,
@@ -3334,7 +3339,6 @@ export default function DeliveryHome() {
                             restLocation.pincode || restLocation.zipCode || restLocation.postalCode
                           ].filter(Boolean)
                           restaurantAddress = addressParts.join(', ')
-
                         } else if (restLocation?.street) {
                           const addressParts = [
                             restLocation.street,
@@ -3344,13 +3348,22 @@ export default function DeliveryHome() {
                             restLocation.pincode || restLocation.zipCode || restLocation.postalCode
                           ].filter(Boolean)
                           restaurantAddress = addressParts.join(', ')
-
                         }
                       }
                     } catch (restaurantError) {
-
+                      console.error('Error fetching restaurant address:', restaurantError)
                     }
                   }
+                }
+
+                // If still fallback, try from order.restaurantAddress or order.restaurantId directly
+                if (!restaurantAddress || restaurantAddress === 'Restaurant address' || restaurantAddress === 'Restaurant Address') {
+                  restaurantAddress = 
+                    order.restaurantAddress || 
+                    order.restaurantId?.address || 
+                    order.restaurantId?.location?.formattedAddress || 
+                    order.restaurantId?.location?.address || 
+                    'Restaurant Address'
                 }
 
                 if (restaurantAddress === 'Restaurant Address') {
@@ -3400,7 +3413,13 @@ export default function DeliveryHome() {
                 timeAway: selectedRestaurant?.timeAway || '0 mins',
                 dropDistance: selectedRestaurant?.dropDistance || '0 km',
                 pickupDistance: selectedRestaurant?.pickupDistance || '0 km',
-                estimatedEarnings: backendEarnings || selectedRestaurant?.estimatedEarnings || 0,
+                estimatedEarnings: (() => {
+                  const val = backendEarnings || selectedRestaurant?.estimatedEarnings || 0
+                  if (typeof val === 'object') {
+                    return val.totalEarning ?? val.basePayout ?? 0
+                  }
+                  return val
+                })(),
                 amount: earningsValue, // Also set amount for compatibility
                 customerName: order.userId?.name || selectedRestaurant?.customerName,
                 customerPhone: order.userId?.phone || order.userId?.mobile || selectedRestaurant?.customerPhone || null,
@@ -11053,7 +11072,12 @@ export default function DeliveryHome() {
 
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-lg font-bold text-gray-900">
-                        {newOrder?.restaurantName || selectedRestaurant?.name || 'Restaurant'}
+                        {(() => {
+                          const orderName = newOrder?.restaurantName;
+                          const popName = selectedRestaurant?.name;
+                          if (orderName === "Indore" && popName && popName !== "Indore") return popName;
+                          return orderName || popName || 'Restaurant';
+                        })()}
                       </h3>
                       {(() => {
                         const rawStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || newOrder?.status

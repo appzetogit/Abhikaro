@@ -93,12 +93,24 @@ export default function AcceptedOrderDetails() {
   const customerName = order?.userId?.name || (typeof order?.userId === 'object' && order?.userId?.name) || 'Customer'
   const customerAddress = order?.address?.formattedAddress || [order?.address?.street, order?.address?.city, order?.address?.state].filter(Boolean).join(', ') || '—'
   // Prefer onboarding.step1.restaurantName if available (more accurate)
-  const restaurantName = order?.restaurantName
-    || order?.restaurantId?.onboarding?.step1?.restaurantName
-    || order?.restaurantId?.name 
-    || (typeof order?.restaurantId === 'object' && order?.restaurantId?.onboarding?.step1?.restaurantName)
-    || (typeof order?.restaurantId === 'object' && order?.restaurantId?.name) 
-    || 'Restaurant'
+  const restaurantName = (() => {
+    // 1. Try to find name in the populated restaurantId object
+    const populatedName = 
+      order?.restaurantId?.onboarding?.step1?.restaurantName || 
+      order?.restaurantId?.name ||
+      (typeof order?.restaurantId === 'object' && order?.restaurantId?.onboarding?.step1?.restaurantName) ||
+      (typeof order?.restaurantId === 'object' && order?.restaurantId?.name);
+
+    // 2. Get the name stored on the order itself
+    const orderName = order?.restaurantName;
+
+    // 3. Robust fallback: If orderName is "Indore" (generic) and we have a populated name that is different, use the populated one.
+    if (orderName === "Indore" && populatedName && populatedName !== "Indore") {
+      return populatedName;
+    }
+
+    return orderName || populatedName || 'Restaurant';
+  })()
   const restaurantAddress = order?.restaurantId?.address ? (typeof order.restaurantId.address === 'string' ? order.restaurantId.address : [order.restaurantId.address?.street, order.restaurantId.address?.city].filter(Boolean).join(', ')) : '—'
   const paymentMethodDisplay = order?.paymentMethod === 'cash' || order?.payment?.method === 'cash' ? 'Cash' : 'Online'
 

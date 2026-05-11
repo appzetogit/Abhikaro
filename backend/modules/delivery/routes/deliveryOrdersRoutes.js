@@ -1,6 +1,7 @@
 import express from "express";
 import {
   getOrders,
+  getAvailableOrders,
   getOrderDetails,
   rejectOrder,
   acceptOrder,
@@ -19,6 +20,7 @@ const router = express.Router();
 router.use(authenticate);
 
 // Orders routes
+router.get("/available-orders", getAvailableOrders);
 router.get("/orders", getOrders);
 router.get("/orders/:orderId", getOrderDetails);
 router.patch("/orders/:orderId/reject", rejectOrder);

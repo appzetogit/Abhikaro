@@ -113,8 +113,12 @@ export default function UserOrderDetails() {
   const orderIdDisplay = order.orderId || order._id || orderId
   // Use fetched restaurant data if available, otherwise use order.restaurantId or order.restaurant
   const restaurantObj = restaurant || order.restaurantId || order.restaurant || {}
-  const restaurantName =
-    order.restaurantName || restaurantObj.name || "Restaurant"
+  const restaurantName = (() => {
+    const orderName = order.restaurantName
+    const objName = restaurantObj.name
+    if (orderName === "Indore" && objName && objName !== "Indore") return objName
+    return orderName || objName || "Restaurant"
+  })()
 
   // Build restaurant address (try restaurant fields first, then fall back)
   const restaurantLocation = (() => {
