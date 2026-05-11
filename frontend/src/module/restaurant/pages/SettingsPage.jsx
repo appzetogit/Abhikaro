@@ -45,8 +45,8 @@ export default function SettingsPage() {
       id: "legal",
       title: "Legal",
       items: [
-        { id: "terms", label: "Terms & Conditions", icon: FileText, route: "/restaurant/terms" },
-        { id: "privacy-policy", label: "Privacy Policy", icon: Shield, route: "/restaurant/privacy" },
+        { id: "terms", label: "Terms & Conditions", icon: FileText, route: "/restaurant/terms-and-conditions" },
+        { id: "privacy-policy", label: "Privacy Policy", icon: Shield, route: "/restaurant/privacy-policy" },
         { id: "about", label: "About", icon: Info, route: "/restaurant/about" },
       ]
     },

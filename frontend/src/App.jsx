@@ -316,6 +316,8 @@ export default function App() {
 
 
         {/* Restaurant Public Routes */}
+        <Route path="/restaurant/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/restaurant/terms-and-conditions" element={<TermsAndConditionsPage />} />
         <Route path="/restaurant/welcome" element={<AuthRedirect module="restaurant"><RestaurantWelcome /></AuthRedirect>} />
         <Route path="/restaurant/login" element={<AuthRedirect module="restaurant"><RestaurantLogin /></AuthRedirect>} />
         <Route path="/restaurant/signup" element={<AuthRedirect module="restaurant"><RestaurantSignup /></AuthRedirect>} />

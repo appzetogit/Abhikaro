@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import loginBanner1 from "@/assets/restaurant/loginbanner1.png"
@@ -309,7 +309,7 @@ export default function RestaurantWelcome() {
             By continuing, you agree to our
           </p>
           <p className="text-white/70 text-xs md:text-sm underline mt-1">
-            Terms of Service | Privacy Policy
+            <Link to="/restaurant/terms-and-conditions" className="hover:text-white transition-colors">Terms of Service</Link> | <Link to="/restaurant/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link>
           </p>
         </div>
       </div>

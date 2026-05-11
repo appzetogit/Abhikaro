@@ -1191,7 +1191,7 @@ export default function ExploreMore() {
                     className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400 bg-transparent p-0 text-sm"
                     onClick={() => {
                       setProfileOpen(false)
-                      navigate("/restaurant/terms")
+                      navigate("/restaurant/terms-and-conditions")
                     }}
                   >
                     Terms of Service
@@ -1202,7 +1202,7 @@ export default function ExploreMore() {
                     className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400 bg-transparent p-0 text-sm"
                     onClick={() => {
                       setProfileOpen(false)
-                      navigate("/restaurant/privacy")
+                      navigate("/restaurant/privacy-policy")
                     }}
                   >
                     Privacy Policy
