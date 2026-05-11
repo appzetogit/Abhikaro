@@ -30,6 +30,7 @@ import {
   MapPin,
   Percent,
   Utensils,
+  Headset,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { DateRangeCalendar } from "@/components/ui/date-range-calendar"
@@ -729,7 +730,8 @@ export default function ExploreMore() {
 
   const helpItems = [
     { id: 1, label: "Help centre", icon: HelpCircle, route: "/restaurant/help-centre" },
-    { id: 3, label: "Share your feedback", icon: Edit, route: "/restaurant/share-feedback" },
+    { id: 3, label: "Feedback", icon: Edit, route: "/restaurant/share-feedback" },
+    { id: 4, label: "Support", icon: Headset, route: "/restaurant/support" },
   ]
 
   const accountingItems = [

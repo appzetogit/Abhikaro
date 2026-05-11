@@ -65,6 +65,7 @@ const Inventory = lazy(() => import("@/module/restaurant/pages/Inventory"))
 const Feedback = lazy(() => import("@/module/restaurant/pages/Feedback"))
 const ShareFeedback = lazy(() => import("@/module/restaurant/pages/ShareFeedback"))
 const HelpCentre = lazy(() => import("@/module/restaurant/pages/HelpCentre"))
+const SupportPage = lazy(() => import("@/module/restaurant/pages/SupportPage"))
 const FssaiDetails = lazy(() => import("@/module/restaurant/pages/FssaiDetails"))
 const FssaiUpdate = lazy(() => import("@/module/restaurant/pages/FssaiUpdate"))
 const HubGrowth = lazy(() => import("@/module/restaurant/pages/HubGrowth"))
@@ -585,6 +586,14 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
               <ExploreMore />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/restaurant/support"
+          element={
+            <ProtectedRoute requiredRole="restaurant" loginPath="/restaurant/login">
+              <SupportPage />
             </ProtectedRoute>
           }
         />
