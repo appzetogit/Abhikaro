@@ -356,6 +356,19 @@ export default function ProfilePage() {
                   <ArrowRight className="w-5 h-5 text-gray-400" />
                 </CardContent>
               </Card>
+              <div className="h-px bg-gray-200"></div>
+              <Card
+                onClick={() => navigate("/delivery/support")}
+                className="bg-white py-0 border-0 shadow-none rounded-none first:rounded-t-lg last:rounded-b-lg cursor-pointer hover:bg-gray-200 transition-colors"
+              >
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Headphones className="w-5 h-5" />
+                    <span className="text-sm font-medium">Support</span>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-400" />
+                </CardContent>
+              </Card>
             </div>
           </div>
 

@@ -108,6 +108,7 @@ const DeliveryWelcome = lazy(() => import("@/module/delivery/pages/auth/Welcome"
 const DeliveryTermsPublic = lazy(() => import("@/module/delivery/pages/TermsAndConditions"))
 const DeliveryPrivacyPublic = lazy(() => import("@/module/delivery/pages/PrivacyPolicy"))
 const SupportTickets = lazy(() => import("@/module/delivery/pages/SupportTickets"))
+const DeliverySupport = lazy(() => import("@/module/delivery/pages/Support"))
 
 // Hotel Module
 const HotelSignup = lazy(() => import("@/module/hotel/pages/auth/Signup"))
@@ -933,6 +934,14 @@ export default function App() {
           element={
             <Suspense fallback={<Loader />}>
               <DeliveryPrivacyPublic />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/delivery/support"
+          element={
+            <Suspense fallback={<Loader />}>
+              <DeliverySupport />
             </Suspense>
           }
         />
