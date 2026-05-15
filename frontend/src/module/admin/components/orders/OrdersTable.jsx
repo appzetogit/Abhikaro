@@ -12,6 +12,7 @@ const getStatusColor = (orderStatus) => {
     "Canceled": "bg-rose-100 text-rose-700",
     "Cancelled by Restaurant": "bg-red-100 text-red-700",
     "Cancelled by User": "bg-orange-100 text-orange-700",
+    "Cancelled by System": "bg-slate-100 text-slate-700",
     "Payment Failed": "bg-red-100 text-red-700",
     "Refunded": "bg-sky-100 text-sky-700",
     "Dine In": "bg-indigo-100 text-indigo-700",
@@ -408,6 +409,8 @@ export default function OrdersTable({
                           "Canceled",
                           "Canceled by User",
                           "Canceled by Restaurant",
+                          "Cancelled by System",
+                          "Canceled by System",
                         ]);
 
                         const isCancelled =
@@ -420,6 +423,7 @@ export default function OrdersTable({
                         // Check if payment type is Online or Wallet (not Cash on Delivery)
                         const paymentMethod = order.payment?.method || order.paymentMethod;
                         const isOnlinePayment = order.paymentType === "Online" ||
+                                              order.paymentType === "Hotel (Online)" ||
                                               (order.paymentType !== "Cash on Delivery" && 
                                                order.payment?.method !== "cash" && 
                                                order.payment?.method !== "cod" &&
