@@ -58,7 +58,20 @@ export const releaseEscrow = async (orderId) => {
       throw new Error("Settlement not found");
     }
 
-    if (settlement.escrowStatus !== "held") {
+    // Prevent duplicate execution if settlement completed or escrow already released
+    if (settlement.settlementStatus === "completed" || settlement.escrowStatus === "released") {
+      console.log(
+        `⚠️ Settlement already completed or escrow already released for order ${settlement.orderNumber}`,
+      );
+      return settlement;
+    }
+
+    // Fetch order to check if payment method is offline (COD, Cash, Pay at Hotel)
+    const order = await Order.findById(orderId).lean();
+    const paymentMethod = order?.payment?.method?.toLowerCase?.();
+    const isOffline = paymentMethod === "cash" || paymentMethod === "cod" || paymentMethod === "pay_at_hotel";
+
+    if (settlement.escrowStatus !== "held" && !isOffline) {
       throw new Error(
         `Escrow not in held status. Current status: ${settlement.escrowStatus}`,
       );

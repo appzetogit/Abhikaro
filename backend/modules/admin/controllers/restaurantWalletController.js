@@ -209,6 +209,7 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
         amount: t.amount,
         description: t.description,
         orderId: t.orderId || null,
+        balanceAfter: t.balanceAfter || 0,
         date: t.createdAt,
         processedAt: t.processedAt,
         processedBy: t.processedBy

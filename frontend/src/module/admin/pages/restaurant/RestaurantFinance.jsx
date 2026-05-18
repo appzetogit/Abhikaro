@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 import {
@@ -10,10 +11,12 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   Clock3,
+  Eye,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import ViewOrderDialog from "../../components/orders/ViewOrderDialog"
 
 const formatCurrency = (amount) => {
   if (amount == null) return "₹0.00"
@@ -24,6 +27,7 @@ const formatCurrency = (amount) => {
 }
 
 export default function RestaurantFinance() {
+  const navigate = useNavigate()
   const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -46,6 +50,30 @@ export default function RestaurantFinance() {
   const [historyItems, setHistoryItems] = useState([])
   const [historyPage, setHistoryPage] = useState(1)
   const [historyPages, setHistoryPages] = useState(1)
+
+  // View Order dialog state
+  const [viewOrderOpen, setViewOrderOpen] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState(null)
+  const [loadingOrderId, setLoadingOrderId] = useState(null)
+
+  const handleViewOrderDetails = async (orderId) => {
+    if (!orderId) return
+    try {
+      setLoadingOrderId(orderId)
+      const res = await adminAPI.getOrderById(orderId)
+      if (res?.data?.success) {
+        setSelectedOrder(res.data.data.order)
+        setViewOrderOpen(true)
+      } else {
+        toast.error(res?.data?.message || "Failed to fetch order details")
+      }
+    } catch (err) {
+      console.error("Error fetching order details:", err)
+      toast.error(err?.response?.data?.message || "Failed to fetch order details")
+    } finally {
+      setLoadingOrderId(null)
+    }
+  }
 
   const fetchData = async (overrides = {}) => {
     const p = overrides.page ?? page
@@ -127,7 +155,7 @@ export default function RestaurantFinance() {
       const res = await adminAPI.getRestaurantWalletHistory(restaurantId, {
         page: p,
         limit: 20,
-        onlyAdjustments: true,
+        onlyAdjustments: false,
       })
       if (res?.data?.success) {
         const data = res.data.data || {}
@@ -386,11 +414,10 @@ export default function RestaurantFinance() {
                 <button
                   type="button"
                   onClick={() => setAdjustType("bonus")}
-                  className={`h-10 rounded-lg border px-3 text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors ${
-                    adjustType === "bonus"
+                  className={`h-10 rounded-lg border px-3 text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors ${adjustType === "bonus"
                       ? "border-emerald-600 bg-emerald-50 text-emerald-700"
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   <ArrowUpCircle className="w-4 h-4" />
                   Credit
@@ -398,11 +425,10 @@ export default function RestaurantFinance() {
                 <button
                   type="button"
                   onClick={() => setAdjustType("deduction")}
-                  className={`h-10 rounded-lg border px-3 text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors ${
-                    adjustType === "deduction"
+                  className={`h-10 rounded-lg border px-3 text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors ${adjustType === "deduction"
                       ? "border-rose-600 bg-rose-50 text-rose-700"
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   <ArrowDownCircle className="w-4 h-4" />
                   Deduct
@@ -486,31 +512,77 @@ export default function RestaurantFinance() {
             ) : historyItems.length === 0 ? (
               <div className="py-10 text-center">
                 <p className="text-slate-700 font-semibold">No history</p>
-                <p className="text-slate-500 text-sm">No adjustments found.</p>
+                <p className="text-slate-500 text-sm">No transactions found.</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[380px] overflow-auto pr-1">
+              <div className="space-y-2.5 max-h-[380px] overflow-auto pr-1">
                 {historyItems.map((t) => {
-                  const title = t?.type === "bonus" ? "Credit" : t?.type === "deduction" ? "Deduct" : (t?.type || "Transaction")
+                  const isCredit = ["payment", "bonus", "refund"].includes(t?.type)
+                  const title = t?.type === "payment"
+                    ? "Order Payment"
+                    : t?.type === "bonus"
+                      ? "Credit"
+                      : t?.type === "deduction"
+                        ? "Deduction"
+                        : t?.type === "refund"
+                          ? "Refund"
+                          : t?.type === "withdrawal"
+                            ? "Withdrawal"
+                            : (t?.type || "Transaction")
                   const when = t?.date ? new Date(t.date).toLocaleString("en-IN") : "—"
-                  const isCredit = t?.type === "bonus"
                   return (
-                    <div key={t.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                    <div key={t.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-xs">
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{title}</p>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${t?.type === "payment"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : t?.type === "bonus"
+                                  ? "bg-blue-50 text-blue-700"
+                                  : t?.type === "refund"
+                                    ? "bg-amber-50 text-amber-700"
+                                    : t?.type === "withdrawal"
+                                      ? "bg-purple-50 text-purple-700"
+                                      : "bg-rose-50 text-rose-700"
+                              }`}>
+                              {title}
+                            </span>
+                            {t?.orderId && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-[10px] font-semibold">
+                                  Order: {t.orderId}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={loadingOrderId !== null}
+                                  onClick={() => handleViewOrderDetails(t.orderId)}
+                                  className="inline-flex items-center justify-center p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors disabled:opacity-50"
+                                  title="View Order Details"
+                                >
+                                  {loadingOrderId === t.orderId ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Eye className="w-3 h-3" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                           <p className="text-xs text-slate-600 mt-0.5">{t.description || "—"}</p>
                           {t?.processedBy?.name && (
-                            <p className="mt-1 text-[11px] text-slate-500">
+                            <p className="text-[11px] text-slate-500">
                               By: <span className="font-medium text-slate-700">{t.processedBy.name}</span>
                             </p>
                           )}
+                          <p className="text-[11px] font-medium text-slate-500 mt-1">
+                            Wallet Balance: <span className="text-slate-900 font-semibold">{formatCurrency(t.balanceAfter)}</span>
+                          </p>
                         </div>
-                        <div className="text-right">
-                          <p className={`text-sm font-semibold ${isCredit ? "text-emerald-700" : "text-rose-700"}`}>
+                        <div className="text-right flex flex-col justify-between h-full min-h-[40px]">
+                          <p className={`text-sm font-bold ${isCredit ? "text-emerald-700" : "text-rose-700"}`}>
                             {t?.amount != null ? `${isCredit ? "+" : "−"}${formatCurrency(Math.abs(Number(t.amount)))}` : "—"}
                           </p>
-                          <p className="text-[11px] text-slate-500">{when}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">{when}</p>
                         </div>
                       </div>
                     </div>
@@ -565,6 +637,13 @@ export default function RestaurantFinance() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ViewOrderDialog
+        isOpen={viewOrderOpen}
+        onOpenChange={setViewOrderOpen}
+        order={selectedOrder}
+        onPaymentApproved={() => { }}
+      />
     </div>
   )
 }

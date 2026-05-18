@@ -330,6 +330,32 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
 
   if (!viewOrder) return null
 
+  const displayDate = viewOrder?.date || (viewOrder?.createdAt ? new Date(viewOrder.createdAt).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).toUpperCase() : "—")
+
+  const displayTime = viewOrder?.time || (viewOrder?.createdAt ? new Date(viewOrder.createdAt).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  }).toUpperCase() : "")
+
+  const customerName = viewOrder?.customerName || viewOrder?.userId?.fullName || viewOrder?.userId?.name || "N/A"
+  const customerPhone = viewOrder?.customerPhone || viewOrder?.userId?.phone || "N/A"
+  const customerEmail = viewOrder?.customerEmail || viewOrder?.userId?.email || "N/A"
+  const restaurantName = viewOrder?.restaurant || viewOrder?.restaurantName || viewOrder?.restaurantId?.name || "N/A"
+
+  // Pricing breakdown safe fallbacks
+  const subtotal = viewOrder?.totalItemAmount ?? viewOrder?.pricing?.subtotal ?? 0
+  const discount = viewOrder?.itemDiscount ?? viewOrder?.pricing?.discount ?? 0
+  const couponDiscount = viewOrder?.couponDiscount ?? viewOrder?.pricing?.couponDiscount ?? 0
+  const deliveryCharge = viewOrder?.deliveryCharge ?? viewOrder?.pricing?.deliveryFee ?? 0
+  const platformFee = viewOrder?.platformFee ?? viewOrder?.pricing?.platformFee ?? 0
+  const tax = viewOrder?.vatTax ?? viewOrder?.pricing?.tax ?? 0
+  const totalAmount = viewOrder?.totalAmount ?? viewOrder?.pricing?.total ?? viewOrder?.total ?? 0
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] bg-white p-0 overflow-y-auto">
@@ -366,7 +392,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
                   <Calendar className="w-4 h-4" />
                   Order Date
                 </p>
-                <p className="text-sm font-medium text-slate-900">{order.date}{order.time ? `, ${order.time}` : ""}</p>
+                <p className="text-sm font-medium text-slate-900">{displayDate}{displayTime ? `, ${displayTime}` : ""}</p>
               </div>
               {order.estimatedDeliveryTime && (
                 <div className="space-y-1">
@@ -556,36 +582,36 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer Name</p>
-                <p className="text-sm font-medium text-slate-900">{order.customerName || "N/A"}</p>
+                <p className="text-sm font-medium text-slate-900">{customerName}</p>
               </div>
-              {order.customerPhone && (
+              {customerPhone && customerPhone !== "N/A" && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                     <Phone className="w-4 h-4" />
                     Phone
                   </p>
-                  <p className="text-sm font-medium text-slate-900">{order.customerPhone}</p>
+                  <p className="text-sm font-medium text-slate-900">{customerPhone}</p>
                 </div>
               )}
-              {order.customerEmail && (
+              {customerEmail && customerEmail !== "N/A" && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                     <Mail className="w-4 h-4" />
                     Email
                   </p>
-                  <p className="text-sm font-medium text-slate-900">{order.customerEmail}</p>
+                  <p className="text-sm font-medium text-slate-900">{customerEmail}</p>
                 </div>
               )}
             </div>
           </div>
 
           {/* Restaurant Information */}
-          {order.restaurant && (
+          {restaurantName && restaurantName !== "N/A" && (
             <div className="border-t border-slate-200 pt-4">
               <h3 className="text-sm font-semibold text-slate-700 mb-4">Restaurant Information</h3>
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Restaurant Name</p>
-                <p className="text-sm font-medium text-slate-900">{order.restaurant}</p>
+                <p className="text-sm font-medium text-slate-900">{restaurantName}</p>
               </div>
             </div>
           )}
@@ -757,51 +783,49 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
 
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Pricing Breakdown</h3>
             <div className="space-y-2">
-              {order.totalItemAmount !== undefined && (
+              {(subtotal > 0 || viewOrder?.pricing?.subtotal !== undefined) && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Subtotal</span>
-                  <span className="font-medium text-slate-900">₹{order.totalItemAmount.toFixed(2)}</span>
+                  <span className="font-medium text-slate-900">₹{subtotal.toFixed(2)}</span>
                 </div>
               )}
-              {order.itemDiscount !== undefined && order.itemDiscount > 0 && (
+              {discount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Discount</span>
-                  <span className="font-medium text-emerald-600">-₹{order.itemDiscount.toFixed(2)}</span>
+                  <span className="font-medium text-emerald-600">-₹{discount.toFixed(2)}</span>
                 </div>
               )}
-              {order.couponDiscount !== undefined && order.couponDiscount > 0 && (
+              {couponDiscount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Coupon Discount</span>
-                  <span className="font-medium text-emerald-600">-₹{order.couponDiscount.toFixed(2)}</span>
+                  <span className="font-medium text-emerald-600">-₹{couponDiscount.toFixed(2)}</span>
                 </div>
               )}
-              {order.deliveryCharge !== undefined && (
+              {(deliveryCharge !== undefined || viewOrder?.pricing?.deliveryFee !== undefined) && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Delivery Charge</span>
                   <span className="font-medium text-slate-900">
-                    {order.deliveryCharge > 0 ? `₹${order.deliveryCharge.toFixed(2)}` : <span className="text-emerald-600">Free delivery</span>}
+                    {deliveryCharge > 0 ? `₹${deliveryCharge.toFixed(2)}` : <span className="text-emerald-600">Free delivery</span>}
                   </span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Platform Fee</span>
                 <span className="font-medium text-slate-900">
-                  {order.platformFee !== undefined && order.platformFee > 0 
-                    ? `₹${order.platformFee.toFixed(2)}` 
-                    : <span className="text-slate-400">₹0.00</span>}
+                  {platformFee > 0 ? `₹${platformFee.toFixed(2)}` : <span className="text-slate-400">₹0.00</span>}
                 </span>
               </div>
-              {order.vatTax !== undefined && order.vatTax > 0 && (
+              {tax > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Tax (GST)</span>
-                  <span className="font-medium text-slate-900">₹{order.vatTax.toFixed(2)}</span>
+                  <span className="font-medium text-slate-900">₹{tax.toFixed(2)}</span>
                 </div>
               )}
               <div className="pt-2 border-t border-slate-200">
                 <div className="flex justify-between items-center">
                   <span className="text-base font-semibold text-slate-700">Total Amount</span>
                   <span className="text-xl font-bold text-emerald-600">
-                    ₹{(order.totalAmount || order.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>

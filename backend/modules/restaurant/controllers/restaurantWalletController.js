@@ -81,6 +81,7 @@ export const getWallet = asyncHandler(async (req, res) => {
         status: t.status,
         description: t.description,
         orderId: t.orderId,
+        balanceAfter: t.balanceAfter || 0,
         createdAt: t.createdAt,
         processedAt: t.processedAt
       }));
@@ -158,6 +159,7 @@ export const getWalletTransactions = asyncHandler(async (req, res) => {
         status: t.status,
         description: t.description,
         orderId: t.orderId,
+        balanceAfter: t.balanceAfter || 0,
         createdAt: t.createdAt,
         processedAt: t.processedAt
       })),

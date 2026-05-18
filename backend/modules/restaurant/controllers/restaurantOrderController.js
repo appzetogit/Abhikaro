@@ -450,6 +450,12 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       }
     }
 
+    // If order is already accepted/preparing, return success response gracefully (prevents errors on client double-clicks)
+    if (order.status === "preparing") {
+      console.log(`ℹ️ Order ${order.orderId} is already preparing (accepted). Returning success response gracefully.`);
+      return successResponse(res, 200, "Order accepted successfully", { order });
+    }
+
     // Allow accepting orders with status 'pending' or 'confirmed'
     // 'confirmed' status means payment is verified, restaurant can still accept
     if (!["pending", "confirmed"].includes(order.status)) {
@@ -1487,6 +1493,14 @@ export const markOrderReady = asyncHandler(async (req, res) => {
 
     if (!order) {
       return errorResponse(res, 404, "Order not found");
+    }
+
+    // If order is already ready or in an advanced status (e.g. picked up or out for delivery),
+    // return success gracefully (prevents errors on client when state is stale)
+    const completedOrActiveStatuses = ["ready", "picked_up", "out_for_delivery", "delivered", "completed"];
+    if (completedOrActiveStatuses.includes(order.status)) {
+      console.log(`ℹ️ Order ${order.orderId} is already in state: ${order.status}. Returning success response gracefully.`);
+      return successResponse(res, 200, `Order is already marked as ${order.status}`, { order });
     }
 
     if (order.status !== "preparing") {

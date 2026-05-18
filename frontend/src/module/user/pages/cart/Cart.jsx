@@ -2108,7 +2108,7 @@ export default function Cart() {
                       <Tag className="h-4 w-4 md:h-5 md:w-5 text-red-600 dark:text-red-400" />
                       <div>
                         <p className="text-sm md:text-base font-medium text-red-700 dark:text-red-300">'{appliedCoupon.code}' applied</p>
-                        <p className="text-xs md:text-sm text-red-600 dark:text-red-400">You saved ₹{discount}</p>
+                        <p className="text-xs md:text-sm text-red-600 dark:text-red-400">You saved ₹{baseDiscount}</p>
                       </div>
                     </div>
                     <button onClick={handleRemoveCoupon} className="text-gray-500 dark:text-gray-400 text-xs md:text-sm font-medium">Remove</button>

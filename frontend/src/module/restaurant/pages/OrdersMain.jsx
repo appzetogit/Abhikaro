@@ -578,6 +578,7 @@ export default function OrdersMain() {
   // New order popup states
   const [showNewOrderPopup, setShowNewOrderPopup] = useState(false)
   const [popupOrder, setPopupOrder] = useState(null) // Store order for popup (from Socket.IO or API)
+  const [isAccepting, setIsAccepting] = useState(false)
   const [prepTime, setPrepTime] = useState(11)
   // Must match backend auto-reject window (`backend/modules/order/services/autoRejectService.js`)
   const ACCEPT_WINDOW_SECONDS = 240 // 4 minutes
@@ -1308,6 +1309,9 @@ export default function OrdersMain() {
 
   // Handle accept order
   const handleAcceptOrder = async () => {
+    // Prevent double clicking
+    if (isAccepting) return
+
     // Prevent race: if accept window already expired, don't call API.
     if (countdown <= 0) {
       toast.error('Accept window expired. Order may have been auto-cancelled.')
@@ -1347,6 +1351,7 @@ export default function OrdersMain() {
     // Accept order via API if we have a real order
     if (orderToAccept?.orderMongoId || orderToAccept?.orderId) {
       try {
+        setIsAccepting(true)
         const orderId = orderToAccept.orderMongoId || orderToAccept.orderId
         const response = await restaurantAPI.acceptOrder(orderId, prepTime)
         console.log('✅ Order accepted:', orderId)
@@ -1357,24 +1362,36 @@ export default function OrdersMain() {
           error.message ||
           'Failed to accept order. Please try again.'
 
-        // FIXED: Handle location error specifically
-        if (errorMessage.includes('location') && errorMessage.includes('not set')) {
-          toast.error('Restaurant location is not set. Please set your location to accept orders.', {
-            duration: 5000,
-            action: {
-              label: 'Set Location',
-              onClick: () => navigate('/restaurant/zone-setup')
-            }
-          })
-          setRestaurantLocationMissing(true)
-        } else if (error.response?.status === 400) {
-          toast.error(errorMessage)
-        } else if (error.response?.status === 404) {
-          toast.error('Order not found. It may have been cancelled or already processed.')
+        // Check if the order is already accepted/preparing (graceful success handling)
+        const isAlreadyAccepted = errorMessage.toLowerCase().includes('preparing') || 
+                                  errorMessage.toLowerCase().includes('already accepted');
+
+        if (isAlreadyAccepted) {
+          console.log('ℹ️ Order was already accepted, closing popup gracefully.');
+          toast.success('Order accepted successfully');
         } else {
-          toast.error(errorMessage)
+          // FIXED: Handle location error specifically
+          if (errorMessage.includes('location') && errorMessage.includes('not set')) {
+            toast.error('Restaurant location is not set. Please set your location to accept orders.', {
+              duration: 5000,
+              action: {
+                label: 'Set Location',
+                onClick: () => navigate('/restaurant/zone-setup')
+              }
+            })
+            setRestaurantLocationMissing(true)
+          } else if (error.response?.status === 400) {
+            toast.error(errorMessage)
+          } else if (error.response?.status === 404) {
+            toast.error('Order not found. It may have been cancelled or already processed.')
+          } else {
+            toast.error(errorMessage)
+          }
+          setIsAccepting(false)
+          return
         }
-        return
+      } finally {
+        setIsAccepting(false)
       }
     }
 
@@ -2492,7 +2509,8 @@ export default function OrdersMain() {
                       <div className="relative">
                         <button
                           onClick={handleAcceptOrder}
-                          className="w-full bg-black text-white py-3.5 rounded-lg font-semibold text-sm hover:bg-gray-800 transition-colors relative overflow-hidden"
+                          disabled={isAccepting}
+                          className="w-full bg-black text-white py-3.5 rounded-lg font-semibold text-sm hover:bg-gray-800 transition-colors relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {/* Loading background */}
                           <motion.div
@@ -2501,7 +2519,9 @@ export default function OrdersMain() {
                             animate={{ width: `${(countdown / ACCEPT_WINDOW_SECONDS) * 100}%` }}
                             transition={{ duration: 1, ease: "linear" }}
                           />
-                          <span className="relative z-10">Accept ({formatTime(countdown)})</span>
+                          <span className="relative z-10">
+                            {isAccepting ? 'Accepting...' : `Accept (${formatTime(countdown)})`}
+                          </span>
                         </button>
                       </div>
 
@@ -3217,11 +3237,39 @@ function PreparingOrders({ onSelectOrder, onCancel, onShowPopup, fetchAllOrders,
     } catch (error) {
       // Log detailed backend error information to help debugging
       const status = error?.response?.status
-      const backendMessage = error?.response?.data?.message
+      const backendMessage = error?.response?.data?.message || error?.message || ''
       console.error(
         `Failed to mark order ${orderId} as ready (status ${status}):`,
         backendMessage || error
       )
+
+      // Gracefully handle if the order is already ready/picked_up/out_for_delivery/delivered
+      const lowerMessage = backendMessage.toLowerCase()
+      const isAlreadyPastPreparing = 
+        lowerMessage.includes('ready') || 
+        lowerMessage.includes('picked') || 
+        lowerMessage.includes('delivery') || 
+        lowerMessage.includes('delivered') ||
+        status === 400; // Any 400 is likely a status mismatch
+
+      if (isAlreadyPastPreparing) {
+        console.log('ℹ️ Order is already past preparing status. Removing from preparing list.')
+        // Remove from the local list since it's no longer preparing
+        setOrders((prev) =>
+          prev.filter((o) => (o.mongoId || o.orderId) !== id)
+        )
+        
+        // Show an informative toast based on status/message
+        if (lowerMessage.includes('delivery') || lowerMessage.includes('picked')) {
+          toast.success('Order is already picked up and out for delivery!')
+        } else if (lowerMessage.includes('delivered')) {
+          toast.success('Order is already delivered!')
+        } else {
+          toast.success('Order is already marked as ready')
+        }
+      } else {
+        toast.error('Failed to mark order as ready. Please try again.')
+      }
     }
   }
 

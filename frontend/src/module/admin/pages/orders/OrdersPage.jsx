@@ -256,6 +256,41 @@ export default function OrdersPage({ statusKey = "all" }) {
     resetColumns,
   } = useOrdersManagement(orders, statusKey, config.title)
 
+  // Handle URL query parameter for viewing order on load
+  const [lastCheckedOrderId, setLastCheckedOrderId] = useState(null)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const orderIdParam = searchParams.get("orderId") || searchParams.get("id")
+    
+    if (orderIdParam && orderIdParam !== lastCheckedOrderId) {
+      setLastCheckedOrderId(orderIdParam)
+      
+      if (orders.length > 0) {
+        const match = orders.find(
+          (o) => o.orderId === orderIdParam || o.id === orderIdParam || o._id === orderIdParam
+        )
+        if (match) {
+          handleViewOrder(match)
+          return
+        }
+      }
+      
+      // Load directly from backend if not currently in the fetched list
+      const loadAndShowOrder = async () => {
+        try {
+          const res = await adminAPI.getOrderById(orderIdParam)
+          if (res.data?.success && res.data?.data) {
+            const fetchedOrder = res.data.data.order || res.data.data
+            handleViewOrder(fetchedOrder)
+          }
+        } catch (err) {
+          console.error("Error loading order from URL param:", err)
+        }
+      }
+      loadAndShowOrder()
+    }
+  }, [orders, lastCheckedOrderId, handleViewOrder])
+
   const getOrderKey = (order) => order?.id || order?._id || order?.orderId
 
   const allFilteredKeys = useMemo(() => {
