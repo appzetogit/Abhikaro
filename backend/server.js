@@ -1059,6 +1059,25 @@ httpServer.listen(PORT, () => {
 
 // Initialize scheduled tasks
 function initializeScheduledTasks() {
+  // Import auto on/off timing service
+  import('./modules/restaurant/services/autoOnOffService.js').then(({ processAutoOnOffRestaurants }) => {
+    // Run every minute to check for opening and closing schedules of restaurants
+    cron.schedule('* * * * *', async () => {
+      try {
+        const result = await processAutoOnOffRestaurants();
+        if (result.opened > 0 || result.closed > 0) {
+          console.log(`[Auto On/Off Cron] ${result.message}`);
+        }
+      } catch (error) {
+        console.error('[Auto On/Off Cron] Error:', error);
+      }
+    });
+
+    console.log('✅ Restaurant auto on/off scheduler initialized (runs every minute)');
+  }).catch((error) => {
+    console.error('❌ Failed to initialize restaurant auto on/off service:', error);
+  });
+
   // Import menu schedule service
   import('./modules/restaurant/services/menuScheduleService.js').then(({ processScheduledAvailability }) => {
     // Run every minute to check for due schedules

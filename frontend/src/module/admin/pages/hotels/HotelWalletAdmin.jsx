@@ -566,11 +566,12 @@ export default function HotelWalletAdmin() {
                     </div>
                     <div className="bg-slate-50 rounded-lg p-3">
                       <p className="text-slate-500 font-medium uppercase tracking-wide">
-                        Cash Collected
+                        Total Earnings
                       </p>
                       <p className="text-base font-semibold text-slate-900">
                         {formatCurrency(
-                          earningsData.summary.totalCashCollected || 0,
+                          (earningsData.summary.totalHotelEarningCash || 0) +
+                            (earningsData.summary.totalHotelEarningOnline || 0),
                         )}
                       </p>
                     </div>
@@ -595,9 +596,6 @@ export default function HotelWalletAdmin() {
                         </th>
                         <th className="px-4 py-2 text-left font-semibold text-slate-700">
                           Payment
-                        </th>
-                        <th className="px-4 py-2 text-left font-semibold text-slate-700">
-                          Cash Collected
                         </th>
                       </tr>
                     </thead>
@@ -624,9 +622,6 @@ export default function HotelWalletAdmin() {
                               : row.isOnlinePayment
                               ? "Razorpay / Online"
                               : row.paymentMethod || "Other"}
-                          </td>
-                          <td className="px-4 py-2 whitespace-nowrap text-slate-700">
-                            {row.cashCollected ? "Yes" : "No"}
                           </td>
                         </tr>
                       ))}

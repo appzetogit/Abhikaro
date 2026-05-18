@@ -217,14 +217,26 @@ export const calculateOrderSettlement = async (orderId) => {
         // Fallback to Haversine if coordinates available
         const [rlng, rlat] = order.restaurantId.location.coordinates;
         const [clng, clat] = order.address.location.coordinates;
-        const R = 6371;
-        const dLat = ((clat - rlat) * Math.PI) / 180;
-        const dLng = ((clng - rlng) * Math.PI) / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((rlat * Math.PI) / 180) * Math.cos((clat * Math.PI) / 180) *
-          Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        distance = R * c;
+        
+        // Safety guard: if coordinates are invalid, empty, or default [0, 0] (Null Island)
+        if (rlat && rlng && clat && clng &&
+            Number(rlat) !== 0 && Number(rlng) !== 0 && Number(clat) !== 0 && Number(clng) !== 0 &&
+            !(Math.abs(Number(rlat)) < 0.0001 && Math.abs(Number(rlng)) < 0.0001) &&
+            !(Math.abs(Number(clat)) < 0.0001 && Math.abs(Number(clng)) < 0.0001)) {
+          const R = 6371;
+          const dLat = ((clat - rlat) * Math.PI) / 180;
+          const dLng = ((clng - rlng) * Math.PI) / 180;
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos((rlat * Math.PI) / 180) * Math.cos((clat * Math.PI) / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          distance = R * c;
+        }
+      }
+
+      // Safety cap: if calculated distance is physically impossible for local delivery, reset to 0
+      if (distance > 100) {
+        distance = 0;
       }
 
       const deliveryCommission =

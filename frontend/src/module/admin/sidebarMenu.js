@@ -14,20 +14,8 @@ export const sidebarMenuData = [
     icon: "Award",
     permissionId: "hotels.view",
   },
-  {
-    type: "link",
-    label: "Point of Sale",
-    path: "/admin/point-of-sale",
-    icon: "CreditCard",
-    permissionId: "menu.point_of_sale",
-  },
-  {
-    type: "link",
-    label: "History",
-    path: "/admin/history",
-    icon: "Clock",
-    permissionId: "menu.history",
-  },
+
+
   {
     type: "section",
     label: "FOOD MANAGEMENT",

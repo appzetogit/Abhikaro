@@ -5,8 +5,8 @@ import AdminLayout from "./AdminLayout";
 import Loader from "@/components/Loader";
 
 const AdminHome = lazy(() => import("../pages/AdminHome"));
-const PointOfSale = lazy(() => import("../pages/PointOfSale"));
-const History = lazy(() => import("../pages/History"));
+
+
 const AdminProfile = lazy(() => import("../pages/AdminProfile"));
 const AdminSettings = lazy(() => import("../pages/AdminSettings"));
 const FoodApproval = lazy(() => import("../pages/restaurant/FoodApproval"));
@@ -128,22 +128,8 @@ export default function AdminRouter() {
           />
 
 
-          <Route
-            path="/point-of-sale"
-            element={
-              <ProtectedRoute requiredPermission="menu.point_of_sale">
-                <PointOfSale />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/history"
-            element={
-              <ProtectedRoute requiredPermission="menu.history">
-                <History />
-              </ProtectedRoute>
-            }
-          />
+
+
 
           {/* Profile */}
           <Route path="/profile" element={<AdminProfile />} />

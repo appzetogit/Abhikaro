@@ -198,8 +198,19 @@ export const calculateDiscount = (coupon, subtotal) => {
  * Returns distance in kilometers
  */
 export const calculateDistance = (coord1, coord2) => {
+  if (!coord1 || !coord2 || !Array.isArray(coord1) || !Array.isArray(coord2) || coord1.length < 2 || coord2.length < 2) {
+    return 0;
+  }
   const [lng1, lat1] = coord1;
   const [lng2, lat2] = coord2;
+  
+  // Safety guard: if coordinates are invalid, empty, or default [0, 0] (Null Island)
+  if (!lat1 || !lng1 || !lat2 || !lng2 || 
+      Number(lat1) === 0 || Number(lng1) === 0 || Number(lat2) === 0 || Number(lng2) === 0 ||
+      (Math.abs(Number(lat1)) < 0.0001 && Math.abs(Number(lng1)) < 0.0001) ||
+      (Math.abs(Number(lat2)) < 0.0001 && Math.abs(Number(lng2)) < 0.0001)) {
+    return 0;
+  }
   
   const R = 6371; // Earth's radius in kilometers
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -213,7 +224,8 @@ export const calculateDistance = (coord1, coord2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distance = R * c;
   
-  return distance;
+  // If calculated distance is physically impossible for local delivery, treat as invalid
+  return distance > 100 ? 0 : distance;
 };
 
 /**

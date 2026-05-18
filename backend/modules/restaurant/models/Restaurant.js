@@ -52,6 +52,7 @@ const locationSchema = new mongoose.Schema({
 const deliveryTimingsSchema = new mongoose.Schema({
   openingTime: String,
   closingTime: String,
+  isAutoOnOffEnabled: { type: Boolean, default: false }
 });
 
 const restaurantSchema = new mongoose.Schema(

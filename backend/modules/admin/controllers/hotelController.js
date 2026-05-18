@@ -1391,7 +1391,7 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
               ],
             })
               .select(
-                "hotelId hotelReference pricing.total pricing.subtotal pricing.discount pricing.deliveryFee pricing.platformFee pricing.tax pricing.adminOfferDiscount commissionBreakdown.hotel status payment.method cashCollected hotelCashSettled",
+                "hotelId hotelReference orderType pricing.total pricing.subtotal pricing.discount pricing.deliveryFee pricing.platformFee pricing.tax pricing.adminOfferDiscount commissionBreakdown.hotel status payment.method cashCollected hotelCashSettled",
               )
               .lean();
 
@@ -1428,25 +1428,38 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
           orderStatsByHotelId.set(hid, stats);
         }
 
-        stats.totalRequests += 1;
+        const paymentMethod =
+          order.payment && typeof order.payment.method === "string"
+            ? order.payment.method
+            : null;
 
-        const totalAmount =
-          (order.pricing && typeof order.pricing.total === "number"
-            ? order.pricing.total
-            : 0) || 0;
+        const isValidPaymentMethod = [
+          "pay_at_hotel",
+          "cash",
+          "razorpay",
+          "wallet",
+        ].includes(paymentMethod);
 
-        // For non-cancelled orders, aggregate revenue & earnings
-        if (order.status !== "cancelled") {
+        const isQrOrder =
+          order.orderType === "QR" ||
+          Boolean(order.hotelReference) ||
+          paymentMethod === "pay_at_hotel";
+
+        // Increment stats only if the order is valid, non-cancelled, and is a QR/hotel order
+        if (order.status !== "cancelled" && isValidPaymentMethod && isQrOrder) {
+          stats.totalRequests += 1;
+
+          const totalAmount =
+            (order.pricing && typeof order.pricing.total === "number"
+              ? order.pricing.total
+              : 0) || 0;
+
           stats.totalAmountCollected += totalAmount;
 
           // Always compute from subtotal base so Online and Pay-at-Hotel/Cash match.
           const hotelCommPercent = Number(hotelDoc.commission) || 0;
           stats.hotelEarnings += getHotelCommissionFromOrder(order, hotelCommPercent);
 
-          const paymentMethod =
-            order.payment && typeof order.payment.method === "string"
-              ? order.payment.method
-              : null;
           const isCashMethod =
             paymentMethod === "pay_at_hotel" || paymentMethod === "cash";
 

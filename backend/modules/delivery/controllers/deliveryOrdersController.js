@@ -2588,18 +2588,29 @@ export const completeDelivery = asyncHandler(async (req, res) => {
         order.restaurantId.location.coordinates;
       const [customerLng, customerLat] = order.address.location.coordinates;
 
-      // Calculate distance using Haversine formula
-      const R = 6371; // Earth radius in km
-      const dLat = ((customerLat - restaurantLat) * Math.PI) / 180;
-      const dLng = ((customerLng - restaurantLng) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((restaurantLat * Math.PI) / 180) *
-          Math.cos((customerLat * Math.PI) / 180) *
-          Math.sin(dLng / 2) *
-          Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      deliveryDistance = R * c;
+      // Safety guard: if coordinates are invalid, empty, or default [0, 0] (Null Island)
+      if (restaurantLat && restaurantLng && customerLat && customerLng &&
+          Number(restaurantLat) !== 0 && Number(restaurantLng) !== 0 && Number(customerLat) !== 0 && Number(customerLng) !== 0 &&
+          !(Math.abs(Number(restaurantLat)) < 0.0001 && Math.abs(Number(restaurantLng)) < 0.0001) &&
+          !(Math.abs(Number(customerLat)) < 0.0001 && Math.abs(Number(customerLng)) < 0.0001)) {
+        // Calculate distance using Haversine formula
+        const R = 6371; // Earth radius in km
+        const dLat = ((customerLat - restaurantLat) * Math.PI) / 180;
+        const dLng = ((customerLng - restaurantLng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((restaurantLat * Math.PI) / 180) *
+            Math.cos((customerLat * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        deliveryDistance = R * c;
+      }
+    }
+
+    // Safety cap: if calculated distance is physically impossible for local delivery, reset to 0
+    if (deliveryDistance > 100) {
+      deliveryDistance = 0;
     }
 
     console.log(

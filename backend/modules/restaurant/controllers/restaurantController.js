@@ -1136,10 +1136,12 @@ export const updateRestaurantProfile = asyncHandler(async (req, res) => {
         deliveryTimings?.openingTime != null ? String(deliveryTimings.openingTime).trim() : '';
       const closingTime =
         deliveryTimings?.closingTime != null ? String(deliveryTimings.closingTime).trim() : '';
+      const isAutoOnOffEnabled = !!deliveryTimings?.isAutoOnOffEnabled;
 
       updateData.deliveryTimings = {
         openingTime,
         closingTime,
+        isAutoOnOffEnabled,
       };
 
       // Keep onboarding.step2 in sync if it exists
@@ -1147,6 +1149,7 @@ export const updateRestaurantProfile = asyncHandler(async (req, res) => {
         restaurant.onboarding.step2.deliveryTimings = {
           openingTime,
           closingTime,
+          isAutoOnOffEnabled,
         };
       }
     }

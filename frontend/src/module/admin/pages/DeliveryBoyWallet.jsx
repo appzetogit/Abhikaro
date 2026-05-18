@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Search, PiggyBank, Loader2, Package, Edit2, IndianRupee, Clock3 } from "lucide-react"
+import { Search, PiggyBank, Loader2, Package, Edit2, IndianRupee, Clock3, ArrowUpRight, ArrowDownLeft, Check, AlertCircle, X } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -97,7 +97,7 @@ export default function DeliveryBoyWallet() {
       const res = await adminAPI.getDeliveryBoyWalletHistory(walletId, {
         page: p,
         limit: 20,
-        onlyAdjustments: true,
+        onlyAdjustments: false,
       })
       if (res?.data?.success) {
         const data = res.data.data
@@ -517,79 +517,235 @@ export default function DeliveryBoyWallet() {
             ) : historyItems.length === 0 ? (
               <div className="py-10 text-center">
                 <p className="text-slate-700 font-semibold">No history</p>
-                <p className="text-slate-500 text-sm">No adjustments found.</p>
+                <p className="text-slate-500 text-sm">No transactions found.</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[380px] overflow-auto pr-1">
+              <div className="space-y-3 max-h-[380px] overflow-auto pr-1">
                 {historyItems.map((t) => {
                   const md = t?.metadata || {}
                   const isEdit = t?.type === "admin_balance_edit"
-                  const title =
-                    t?.type === "bonus"
-                      ? "Bonus"
-                      : t?.type === "deduction"
-                        ? "Deduction"
-                        : isEdit
-                          ? "Balance edit"
-                          : t?.type || "Transaction"
-
                   const when = t?.date ? new Date(t.date).toLocaleString("en-IN") : "—"
-                  const oldPocket = Number(md?.oldPocket)
-                  const newPocket = Number(md?.newPocket)
-                  const oldCashInHand = Number(md?.oldCashInHand)
-                  const newCashInHand = Number(md?.newCashInHand)
-                  const deltaPocket =
-                    Number.isFinite(oldPocket) && Number.isFinite(newPocket) ? newPocket - oldPocket : NaN
-                  const deltaCash =
-                    Number.isFinite(oldCashInHand) && Number.isFinite(newCashInHand)
-                      ? newCashInHand - oldCashInHand
-                      : NaN
-                  const deltaTotal =
-                    Number.isFinite(deltaPocket) && Number.isFinite(deltaCash)
-                      ? Number((deltaPocket + deltaCash).toFixed(2))
-                      : NaN
-                  const editAmountText =
-                    Number.isFinite(deltaTotal) && deltaTotal !== 0
-                      ? `${deltaTotal > 0 ? "+" : "−"}${formatCurrency(Math.abs(deltaTotal))}`
-                      : "—"
+                  
+                  let title = "Transaction"
+                  let icon = <Clock3 className="w-4 h-4 text-slate-500" />
+                  let iconBg = "bg-slate-50 border border-slate-200"
+                  let isCredit = false
+                  let isDebit = false
+                  let showBreakdown = false
+                  let formattedAmount = t?.amount != null ? formatCurrency(t.amount) : "—"
+                  let amountColor = "text-slate-900"
+
+                  const rawType = String(t?.type || "").toLowerCase()
+                  if (rawType === "payment") {
+                    title = "Order Earning"
+                    icon = <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                    iconBg = "bg-emerald-50 border border-emerald-100"
+                    isCredit = true
+                  } else if (rawType === "earning_addon") {
+                    title = "Earning Addon"
+                    icon = <ArrowUpRight className="w-4 h-4 text-teal-600" />
+                    iconBg = "bg-teal-50 border border-teal-100"
+                    isCredit = true
+                  } else if (rawType === "bonus") {
+                    title = "Admin Bonus"
+                    icon = <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                    iconBg = "bg-emerald-50 border border-emerald-100"
+                    isCredit = true
+                  } else if (rawType === "refund") {
+                    title = "Refund"
+                    icon = <ArrowUpRight className="w-4 h-4 text-indigo-600" />
+                    iconBg = "bg-indigo-50 border border-indigo-100"
+                    isCredit = true
+                  } else if (rawType === "withdrawal") {
+                    title = "Withdrawal"
+                    icon = <ArrowDownLeft className="w-4 h-4 text-rose-600" />
+                    iconBg = "bg-rose-50 border border-rose-100"
+                    isDebit = true
+                  } else if (rawType === "deduction") {
+                    title = "Admin Deduction"
+                    icon = <ArrowDownLeft className="w-4 h-4 text-rose-600" />
+                    iconBg = "bg-rose-50 border border-rose-100"
+                    isDebit = true
+                  } else if (rawType === "deposit") {
+                    title = "Cash Deposit"
+                    icon = <Check className="w-4 h-4 text-blue-600" />
+                    iconBg = "bg-blue-50 border border-blue-100"
+                    isDebit = true
+                  } else if (isEdit) {
+                    title = "Balance Edit"
+                    icon = <Edit2 className="w-3.5 h-3.5 text-amber-600" />
+                    iconBg = "bg-amber-50 border border-amber-100"
+                    showBreakdown = true
+                    
+                    const oldPocket = Number(md?.oldPocket)
+                    const newPocket = Number(md?.newPocket)
+                    const oldCashInHand = Number(md?.oldCashInHand)
+                    const newCashInHand = Number(md?.newCashInHand)
+                    const deltaPocket =
+                      Number.isFinite(oldPocket) && Number.isFinite(newPocket) ? newPocket - oldPocket : 0
+                    const deltaCash =
+                      Number.isFinite(oldCashInHand) && Number.isFinite(newCashInHand)
+                        ? newCashInHand - oldCashInHand
+                        : 0
+                    const deltaTotal = Number((deltaPocket + deltaCash).toFixed(2))
+                    
+                    if (deltaTotal > 0) {
+                      isCredit = true
+                      formattedAmount = `+${formatCurrency(deltaTotal)}`
+                    } else if (deltaTotal < 0) {
+                      isDebit = true
+                      formattedAmount = `−${formatCurrency(Math.abs(deltaTotal))}`
+                    } else {
+                      formattedAmount = "—"
+                    }
+                  }
+
+                  if (isCredit) {
+                    amountColor = "text-emerald-600 font-bold"
+                    if (rawType !== "admin_balance_edit" && t?.amount != null) {
+                      formattedAmount = `+${formatCurrency(t.amount)}`
+                    }
+                  } else if (isDebit) {
+                    amountColor = "text-rose-600 font-bold"
+                    if (rawType !== "admin_balance_edit" && t?.amount != null) {
+                      formattedAmount = `−${formatCurrency(t.amount)}`
+                    }
+                  }
+
+                  // Determine status styling
+                  const statusStr = String(t?.status || "Completed").toLowerCase()
+                  let statusClass = "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                  if (statusStr === "pending") {
+                    statusClass = "bg-amber-50 text-amber-700 border border-amber-100"
+                  } else if (statusStr === "failed" || statusStr === "cancelled") {
+                    statusClass = "bg-rose-50 text-rose-700 border border-rose-100"
+                  }
+
+                  let orderIdentifier = t?.orderNumber || md?.orderNumber || md?.orderId || t?.orderId || null
+                  
+                  // Extract human-readable ORD-... from description if orderIdentifier is still a MongoDB ObjectId
+                  const isObjectId = (str) => typeof str === 'string' && /^[0-9a-fA-F]{24}$/.test(str)
+                  
+                  if (t.description && (!orderIdentifier || isObjectId(orderIdentifier))) {
+                    const match = t.description.match(/(#?ORD-[A-Za-z0-9\-]+)/i)
+                    if (match) {
+                      orderIdentifier = match[1]
+                    }
+                  }
+
+                  // Standardize prefix
+                  if (orderIdentifier && typeof orderIdentifier === 'string') {
+                    if (isObjectId(orderIdentifier)) {
+                      // If it's a raw ObjectId, show it as is (or keep it if no fallback was matched)
+                    } else if (!orderIdentifier.startsWith('#')) {
+                      orderIdentifier = '#' + orderIdentifier
+                    }
+                  }
+
+                  let displayDescription = t.description || "—"
+                  if (rawType === "payment") {
+                    const payType = t?.orderPaymentType || md?.orderPaymentType || null
+                    if (payType) {
+                      if (payType === 'online') displayDescription = 'Online'
+                      else if (payType === 'wallet') displayDescription = 'Wallet'
+                      else if (payType === 'hotel(online)') displayDescription = 'Hotel (Online)'
+                      else if (payType === 'pay at hotel') displayDescription = 'Pay at Hotel'
+                      else if (payType === 'cash') displayDescription = 'Cash on Delivery'
+                      else displayDescription = payType
+                    } else {
+                      // Robust description-based fallback parsing
+                      const descLower = (t.description || "").toLowerCase()
+                      if (descLower.includes("pay at hotel") || descLower.includes("pay_at_hotel")) {
+                        displayDescription = "Pay at Hotel"
+                      } else if (descLower.includes("hotel") && (descLower.includes("online") || descLower.includes("razorpay") || descLower.includes("upi"))) {
+                        displayDescription = "Hotel (Online)"
+                      } else if (descLower.includes("wallet")) {
+                        displayDescription = "Wallet"
+                      } else if (descLower.includes("online") || descLower.includes("razorpay") || descLower.includes("upi") || descLower.includes("card")) {
+                        displayDescription = "Online"
+                      } else if (descLower.includes("cash") || descLower.includes("cod")) {
+                        displayDescription = "Cash on Delivery"
+                      } else {
+                        displayDescription = "Online"
+                      }
+                    }
+                  }
 
                   return (
                     <div
-                      key={t.id}
-                      className="rounded-lg border border-slate-200 bg-white px-4 py-3"
+                      key={t.id || t._id}
+                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition duration-200"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{title}</p>
-                          <p className="text-xs text-slate-600 mt-0.5">{t.description || "—"}</p>
+                        <div className="flex items-center gap-3">
+                          <span className={`p-2 rounded-full inline-flex shrink-0 ${iconBg}`}>
+                            {icon}
+                          </span>
+                          <div>
+                            <p className="text-sm font-bold text-slate-900">{title}</p>
+                            {displayDescription && (
+                              rawType === "payment" ? (
+                                <span className="inline-flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 mt-1.5">
+                                  {displayDescription}
+                                </span>
+                              ) : (
+                                <p className="text-xs text-slate-500 mt-0.5">{displayDescription}</p>
+                              )
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-slate-900">
-                            {isEdit ? editAmountText : t?.amount != null ? formatCurrency(t.amount) : "—"}
-                          </p>
-                          <p className="text-[11px] text-slate-500">{when}</p>
+                        <div className="text-right shrink-0">
+                          <p className={`text-sm ${amountColor}`}>{formattedAmount}</p>
+                          <p className="text-[10px] font-medium text-slate-400 mt-1">{when}</p>
                         </div>
                       </div>
 
-                      {isEdit && (
-                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
-                          <p>
-                            Pocket: <span className="font-semibold text-slate-900">{formatCurrency(md.oldPocket)}</span>{" "}
-                            → <span className="font-semibold text-slate-900">{formatCurrency(md.newPocket)}</span>
-                          </p>
-                          <p>
-                            Cash in hand:{" "}
-                            <span className="font-semibold text-slate-900">{formatCurrency(md.oldCashInHand)}</span>{" "}
-                            → <span className="font-semibold text-slate-900">{formatCurrency(md.newCashInHand)}</span>
-                          </p>
+                      {orderIdentifier && (
+                        <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                            <Package className="w-3.5 h-3.5 text-slate-400" />
+                            Order ID
+                          </span>
+                          <span className="text-xs font-mono font-semibold text-indigo-600 select-all bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100/50">
+                            {String(orderIdentifier)}
+                          </span>
                         </div>
                       )}
 
                       {t?.processedBy?.name && (
-                        <p className="mt-2 text-[11px] text-slate-500">
-                          By: <span className="font-medium text-slate-700">{t.processedBy.name}</span>
-                        </p>
+                        <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-50 pt-2">
+                          <span className="font-medium">Processed by:</span>
+                          <span className="font-semibold text-slate-700">{t.processedBy.name}</span>
+                        </div>
                       )}
+
+                      {showBreakdown && (
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600 border-t border-slate-100 pt-2.5">
+                          <div className="flex justify-between items-center bg-slate-50 px-2.5 py-1.5 rounded border border-slate-100">
+                            <span className="text-slate-500 font-medium">Pocket:</span>
+                            <span className="font-semibold text-slate-900">
+                              {formatCurrency(md.oldPocket)} → {formatCurrency(md.newPocket)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center bg-slate-50 px-2.5 py-1.5 rounded border border-slate-100">
+                            <span className="text-slate-500 font-medium">Cash collected:</span>
+                            <span className="font-semibold text-slate-900">
+                              {formatCurrency(md.oldCashInHand)} → {formatCurrency(md.newCashInHand)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-2.5 flex items-center justify-between">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
+                          {t?.status || "Completed"}
+                        </span>
+                        {t?.failureReason && (
+                          <span className="text-[10px] font-medium text-rose-600 max-w-[200px] truncate" title={t.failureReason}>
+                            Reason: {t.failureReason}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )
                 })}

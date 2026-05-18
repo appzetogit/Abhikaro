@@ -241,6 +241,11 @@ export const getDeliveryBoyWalletHistory = asyncHandler(async (req, res) => {
 
   const wallet = await DeliveryWallet.findById(id)
     .populate('transactions.processedBy', 'name email')
+    .populate({
+      path: 'transactions.orderId',
+      select: 'orderId payment hotelId hotelReference',
+      model: 'Order'
+    })
     .lean();
 
   if (!wallet) {
@@ -248,6 +253,15 @@ export const getDeliveryBoyWalletHistory = asyncHandler(async (req, res) => {
   }
 
   let transactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
+
+  // Filter out order earnings (payment transactions) if the order has been deleted from the database.
+  // When an order is deleted, Mongoose populate returns null for t.orderId.
+  transactions = transactions.filter((t) => {
+    if (t.type === 'payment' && !t.orderId) {
+      return false;
+    }
+    return true;
+  });
 
   // newest first
   transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -270,13 +284,38 @@ export const getDeliveryBoyWalletHistory = asyncHandler(async (req, res) => {
     walletId: wallet._id,
     transactions: paginated.map((t) => {
       const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
+      const populatedOrder = t.orderId && typeof t.orderId === 'object' ? t.orderId : null;
+      
+      let orderPaymentType = null;
+      if (populatedOrder) {
+        const isHotel = !!(populatedOrder.hotelId || populatedOrder.hotelReference);
+        const method = populatedOrder.payment?.method;
+        if (isHotel) {
+          if (method === 'pay_at_hotel') {
+            orderPaymentType = 'pay at hotel';
+          } else {
+            orderPaymentType = 'hotel(online)';
+          }
+        } else {
+          if (method === 'wallet') {
+            orderPaymentType = 'wallet';
+          } else if (method === 'cash') {
+            orderPaymentType = 'cash';
+          } else if (['razorpay', 'upi', 'card'].includes(method)) {
+            orderPaymentType = 'online';
+          }
+        }
+      }
+
       return {
         id: t._id,
         type: t.type,
         status: t.status,
         amount: t.amount,
         description: t.description,
-        orderId: t.orderId || null,
+        orderId: populatedOrder ? populatedOrder._id : (t.orderId || null),
+        orderNumber: populatedOrder ? populatedOrder.orderId : (md?.orderId || null),
+        orderPaymentType,
         date: t.createdAt,
         processedAt: t.processedAt,
         processedBy: t.processedBy ? {

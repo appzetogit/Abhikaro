@@ -1462,12 +1462,6 @@ export default function Customers() {
                 <p className="font-semibold text-slate-900 truncate">
                   {walletHistoryCustomer.name || "Customer"}
                 </p>
-                <p className="text-[11px] md:text-xs text-slate-600">
-                  Current:&nbsp;
-                  <span className="font-semibold text-emerald-700">
-                    {formatCurrency(walletHistoryCustomer.walletBalance ?? 0)}
-                  </span>
-                </p>
               </div>
             )}
 

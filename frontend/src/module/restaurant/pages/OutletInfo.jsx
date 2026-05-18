@@ -805,36 +805,6 @@ export default function OutletInfo() {
           </div>
         </motion.div>
 
-        {/* Timings Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.12 }}
-          className="bg-blue-100/50 rounded-lg p-4 border border-blue-300"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 font-normal mb-1">Opening & Closing timing</p>
-              <p className="text-base font-semibold text-gray-900">
-                {loading
-                  ? "Loading..."
-                  : (() => {
-                      const { openingTime: open, closingTime: close } = getCurrentTimings()
-                      if (open || close)
-                        return `${open ? formatTime12Hour(open) : "—"} - ${close ? formatTime12Hour(close) : "—"}`
-                      return "Not set"
-                    })()}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleOpenTimingsDialog}
-              className="text-blue-600 text-sm font-normal hover:text-blue-700 transition-colors ml-4 shrink-0 self-start"
-            >
-              Edit
-            </button>
-          </div>
-        </motion.div>
 
         {/* Action Cards */}
         <motion.div

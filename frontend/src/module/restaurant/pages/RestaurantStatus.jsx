@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import Lenis from "lenis"
-import { ArrowLeft, Settings } from "lucide-react"
+import { ArrowLeft, Settings, Clock } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent } from "@/components/ui/card"
 import { restaurantAPI } from "@/lib/api"
@@ -29,6 +29,107 @@ export default function RestaurantStatus() {
   const [isDayClosed, setIsDayClosed] = useState(false)
   const [outletTimings, setOutletTimings] = useState(null)
   const hasAutoSyncedRef = useRef(false)
+
+  // Auto On/Off schedule state
+  const [isAutoOnOff, setIsAutoOnOff] = useState(false)
+  const [openHour, setOpenHour] = useState("04")
+  const [openMin, setOpenMin] = useState("00")
+  const [openAmpm, setOpenAmpm] = useState("AM")
+  const [closeHour, setCloseHour] = useState("08")
+  const [closeMin, setCloseMin] = useState("00")
+  const [closeAmpm, setCloseAmpm] = useState("PM")
+  const [savingTimings, setSavingTimings] = useState(false)
+
+  // 12-hour / 24-hour helpers
+  const convertTo24Hour = (hour, minute, ampm) => {
+    let h = parseInt(hour, 10)
+    if (ampm === "PM" && h < 12) h += 12
+    if (ampm === "AM" && h === 12) h = 0
+    return `${h.toString().padStart(2, "0")}:${minute.padStart(2, "0")}`
+  }
+
+  const convertFrom24Hour = (time24) => {
+    if (!time24) return { hour: "04", minute: "00", ampm: "AM" }
+    const [hStr, mStr] = time24.split(":")
+    let h = parseInt(hStr, 10)
+    const ampm = h >= 12 ? "PM" : "AM"
+    h = h % 12 || 12
+    return {
+      hour: h.toString().padStart(2, "0"),
+      minute: mStr || "00",
+      ampm
+    }
+  }
+
+  // Load schedule timings when restaurantData is fetched
+  useEffect(() => {
+    if (restaurantData?.deliveryTimings) {
+      const timings = restaurantData.deliveryTimings
+      setIsAutoOnOff(!!timings.isAutoOnOffEnabled)
+      
+      if (timings.openingTime) {
+        const { hour, minute, ampm } = convertFrom24Hour(timings.openingTime)
+        setOpenHour(hour)
+        setOpenMin(minute)
+        setOpenAmpm(ampm)
+      }
+      if (timings.closingTime) {
+        const { hour, minute, ampm } = convertFrom24Hour(timings.closingTime)
+        setCloseHour(hour)
+        setCloseMin(minute)
+        setCloseAmpm(ampm)
+      }
+    }
+  }, [restaurantData])
+
+  // Save timings helper
+  const handleSaveTimings = async (autoOnOffVal = isAutoOnOff, oH = openHour, oM = openMin, oA = openAmpm, cH = closeHour, cM = closeMin, cA = closeAmpm) => {
+    setSavingTimings(true)
+    const openingTime24 = convertTo24Hour(oH, oM, oA)
+    const closingTime24 = convertTo24Hour(cH, cM, cA)
+
+    try {
+      const response = await restaurantAPI.updateProfile({
+        deliveryTimings: {
+          openingTime: openingTime24,
+          closingTime: closingTime24,
+          isAutoOnOffEnabled: autoOnOffVal
+        }
+      })
+      
+      const updatedRest = response?.data?.data?.restaurant || response?.data?.restaurant
+      if (updatedRest) {
+        setRestaurantData(updatedRest)
+        // Also update local storage timings to keep it in sync
+        const currentTimings = localStorage.getItem("restaurant_outlet_timings")
+        if (currentTimings) {
+          try {
+            const parsed = JSON.parse(currentTimings)
+            // Update every open day with the new timings
+            Object.keys(parsed).forEach(day => {
+              if (parsed[day].isOpen) {
+                parsed[day].openingTime = openingTime24
+                parsed[day].closingTime = closingTime24
+              }
+            })
+            localStorage.setItem("restaurant_outlet_timings", JSON.stringify(parsed))
+            window.dispatchEvent(new CustomEvent("outletTimingsUpdated"))
+          } catch (e) {
+            console.error("Error updating local timings:", e)
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error updating timings:", error)
+    } finally {
+      setSavingTimings(false)
+    }
+  }
+
+  const handleAutoOnOffToggle = async (checked) => {
+    setIsAutoOnOff(checked)
+    await handleSaveTimings(checked)
+  }
 
   // Update current date/time every minute
   useEffect(() => {
@@ -498,17 +599,124 @@ export default function RestaurantStatus() {
           </CardContent>
         </Card>
 
-  {/* Warning Message - Only show if outside timings AND day is not closed */}
-  {!isWithinTimings && restaurantData && !isDayClosed && (
-        <div className="bg-pink-50 rounded-b-lg rounded-t-none p-4 flex items-start gap-3">
-          <div className="w-5 h-5 rounded-full bg-red-600 flex items-center justify-center shrink-0 mt-0.5">
-            <span className="text-white text-xs font-bold">!</span>
+
+      {/* Auto On/Off Timings Scheduler Card */}
+      <Card className="mt-4 bg-white border border-gray-200 shadow-sm rounded-lg overflow-hidden">
+        <CardContent className="p-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <Clock className="w-5 h-5 text-blue-600" />
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Auto On/Off Schedule</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Automatically open and close restaurant</p>
+              </div>
+            </div>
+            <Switch
+              checked={isAutoOnOff}
+              onCheckedChange={handleAutoOnOffToggle}
+              className="data-[state=unchecked]:bg-gray-300 data-[state=checked]:bg-blue-600"
+            />
           </div>
-          <p className="text-sm text-gray-700 flex-1">
-            You are currently outside your scheduled delivery timings.
-          </p>
-        </div>
-      )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Opening Time Selector */}
+            <div className="flex flex-col gap-2 bg-gray-50/50 p-3 rounded-lg border border-gray-100">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Opening Time (e.g. 4 AM)</span>
+              <div className="flex items-center gap-1.5 mt-1">
+                {/* Hour dropdown */}
+                <select
+                  value={openHour}
+                  onChange={(e) => {
+                    setOpenHour(e.target.value)
+                    handleSaveTimings(isAutoOnOff, e.target.value, openMin, openAmpm, closeHour, closeMin, closeAmpm)
+                  }}
+                  className="flex-1 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                >
+                  {Array.from({ length: 12 }, (_, i) => (i + 1).toString()).map(h => (
+                    <option key={h} value={h.padStart(2, "0")}>{h}</option>
+                  ))}
+                </select>
+                <span className="text-gray-400 font-bold">:</span>
+                {/* Minute dropdown */}
+                <select
+                  value={openMin}
+                  onChange={(e) => {
+                    setOpenMin(e.target.value)
+                    handleSaveTimings(isAutoOnOff, openHour, e.target.value, openAmpm, closeHour, closeMin, closeAmpm)
+                  }}
+                  className="flex-1 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                >
+                  {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, "0")).map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                {/* AM/PM selector */}
+                <select
+                  value={openAmpm}
+                  onChange={(e) => {
+                    setOpenAmpm(e.target.value)
+                    handleSaveTimings(isAutoOnOff, openHour, openMin, e.target.value, closeHour, closeMin, closeAmpm)
+                  }}
+                  className="flex-1 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Closing Time Selector */}
+            <div className="flex flex-col gap-2 bg-gray-50/50 p-3 rounded-lg border border-gray-100">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Closing Time (e.g. 8 PM)</span>
+              <div className="flex items-center gap-1.5 mt-1">
+                {/* Hour dropdown */}
+                <select
+                  value={closeHour}
+                  onChange={(e) => {
+                    setCloseHour(e.target.value)
+                    handleSaveTimings(isAutoOnOff, openHour, openMin, openAmpm, e.target.value, closeMin, closeAmpm)
+                  }}
+                  className="flex-1 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                >
+                  {Array.from({ length: 12 }, (_, i) => (i + 1).toString()).map(h => (
+                    <option key={h} value={h.padStart(2, "0")}>{h}</option>
+                  ))}
+                </select>
+                <span className="text-gray-400 font-bold">:</span>
+                {/* Minute dropdown */}
+                <select
+                  value={closeMin}
+                  onChange={(e) => {
+                    setCloseMin(e.target.value)
+                    handleSaveTimings(isAutoOnOff, openHour, openMin, openAmpm, closeHour, e.target.value, closeAmpm)
+                  }}
+                  className="flex-1 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                >
+                  {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, "0")).map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                {/* AM/PM selector */}
+                <select
+                  value={closeAmpm}
+                  onChange={(e) => {
+                    setCloseAmpm(e.target.value)
+                    handleSaveTimings(isAutoOnOff, openHour, openMin, openAmpm, closeHour, closeMin, e.target.value)
+                  }}
+                  className="flex-1 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          {savingTimings && (
+            <p className="text-xs text-blue-600 font-semibold animate-pulse text-right">Saving changes...</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Outlet Closed Dialog */}
       <Dialog open={showOutletClosedDialog} onOpenChange={setShowOutletClosedDialog}>

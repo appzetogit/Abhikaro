@@ -1048,6 +1048,13 @@ export async function notifyDeliveryBoyOrderNoteUpdated(order, deliveryPartnerId
  * Calculate distance between two coordinates using Haversine formula
  */
 function calculateDistance(lat1, lng1, lat2, lng2) {
+  // Safety guard: if coordinates are invalid, empty, or default [0, 0] (Null Island)
+  if (!lat1 || !lng1 || !lat2 || !lng2 || 
+      Number(lat1) === 0 || Number(lng1) === 0 || Number(lat2) === 0 || Number(lng2) === 0 ||
+      (Math.abs(Number(lat1)) < 0.0001 && Math.abs(Number(lng1)) < 0.0001) ||
+      (Math.abs(Number(lat2)) < 0.0001 && Math.abs(Number(lng2)) < 0.0001)) {
+    return 0;
+  }
   const R = 6371; // Earth's radius in kilometers
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
@@ -1056,7 +1063,9 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLng / 2) * Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Distance in kilometers
+  const distance = R * c;
+  // If calculated distance is physically impossible for local delivery, treat as invalid
+  return distance > 100 ? 0 : distance;
 }
 
 /**

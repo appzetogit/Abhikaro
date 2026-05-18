@@ -121,6 +121,14 @@ deliveryBoyCommissionSchema.statics.findApplicableRule = async function(distance
 
 // Static method to calculate commission for a given distance
 deliveryBoyCommissionSchema.statics.calculateCommission = async function(distance) {
+  // Safety guard: if distance is NaN, negative, or extremely large (e.g. from [0,0] coordinate issue), reset to 0
+  let distVal = Number(distance);
+  if (isNaN(distVal) || distVal < 0 || distVal > 100) {
+    distVal = 0;
+  }
+  const distanceForCalc = distVal;
+  distance = distanceForCalc;
+
   // Get all active rules sorted by minDistance (ascending)
   const rules = await this.find({ status: true }).sort({ minDistance: 1 });
   
