@@ -119,7 +119,7 @@ export const getUserWalletHistory = asyncHandler(async (req, res) => {
   }
 
   const { id } = req.params;
-  const { page = 1, limit = 15, onlyAdjustments = "true" } = req.query || {};
+  const { page = 1, limit = 15, onlyAdjustments = "false" } = req.query || {};
 
   const user = await User.findById(id).lean();
   if (!user || user.role !== "user") {
@@ -130,41 +130,32 @@ export const getUserWalletHistory = asyncHandler(async (req, res) => {
     .populate("transactions.processedBy", "name email")
     .lean();
 
-  if (!wallet) {
-    return successResponse(res, 200, "No history found", {
-      userId: user._id.toString(),
-      transactions: [],
-      pagination: {
-        page: 1,
-        limit: parseInt(limit, 10) || 15,
-        total: 0,
-        pages: 0,
-      },
-    });
-  }
+  // Load all user orders from Order collection
+  const orders = await Order.find({ userId: user._id }).lean();
+  const ordersMap = new Map(orders.map((o) => [o._id.toString(), o]));
 
-  let transactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
-  transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  let unifiedHistory = [];
 
-  const onlyAdj = String(onlyAdjustments).toLowerCase() !== "false";
-  if (onlyAdj) {
-    transactions = transactions.filter((t) => {
+  // 1. Process wallet transactions if wallet exists
+  if (wallet && Array.isArray(wallet.transactions)) {
+    for (const t of wallet.transactions) {
       const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
-      return md.adjustment === true || t.type === "addition" || t.type === "deduction";
-    });
-  }
 
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 15));
-  const total = transactions.length;
-  const skip = (pageNum - 1) * limitNum;
-  const paginated = transactions.slice(skip, skip + limitNum);
+      // Skip rule:
+      // - If transaction is linked to a deleted order, we skip it.
+      // - If transaction is deduction and linked to an existing order, we skip it because we will represent it as an order entry.
+      // - We ALWAYS keep t.type === "refund" so refund additions show as separate records.
+      if (t.orderId) {
+        const orderExists = ordersMap.has(t.orderId.toString());
+        if (!orderExists) {
+          continue;
+        }
+        if (t.type === "deduction") {
+          continue;
+        }
+      }
 
-  return successResponse(res, 200, "User wallet history retrieved successfully", {
-    userId: user._id.toString(),
-    transactions: paginated.map((t) => {
-      const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
-      return {
+      unifiedHistory.push({
         id: t._id,
         type: t.type,
         status: t.status,
@@ -178,8 +169,80 @@ export const getUserWalletHistory = asyncHandler(async (req, res) => {
         orderId: t.orderId,
         paymentMethod: t.paymentMethod,
         metadata: md,
-      };
-    }),
+      });
+    }
+  }
+
+  // 2. Process all orders from the Order collection
+  for (const order of orders) {
+    const isCancelled = order.status === "cancelled";
+    const paymentMethodLabel = order.payment?.method === "razorpay" 
+      ? "Online" 
+      : order.payment?.method === "pay_at_hotel" 
+      ? "Pay at Hotel" 
+      : order.payment?.method === "wallet" 
+      ? "Wallet" 
+      : order.payment?.method === "cash"
+      ? "Cash"
+      : order.payment?.method || "Other";
+
+    let title = `Paid for Order (${paymentMethodLabel})`;
+    let badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+
+    if (isCancelled) {
+      title = `Cancelled Order (${paymentMethodLabel})`;
+      badgeClass = "bg-red-50 text-red-700 border-red-200";
+    } else if (order.payment?.method === "wallet") {
+      badgeClass = "bg-amber-50 text-amber-700 border-amber-200";
+    }
+
+    let description = `Order payment - Order #${order.orderId}`;
+    if (isCancelled && order.cancellationReason) {
+      description = `Order Cancelled (${order.cancellationReason}) - Order #${order.orderId}`;
+    }
+
+    unifiedHistory.push({
+      id: order._id,
+      orderId: order._id,
+      type: "deduction",
+      status: order.status,
+      amount: order.pricing?.total || 0,
+      description: description,
+      date: order.createdAt,
+      paymentMethod: order.payment?.method || "other",
+      title: title,
+      badgeClass: badgeClass,
+      isOrderActivity: true,
+      metadata: {
+        orderIdStr: order.orderId,
+        paymentMethod: order.payment?.method,
+        cancellationReason: order.cancellationReason || null,
+        cancelledBy: order.cancelledBy || null,
+      },
+    });
+  }
+
+  // Sort by date (newest first)
+  unifiedHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Apply onlyAdjustments filter if set to true
+  const onlyAdj = String(onlyAdjustments).toLowerCase() === "true";
+  if (onlyAdj) {
+    unifiedHistory = unifiedHistory.filter((t) => {
+      const isWalletAdj = t.metadata?.adjustment === true || t.type === "addition" || t.type === "deduction";
+      return isWalletAdj && !t.orderId;
+    });
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 15));
+  const total = unifiedHistory.length;
+  const skip = (pageNum - 1) * limitNum;
+  const paginated = unifiedHistory.slice(skip, skip + limitNum);
+
+  return successResponse(res, 200, "User wallet history retrieved successfully", {
+    userId: user._id.toString(),
+    transactions: paginated,
     pagination: {
       page: pageNum,
       limit: limitNum,

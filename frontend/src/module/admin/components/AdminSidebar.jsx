@@ -46,7 +46,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
-import { sidebarMenuData } from "../data/sidebarMenu"
+import { sidebarMenuData } from "../sidebarMenu"
 import { hasPermission, isSuperAdmin } from "../utils/adminPermissions"
 import { getCachedSettings, loadBusinessSettings } from "@/lib/utils/businessSettings"
 

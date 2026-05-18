@@ -1,17 +1,20 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { Search, Download, ChevronDown, Calendar, Eye, FileDown, FileSpreadsheet, FileText, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle, Pencil, Trash2, Wallet, IndianRupee, Clock3, Loader2 } from "lucide-react"
+import { Search, Download, ChevronDown, ChevronLeft, ChevronRight, Calendar, Eye, FileDown, FileSpreadsheet, FileText, Mail, Phone, MapPin, Package, DollarSign, Calendar as CalendarIcon, User, CheckCircle, XCircle, Pencil, Trash2, Wallet, IndianRupee, Clock3, Loader2 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { exportCustomersToCSV, exportCustomersToExcel, exportCustomersToPDF } from "../components/customers/customersExportUtils"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import ViewOrderDialog from "../components/orders/ViewOrderDialog"
 
 export default function Customers() {
   const [searchQuery, setSearchQuery] = useState("")
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [totalCustomers, setTotalCustomers] = useState(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 15
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [userDetails, setUserDetails] = useState(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
@@ -45,6 +48,31 @@ export default function Customers() {
   const [walletHistoryPage, setWalletHistoryPage] = useState(1)
   const [walletHistoryPages, setWalletHistoryPages] = useState(1)
   const [walletHistoryCustomer, setWalletHistoryCustomer] = useState(null)
+
+  // Shared order view dialog state
+  const [selectedOrder, setSelectedOrder] = useState(null)
+  const [isOrderViewOpen, setIsOrderViewOpen] = useState(false)
+  const [viewOrderLoading, setViewOrderLoading] = useState(false)
+
+  const openOrder = async (orderId) => {
+    if (!orderId) return
+    try {
+      setViewOrderLoading(true)
+      const res = await adminAPI.getOrderById(orderId)
+      const found = res?.data?.data?.order || null
+      if (found) {
+        setSelectedOrder(found)
+        setIsOrderViewOpen(true)
+      } else {
+        toast.error("Order details not found")
+      }
+    } catch (e) {
+      console.error("Error opening order details:", e)
+      toast.error("Failed to load order details")
+    } finally {
+      setViewOrderLoading(false)
+    }
+  }
 
   const formatCurrency = useCallback((amount) => {
     if (amount == null) return "₹0.00"
@@ -192,6 +220,46 @@ export default function Customers() {
 
     return result
   }, [customers, searchQuery, filters])
+
+  // Reset page when search or filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, filters])
+
+  const paginatedCustomers = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    return filteredCustomers.slice(startIndex, startIndex + itemsPerPage)
+  }, [filteredCustomers, currentPage, itemsPerPage])
+
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage)
+
+  const getPageNumbers = () => {
+    const pages = []
+    const range = 2 // Number of pages to show before and after current page
+    
+    for (let i = 1; i <= totalPages; i++) {
+      if (
+        i === 1 ||
+        i === totalPages ||
+        (i >= currentPage - range && i <= currentPage + range)
+      ) {
+        pages.push(i)
+      } else if (
+        i === currentPage - range - 1 ||
+        i === currentPage + range + 1
+      ) {
+        pages.push("...")
+      }
+    }
+    
+    // Remove duplicate ellipses
+    return pages.filter((page, index) => {
+      if (page === "...") {
+        return pages[index - 1] !== "..."
+      }
+      return true
+    })
+  }
 
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({ ...prev, [field]: value }))
@@ -356,7 +424,7 @@ export default function Customers() {
       const res = await adminAPI.getUserWalletHistory(userId, {
         page: p,
         limit: 20,
-        onlyAdjustments: true,
+        onlyAdjustments: false,
       })
       if (res?.data?.success) {
         const data = res.data.data || {}
@@ -731,10 +799,10 @@ export default function Customers() {
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((customer, index) => (
+                  paginatedCustomers.map((customer, index) => (
                     <tr key={customer.id || customer.sl} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-xs font-medium text-slate-700">{index + 1}</span>
+                        <span className="text-xs font-medium text-slate-700">{(currentPage - 1) * itemsPerPage + index + 1}</span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -825,6 +893,61 @@ export default function Customers() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 pt-6">
+              <div className="text-xs md:text-sm text-slate-500">
+                Showing <span className="font-semibold text-slate-900">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
+                <span className="font-semibold text-slate-900">
+                  {Math.min(currentPage * itemsPerPage, filteredCustomers.length)}
+                </span>{" "}
+                of <span className="font-semibold text-slate-900">{filteredCustomers.length}</span> customers
+              </div>
+              
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-all cursor-pointer"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                
+                <div className="flex items-center gap-1">
+                  {getPageNumbers().map((page, idx) => (
+                    page === "..." ? (
+                      <span key={`ellipsis-${idx}`} className="px-3 py-1.5 text-xs font-semibold text-slate-400">
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={`page-${page}`}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                          currentPage === page
+                            ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100"
+                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    )
+                  ))}
+                </div>
+                
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-all cursor-pointer"
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1356,31 +1479,92 @@ export default function Customers() {
             ) : walletHistoryItems.length === 0 ? (
               <div className="py-10 text-center">
                 <p className="text-slate-700 font-semibold">No history</p>
-                <p className="text-slate-500 text-sm">No wallet adjustments found.</p>
+                <p className="text-slate-500 text-sm">No wallet transactions found.</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[380px] overflow-auto pr-1">
+              <div className="space-y-2.5 max-h-[380px] overflow-auto pr-1">
                 {walletHistoryItems.map((t) => {
                   const when = t?.date ? new Date(t.date).toLocaleString("en-IN") : "—"
-                  const isAdd = t?.type === "addition"
-                  const title = isAdd ? "Add" : t?.type === "deduction" ? "Deduct" : (t?.type || "Transaction")
+                  const rawType = String(t?.type || "").toLowerCase()
+                  const isAdd = rawType === "addition"
+                  const isRefund = rawType === "refund"
+                  const isDeduct = rawType === "deduction"
+
+                  let title = t.title || "Transaction"
+                  let badgeClass = t.badgeClass || "bg-slate-100 text-slate-700 border-slate-200"
+
+                  if (!t.title) {
+                    if (isAdd) {
+                      if (t.metadata?.adjustment === true) {
+                        title = "Admin Credit"
+                        badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      } else {
+                        title = "Added to Wallet"
+                        badgeClass = "bg-green-50 text-green-700 border-green-200"
+                      }
+                    } else if (isRefund) {
+                      title = "Order Refund"
+                      badgeClass = "bg-blue-50 text-blue-700 border-blue-200"
+                    } else if (isDeduct) {
+                      if (t.metadata?.adjustment === true) {
+                        title = "Admin Debit"
+                        badgeClass = "bg-rose-50 text-rose-700 border-rose-200"
+                      } else if (t.orderId) {
+                        title = "Paid for Order"
+                        badgeClass = "bg-amber-50 text-amber-700 border-amber-200"
+                      } else {
+                        title = "Deducted"
+                        badgeClass = "bg-rose-50 text-rose-700 border-rose-200"
+                      }
+                    }
+                  }
+
+                  const isPositive = isAdd || isRefund
+
                   return (
-                    <div key={t.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                    <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300 transition-all">
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{title}</p>
-                          <p className="text-xs text-slate-600 mt-0.5">{t.description || "—"}</p>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${badgeClass}`}>
+                              {title}
+                            </span>
+                            {t.paymentMethod && t.paymentMethod !== "other" && (
+                              <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                                • {t.paymentMethod}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs font-medium text-slate-700 leading-normal">{t.description || "—"}</p>
+                          
+                          {t.orderId && (
+                            <div className="pt-1">
+                              <button
+                                type="button"
+                                onClick={() => openOrder(t.orderId)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-all"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                View Order
+                              </button>
+                            </div>
+                          )}
+
                           {t?.processedBy?.name && (
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              By: <span className="font-medium text-slate-700">{t.processedBy.name}</span>
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              By: <span className="font-semibold text-slate-700">{t.processedBy.name}</span>
                             </p>
                           )}
                         </div>
-                        <div className="text-right">
-                          <p className={`text-sm font-semibold ${isAdd ? "text-emerald-700" : "text-rose-700"}`}>
-                            {t?.amount != null ? `${isAdd ? "+" : "−"}${formatCurrency(Math.abs(Number(t.amount)))}` : "—"}
+                        <div className="text-right shrink-0">
+                          <p className={`text-sm font-bold ${t.isOrderActivity ? "text-slate-800" : isPositive ? "text-emerald-700" : "text-rose-700"}`}>
+                            {t?.amount != null 
+                              ? t.isOrderActivity 
+                                ? formatCurrency(Number(t.amount))
+                                : `${isPositive ? "+" : "−"}${formatCurrency(Math.abs(Number(t.amount)))}`
+                              : "—"}
                           </p>
-                          <p className="text-[11px] text-slate-500">{when}</p>
+                          <p className="text-[10px] font-medium text-slate-400 mt-1">{when}</p>
                         </div>
                       </div>
                     </div>
@@ -1435,6 +1619,14 @@ export default function Customers() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* View Order Dialog */}
+      <ViewOrderDialog
+        isOpen={isOrderViewOpen}
+        onOpenChange={setIsOrderViewOpen}
+        order={selectedOrder}
+        onPaymentApproved={fetchCustomers}
+      />
     </div>
   )
 }

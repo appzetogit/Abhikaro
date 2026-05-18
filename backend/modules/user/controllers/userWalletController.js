@@ -2,6 +2,7 @@ import { asyncHandler } from '../../../shared/middleware/asyncHandler.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import UserWallet from '../models/UserWallet.js';
 import User from '../../auth/models/User.js';
+import Order from '../../order/models/Order.js';
 import { validate } from '../../../shared/middleware/validate.js';
 import Joi from 'joi';
 import winston from 'winston';
@@ -41,9 +42,25 @@ export const getWallet = asyncHandler(async (req, res) => {
       });
     }
 
+    // Filter out transactions associated with deleted orders
+    let allTransactions = wallet.transactions || [];
+    const orderIds = allTransactions
+      .map(t => t.orderId)
+      .filter(id => id);
+
+    if (orderIds.length > 0) {
+      const existingOrders = await Order.find({ _id: { $in: orderIds } }).select('_id').lean();
+      const existingOrderIdsSet = new Set(existingOrders.map(o => o._id.toString()));
+      allTransactions = allTransactions.filter(t => {
+        if (t.orderId) {
+          return existingOrderIdsSet.has(t.orderId.toString());
+        }
+        return true;
+      });
+    }
+
     // Get all transactions (sorted by date, newest first)
-    const allTransactions = wallet.transactions
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    allTransactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     // Map transactions for frontend
     const transactions = allTransactions.map(t => ({
@@ -69,7 +86,7 @@ export const getWallet = asyncHandler(async (req, res) => {
       totalSpent: wallet.totalSpent || 0,
       totalRefunded: wallet.totalRefunded || 0,
       transactions: transactions,
-      totalTransactions: wallet.transactions.length
+      totalTransactions: allTransactions.length
     };
 
     logger.info(`Wallet retrieved for user: ${user._id}`, {
@@ -112,6 +129,22 @@ export const getTransactions = asyncHandler(async (req, res) => {
 
     // Filter transactions
     let transactions = wallet.transactions || [];
+
+    // Filter out transactions associated with deleted orders
+    const orderIds = transactions
+      .map(t => t.orderId)
+      .filter(id => id);
+
+    if (orderIds.length > 0) {
+      const existingOrders = await Order.find({ _id: { $in: orderIds } }).select('_id').lean();
+      const existingOrderIdsSet = new Set(existingOrders.map(o => o._id.toString()));
+      transactions = transactions.filter(t => {
+        if (t.orderId) {
+          return existingOrderIdsSet.has(t.orderId.toString());
+        }
+        return true;
+      });
+    }
 
     if (type) {
       // Map frontend filter types to backend types
