@@ -1,5 +1,10 @@
 import mongoose from 'mongoose';
 import Order from '../../order/models/Order.js';
+import Restaurant from './Restaurant.js';
+import RestaurantCommission from '../../admin/models/RestaurantCommission.js';
+import TableBooking from '../../dining/models/TableBooking.js';
+import WithdrawalRequest from './WithdrawalRequest.js';
+
 
 const transactionSchema = new mongoose.Schema({
   amount: {
@@ -233,79 +238,241 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
       totalWithdrawn: 0,
       totalEarned: 0
     });
-  } else {
-    let needsSave = false;
+  }
 
-    // 1. Ghost Transaction Cleanup: Check if any payment transaction has an orderId that no longer exists in the Order collection
-    const paymentTxs = wallet.transactions.filter((t) => t.type === 'payment' && t.orderId);
-    if (paymentTxs.length > 0) {
+  let needsSave = false;
+
+  // --- Dynamic Auto-Backfill of Completed/Delivered Orders and Bookings ---
+  try {
+    const restaurantDoc = await Restaurant.findById(restaurantId).select('restaurantId');
+    const restaurantPublicId = restaurantDoc?.restaurantId;
+    const restaurantIdVariations = [
+      restaurantId.toString(),
+      restaurantPublicId?.toString()
+    ].filter(Boolean);
+
+    // 1. Fetch all delivered orders
+    const orders = await Order.find({
+      restaurantId: { $in: restaurantIdVariations },
+      status: 'delivered'
+    }).lean();
+
+    // 2. Fetch all completed paid dining bookings
+    const bookings = await TableBooking.find({
+      restaurant: restaurantId,
+      status: { $in: ['completed', 'dining_completed'] },
+      paymentStatus: 'paid'
+    }).lean();
+
+    // 3. Check and add payment transactions for orders (also fix wrong amounts)
+    for (const order of orders) {
+      const orderIdStr = order._id.toString();
+      const existingTx = wallet.transactions?.find(
+        (t) => t?.type === 'payment' && t?.orderId?.toString?.() === orderIdStr
+      );
+
+      const subtotal = Number(order.pricing?.subtotal || 0);
+      const discount = Number(order.pricing?.discount || 0);
+      const foodPrice = Math.max(0, subtotal - discount);
+      
+      const commissionResult = await RestaurantCommission.calculateCommissionForOrder(
+        restaurantId,
+        foodPrice
+      );
+      const commissionAmount = commissionResult.commission || 0;
+      const payout = Math.max(0, foodPrice - commissionAmount);
+      const roundedPayout = Math.round(payout * 100) / 100;
+
+      if (!existingTx) {
+        // Not yet credited: add it
+        wallet.transactions.push({
+          amount: roundedPayout,
+          type: 'payment',
+          status: 'Completed',
+          description: `Order #${order.orderId || order._id} - Food Price: ₹${foodPrice.toFixed(2)}, Commission: ₹${commissionAmount.toFixed(2)}`,
+          orderId: order._id,
+          createdAt: order.deliveredAt || order.createdAt || new Date()
+        });
+        needsSave = true;
+      } else if (Math.abs((existingTx.amount || 0) - roundedPayout) > 0.01) {
+        // Already credited but with wrong amount — correct it
+        console.log(`[RestaurantWallet] Correcting tx amount for order ${order.orderId}: ${existingTx.amount} → ${roundedPayout}`);
+        existingTx.amount = roundedPayout;
+        existingTx.description = `Order #${order.orderId || order._id} - Food Price: ₹${foodPrice.toFixed(2)}, Commission: ₹${commissionAmount.toFixed(2)}`;
+        needsSave = true;
+      }
+    }
+
+    // 4. Check and add payment transactions for dining bookings
+    for (const booking of bookings) {
+      const bookingIdStr = booking._id.toString();
+      const alreadyCredited = wallet.transactions?.some(
+        (t) => t?.type === 'payment' && t?.orderId?.toString?.() === bookingIdStr
+      );
+      if (!alreadyCredited) {
+        const finalAmount = booking.finalAmount || booking.billAmount || 0;
+        const payout = booking.restaurantEarning || 0;
+        const commissionAmount = booking.commissionAmount || booking.adminEarning || 0;
+        const roundedPayout = Math.round(payout * 100) / 100;
+
+        wallet.transactions.push({
+          amount: roundedPayout,
+          type: 'payment',
+          status: 'Completed',
+          description: `Dining Booking #${booking.bookingId || booking._id} - Bill Amount: ₹${finalAmount.toFixed(2)}, Commission: ₹${commissionAmount.toFixed(2)}`,
+          orderId: booking._id,
+          createdAt: booking.paidAt || booking.checkOutTime || booking.createdAt || new Date()
+        });
+        needsSave = true;
+      }
+    }
+
+    // 5. Fetch and backfill all withdrawal requests
+    const withdrawals = await WithdrawalRequest.find({ restaurantId }).lean();
+    for (const w of withdrawals) {
+      const wIdStr = w._id.toString();
+      const alreadyAdded = wallet.transactions?.some(
+        (t) => t?.type === 'withdrawal' && t?.description?.includes(wIdStr)
+      );
+      if (!alreadyAdded) {
+        let tStatus = 'Pending';
+        if (w.status === 'Approved' || w.status === 'Processed') {
+          tStatus = 'Completed';
+        } else if (w.status === 'Rejected') {
+          tStatus = 'Cancelled';
+        }
+
+        wallet.transactions.push({
+          amount: Number(w.amount) || 0,
+          type: 'withdrawal',
+          status: tStatus,
+          description: `Withdrawal request created - Request ID: ${wIdStr}`,
+          createdAt: w.requestedAt || w.createdAt || new Date(),
+          processedAt: w.processedAt
+        });
+        needsSave = true;
+      } else {
+        const existingTx = wallet.transactions.find(
+          (t) => t?.type === 'withdrawal' && t?.description?.includes(wIdStr)
+        );
+        let expectedStatus = 'Pending';
+        if (w.status === 'Approved' || w.status === 'Processed') {
+          expectedStatus = 'Completed';
+        } else if (w.status === 'Rejected') {
+          expectedStatus = 'Cancelled';
+        }
+        if (existingTx && existingTx.status !== expectedStatus) {
+          existingTx.status = expectedStatus;
+          existingTx.processedAt = w.processedAt || new Date();
+          needsSave = true;
+        }
+      }
+    }
+
+  } catch (backfillErr) {
+    console.error('[RestaurantWallet] Error backfilling orders/bookings:', backfillErr);
+  }
+
+  // 1. Ghost Transaction Cleanup: Check if any payment transaction has an orderId that no longer exists in Order/TableBooking collection
+  const paymentTxs = wallet.transactions.filter((t) => t.type === 'payment' && t.orderId);
+  if (paymentTxs.length > 0) {
+    try {
       const orderIds = paymentTxs.map((t) => t.orderId);
+      
       const existingOrders = await Order.find({ _id: { $in: orderIds } }).select('_id');
       const existingOrderIdsSet = new Set(existingOrders.map((o) => o._id.toString()));
       
-      const hasGhostTransactions = paymentTxs.some((t) => !existingOrderIdsSet.has(t.orderId.toString()));
+      const existingBookings = await TableBooking.find({ _id: { $in: orderIds } }).select('_id');
+      const existingBookingIdsSet = new Set(existingBookings.map((b) => b._id.toString()));
+      
+      const hasGhostTransactions = paymentTxs.some((t) => 
+        !existingOrderIdsSet.has(t.orderId.toString()) && 
+        !existingBookingIdsSet.has(t.orderId.toString())
+      );
+      
       if (hasGhostTransactions) {
-        console.log(`[RestaurantWallet] Dynamic Cleanup: Removing ghost transactions for deleted orders in wallet: ${wallet._id}`);
+        console.log(`[RestaurantWallet] Dynamic Cleanup: Removing ghost transactions for deleted orders/bookings in wallet: ${wallet._id}`);
         
-        // Filter out payment transactions that refer to non-existent orders
         wallet.transactions = wallet.transactions.filter((t) => {
           if (t.type === 'payment' && t.orderId) {
-            return existingOrderIdsSet.has(t.orderId.toString());
+            return existingOrderIdsSet.has(t.orderId.toString()) || existingBookingIdsSet.has(t.orderId.toString());
           }
           return true;
         });
         
         needsSave = true;
       }
+    } catch (cleanupErr) {
+      console.error('[RestaurantWallet] Error running ghost transaction cleanup:', cleanupErr);
     }
+  }
 
-    // 2. Legacy Backfill or Recalculate: check if legacy balanceAfter is missing, or if we cleaned up ghost transactions
-    const hasLegacy = wallet.transactions.some((t) => t.balanceAfter === 0 && t.amount > 0);
-    if (needsSave || (hasLegacy && wallet.transactions.length > 0)) {
-      console.log(`[RestaurantWallet] Recalculating ledger and running balance for wallet: ${wallet._id}`);
-      let runningBalance = 0;
-      let totalEarned = 0;
-      let totalWithdrawn = 0;
-      
-      // Chronological sort: Map transactions with original index to ensure stable sorting
-      const indexed = wallet.transactions.map((t, idx) => ({ t, idx }));
-      indexed.sort((a, b) => {
-        const dateA = new Date(a.t.createdAt || a.t.processedAt || 0);
-        const dateB = new Date(b.t.createdAt || b.t.processedAt || 0);
-        if (dateA.getTime() !== dateB.getTime()) {
-          return dateA - dateB;
+  // 1.5. Clean up mock/test legacy transactions
+  const hasMockTx = wallet.transactions.some(
+    (t) => t.description && (
+      t.description.toLowerCase().includes('mock') || 
+      t.description.toLowerCase().includes('test') ||
+      t.description === 'Manual deduction'
+    )
+  );
+  if (hasMockTx) {
+    console.log(`[RestaurantWallet] Cleanup: Removing mock/test transactions in wallet: ${wallet._id}`);
+    wallet.transactions = wallet.transactions.filter(
+      (t) => !t.description || (
+        !t.description.toLowerCase().includes('mock') && 
+        !t.description.toLowerCase().includes('test') &&
+        t.description !== 'Manual deduction'
+      )
+    );
+    needsSave = true;
+  }
+
+  // 2. Ledger Recalculate: check if legacy balanceAfter is missing, or if we cleaned up or backfilled transactions
+  const hasLegacy = wallet.transactions.some((t) => t.balanceAfter === 0 && t.amount > 0);
+  if (needsSave || (hasLegacy && wallet.transactions.length > 0)) {
+    console.log(`[RestaurantWallet] Recalculating ledger and running balance for wallet: ${wallet._id}`);
+    let runningBalance = 0;
+    let totalEarned = 0;
+    let totalWithdrawn = 0;
+    
+    // Chronological sort: Map transactions with original index to ensure stable sorting
+    const indexed = wallet.transactions.map((t, idx) => ({ t, idx }));
+    indexed.sort((a, b) => {
+      const dateA = new Date(a.t.createdAt || a.t.processedAt || 0);
+      const dateB = new Date(b.t.createdAt || b.t.processedAt || 0);
+      if (dateA.getTime() !== dateB.getTime()) {
+        return dateA - dateB;
+      }
+      return a.idx - b.idx; // Stable fallback: maintain original database push order
+    });
+
+    indexed.forEach(({ t }) => {
+      if (t.status === 'Completed' || (t.type === 'withdrawal' && t.status === 'Pending')) {
+        const isAdd = ['payment', 'bonus', 'refund'].includes(t.type);
+        const amt = Number(t.amount) || 0;
+        runningBalance = isAdd ? runningBalance + amt : runningBalance - amt;
+        
+        if (t.type === 'payment' || t.type === 'bonus' || t.type === 'refund') {
+          totalEarned += amt;
+        } else if (t.type === 'withdrawal') {
+          totalWithdrawn += amt;
         }
-        return a.idx - b.idx; // Stable fallback: maintain original database push order
-      });
+      }
+      t.balanceAfter = Math.max(0, runningBalance);
+    });
 
-      indexed.forEach(({ t }) => {
-        if (t.status === 'Completed') {
-          const isAdd = ['payment', 'bonus', 'refund'].includes(t.type);
-          const amt = Number(t.amount) || 0;
-          runningBalance = isAdd ? runningBalance + amt : runningBalance - amt;
-          
-          if (t.type === 'payment' || t.type === 'bonus' || t.type === 'refund') {
-            totalEarned += amt;
-          } else if (t.type === 'withdrawal') {
-            totalWithdrawn += amt;
-          }
-        }
-        t.balanceAfter = Math.max(0, runningBalance);
-      });
+    // Update array and save the wallet
+    wallet.transactions = indexed.map(({ t }) => t);
+    wallet.totalBalance = Math.max(0, runningBalance);
+    wallet.totalEarned = Math.max(0, totalEarned);
+    wallet.totalWithdrawn = Math.max(0, totalWithdrawn);
+    wallet.markModified('transactions');
+    needsSave = true;
+  }
 
-      // Update array and save the wallet
-      wallet.transactions = indexed.map(({ t }) => t);
-      wallet.totalBalance = Math.max(0, runningBalance);
-      wallet.totalEarned = Math.max(0, totalEarned);
-      wallet.totalWithdrawn = Math.max(0, totalWithdrawn);
-      wallet.markModified('transactions');
-      needsSave = true;
-    }
-
-    if (needsSave) {
-      await wallet.save();
-      console.log(`[RestaurantWallet] Wallet synced successfully. New balance: ${wallet.totalBalance}`);
-    }
+  if (needsSave) {
+    await wallet.save();
+    console.log(`[RestaurantWallet] Wallet synced successfully. New balance: ${wallet.totalBalance}`);
   }
   
   return wallet;

@@ -204,7 +204,12 @@ export default function HubFinance() {
 
   const cycleEarnings = financeData?.currentCycle?.estimatedPayout ?? 0
   const withdrawableBalance = financeData?.currentCycle?.withdrawableBalance ?? cycleEarnings
-  const lifetimeEarnings = walletSummary?.totalEarned ?? 0
+  // Compute lifetime earnings as balance + withdrawn (math identity: earned = balance + withdrawn)
+  // This avoids race conditions where /finance and /wallet return different snapshots of wallet.totalEarned
+  const lifetimeEarnings = walletSummary
+    ? (walletSummary.totalBalance ?? 0) + (walletSummary.totalWithdrawn ?? 0)
+    : 0
+
 
   // Unused helper functions removed
 

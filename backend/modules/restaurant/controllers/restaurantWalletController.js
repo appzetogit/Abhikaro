@@ -6,7 +6,7 @@ import {
 import asyncHandler from "../../../shared/middleware/asyncHandler.js";
 import winston from "winston";
 import { isWithdrawAllowedNow } from "../../../shared/utils/withdrawSchedule.js";
-import { getOrderSettlement } from "../../order/services/orderSettlementService.js";
+
 
 const logger = winston.createLogger({
   level: "info",
@@ -33,39 +33,10 @@ export const getWallet = asyncHandler(async (req, res) => {
     // Find or create wallet
     const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurant._id);
 
-    /**
-     * Auto-sync wallet payment transactions with settlement netEarning (subtotal - discount - commission).
-     * This fixes older wallets that were credited on subtotal (ignoring discounts), causing inflated balances.
-     *
-     * We adjust balances by delta to preserve any manual Pending withdrawal deductions.
-     */
-    try {
-      let changed = false;
-      for (const tx of wallet.transactions || []) {
-        if (tx?.type !== "payment" || tx?.status !== "Completed" || !tx?.orderId) continue;
 
-        const settlement = await getOrderSettlement(tx.orderId);
-        const net = Number(settlement?.restaurantEarning?.netEarning);
-        if (!Number.isFinite(net) || net < 0) continue;
+    // Note: wallet amounts are now managed exclusively by findOrCreateByRestaurantId
+    // which recalculates from RestaurantCommission to ensure consistency.
 
-        const old = Number(tx.amount || 0);
-        // Ignore tiny rounding differences
-        if (Math.abs(net - old) < 0.01) continue;
-
-        const delta = net - old;
-        tx.amount = net;
-        wallet.totalEarned = Math.max(0, Number(wallet.totalEarned || 0) + delta);
-        wallet.totalBalance = Math.max(0, Number(wallet.totalBalance || 0) + delta);
-        changed = true;
-      }
-
-      if (changed) {
-        await wallet.save();
-      }
-    } catch (syncErr) {
-      // Never fail wallet fetch because of sync issues
-      logger.warn(`Wallet sync skipped: ${syncErr.message}`);
-    }
 
     // Check global withdraw schedule
     const { allowed, nextWindowText } = await isWithdrawAllowedNow();
