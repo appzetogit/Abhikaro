@@ -1039,28 +1039,7 @@ export default function HubFinance() {
               <div className="bg-white rounded-lg p-6 text-center text-gray-500">Loading...</div>
             ) : (
               <div className="space-y-4">
-                {financeData?.currentCycle && (
-                  <div className="bg-white rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-700 mb-1">Current cycle</p>
-                        <p className="text-2xl font-bold text-gray-900">
-                          ₹{(financeData.currentCycle.estimatedPayout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {financeData.currentCycle.totalOrders ?? 0} orders • Payout includes applicable deductions. Tax liability as per local laws.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => downloadInvoice('current')}
-                        className="ml-4 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors shrink-0"
-                        title="Download Invoice"
-                      >
-                        <Download className="w-5 h-5 text-gray-700" />
-                      </button>
-                    </div>
-                  </div>
-                )}
+
                 {pastCyclesData?.orders?.length > 0 && (
                   <div className="bg-white rounded-lg p-4">
                     <div className="flex items-start justify-between mb-2">
