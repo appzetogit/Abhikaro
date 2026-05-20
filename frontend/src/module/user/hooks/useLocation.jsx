@@ -7,21 +7,72 @@ export function useLocation() {
   const UI_COORD_CHANGE_THRESHOLD_METERS = 10
   const SAME_POINT_DEDUPE_MIN_METERS = 20
 
-  const [location, setLocation] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [location, setLocation] = useState(() => {
+    try {
+      const stored = localStorage.getItem("userLocation")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed && (parsed.latitude || parsed.city || parsed.address)) {
+          return parsed
+        }
+      }
+    } catch (e) {
+      console.error("Error reading initial location from localStorage:", e)
+    }
+    return null
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      const stored = localStorage.getItem("userLocation")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed && (parsed.latitude || parsed.city || parsed.address)) {
+          return false
+        }
+      }
+    } catch (e) {}
+    return true
+  })
   const [error, setError] = useState(null)
-  const [permissionGranted, setPermissionGranted] = useState(false)
+  const [permissionGranted, setPermissionGranted] = useState(() => {
+    try {
+      const stored = localStorage.getItem("userLocation")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed && parsed.latitude && parsed.longitude) {
+          return true
+        }
+      }
+    } catch (e) {}
+    return false
+  })
   const manualOverrideEnabledRef = useRef(false)
 
   const watchIdRef = useRef(null)
   const updateTimerRef = useRef(null)
-  const prevLocationCoordsRef = useRef({ latitude: null, longitude: null })
-  const anchorLocationRef = useRef({ latitude: null, longitude: null }) // Anchor point for 200m rule
+
+  const getCachedCoords = () => {
+    try {
+      const stored = localStorage.getItem("userLocation")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed && parsed.latitude && parsed.longitude) {
+          return { latitude: Number(parsed.latitude), longitude: Number(parsed.longitude) }
+        }
+      }
+    } catch (e) {}
+    return { latitude: null, longitude: null }
+  }
+
+  const cachedCoords = getCachedCoords()
+
+  const prevLocationCoordsRef = useRef(cachedCoords)
+  const anchorLocationRef = useRef(cachedCoords) // Anchor point for 200m rule
   const retryCountRef = useRef(0) // Track retry attempts for reverse geocoding
   const isFetchingLocationRef = useRef(false) // Prevent multiple simultaneous location fetches
   const hasInitializedRef = useRef(false) // Prevent multiple initializations
-  const lastSavedLocationRef = useRef({ latitude: null, longitude: null }) // Store last saved location for distance check
-  const lastProcessedCoordsRef = useRef({ latitude: null, longitude: null })
+  const lastSavedLocationRef = useRef(cachedCoords) // Store last saved location for distance check
+  const lastProcessedCoordsRef = useRef(cachedCoords)
 
   // Helper to check if user is authenticated (used to decide live watch / DB updates)
   const isUserAuthenticated = () => {
@@ -1874,15 +1925,18 @@ export function useLocation() {
 
   /* ===================== INIT ===================== */
   useEffect(() => {
-    let hasInitialLocation = false
-
-    // If no initial location, try DB as a silent background hint only
-    if (!hasInitialLocation) {
+    // If no initial location, try DB as a fallback
+    if (!location) {
       fetchLocationFromDB()
         .then((dbLoc) => {
           if (dbLoc && (dbLoc.latitude || dbLoc.city)) {
-            // We don't set this to state immediately to avoid showing old location
-            // unless GPS fails. 
+            setLocation((current) => {
+              if (!current || current.city === "Detecting..." || current.city === "Select location") {
+                setLoading(false)
+                return dbLoc
+              }
+              return current
+            })
           }
         })
         .catch(() => {})
@@ -1918,19 +1972,24 @@ export function useLocation() {
     const checkPermissionAndStart = async () => {
       if (hasInitializedRef.current) return
       
-      // Always show Detecting state on startup as we want current location only
-      setLocation({
-        city: "Detecting...",
-        address: "Updating location...",
-        formattedAddress: "Updating location...",
-        area: ""
-      })
-      setLoading(true)
+      // Only show Detecting state on startup if we do NOT have a cached location
+      const hasCached = !!(location && (location.latitude || location.city || location.address));
+      if (!hasCached) {
+        setLocation({
+          city: "Detecting...",
+          address: "Updating location...",
+          formattedAddress: "Updating location...",
+          area: ""
+        })
+        setLoading(true)
+      } else {
+        setLoading(false)
+      }
 
       hasInitializedRef.current = true
       
       try {
-        // Always force fresh fetch
+        // Always force fresh fetch silently in the background
         getLocation(true, true, false)
           .then((freshLoc) => {
             if (freshLoc) {
@@ -1949,7 +2008,9 @@ export function useLocation() {
             startWatchingLocation()
           })
       } catch (err) {
-        setLoading(false);
+        if (!hasCached) {
+          setLoading(false);
+        }
         hasInitializedRef.current = false // Reset flag on error
       } finally {
         // Reset flag after a delay to allow for retries if needed
@@ -2024,6 +2085,17 @@ export function useLocation() {
       setLoading(false)
     }
   }
+
+  // Automatically sync location state changes to localStorage for instant startup loading
+  useEffect(() => {
+    if (location && location.city !== "Detecting..." && location.address !== "Updating location..." && (location.latitude || location.city || location.address)) {
+      try {
+        localStorage.setItem("userLocation", JSON.stringify(location))
+      } catch (e) {
+        console.error("Error writing location to localStorage:", e)
+      }
+    }
+  }, [location])
 
   return {
     location,

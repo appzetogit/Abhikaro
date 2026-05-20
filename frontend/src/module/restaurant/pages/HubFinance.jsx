@@ -36,6 +36,18 @@ export default function HubFinance() {
 
     return `${formatDateForDisplay(thisWeekStart)} - ${formatDateForDisplay(thisWeekEnd)}`
   })
+  const [filterType, setFilterType] = useState('all')
+  const [customStartDate, setCustomStartDate] = useState(() => {
+    const today = new Date()
+    const currentDay = today.getDay()
+    const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1
+    const thisWeekStart = new Date(today)
+    thisWeekStart.setDate(today.getDate() - daysFromMonday)
+    return thisWeekStart.toISOString().split('T')[0]
+  })
+  const [customEndDate, setCustomEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0]
+  })
   const [showDownloadMenu, setShowDownloadMenu] = useState(false)
   const [showDateRangePicker, setShowDateRangePicker] = useState(false)
   const downloadMenuRef = useRef(null)
@@ -45,7 +57,6 @@ export default function HubFinance() {
   const [pastCyclesData, setPastCyclesData] = useState(null)
   const [loadingPastCycles, setLoadingPastCycles] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
-  const [loadingRestaurant, setLoadingRestaurant] = useState(true)
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
   const [withdrawalAmount, setWithdrawalAmount] = useState('')
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false)
@@ -195,103 +206,42 @@ export default function HubFinance() {
   const withdrawableBalance = financeData?.currentCycle?.withdrawableBalance ?? cycleEarnings
   const lifetimeEarnings = walletSummary?.totalEarned ?? 0
 
-  const handleViewDetails = () => {
-    navigate("/restaurant/finance-details")
-  }
+  // Unused helper functions removed
 
-  // Parse date range string to extract start and end dates
-  const parseDateRange = (dateRangeStr) => {
-    // Format: "14 Nov - 14 Dec'25"
-    try {
-      const parts = dateRangeStr.split(' - ')
-      if (parts.length !== 2) return null
-      
-      const monthMap = {
-        'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-        'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-      }
-      
-      const parseSide = (str) => {
-        // Accept: "6 Apr'26", "6 Apr '26", "6 Apr", "6 Apr 26"
-        const cleaned = String(str || '').trim().replace(/\u2019/g, "'") // smart quote → '
-        const m = cleaned.match(/^(\d{1,2})\s+([A-Za-z]{3})(?:\s*'?\s*(\d{2}))?$/)
-        if (!m) return null
-        const day = parseInt(m[1], 10)
-        const monthToken = m[2]
-        const year2 = m[3] ? parseInt(m[3], 10) : null
-        const month = monthMap[monthToken]
-        if (month === undefined || Number.isNaN(day)) return null
-        return { day, month, year2 }
-      }
-
-      const startParsed = parseSide(parts[0])
-      const endParsed = parseSide(parts[1])
-
-      if (!startParsed || !endParsed) {
-        console.error('Invalid date components:', { dateRangeStr })
-        return null
-      }
-
-      const currentYear = new Date().getFullYear()
-      const resolvedYear =
-        (endParsed.year2 != null ? 2000 + endParsed.year2 : null) ||
-        (startParsed.year2 != null ? 2000 + startParsed.year2 : null) ||
-        currentYear
-      
-      // Validate month values
-      const startDate = new Date(resolvedYear, startParsed.month, startParsed.day)
-      const endDate = new Date(resolvedYear, endParsed.month, endParsed.day)
-      
-      // Validate dates
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        console.error('Invalid date values:', { startDate, endDate, dateRangeStr })
-        return null
-      }
-      
-      return { startDate, endDate }
-    } catch (error) {
-      console.error('Error parsing date range:', error)
-      return null
-    }
-  }
-
-  // Fetch past cycles data when date range changes
-  const fetchPastCyclesData = async (startDate, endDate) => {
-    if (!startDate || !endDate) {
-      setPastCyclesData(null)
-      return
-    }
-
+  // Fetch past cycles data when date range or filter changes
+  const fetchPastCyclesData = async (options = {}) => {
     try {
       setLoadingPastCycles(true)
-      // Validate dates and format as ISO strings
-      const startDateObj = startDate instanceof Date ? startDate : new Date(startDate)
-      const endDateObj = endDate instanceof Date ? endDate : new Date(endDate)
-      
-      // Check if dates are valid
-      if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
-        console.error('Invalid date values:', { startDate, endDate })
+      let response
+      if (options.all) {
+        response = await restaurantAPI.getFinance({ all: 'true' })
+      } else if (options.startDate && options.endDate) {
+        const startISO = new Date(options.startDate).toISOString().split('T')[0]
+        const endISO = new Date(options.endDate).toISOString().split('T')[0]
+        response = await restaurantAPI.getFinance({
+          startDate: startISO,
+          endDate: endISO
+        })
+      } else {
         setPastCyclesData(null)
         return
       }
-      
-      const startDateISO = startDateObj.toISOString().split('T')[0]
-      const endDateISO = endDateObj.toISOString().split('T')[0]
-      
-      const response = await restaurantAPI.getFinance({
-        startDate: startDateISO,
-        endDate: endDateISO
-      })
+
       if (response.data?.success && response.data?.data?.pastCycles) {
-        setPastCyclesData(response.data.data.pastCycles)
-        console.log('✅ Past cycles data fetched:', response.data.data.pastCycles)
-        console.log('📦 Orders array:', response.data.data.pastCycles?.orders)
-        console.log('📊 Total orders:', response.data.data.pastCycles?.totalOrders)
+        const pc = response.data.data.pastCycles
+        setPastCyclesData(pc)
+        
+        // Dynamically update selectedDateRange for display and reports
+        if (pc.dateRange?.start && pc.dateRange?.end) {
+          const formatPart = (part) => `${part.day} ${part.month}'${part.year}`
+          setSelectedDateRange(`${formatPart(pc.dateRange.start)} - ${formatPart(pc.dateRange.end)}`)
+        } else if (options.all) {
+          setSelectedDateRange('All Time')
+        }
       } else {
         setPastCyclesData(null)
       }
     } catch (error) {
-      // Suppress 401 errors as they're handled by axios interceptor (token refresh/redirect)
       if (error.response?.status !== 401) {
         console.error('❌ Error fetching past cycles data:', error)
       }
@@ -301,16 +251,22 @@ export default function HubFinance() {
     }
   }
 
-  // Fetch past cycles data on mount and when date range changes
+  // Fetch past cycles data on mount and when filters/dates change
   useEffect(() => {
-    const dateRange = parseDateRange(selectedDateRange)
-    if (dateRange && dateRange.startDate && dateRange.endDate) {
-      fetchPastCyclesData(dateRange.startDate, dateRange.endDate)
-    } else {
-      // If date range is invalid, don't fetch
-      setPastCyclesData(null)
+    if (filterType === 'all') {
+      fetchPastCyclesData({ all: true })
+    } else if (filterType === 'date_wise') {
+      if (customStartDate && customEndDate) {
+        const start = new Date(customStartDate)
+        const end = new Date(customEndDate)
+        if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+          fetchPastCyclesData({ startDate: customStartDate, endDate: customEndDate })
+        }
+      } else {
+        setPastCyclesData(null)
+      }
     }
-  }, [selectedDateRange])
+  }, [filterType, customStartDate, customEndDate])
 
 
   // Prepare report data from real finance data
@@ -736,22 +692,25 @@ export default function HubFinance() {
     }
   }
 
-  // Close download menu when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (downloadMenuRef.current && !downloadMenuRef.current.contains(event.target)) {
         setShowDownloadMenu(false)
       }
+      if (dateRangePickerRef.current && !dateRangePickerRef.current.contains(event.target)) {
+        setShowDateRangePicker(false)
+      }
     }
     
-    if (showDownloadMenu) {
+    if (showDownloadMenu || showDateRangePicker) {
       document.addEventListener('mousedown', handleClickOutside)
     }
     
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showDownloadMenu])
+  }, [showDownloadMenu, showDateRangePicker])
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
@@ -898,9 +857,9 @@ export default function HubFinance() {
               </div>
             </div>
 
-            {/* Past cycles */}
+            {/* Orders History */}
             <div>
-              <h2 className="text-base font-bold text-gray-900 mb-3">Past cycles</h2>
+              <h2 className="text-base font-bold text-gray-900 mb-3">Orders History</h2>
               <div className="space-y-3">
                 <div className="flex gap-2">
                   <div className="flex-1 relative" ref={dateRangePickerRef}>
@@ -908,10 +867,12 @@ export default function HubFinance() {
                       onClick={() => setShowDateRangePicker(!showDateRangePicker)}
                       className="w-full bg-white rounded-lg px-4 py-3 flex items-center justify-between border border-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
                     >
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-900">{selectedDateRange}</span>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-600" />
+                        <span className="text-sm font-semibold text-gray-900">
+                          {filterType === 'all' ? 'All' : `Date Wise: ${selectedDateRange}`}
+                        </span>
+                      </div>
                       <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${showDateRangePicker ? 'rotate-180' : ''}`} />
                     </button>
                     
@@ -922,133 +883,29 @@ export default function HubFinance() {
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
-                          className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
+                          className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50 overflow-hidden"
                         >
-                          <div className="p-4">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-3">Select Date Range</h3>
-                            <div className="space-y-2">
-                              {(() => {
-                                const getDateRanges = () => {
-                                  const today = new Date()
-                                  today.setHours(23, 59, 59, 999)
-                                  
-                                  // Last 7 days
-                                  const last7DaysStart = new Date(today)
-                                  last7DaysStart.setDate(today.getDate() - 7)
-                                  last7DaysStart.setHours(0, 0, 0, 0)
-                                  
-                                  // Last 30 days
-                                  const last30DaysStart = new Date(today)
-                                  last30DaysStart.setDate(today.getDate() - 30)
-                                  last30DaysStart.setHours(0, 0, 0, 0)
-                                  
-                                  // This week (Monday to Sunday)
-                                  const currentDay = today.getDay()
-                                  const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1
-                                  const thisWeekStart = new Date(today)
-                                  thisWeekStart.setDate(today.getDate() - daysFromMonday)
-                                  thisWeekStart.setHours(0, 0, 0, 0)
-                                  const thisWeekEnd = new Date(thisWeekStart)
-                                  thisWeekEnd.setDate(thisWeekStart.getDate() + 6)
-                                  thisWeekEnd.setHours(23, 59, 59, 999)
-                                  
-                                  // Last week
-                                  const lastWeekStart = new Date(thisWeekStart)
-                                  lastWeekStart.setDate(thisWeekStart.getDate() - 7)
-                                  const lastWeekEnd = new Date(thisWeekEnd)
-                                  lastWeekEnd.setDate(thisWeekEnd.getDate() - 7)
-                                  
-                                  // This month
-                                  const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-                                  const thisMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999)
-                                  
-                                  // Last month
-                                  const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-                                  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999)
-                                  
-                                  return {
-                                    today,
-                                    last7DaysStart,
-                                    last30DaysStart,
-                                    thisWeekStart,
-                                    thisWeekEnd,
-                                    lastWeekStart,
-                                    lastWeekEnd,
-                                    thisMonthStart,
-                                    thisMonthEnd,
-                                    lastMonthStart,
-                                    lastMonthEnd
-                                  }
-                                }
-                                
-                                const formatDateForDisplay = (date) => {
-                                  const day = date.getDate()
-                                  const month = date.toLocaleString('en-US', { month: 'short' })
-                                  const year = date.getFullYear().toString().slice(-2)
-                                  return `${day} ${month}'${year}`
-                                }
-                                
-                                const formatDateRange = (start, end) => {
-                                  return `${formatDateForDisplay(start)} - ${formatDateForDisplay(end)}`
-                                }
-                                
-                                const ranges = getDateRanges()
-                                const dateOptions = [
-                                  { 
-                                    label: "Last 7 days", 
-                                    range: formatDateRange(ranges.last7DaysStart, ranges.today),
-                                    startDate: ranges.last7DaysStart,
-                                    endDate: ranges.today
-                                  },
-                                  { 
-                                    label: "Last 30 days", 
-                                    range: formatDateRange(ranges.last30DaysStart, ranges.today),
-                                    startDate: ranges.last30DaysStart,
-                                    endDate: ranges.today
-                                  },
-                                  { 
-                                    label: "This week", 
-                                    range: formatDateRange(ranges.thisWeekStart, ranges.thisWeekEnd),
-                                    startDate: ranges.thisWeekStart,
-                                    endDate: ranges.thisWeekEnd
-                                  },
-                                  { 
-                                    label: "Last week", 
-                                    range: formatDateRange(ranges.lastWeekStart, ranges.lastWeekEnd),
-                                    startDate: ranges.lastWeekStart,
-                                    endDate: ranges.lastWeekEnd
-                                  },
-                                  { 
-                                    label: "This month", 
-                                    range: formatDateRange(ranges.thisMonthStart, ranges.thisMonthEnd),
-                                    startDate: ranges.thisMonthStart,
-                                    endDate: ranges.thisMonthEnd
-                                  },
-                                  { 
-                                    label: "Last month", 
-                                    range: formatDateRange(ranges.lastMonthStart, ranges.lastMonthEnd),
-                                    startDate: ranges.lastMonthStart,
-                                    endDate: ranges.lastMonthEnd
-                                  }
-                                ]
-                                
-                                return dateOptions.map((option, index) => (
-                                  <button
-                                    key={index}
-                                    onClick={() => {
-                                      setSelectedDateRange(option.range)
-                                      setShowDateRangePicker(false)
-                                      // Fetch data for selected range
-                                      fetchPastCyclesData(option.startDate, option.endDate)
-                                    }}
-                                    className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 transition-colors text-sm"
-                                  >
-                                    <div className="font-medium text-gray-900">{option.label}</div>
-                                    <div className="text-xs text-gray-500">{option.range}</div>
-                  </button>
-                                ))
-                              })()}
-                            </div>
+                          <div className="py-1">
+                            <button
+                              onClick={() => {
+                                setFilterType('all')
+                                setShowDateRangePicker(false)
+                              }}
+                              className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors text-sm font-medium flex items-center justify-between ${filterType === 'all' ? 'text-black bg-gray-50/50' : 'text-gray-700'}`}
+                            >
+                              <span>All</span>
+                              {filterType === 'all' && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFilterType('date_wise')
+                                setShowDateRangePicker(false)
+                              }}
+                              className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors text-sm font-medium flex items-center justify-between ${filterType === 'date_wise' ? 'text-black bg-gray-50/50' : 'text-gray-700'}`}
+                            >
+                              <span>Date Wise</span>
+                              {filterType === 'date_wise' && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                            </button>
                           </div>
                         </motion.div>
                       )}
@@ -1087,14 +944,46 @@ export default function HubFinance() {
                     </AnimatePresence>
                   </div>
                 </div>
-                {loadingPastCycles ? (
+                {/* Custom Date Picker inputs */}
+                <AnimatePresence>
+                  {filterType === 'date_wise' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                      exit={{ opacity: 0, height: 0, scale: 0.95 }}
+                      transition={{ duration: 0.2 }}
+                      className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm flex flex-col sm:flex-row gap-3 items-center overflow-hidden"
+                    >
+                      <div className="w-full sm:flex-1">
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">From Date</label>
+                        <input 
+                          type="date" 
+                          value={customStartDate} 
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          className="w-full bg-gray-50 hover:bg-gray-100/70 focus:bg-white border border-gray-200 focus:border-black rounded-lg px-3 py-2 text-sm text-gray-900 outline-none transition-all cursor-pointer font-medium"
+                        />
+                      </div>
+                      <div className="w-full sm:flex-1">
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">To Date</label>
+                        <input 
+                          type="date" 
+                          value={customEndDate} 
+                          min={customStartDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="w-full bg-gray-50 hover:bg-gray-100/70 focus:bg-white border border-gray-200 focus:border-black rounded-lg px-3 py-2 text-sm text-gray-900 outline-none transition-all cursor-pointer font-medium"
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {loadingPastCycles || !pastCyclesData ? (
                   <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm text-gray-600 text-center">Loading past cycles...</p>
+                    <p className="text-sm text-gray-600 text-center">Loading orders...</p>
                   </div>
                 ) : (
                   <>
                     {/* Show past cycles orders if available */}
-                    {pastCyclesData && pastCyclesData.orders && pastCyclesData.orders.length > 0 && (
+                    {pastCyclesData && pastCyclesData.orders && pastCyclesData.orders.length > 0 ? (
                       <div className="bg-white rounded-lg p-4 space-y-3">
                         {pastCyclesData.orders.map((order, index) => (
                           <div key={order.orderId || index} className="border-b border-gray-200 pb-3 last:border-b-0 last:pb-0">
@@ -1126,39 +1015,9 @@ export default function HubFinance() {
                           </div>
                         ))}
                       </div>
-                    )}
-                    {/* Show current cycle orders if past cycles data is not available or has no orders */}
-                    {(!pastCyclesData || !pastCyclesData.orders || pastCyclesData.orders.length === 0) && !loadingPastCycles && financeData?.currentCycle?.orders && financeData.currentCycle.orders.length > 0 && (
-                      <div className="bg-white rounded-lg p-4 space-y-3">
-                        {financeData.currentCycle.orders.map((order, index) => (
-                          <div key={order.orderId || index} className="border-b border-gray-200 pb-3 last:border-b-0 last:pb-0">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <p className="text-sm font-semibold text-gray-900">
-                                    {order.isDining ? 'Booking ID' : 'Order ID'}: {order.orderId || 'N/A'}
-                                  </p>
-                                  {order.isDining && (
-                                    <span className="px-2 py-0.5 bg-teal-100 text-teal-700 text-xs font-medium rounded">
-                                      Dining
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-600">
-                                  {order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'}
-                                </p>
-                              </div>
-                              <div className="text-right ml-4">
-                                <p className="text-sm font-bold text-gray-900">
-                                  ₹{(order.payout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Earning
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                    ) : (
+                      <div className="bg-white rounded-lg p-6 text-center text-gray-500 font-medium">
+                        No orders found for the selected period.
                       </div>
                     )}
                   </>

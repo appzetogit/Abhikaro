@@ -483,38 +483,48 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
 
     // Get past cycles orders if date range provided
     let pastCyclesData = null;
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+    const isAll = req.query.all === 'true';
+    if (isAll || (startDate && endDate)) {
+      let query = {
+        ...restaurantIdQuery,
+        status: 'delivered'
+      };
+
+      let start, end;
+      if (!isAll) {
+        start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+
+        query.$or = [
+          { deliveredAt: { $gte: start, $lte: end } },
+          { 'tracking.delivered.timestamp': { $gte: start, $lte: end } }
+        ];
+      }
 
       // Query orders that were delivered in the past cycle
       // First try with deliveredAt, if not found, use tracking.delivered.timestamp as fallback
-      let pastCycleOrders = await Order.find({
-        ...restaurantIdQuery,
-        status: 'delivered',
-        $or: [
-          { deliveredAt: { $gte: start, $lte: end } },
-          { 'tracking.delivered.timestamp': { $gte: start, $lte: end } }
-        ]
-      })
+      let pastCycleOrders = await Order.find(query)
       .populate('userId', 'name phone email')
       .lean();
 
       // If no orders found with deliveredAt/tracking, check by createdAt as last resort
       if (pastCycleOrders.length === 0) {
-        pastCycleOrders = await Order.find({
+        let fallbackQuery = {
           ...restaurantIdQuery,
-          status: 'delivered',
-          createdAt: { $gte: start, $lte: end }
-        })
+          status: 'delivered'
+        };
+        if (!isAll) {
+          fallbackQuery.createdAt = { $gte: start, $lte: end };
+        }
+        pastCycleOrders = await Order.find(fallbackQuery)
         .populate('userId', 'name phone email')
         .select('orderId userId items pricing payment status address createdAt deliveredAt tracking')
         .lean();
       }
 
-      console.log(`📊 Finance API - Past cycle orders found: ${pastCycleOrders.length} for date range ${startDate} to ${endDate}`);
+      console.log(`📊 Finance API - Past cycle orders found: ${pastCycleOrders.length} for date range: ${startDate} to ${endDate} (isAll: ${isAll})`);
 
       // Get all unique user IDs from past cycle orders
       const pastUserIds = [...new Set(pastCycleOrders.map(order => {
@@ -632,10 +642,22 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       };
     }));
 
+      let minDate = new Date();
+      let maxDate = new Date();
+      if (pastCycleOrders.length > 0) {
+        const dates = pastCycleOrders.map(o => new Date(o.deliveredAt || o.createdAt)).filter(d => !isNaN(d.getTime()));
+        if (dates.length > 0) {
+          minDate = new Date(Math.min(...dates));
+          maxDate = new Date(Math.max(...dates));
+        }
+      }
+      const startObj = isAll ? minDate : start;
+      const endObj = isAll ? maxDate : end;
+
       pastCyclesData = {
         dateRange: {
-          start: formatCycleDate(start),
-          end: formatCycleDate(end)
+          start: formatCycleDate(startObj),
+          end: formatCycleDate(endObj)
         },
         totalOrders: pastCycleOrders.length,
         totalOrderValue: Math.round(pastCycleTotal * 100) / 100,
