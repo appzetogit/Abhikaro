@@ -133,6 +133,30 @@ export default function Cart() {
     }
   }, [showOrderSuccess])
 
+  // Meta Ads Purchase Tracking
+  useEffect(() => {
+    if (showOrderSuccess && pricing) {
+      try {
+        if (typeof window !== "undefined") {
+          const value = pricing.finalAmount || pricing.totalAmount || 0;
+          if (window.fbq) {
+            window.fbq("track", "Purchase", {
+              value: value,
+              currency: "INR"
+            });
+          }
+          if (window.FB && window.FB.AppEvents) {
+            window.FB.AppEvents.logEvent("Purchase", value, {
+              fb_currency: "INR"
+            });
+          }
+        }
+      } catch (error) {
+        // ignore tracking errors
+      }
+    }
+  }, [showOrderSuccess, pricing])
+
   // Note: order placed success screen no longer shows advertise banners.
   // Checkout-only contact draft:
   // - Initialize from sessionStorage if present

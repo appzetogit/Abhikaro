@@ -25,6 +25,27 @@ export default function AddToCartButton({ item, className = "" }) {
     }
 
     addToCart(item)
+
+    // Meta Ads Tracking
+    if (typeof window !== "undefined") {
+      const price = item.price || item.discountPrice || item.actualPrice || 0;
+      if (window.fbq) {
+        window.fbq("track", "AddToCart", {
+          content_ids: [item.id],
+          content_name: item.name,
+          content_type: "product",
+          value: price,
+          currency: "INR"
+        });
+      }
+      if (window.FB && window.FB.AppEvents) {
+        window.FB.AppEvents.logEvent("AddToCart", price, {
+          fb_content_id: item.id,
+          fb_content_type: "product",
+          fb_currency: "INR"
+        });
+      }
+    }
   }
 
   const handleIncrease = (e) => {
