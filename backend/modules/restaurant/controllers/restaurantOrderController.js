@@ -51,9 +51,11 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
     const mongoIdStr = restaurant._id?.toString?.();
     const businessIdStr = restaurant.restaurantId?.toString?.();
     const genericIdStr = restaurant.id?.toString?.();
+    const slugStr = restaurant.slug?.toString?.();
     if (mongoIdStr) idCandidates.push(mongoIdStr);
     if (businessIdStr && !idCandidates.includes(businessIdStr)) idCandidates.push(businessIdStr);
     if (genericIdStr && !idCandidates.includes(genericIdStr)) idCandidates.push(genericIdStr);
+    if (slugStr && !idCandidates.includes(slugStr)) idCandidates.push(slugStr);
 
     const restaurantIdString = idCandidates[0];
 

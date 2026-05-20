@@ -87,8 +87,8 @@ export const createOrder = async (req, res) => {
           resolvedHotelName = hotelDoc.hotelName || resolvedHotelName;
           resolvedHotelMongoId = hotelDoc._id || null;
         }
-      } catch (_) {
-        // Non-blocking: order can still be created without hotelName.
+      } catch (err) {
+        logger.error("❌ Failed to resolve hotel on order creation:", err);
       }
     }
 

@@ -129,8 +129,12 @@ export const calculateOrderSettlement = async (orderId) => {
 
       adminCommission = commissionAmount;
     } else {
-      // QR / HOTEL ORDER → keep existing breakdown behaviour (if present)
-      if (order.commissionBreakdown) {
+      // QR / HOTEL ORDER → keep existing breakdown behaviour (if present and non-zero)
+      const hasStoredCommission =
+        order.commissionBreakdown &&
+        (order.commissionBreakdown.hotel > 0 || order.commissionBreakdown.admin > 0);
+
+      if (hasStoredCommission) {
         const { restaurant: restNet, admin, hotel } = order.commissionBreakdown;
 
         // Restaurant Earning
@@ -154,6 +158,9 @@ export const calculateOrderSettlement = async (orderId) => {
               hotelId: order.hotelReference,
             }).lean();
           }
+          if (!hotelDoc && order.hotelId) {
+            hotelDoc = await Hotel.findById(order.hotelId).lean();
+          }
 
           hotelEarning = {
             hotelId: hotelDoc?._id || null,
@@ -167,30 +174,70 @@ export const calculateOrderSettlement = async (orderId) => {
         adminCommission = admin;
         adminCommissionFromHotel = 0;
       } else {
-        // FALLBACK legacy calculation for QR orders (rare)
-        restaurantCommissionData =
-          await RestaurantCommission.calculateCommissionForOrder(
-            restaurant._id,
-            foodPrice,
-          );
+        // Fetch hotel to get specific commission percentages
+        let hotelDoc = null;
+        try {
+          const hotelRef = order.hotelReference || order.hotelId;
+          if (hotelRef) {
+            if (mongoose.Types.ObjectId.isValid(hotelRef)) {
+              hotelDoc = await Hotel.findById(hotelRef).lean();
+            } else {
+              hotelDoc = await Hotel.findOne({ hotelId: hotelRef }).lean();
+            }
+          }
+          if (!hotelDoc && order.hotelId) {
+            hotelDoc = await Hotel.findById(order.hotelId).lean();
+          }
+        } catch (hError) {
+          console.error("Failed to fetch hotel during settlement calculation:", hError);
+        }
 
-        const commissionAmount =
-          Math.round(restaurantCommissionData.commission * 100) / 100;
-        const restaurantNetEarning =
-          Math.round((foodPrice - commissionAmount) * 100) / 100;
+        let hotelPct = 0;
+        let adminPct = 0;
 
-        restaurantEarning = {
-          foodPrice: foodPrice,
-          commission: commissionAmount,
-          commissionPercentage:
-            restaurantCommissionData.type === "percentage"
-              ? restaurantCommissionData.value
-              : (commissionAmount / foodPrice) * 100,
-          netEarning: restaurantNetEarning,
+        if (hotelDoc) {
+          hotelPct = Number(hotelDoc.commission) || 0;
+          adminPct = Number(hotelDoc.adminCommission) || 0;
+        } else {
+          try {
+            const CommissionSettings = (
+              await import("../../admin/models/CommissionSettings.js")
+            ).default;
+            let commissionSettings = await CommissionSettings.findOne().sort({
+              createdAt: -1,
+            });
+            if (commissionSettings && commissionSettings.qrCommission) {
+              hotelPct = Number(commissionSettings.qrCommission.hotel) || 10;
+              adminPct = Number(commissionSettings.qrCommission.admin) || 20;
+            } else {
+              hotelPct = 10;
+              adminPct = 20;
+            }
+          } catch (settingsError) {
+            hotelPct = 10;
+            adminPct = 20;
+          }
+        }
+
+        const hotelShare = Math.round(foodPrice * (hotelPct / 100) * 100) / 100;
+        const adminShare = Math.round(foodPrice * (adminPct / 100) * 100) / 100;
+        const restaurantShare = Math.round((foodPrice - hotelShare - adminShare) * 100) / 100;
+
+        restaurantEarning.netEarning = restaurantShare;
+        restaurantEarning.commission =
+          Math.round((foodPrice - restaurantShare) * 100) / 100;
+        restaurantEarning.commissionPercentage = Math.round((100 - hotelPct - adminPct) * 100) / 100;
+
+        hotelEarning = {
+          hotelId: hotelDoc?._id || null,
+          hotelName: hotelDoc?.hotelName || order.hotelName || "Unknown Hotel",
+          commission: hotelShare,
+          commissionPercentage: hotelPct,
           status: "pending",
         };
 
-        adminCommission = commissionAmount;
+        adminCommission = adminShare;
+        adminCommissionFromHotel = 0;
       }
     }
 

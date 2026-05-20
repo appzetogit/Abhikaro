@@ -244,12 +244,15 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
 
   // --- Dynamic Auto-Backfill of Completed/Delivered Orders and Bookings ---
   try {
-    const restaurantDoc = await Restaurant.findById(restaurantId).select('restaurantId');
+    const restaurantDoc = await Restaurant.findById(restaurantId).select('restaurantId slug');
     const restaurantPublicId = restaurantDoc?.restaurantId;
+    const restaurantSlug = restaurantDoc?.slug;
     const restaurantIdVariations = [
       restaurantId.toString(),
-      restaurantPublicId?.toString()
+      restaurantPublicId?.toString(),
+      restaurantSlug?.toString()
     ].filter(Boolean);
+
 
     // 1. Fetch all delivered orders
     const orders = await Order.find({
@@ -405,6 +408,27 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
     } catch (cleanupErr) {
       console.error('[RestaurantWallet] Error running ghost transaction cleanup:', cleanupErr);
     }
+  }
+
+  // 1.2. Deduplication Cleanup: Ensure no duplicate payment transactions exist for the same order/booking
+  const seenOrderIds = new Set();
+  const uniqueTransactions = [];
+  let hasDuplicates = false;
+  for (const t of wallet.transactions) {
+    if (t.type === 'payment' && t.orderId) {
+      const key = t.orderId.toString();
+      if (seenOrderIds.has(key)) {
+        hasDuplicates = true;
+        continue;
+      }
+      seenOrderIds.add(key);
+    }
+    uniqueTransactions.push(t);
+  }
+  if (hasDuplicates) {
+    console.log(`[RestaurantWallet] Deduplication Cleanup: Removing duplicate payment transactions in wallet: ${wallet._id}`);
+    wallet.transactions = uniqueTransactions;
+    needsSave = true;
   }
 
   // 1.5. Clean up mock/test legacy transactions

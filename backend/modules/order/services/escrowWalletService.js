@@ -3,6 +3,7 @@ import OrderSettlement from "../models/OrderSettlement.js";
 import UserWallet from "../../user/models/UserWallet.js";
 import AdminWallet from "../../admin/models/AdminWallet.js";
 import AuditLog from "../../admin/models/AuditLog.js";
+import mongoose from "mongoose";
 
 /**
  * Hold funds in escrow when order is placed
@@ -192,11 +193,28 @@ export const creditRestaurantWallet = async (
   commission = null,
 ) => {
   try {
+    // Resolve restaurant ObjectId if a custom ID string is passed
+    let finalRestaurantId = restaurantId;
+    if (restaurantId && !mongoose.Types.ObjectId.isValid(restaurantId)) {
+      const Restaurant = (
+        await import("../../restaurant/models/Restaurant.js")
+      ).default;
+      const restDoc = await Restaurant.findOne({
+        $or: [
+          { restaurantId: restaurantId },
+          { slug: restaurantId },
+        ],
+      }).lean();
+      if (restDoc) {
+        finalRestaurantId = restDoc._id;
+      }
+    }
+
     const RestaurantWallet = (
       await import("../../restaurant/models/RestaurantWallet.js")
     ).default;
     const wallet =
-      await RestaurantWallet.findOrCreateByRestaurantId(restaurantId);
+      await RestaurantWallet.findOrCreateByRestaurantId(finalRestaurantId);
 
     // Create description with breakdown
     let description = `Payment for order ${orderNumber}`;
@@ -217,7 +235,7 @@ export const creditRestaurantWallet = async (
     // Create audit log
     await AuditLog.createLog({
       entityType: "restaurant",
-      entityId: restaurantId,
+      entityId: finalRestaurantId,
       action: "wallet_credit",
       actionType: "credit",
       performedBy: {
@@ -373,6 +391,27 @@ export const creditAdminWallet = async (
   try {
     const wallet = await AdminWallet.findOrCreate();
 
+    // Resolve restaurant ObjectId if a custom ID string is passed
+    let finalRestaurantId = null;
+    if (restaurantId) {
+      if (mongoose.Types.ObjectId.isValid(restaurantId)) {
+        finalRestaurantId = restaurantId;
+      } else {
+        const Restaurant = (
+          await import("../../restaurant/models/Restaurant.js")
+        ).default;
+        const restDoc = await Restaurant.findOne({
+          $or: [
+            { restaurantId: restaurantId },
+            { slug: restaurantId },
+          ],
+        }).lean();
+        if (restDoc) {
+          finalRestaurantId = restDoc._id;
+        }
+      }
+    }
+
     // Handle case where adminEarning is just a number (for instant credits)
     if (typeof adminEarning === "number") {
       wallet.addTransaction({
@@ -381,7 +420,7 @@ export const creditAdminWallet = async (
         status: "Completed",
         description: `Instant commission from order ${orderNumber}`,
         orderId: orderId,
-        restaurantId: restaurantId,
+        restaurantId: finalRestaurantId,
       });
       await wallet.save();
       return;
@@ -401,7 +440,7 @@ export const creditAdminWallet = async (
         status: "Completed",
         description: `Restaurant commission from order ${orderNumber} (${commissionPercent}% of ₹${foodPrice})`,
         orderId: orderId,
-        restaurantId: restaurantId,
+        restaurantId: finalRestaurantId,
       });
     }
 

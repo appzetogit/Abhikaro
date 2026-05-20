@@ -30,19 +30,25 @@ export const getWallet = asyncHandler(async (req, res) => {
       return errorResponse(res, 401, 'Restaurant authentication required');
     }
 
-    // Find or create wallet
-    const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurant._id);
+    // Simple find — wallet is kept in sync by order/payment events
+    let wallet = await RestaurantWallet.findOne({ restaurantId: restaurant._id });
 
-
-    // Note: wallet amounts are now managed exclusively by findOrCreateByRestaurantId
-    // which recalculates from RestaurantCommission to ensure consistency.
-
+    // Create a minimal wallet document if it doesn't exist yet (new restaurant)
+    if (!wallet) {
+      wallet = await RestaurantWallet.create({
+        restaurantId: restaurant._id,
+        totalBalance: 0,
+        totalWithdrawn: 0,
+        totalEarned: 0,
+      });
+    }
 
     // Check global withdraw schedule
     const { allowed, nextWindowText } = await isWithdrawAllowedNow();
 
     // Get recent transactions (last 50)
-    const recentTransactions = wallet.transactions
+    const recentTransactions = (wallet.transactions || [])
+      .slice()
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 50)
       .map(t => ({
@@ -71,7 +77,7 @@ export const getWallet = asyncHandler(async (req, res) => {
       transactions: recentTransactions
     });
   } catch (error) {
-    logger.error(`Error fetching restaurant wallet: ${error.message}`);
+    logger.error(`Error fetching restaurant wallet: ${error.message}`, { stack: error.stack });
     return errorResponse(res, 500, 'Failed to fetch wallet');
   }
 });

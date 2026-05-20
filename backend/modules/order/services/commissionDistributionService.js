@@ -71,34 +71,59 @@ export const distributeCommissions = async (orderId) => {
       logger.info(
         `💰 Using stored commission breakdown for order ${orderNumber}`,
       );
-    } else {
-      // Fallback: Use stored percentages if breakdown is missing but percentages exist
-      if (
-        order.commissionPercentages &&
-        (order.commissionPercentages.hotel > 0 ||
-          order.commissionPercentages.admin > 0)
-      ) {
-        hotelShare =
-          Math.round(
-            totalAmount * (order.commissionPercentages.hotel / 100) * 100,
-          ) / 100;
-        adminShare =
-          Math.round(
-            totalAmount * (order.commissionPercentages.admin / 100) * 100,
-          ) / 100;
-        restaurantShare =
-          Math.round((totalAmount - hotelShare - adminShare) * 100) / 100;
-        logger.info(
-          `💰 Using stored commission percentages for order ${orderNumber}`,
-        );
       } else {
-        // Ultimate fallback: 10/20 split (legacy behavior)
-        hotelShare = Math.round(totalAmount * 0.1 * 100) / 100;
-        adminShare = Math.round(totalAmount * 0.2 * 100) / 100;
-        restaurantShare = Math.round(totalAmount * 0.7 * 100) / 100;
-        logger.info(`💰 Using legacy 10/20 split for order ${orderNumber}`);
+        // Fallback: Fetch hotel-specific commission percentages dynamically
+        let hotelPct = 0;
+        let adminPct = 0;
+        let hotelDoc = null;
+        try {
+          const mongoose = (await import("mongoose")).default;
+          const Hotel = (await import("../../hotel/models/Hotel.js")).default;
+          const hotelRef = hotelReference || hotelId;
+          if (hotelRef) {
+            if (mongoose.Types.ObjectId.isValid(hotelRef)) {
+              hotelDoc = await Hotel.findById(hotelRef).lean();
+            } else {
+              hotelDoc = await Hotel.findOne({ hotelId: hotelRef }).lean();
+            }
+          }
+          if (!hotelDoc && hotelId) {
+            hotelDoc = await Hotel.findById(hotelId).lean();
+          }
+        } catch (hError) {
+          logger.warn("⚠️ Failed to fetch hotel for commission distribution, using settings/defaults:", hError.message);
+        }
+
+        if (hotelDoc) {
+          hotelPct = Number(hotelDoc.commission) || 0;
+          adminPct = Number(hotelDoc.adminCommission) || 0;
+          logger.info(`🎯 Using hotel-specific commission for distribution: Hotel ${hotelPct}%, Admin ${adminPct}%`);
+        } else {
+          try {
+            const CommissionSettings = (
+              await import("../../admin/models/CommissionSettings.js")
+            ).default;
+            let commissionSettings = await CommissionSettings.findOne().sort({
+              createdAt: -1,
+            });
+            if (commissionSettings && commissionSettings.qrCommission) {
+              hotelPct = Number(commissionSettings.qrCommission.hotel) || 10;
+              adminPct = Number(commissionSettings.qrCommission.admin) || 20;
+            } else {
+              hotelPct = 10;
+              adminPct = 20;
+            }
+          } catch (settingsError) {
+            hotelPct = 10;
+            adminPct = 20;
+          }
+          logger.info(`ℹ️ Using settings/fallback commission for distribution: Hotel ${hotelPct}%, Admin ${adminPct}%`);
+        }
+
+        hotelShare = Math.round(totalAmount * (hotelPct / 100) * 100) / 100;
+        adminShare = Math.round(totalAmount * (adminPct / 100) * 100) / 100;
+        restaurantShare = Math.round((totalAmount - hotelShare - adminShare) * 100) / 100;
       }
-    }
 
     logger.info(`💰 Distributing commission for order ${orderNumber}:`, {
       total: totalAmount,

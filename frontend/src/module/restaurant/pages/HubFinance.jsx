@@ -105,24 +105,10 @@ export default function HubFinance() {
     }
   }, [])
 
-  // Fetch finance data on mount
+  // Fetch finance data and wallet in parallel on mount
   useEffect(() => {
-    fetchFinanceData()
-    fetchWithdrawWindow()
+    Promise.all([fetchFinanceData(), fetchWithdrawWindow()])
   }, [fetchFinanceData, fetchWithdrawWindow])
-
-  // Refetch when switching to Invoices & Taxes tab so data is up to date
-  useEffect(() => {
-    if (activeTab === 'invoices') {
-      fetchFinanceData()
-    }
-  }, [activeTab, fetchFinanceData])
-
-  useEffect(() => {
-    const handleVisibility = () => { if (document.visibilityState === 'visible') fetchFinanceData() }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [fetchFinanceData])
 
   // Fetch restaurant data for header display
   useEffect(() => {
@@ -981,9 +967,13 @@ export default function HubFinance() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-                {loadingPastCycles || !pastCyclesData ? (
+                {loadingPastCycles ? (
                   <div className="bg-white rounded-lg p-4">
                     <p className="text-sm text-gray-600 text-center">Loading orders...</p>
+                  </div>
+                ) : !pastCyclesData ? (
+                  <div className="bg-white rounded-lg p-6 text-center text-gray-500 font-medium">
+                    No orders found.
                   </div>
                 ) : (
                   <>

@@ -6,6 +6,9 @@ import {
 } from "../../../shared/utils/response.js";
 import Restaurant from "../../restaurant/models/Restaurant.js";
 import RestaurantWallet from "../../restaurant/models/RestaurantWallet.js";
+import Order from "../../order/models/Order.js";
+import Admin from "../models/Admin.js";
+
 
 /**
  * GET /api/admin/restaurants/wallets
@@ -161,19 +164,39 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
   }
 
   const { id } = req.params;
-  const { page = 1, limit = 15, onlyAdjustments = "true" } = req.query || {};
+  const { page = 1, limit = 15, onlyAdjustments = "true", type = "all" } = req.query || {};
 
   if (!id || !mongoose.Types.ObjectId.isValid(id)) {
     return errorResponse(res, 400, "Valid restaurant ID is required");
   }
 
-  const wallet = await RestaurantWallet.findOne({ restaurantId: id })
-    .populate("transactions.processedBy", "name email")
-    .lean();
+  // Fetch restaurant details to get all variations of restaurantId
+  const restaurantDoc = await Restaurant.findById(id).select("restaurantId slug").lean();
+  const restaurantPublicId = restaurantDoc?.restaurantId;
+  const restaurantSlug = restaurantDoc?.slug;
+  const restaurantIdVariations = [
+    id.toString(),
+    restaurantPublicId?.toString(),
+    restaurantSlug?.toString()
+  ].filter(Boolean);
+
+  // Fetch counts of delivered orders and total ordered counts in parallel
+  const [deliveredCount, orderedCount] = await Promise.all([
+    Order.countDocuments({ restaurantId: { $in: restaurantIdVariations }, status: "delivered" }),
+    Order.countDocuments({ restaurantId: { $in: restaurantIdVariations } })
+  ]);
+
+  const walletDoc = await RestaurantWallet.findOrCreateByRestaurantId(id);
+  if (walletDoc) {
+    await walletDoc.populate("transactions.processedBy", "name email");
+  }
+  const wallet = walletDoc ? walletDoc.toObject() : null;
 
   if (!wallet) {
     return successResponse(res, 200, "No history found", {
       restaurantId: id,
+      deliveredCount,
+      orderedCount,
       transactions: [],
       pagination: { page: 1, limit: parseInt(limit, 10) || 20, total: 0, pages: 0 },
     });
@@ -184,12 +207,32 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
   // newest first
   transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  const onlyAdj = String(onlyAdjustments).toLowerCase() !== "false";
-  if (onlyAdj) {
-    transactions = transactions.filter((t) => {
-      const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
-      return md.adjustment === true || t.type === "bonus" || t.type === "deduction";
-    });
+  if (type && type !== "all") {
+    if (type === "payment") {
+      const allOrders = await Order.find({ restaurantId: { $in: restaurantIdVariations } }).select("_id").lean();
+      const orderIdsSet = new Set(allOrders.map((o) => o._id.toString()));
+      transactions = transactions.filter((t) => t.type === "payment" && t.orderId && orderIdsSet.has(t.orderId.toString()));
+    } else if (type === "credit") {
+      const allOrders = await Order.find({ restaurantId: { $in: restaurantIdVariations } }).select("_id").lean();
+      const orderIdsSet = new Set(allOrders.map((o) => o._id.toString()));
+      transactions = transactions.filter((t) => 
+        t.type === "bonus" || 
+        t.type === "refund" ||
+        (t.type === "payment" && t.orderId && !orderIdsSet.has(t.orderId.toString()))
+      );
+    } else if (type === "deduction") {
+      transactions = transactions.filter((t) => t.type === "deduction");
+    } else if (type === "withdrawal") {
+      transactions = transactions.filter((t) => t.type === "withdrawal");
+    }
+  } else {
+    const onlyAdj = String(onlyAdjustments).toLowerCase() !== "false";
+    if (onlyAdj) {
+      transactions = transactions.filter((t) => {
+        const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
+        return md.adjustment === true || t.type === "bonus" || t.type === "deduction";
+      });
+    }
   }
 
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -200,6 +243,8 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
 
   return successResponse(res, 200, "Restaurant wallet history retrieved successfully", {
     restaurantId: id,
+    deliveredCount,
+    orderedCount,
     transactions: paginated.map((t) => {
       const md = t?.metadata && t.metadata.get ? Object.fromEntries(t.metadata) : (t.metadata || {});
       return {

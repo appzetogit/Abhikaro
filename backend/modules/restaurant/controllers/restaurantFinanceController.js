@@ -73,11 +73,13 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     // while keeping the query strictly scoped to THIS authenticated restaurant.
     const restaurantObjectId = restaurant._id?.toString();
     const restaurantPublicId = restaurant.restaurantId?.toString();
+    const restaurantSlug = restaurant.slug?.toString();
 
     const restaurantIdVariations = [
       restaurantPublicId,
       restaurantObjectId,
       restaurant.id?.toString?.(),
+      restaurantSlug
     ].filter(Boolean);
 
     if (restaurantIdVariations.length === 0) {

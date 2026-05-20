@@ -50,6 +50,9 @@ export default function RestaurantFinance() {
   const [historyItems, setHistoryItems] = useState([])
   const [historyPage, setHistoryPage] = useState(1)
   const [historyPages, setHistoryPages] = useState(1)
+  const [deliveredCount, setDeliveredCount] = useState(0)
+  const [orderedCount, setOrderedCount] = useState(0)
+  const [historyFilter, setHistoryFilter] = useState("all")
 
   // View Order dialog state
   const [viewOrderOpen, setViewOrderOpen] = useState(false)
@@ -146,20 +149,26 @@ export default function RestaurantFinance() {
     setHistoryItems([])
     setHistoryPage(1)
     setHistoryPages(1)
+    setHistoryFilter("all")
+    setDeliveredCount(0)
+    setOrderedCount(0)
     setHistoryOpen(true)
   }
 
-  const fetchHistory = async (restaurantId, p = 1) => {
+  const fetchHistory = async (restaurantId, p = 1, filterType = historyFilter) => {
     try {
       setHistoryLoading(true)
       const res = await adminAPI.getRestaurantWalletHistory(restaurantId, {
         page: p,
         limit: 20,
         onlyAdjustments: false,
+        type: filterType,
       })
       if (res?.data?.success) {
         const data = res.data.data || {}
         setHistoryItems(data.transactions || [])
+        setDeliveredCount(data.deliveredCount || 0)
+        setOrderedCount(data.orderedCount || 0)
         const pg = data.pagination || {}
         setHistoryPage(pg.page ?? p)
         setHistoryPages(pg.pages ?? 1)
@@ -217,9 +226,9 @@ export default function RestaurantFinance() {
 
   useEffect(() => {
     if (!historyOpen || !selectedRestaurant?._id) return
-    fetchHistory(selectedRestaurant._id, 1)
+    fetchHistory(selectedRestaurant._id, 1, historyFilter)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyOpen, selectedRestaurant?._id])
+  }, [historyOpen, selectedRestaurant?._id, historyFilter])
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
@@ -501,8 +510,39 @@ export default function RestaurantFinance() {
                     {selectedRestaurant.restaurantId || ""}
                   </span>
                 </div>
+                <div className="flex items-center justify-between gap-2 border-t border-slate-200 pt-1.5 text-xs text-slate-600">
+                  <span>Delivered: <strong className="text-emerald-700 font-semibold">{deliveredCount}</strong></span>
+                  <span>Total Ordered: <strong className="text-indigo-700 font-semibold">{orderedCount}</strong></span>
+                </div>
               </div>
             )}
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-100 scrollbar-none md:scrollbar-thin">
+              {[
+                { label: "All", value: "all" },
+                { label: "Ordered / Delivered", value: "payment" },
+                { label: "Credits", value: "credit" },
+                { label: "Deductions", value: "deduction" },
+                { label: "Withdrawals", value: "withdrawal" },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => {
+                    setHistoryFilter(tab.value)
+                    setHistoryPage(1)
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-full whitespace-nowrap transition-all duration-200 ${
+                    historyFilter === tab.value
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
             {historyLoading ? (
               <div className="py-10 text-center">
@@ -516,7 +556,8 @@ export default function RestaurantFinance() {
               </div>
             ) : (
               <div className="space-y-2.5 max-h-[380px] overflow-auto pr-1">
-                {historyItems.map((t) => {
+                {historyItems.map((t, index) => {
+                  const sNo = (historyPage - 1) * 20 + index + 1
                   const isCredit = ["payment", "bonus", "refund"].includes(t?.type)
                   const title = t?.type === "payment"
                     ? "Order Payment"
@@ -535,6 +576,9 @@ export default function RestaurantFinance() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-500 shadow-3xs" title={`Serial Number: ${sNo}`}>
+                              {sNo}
+                            </span>
                             <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${t?.type === "payment"
                                 ? "bg-emerald-50 text-emerald-700"
                                 : t?.type === "bonus"
@@ -600,7 +644,7 @@ export default function RestaurantFinance() {
                 onClick={() => {
                   const next = Math.max(1, historyPage - 1)
                   setHistoryPage(next)
-                  fetchHistory(selectedRestaurant._id, next)
+                  fetchHistory(selectedRestaurant._id, next, historyFilter)
                 }}
                 className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -612,7 +656,7 @@ export default function RestaurantFinance() {
                 onClick={() => {
                   const next = Math.min(historyPages, historyPage + 1)
                   setHistoryPage(next)
-                  fetchHistory(selectedRestaurant._id, next)
+                  fetchHistory(selectedRestaurant._id, next, historyFilter)
                 }}
                 className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
