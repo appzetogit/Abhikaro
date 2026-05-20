@@ -42,6 +42,17 @@ export default function Checkout() {
       return
     }
 
+    // Validate coordinates are present and valid
+    const coords = defaultAddress?.location?.coordinates || (defaultAddress?.latitude && defaultAddress?.longitude ? [defaultAddress.longitude, defaultAddress.latitude] : null);
+    const hasValidCoords = coords && Array.isArray(coords) && coords.length === 2 && 
+                          (Number(coords[0]) !== 0 || Number(coords[1]) !== 0) &&
+                          !isNaN(Number(coords[0])) && !isNaN(Number(coords[1]));
+
+    if (!hasValidCoords) {
+      alert("Selected address does not have precise map coordinates. Please update your address in Profile.")
+      return
+    }
+
     setIsPlacingOrder(true)
 
     // Simulate API call

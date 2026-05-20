@@ -251,20 +251,26 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
   // `order` can be null on the first render while the dialog state resolves.
   // If we return early before useMemo/useEffect hooks, React will detect hook order changes.
 
+  const isPlaceholder = (str) => {
+    if (!str) return true;
+    const s = String(str).toLowerCase().trim();
+    return s === "select location" || s === "updating location..." || s === "detecting...";
+  };
+
   // Format address for display
   const formatAddress = (address) => {
     if (!address) return "N/A"
     
     const parts = []
-    if (address.label) parts.push(address.label)
-    if (address.street) parts.push(address.street)
-    if (address.additionalDetails) parts.push(address.additionalDetails)
-    if (address.formattedAddress) {
+    if (address.label && !isPlaceholder(address.label)) parts.push(address.label)
+    if (address.street && !isPlaceholder(address.street)) parts.push(address.street)
+    if (address.additionalDetails && !isPlaceholder(address.additionalDetails)) parts.push(address.additionalDetails)
+    if (address.formattedAddress && !isPlaceholder(address.formattedAddress)) {
       parts.push(address.formattedAddress)
     } else {
-      if (address.city) parts.push(address.city)
-      if (address.state) parts.push(address.state)
-      if (address.zipCode) parts.push(address.zipCode)
+      if (address.city && !isPlaceholder(address.city)) parts.push(address.city)
+      if (address.state && !isPlaceholder(address.state)) parts.push(address.state)
+      if (address.zipCode && !isPlaceholder(address.zipCode)) parts.push(address.zipCode)
     }
     
     return parts.length > 0 ? parts.join(", ") : "Address not available"
@@ -274,6 +280,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
   const getCoordinates = (address) => {
     if (address?.location?.coordinates && Array.isArray(address.location.coordinates) && address.location.coordinates.length === 2) {
       const [lng, lat] = address.location.coordinates
+      if (lng === 0 && lat === 0) return "Not available"
       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
     }
     return null
@@ -400,7 +407,9 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
                     <Clock className="w-4 h-4" />
                     Estimated Delivery Time
                   </p>
-                  <p className="text-sm font-medium text-slate-900">{order.estimatedDeliveryTime} minutes</p>
+                  <p className="text-sm font-medium text-slate-900">
+                    {order.estimatedDeliveryTime > 90 ? 45 : order.estimatedDeliveryTime} minutes
+                  </p>
                 </div>
               )}
               {order.deliveredAt && (

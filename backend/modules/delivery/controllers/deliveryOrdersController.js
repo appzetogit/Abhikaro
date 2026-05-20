@@ -1243,6 +1243,40 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       `📍 Route calculated: ${routeData.distance.toFixed(2)} km, ${routeData.duration.toFixed(1)} mins`,
     );
 
+    // Notify customer via WebSocket that order has been accepted by delivery partner
+    (async () => {
+      try {
+        const serverModule = await import("../../../server.js");
+        const getIO = serverModule.getIO;
+        const io = getIO ? getIO() : null;
+
+        if (io) {
+          const mongoId = updatedOrder._id.toString();
+          const orderIdStr = updatedOrder.orderId ? String(updatedOrder.orderId) : mongoId;
+
+          const payload = {
+            title: "Order Accepted",
+            message: "Delivery partner has accepted your order and is on the way! 🏍️",
+            status: "accepted",
+            orderId: orderIdStr,
+            orderMongoId: mongoId,
+            deliveryPartnerId: delivery._id.toString(),
+            deliveryState: updatedOrder.deliveryState,
+            timestamp: new Date().toISOString()
+          };
+
+          // Emit to both rooms for ID-agnostic compatibility
+          io.to(`order:${mongoId}`).emit("order_status_update", payload);
+          if (orderIdStr !== mongoId) {
+            io.to(`order:${orderIdStr}`).emit("order_status_update", payload);
+          }
+          console.log(`📢 Notified customer for order ${orderIdStr} - Order Accepted`);
+        }
+      } catch (notifError) {
+        console.error("Error sending order accept notification to customer:", notifError);
+      }
+    })();
+
     // Notify restaurant via WebSocket that order has been assigned to delivery boy
     (async () => {
       try {
@@ -2007,7 +2041,7 @@ export const confirmOrderId = asyncHandler(async (req, res) => {
               status: "picked_up",
               orderId: updatedOrder.orderId,
               pickupAt: new Date(),
-              estimatedDeliveryTime: routeData.duration || null,
+              estimatedDeliveryTime: routeData.duration ? Math.min(Math.ceil(routeData.duration), 60) : null,
             },
           );
 

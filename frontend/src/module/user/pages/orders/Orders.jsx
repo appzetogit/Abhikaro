@@ -99,7 +99,10 @@ export default function Orders() {
     const elapsedMinutes = Math.floor((now - createdAt) / (1000 * 60))
     
     // Get max ETA (use eta.max if available, otherwise estimatedDeliveryTime)
-    const maxETA = order.eta?.max || order.estimatedDeliveryTime || 30
+    let maxETA = order.eta?.max || order.estimatedDeliveryTime || 30
+    if (maxETA > 90) {
+      maxETA = 45;
+    }
     const remainingMinutes = Math.max(0, maxETA - elapsedMinutes)
     
     return remainingMinutes > 0 ? remainingMinutes : null
@@ -352,8 +355,14 @@ export default function Orders() {
               isRestaurantCancelled: isRestaurantCancelled,
               isUserCancelled: isUserCancelled,
               cancelledBy: order.cancelledBy,
-              eta: order.eta || { min: order.estimatedDeliveryTime || 30, max: order.estimatedDeliveryTime || 30 },
-              estimatedDeliveryTime: order.estimatedDeliveryTime || 30,
+              eta: (() => {
+                let min = order.eta?.min || order.estimatedDeliveryTime || 30;
+                let max = order.eta?.max || order.estimatedDeliveryTime || 30;
+                if (min > 90) min = 45;
+                if (max > 90) max = 45;
+                return { min, max };
+              })(),
+              estimatedDeliveryTime: order.estimatedDeliveryTime > 90 ? 45 : (order.estimatedDeliveryTime || 30),
               preparationTime: order.preparationTime || 0,
               deliveredAt: order.deliveredAt || null,
               deliveryPartnerName: order.deliveryPartnerId?.name || order.deliveryPartnerName || null,

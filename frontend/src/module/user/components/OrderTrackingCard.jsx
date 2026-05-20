@@ -180,7 +180,10 @@ export default function OrderTrackingCard() {
       
       // Get max ETA (use eta.max if available, otherwise estimatedDeliveryTime)
       const maxETA = active.eta?.max || active.estimatedDeliveryTime || active.estimatedTime || active.estimated_delivery_time || 30;
-      const estimatedMinutes = typeof maxETA === 'number' ? maxETA : parseInt(String(maxETA).match(/\d+/)?.[0] || '30', 10);
+      let estimatedMinutes = typeof maxETA === 'number' ? maxETA : parseInt(String(maxETA).match(/\d+/)?.[0] || '30', 10);
+      if (estimatedMinutes > 90) {
+        estimatedMinutes = 45;
+      }
       
       // Calculate remaining time
       let remainingMinutes = estimatedMinutes - elapsedMinutes;
@@ -344,7 +347,10 @@ export default function OrderTrackingCard() {
       
       // Get max ETA (use eta.max if available, otherwise estimatedDeliveryTime)
       const maxETA = currentActive.eta?.max || currentActive.estimatedDeliveryTime || currentActive.estimatedTime || currentActive.estimated_delivery_time || 30;
-      const estimatedMinutes = typeof maxETA === 'number' ? maxETA : parseInt(String(maxETA).match(/\d+/)?.[0] || '30', 10);
+      let estimatedMinutes = typeof maxETA === 'number' ? maxETA : parseInt(String(maxETA).match(/\d+/)?.[0] || '30', 10);
+      if (estimatedMinutes > 90) {
+        estimatedMinutes = 45;
+      }
       
       // Calculate remaining time
       let remaining = estimatedMinutes - elapsedMinutes;

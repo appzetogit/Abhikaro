@@ -125,8 +125,18 @@ class ETACalculationService {
         bufferTime;
 
       // 9. Calculate min/max ETA range
-      const minETA = Math.max(1, totalETA - ETACalculationService.ETA_RANGE);
-      const maxETA = totalETA + ETACalculationService.ETA_RANGE;
+      let minETA = Math.max(1, totalETA - ETACalculationService.ETA_RANGE);
+      let maxETA = totalETA + ETACalculationService.ETA_RANGE;
+
+      // Apply sanity caps to prevent database corruption from coordinate/fallback distance issues
+      if (minETA > 90) {
+        console.warn(`⚠️ [ETA Cap] Computed minETA ${minETA} exceeded 90m cap. Capping to 45m.`);
+        minETA = 45;
+      }
+      if (maxETA > 120) {
+        console.warn(`⚠️ [ETA Cap] Computed maxETA ${maxETA} exceeded 120m cap. Capping to 60m.`);
+        maxETA = 60;
+      }
 
       const breakdown = {
         restaurantPrepTime,
@@ -290,9 +300,22 @@ class ETACalculationService {
       }
 
       // Update order with new ETA
+      let finalMin = newETA.minETA || newETA.min;
+      let finalMax = newETA.maxETA || newETA.max;
+
+      // Apply sanity caps to prevent database corruption
+      if (finalMin > 90) {
+        console.warn(`⚠️ [ETA Cap] Recalculated minETA ${finalMin} exceeded 90m cap. Capping to 45m.`);
+        finalMin = 45;
+      }
+      if (finalMax > 120) {
+        console.warn(`⚠️ [ETA Cap] Recalculated maxETA ${finalMax} exceeded 120m cap. Capping to 60m.`);
+        finalMax = 60;
+      }
+
       order.eta = {
-        min: newETA.minETA || newETA.min,
-        max: newETA.maxETA || newETA.max,
+        min: finalMin,
+        max: finalMax,
         lastUpdated: new Date()
       };
       order.estimatedDeliveryTime = Math.ceil((order.eta.min + order.eta.max) / 2);

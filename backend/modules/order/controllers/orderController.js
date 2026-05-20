@@ -117,6 +117,40 @@ export const createOrder = async (req, res) => {
       });
     }
 
+    // Validate coordinates are present and valid (not Null Island [0,0])
+    const coords = address?.location?.coordinates || (address?.latitude && address?.longitude ? [address.longitude, address.latitude] : null);
+    const hasValidCoords = coords && Array.isArray(coords) && coords.length === 2 && 
+                          (Number(coords[0]) !== 0 || Number(coords[1]) !== 0) &&
+                          !isNaN(Number(coords[0])) && !isNaN(Number(coords[1]));
+
+    if (!hasValidCoords) {
+      return res.status(400).json({
+        success: false,
+        message: "Precise map location coordinates are required to place an order. Please select a valid address.",
+      });
+    }
+
+    // Validate no placeholder strings in address
+    const isPlaceholderStr = (str) => {
+      if (!str) return true;
+      const s = String(str).toLowerCase().trim();
+      return s === "select location" || s === "updating location..." || s === "detecting...";
+    };
+
+    const hasPlaceholderAddress = address && (
+      isPlaceholderStr(address.formattedAddress) ||
+      isPlaceholderStr(address.address) ||
+      isPlaceholderStr(address.street)
+    );
+
+    if (hasPlaceholderAddress) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery address contains unresolved placeholders. Please update your location before placing the order.",
+      });
+    }
+
+
     if (!pricing || !pricing.total) {
       return res.status(400).json({
         success: false,

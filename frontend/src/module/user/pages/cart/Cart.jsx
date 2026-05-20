@@ -22,6 +22,12 @@ import { preloadGoogleMaps } from "../../../../utils/mapsPreload"
 // Removed hardcoded suggested items - now fetching approved addons from backend
 // Coupons will be fetched from backend based on items in cart
 
+const isPlaceholder = (str) => {
+  if (!str) return true;
+  const s = String(str).toLowerCase().trim();
+  return s === "select location" || s === "updating location..." || s === "detecting...";
+};
+
 /**
  * Format full address string from address object
  * @param {Object} address - Address object with street, additionalDetails, city, state, zipCode, or formattedAddress
@@ -30,25 +36,25 @@ import { preloadGoogleMaps } from "../../../../utils/mapsPreload"
 const formatFullAddress = (address) => {
   if (!address) return ""
 
-  // Priority 1: Use formattedAddress if available (for live location addresses)
-  if (address.formattedAddress && address.formattedAddress !== "Select location") {
+  // Priority 1: Use formattedAddress if available and genuine
+  if (address.formattedAddress && !isPlaceholder(address.formattedAddress)) {
     return address.formattedAddress
   }
 
-  // Priority 2: Build address from parts
+  // Priority 2: Build address from parts (excluding any placeholders)
   const addressParts = []
-  if (address.street) addressParts.push(address.street)
-  if (address.additionalDetails) addressParts.push(address.additionalDetails)
-  if (address.city) addressParts.push(address.city)
-  if (address.state) addressParts.push(address.state)
-  if (address.zipCode) addressParts.push(address.zipCode)
+  if (address.street && !isPlaceholder(address.street)) addressParts.push(address.street)
+  if (address.additionalDetails && !isPlaceholder(address.additionalDetails)) addressParts.push(address.additionalDetails)
+  if (address.city && !isPlaceholder(address.city)) addressParts.push(address.city)
+  if (address.state && !isPlaceholder(address.state)) addressParts.push(address.state)
+  if (address.zipCode && !isPlaceholder(address.zipCode)) addressParts.push(address.zipCode)
 
   if (addressParts.length > 0) {
     return addressParts.join(', ')
   }
 
   // Priority 3: Use address field if available
-  if (address.address && address.address !== "Select location") {
+  if (address.address && !isPlaceholder(address.address)) {
     return address.address
   }
 
@@ -85,7 +91,7 @@ export default function Cart() {
   const { cart, updateQuantity, addToCart, getCartCount, clearCart, cleanCartForRestaurant } = cartContext;
   const { getDefaultAddress, getDefaultPaymentMethod, addresses, paymentMethods, userProfile } = useProfile()
   const { createOrder } = useOrders()
-  const { location: currentLocation, zoneId } = useSharedLocation() // Get live location address and zone
+  const { location: currentLocation, zoneId, requestLocation } = useSharedLocation() // Get live location address and zone
 
   const [showCoupons, setShowCoupons] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null)
@@ -318,16 +324,16 @@ export default function Cart() {
   const cartCount = getCartCount()
   const savedAddress = getDefaultAddress()
   // Priority: Use live location if available, otherwise use saved address
-  const defaultAddress = currentLocation?.formattedAddress && currentLocation.formattedAddress !== "Select location"
+  const defaultAddress = currentLocation?.formattedAddress && !isPlaceholder(currentLocation.formattedAddress)
     ? {
       ...savedAddress,
       formattedAddress: currentLocation.formattedAddress,
-      address: currentLocation.address || currentLocation.formattedAddress,
-      street: currentLocation.street || currentLocation.address,
-      city: currentLocation.city,
-      state: currentLocation.state,
-      zipCode: currentLocation.postalCode,
-      area: currentLocation.area,
+      address: isPlaceholder(currentLocation.address) ? "" : (currentLocation.address || currentLocation.formattedAddress),
+      street: isPlaceholder(currentLocation.street) ? "" : (currentLocation.street || currentLocation.address || ""),
+      city: isPlaceholder(currentLocation.city) ? "" : (currentLocation.city || ""),
+      state: isPlaceholder(currentLocation.state) ? "" : (currentLocation.state || ""),
+      zipCode: isPlaceholder(currentLocation.postalCode) ? "" : (currentLocation.postalCode || ""),
+      area: isPlaceholder(currentLocation.area) ? "" : (currentLocation.area || ""),
       location: currentLocation.latitude && currentLocation.longitude ? {
         coordinates: [currentLocation.longitude, currentLocation.latitude]
       } : savedAddress?.location
@@ -1125,17 +1131,23 @@ export default function Cart() {
 
 
   const handlePlaceOrder = async () => {
-    if (!checkoutDeliveryAddress) {
-      setDeliveryAddressError(true)
-      const element = document.getElementById('delivery-address-section')
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
+    // 1. Initial cart and field validation
+    if (cart.length === 0) {
+      alert("Your cart is empty")
       return
     }
 
-    // Clear delivery address error if it was set
-    if (deliveryAddressError) setDeliveryAddressError(false)
+    if (isHotelOrder) {
+      if (!roomNumber || roomNumber.trim() === '') {
+        setRoomError(true)
+        const element = document.getElementById('room-number-input')
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          setTimeout(() => element.focus(), 500)
+        }
+        return;
+      }
+    }
 
     // Validate additional address (make it mandatory)
     if (!additionalAddress || !additionalAddress.trim()) {
@@ -1149,25 +1161,69 @@ export default function Cart() {
       return
     }
 
-    if (cart.length === 0) {
-      alert("Your cart is empty")
-      return
-    }
+    setIsPlacingOrder(true)
 
-  // Validate room number for hotel orders (regardless of payment method)
-  if (isHotelOrder) {
-      if (!roomNumber || roomNumber.trim() === '') {
-        setRoomError(true)
-        const element = document.getElementById('room-number-input')
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          setTimeout(() => element.focus(), 500)
+    let finalAddress = checkoutDeliveryAddress;
+
+    // 2. Fetch/force fresh live GPS coordinates if user is using Live location
+    if (!hasManuallySelectedDeliveryAddress) {
+      const toastId = toast.loading("Verifying your precise live location...")
+      try {
+        const freshLoc = await requestLocation()
+        toast.dismiss(toastId)
+
+        if (freshLoc && freshLoc.latitude && freshLoc.longitude) {
+          finalAddress = {
+            ...checkoutDeliveryAddress,
+            formattedAddress: freshLoc.formattedAddress,
+            address: isPlaceholder(freshLoc.address) ? "" : (freshLoc.address || freshLoc.formattedAddress),
+            street: isPlaceholder(freshLoc.street) ? "" : (freshLoc.street || freshLoc.address || ""),
+            city: isPlaceholder(freshLoc.city) ? "" : (freshLoc.city || ""),
+            state: isPlaceholder(freshLoc.state) ? "" : (freshLoc.state || ""),
+            zipCode: isPlaceholder(freshLoc.postalCode) ? "" : (freshLoc.postalCode || ""),
+            area: isPlaceholder(freshLoc.area) ? "" : (freshLoc.area || ""),
+            location: {
+              coordinates: [freshLoc.longitude, freshLoc.latitude]
+            }
+          }
+          setCheckoutDeliveryAddress(finalAddress)
+          toast.success("Precise location verified!")
+        } else {
+          toast.error("Could not acquire precise GPS coordinates. Please allow location permissions or select a saved address.")
+          setIsPlacingOrder(false)
+          return
         }
-        return;
+      } catch (err) {
+        toast.dismiss(toastId)
+        toast.error("Location access denied or timed out. Please allow location permissions or select a saved address.")
+        setIsPlacingOrder(false)
+        return
       }
     }
 
-    setIsPlacingOrder(true)
+    // 3. Final validation on coordinates and placeholders
+    const isAddrPlaceholder = finalAddress && (
+      isPlaceholder(finalAddress.formattedAddress) ||
+      isPlaceholder(finalAddress.address) ||
+      isPlaceholder(finalAddress.street)
+    );
+
+    const coords = finalAddress?.location?.coordinates;
+    const hasValidCoords = coords && Array.isArray(coords) && coords.length === 2 && (coords[0] !== 0 || coords[1] !== 0);
+
+    if (!finalAddress || isAddrPlaceholder || !hasValidCoords) {
+      setDeliveryAddressError(true)
+      const element = document.getElementById('delivery-address-section')
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      toast.error("Please select a valid delivery address with precise map location.")
+      setIsPlacingOrder(false)
+      return
+    }
+
+    // Clear delivery address error if it was set
+    if (deliveryAddressError) setDeliveryAddressError(false)
 
     // Use API_BASE_URL from config (supports both dev and production)
 
@@ -1365,7 +1421,7 @@ export default function Cart() {
 
       const orderPayload = {
         items: orderItems,
-        address: checkoutDeliveryAddress,
+        address: finalAddress,
         restaurantId: finalRestaurantId,
         restaurantName: finalRestaurantName,
         pricing: orderPricing,

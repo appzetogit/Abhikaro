@@ -956,6 +956,11 @@ export default function OrderTracking() {
               initialETA = 30
             }
 
+            // Cap extremely large values (e.g. from coordinates 0,0 fallback distance)
+            if (initialETA > 90) {
+              initialETA = 45;
+            }
+
             // Calculate remaining time
             let remainingTime = Math.max(0, initialETA - elapsedMinutes)
             
@@ -1058,7 +1063,10 @@ export default function OrderTracking() {
       const elapsedMinutes = Math.floor((now - createdAt) / 1000 / 60)
 
       // Get initial ETA from order
-      const initialETA = order?.eta?.min || order?.estimatedDeliveryTime || 30
+      let initialETA = order?.eta?.min || order?.estimatedDeliveryTime || 30
+      if (initialETA > 90) {
+        initialETA = 45;
+      }
       const remainingTime = Math.max(0, initialETA - elapsedMinutes)
 
       setEstimatedTime(remainingTime)
@@ -1084,6 +1092,35 @@ export default function OrderTracking() {
       } = event.detail;
 
       console.log('📢 Order status notification received:', { message, status });
+
+      // High-fidelity fetch to ensure rider info and route update instantly
+      if (orderId) {
+        orderAPI.getOrderDetails(orderId).then((response) => {
+          if (response.data?.success && response.data.data?.order) {
+            const apiOrder = response.data.data.order;
+            setOrder((prev) => {
+              const transformedOrder = {
+                ...apiOrder,
+                restaurantLocation: prev?.restaurantLocation || (apiOrder.restaurantId?.location?.coordinates ? {
+                  coordinates: apiOrder.restaurantId.location.coordinates
+                } : null),
+                cancellationReason: apiOrder?.cancellationReason || apiOrder?.cancellation_reason || prev?.cancellationReason || null,
+                deliveryPartner: apiOrder.deliveryPartnerId ? {
+                  name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
+                  avatar: null,
+                  phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null,
+                  availability: apiOrder.deliveryPartnerId.availability || null
+                } : prev?.deliveryPartner || null,
+                deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || prev?.deliveryPartnerPhone || null,
+                deliveryPartnerId: apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
+                assignmentInfo: apiOrder.assignmentInfo || null,
+                deliveryState: apiOrder.deliveryState || null
+              };
+              return transformedOrder;
+            });
+          }
+        }).catch(err => console.error('Error fetching fresh order details on socket status notification:', err));
+      }
 
       // Keep local order object in sync so UI reacts immediately (e.g. hide cancel once READY)
       if (status) {
@@ -1149,7 +1186,7 @@ export default function OrderTracking() {
     return () => {
       window.removeEventListener('orderStatusNotification', handleOrderStatusNotification);
     };
-  }, [])
+  }, [orderId])
 
   const canCancelOrder = (() => {
     const s = String(order?.status || '').toLowerCase().trim()
@@ -1505,6 +1542,11 @@ export default function OrderTracking() {
             initialETA = apiOrder.estimatedDeliveryTime
           } else {
             initialETA = 30
+          }
+
+          // Cap extremely large values (e.g. from coordinates 0,0 fallback distance)
+          if (initialETA > 90) {
+            initialETA = 45;
           }
 
           const remainingTime = Math.max(0, initialETA - elapsedMinutes)
