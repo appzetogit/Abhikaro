@@ -61,7 +61,7 @@ const userSchema = new mongoose.Schema({
   addresses: [{
     label: {
       type: String,
-      enum: ['Home', 'Office', 'Other']
+      enum: ['Home', 'Office', 'Other', 'Live', 'live']
     },
     street: String,
     additionalDetails: String,

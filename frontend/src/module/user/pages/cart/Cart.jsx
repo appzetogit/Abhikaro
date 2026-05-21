@@ -353,6 +353,7 @@ export default function Cart() {
   const defaultAddress = currentLocation?.formattedAddress && !isPlaceholder(currentLocation.formattedAddress)
     ? {
       ...savedAddress,
+      label: "Live", // Explicitly set label to Live for live location
       formattedAddress: currentLocation.formattedAddress,
       address: isPlaceholder(currentLocation.address) ? "" : (currentLocation.address || currentLocation.formattedAddress),
       street: isPlaceholder(currentLocation.street) ? "" : (currentLocation.street || currentLocation.address || ""),
@@ -1198,9 +1199,10 @@ export default function Cart() {
         const freshLoc = await requestLocation()
         toast.dismiss(toastId)
 
-        if (freshLoc && freshLoc.latitude && freshLoc.longitude) {
+        if (freshLoc && freshLoc.latitude && freshLoc.longitude && !isPlaceholder(freshLoc.formattedAddress)) {
           finalAddress = {
             ...checkoutDeliveryAddress,
+            label: "Live", // Explicitly set label to Live for live location
             formattedAddress: freshLoc.formattedAddress,
             address: isPlaceholder(freshLoc.address) ? "" : (freshLoc.address || freshLoc.formattedAddress),
             street: isPlaceholder(freshLoc.street) ? "" : (freshLoc.street || freshLoc.address || ""),
@@ -1215,23 +1217,44 @@ export default function Cart() {
           setCheckoutDeliveryAddress(finalAddress)
           toast.success("Precise location verified!")
         } else {
-          toast.error("Could not acquire precise GPS coordinates. Please allow location permissions or select a saved address.")
-          setIsPlacingOrder(false)
-          return
+          // If fresh location is a placeholder or has invalid coordinates, but the existing checkoutDeliveryAddress is valid,
+          // we gracefully fall back to the existing one!
+          const existingCoords = checkoutDeliveryAddress?.location?.coordinates;
+          const existingHasValidCoords = existingCoords && Array.isArray(existingCoords) && existingCoords.length === 2 && (existingCoords[0] !== 0 || existingCoords[1] !== 0);
+          const existingIsNotPlaceholder = checkoutDeliveryAddress && !isPlaceholder(checkoutDeliveryAddress.formattedAddress);
+
+          if (existingIsNotPlaceholder && existingHasValidCoords) {
+            finalAddress = checkoutDeliveryAddress;
+            console.log("Fresh location verification returned placeholder, falling back to existing valid checkout address");
+          } else {
+            toast.error("Could not acquire precise GPS coordinates. Please allow location permissions or select a saved address.")
+            setIsPlacingOrder(false)
+            return
+          }
         }
       } catch (err) {
         toast.dismiss(toastId)
-        toast.error("Location access denied or timed out. Please allow location permissions or select a saved address.")
-        setIsPlacingOrder(false)
-        return
+        
+        // If fresh location fetch throws an error, but the existing checkoutDeliveryAddress is valid,
+        // we gracefully fall back to the existing one!
+        const existingCoords = checkoutDeliveryAddress?.location?.coordinates;
+        const existingHasValidCoords = existingCoords && Array.isArray(existingCoords) && existingCoords.length === 2 && (existingCoords[0] !== 0 || existingCoords[1] !== 0);
+        const existingIsNotPlaceholder = checkoutDeliveryAddress && !isPlaceholder(checkoutDeliveryAddress.formattedAddress);
+
+        if (existingIsNotPlaceholder && existingHasValidCoords) {
+          finalAddress = checkoutDeliveryAddress;
+          console.log("Fresh location verification failed, falling back to existing valid checkout address");
+        } else {
+          toast.error("Location access denied or timed out. Please allow location permissions or select a saved address.")
+          setIsPlacingOrder(false)
+          return
+        }
       }
     }
 
     // 3. Final validation on coordinates and placeholders
     const isAddrPlaceholder = finalAddress && (
-      isPlaceholder(finalAddress.formattedAddress) ||
-      isPlaceholder(finalAddress.address) ||
-      isPlaceholder(finalAddress.street)
+      isPlaceholder(finalAddress.formattedAddress)
     );
 
     const coords = finalAddress?.location?.coordinates;
@@ -2287,7 +2310,7 @@ export default function Cart() {
                           const addressExists = isLive || addresses.some(addr => addr.label === label)
                           const isSelected = isLive 
                             ? !hasManuallySelectedDeliveryAddress 
-                            : String(checkoutDeliveryAddress?.label || "").toLowerCase() === String(label).toLowerCase()
+                            : hasManuallySelectedDeliveryAddress && String(checkoutDeliveryAddress?.label || "").toLowerCase() === String(label).toLowerCase()
                           
                           return (
                             <button

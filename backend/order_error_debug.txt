@@ -1,0 +1,142 @@
+
+[2026-05-21T10:41:26.101Z] ERROR: Order validation failed: address.label: `Live` is not a valid enum value for path `address.label`.
+STACK: ValidationError: Order validation failed: address.label: `Live` is not a valid enum value for path `address.label`.
+    at Document.invalidate (E:\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:3371:32)
+    at E:\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:3132:17
+    at E:\Abhikaro-main\backend\node_modules\mongoose\lib\schemaType.js:1446:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+BODY: {
+  "items": [
+    {
+      "itemId": "item-1773900240268-0.7367224326131466",
+      "name": "Noodles",
+      "price": 1,
+      "quantity": 1,
+      "image": "https://res.cloudinary.com/dbmzdwjoz/image/upload/v1774246543/restaurant/menu-items/wsmmwztmdtzpcgpnvakq.png",
+      "description": "The Taste is yummy",
+      "isVeg": true,
+      "selectedVariantId": null,
+      "selectedVariantName": null
+    }
+  ],
+  "address": {
+    "label": "Live",
+    "street": "",
+    "additionalDetails": "36, 11 Bungalow Colony, New Palasia, Indore, 452003",
+    "city": "Indore",
+    "state": "Madhya Pradesh",
+    "zipCode": "452001",
+    "location": {
+      "coordinates": [
+        75.87200388326445,
+        22.717599224862255
+      ]
+    },
+    "isDefault": true,
+    "_id": "69f9e28eb9aa95579328d5df",
+    "id": "69f9e28eb9aa95579328d5df",
+    "formattedAddress": "401, A Block, Corporate House, Flim Colony, South Tukoganj, Indore, Madhya Pradesh 452001, India",
+    "address": "Corporate House, A Block, South Tukoganj",
+    "area": "Corporate House"
+  },
+  "restaurantId": "REST-1773225614185-7685",
+  "restaurantName": "Sagar Restaurant",
+  "pricing": {
+    "subtotal": 1,
+    "discount": 0,
+    "deliveryFee": 25,
+    "platformFee": 5,
+    "tax": 0,
+    "total": 31,
+    "savings": 0,
+    "appliedCoupon": null,
+    "breakdown": {
+      "itemTotal": 1,
+      "discountAmount": 0,
+      "deliveryFee": 25,
+      "platformFee": 5,
+      "gst": 0,
+      "total": 31
+    }
+  },
+  "deliveryFleet": "standard",
+  "note": "",
+  "sendCutlery": true,
+  "paymentMethod": "wallet",
+  "zoneId": "69c52beea8f708150588e604",
+  "additionalAddress": "gbfgbfbf",
+  "hotelReference": null,
+  "hotelName": null,
+  "roomNumber": null
+}
+
+[2026-05-21T10:42:54.338Z] ERROR: Order validation failed: address.label: `Live` is not a valid enum value for path `address.label`.
+STACK: ValidationError: Order validation failed: address.label: `Live` is not a valid enum value for path `address.label`.
+    at Document.invalidate (E:\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:3371:32)
+    at E:\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:3132:17
+    at E:\Abhikaro-main\backend\node_modules\mongoose\lib\schemaType.js:1446:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+BODY: {
+  "items": [
+    {
+      "itemId": "item-1773900240268-0.7367224326131466",
+      "name": "Noodles",
+      "price": 1,
+      "quantity": 1,
+      "image": "https://res.cloudinary.com/dbmzdwjoz/image/upload/v1774246543/restaurant/menu-items/wsmmwztmdtzpcgpnvakq.png",
+      "description": "The Taste is yummy",
+      "isVeg": true,
+      "selectedVariantId": null,
+      "selectedVariantName": null
+    }
+  ],
+  "address": {
+    "label": "Live",
+    "street": "RNT Marg",
+    "additionalDetails": "36, 11 Bungalow Colony, New Palasia, Indore, 452003",
+    "city": "Indore",
+    "state": "Madhya Pradesh",
+    "zipCode": "452001",
+    "location": {
+      "coordinates": [
+        75.87197804192346,
+        22.717593404719427
+      ]
+    },
+    "isDefault": true,
+    "_id": "69f9e28eb9aa95579328d5df",
+    "id": "69f9e28eb9aa95579328d5df",
+    "formattedAddress": "Corporate House, HO-406, RNT Marg, Near D.A.V.V, Flim Colony, Chhoti Gwaltoli, Indore, Madhya Pradesh 452001, India",
+    "address": "Corporate House, Chhoti Gwaltoli",
+    "area": "Corporate House"
+  },
+  "restaurantId": "REST-1773225614185-7685",
+  "restaurantName": "Sagar Restaurant",
+  "pricing": {
+    "subtotal": 1,
+    "discount": 0,
+    "deliveryFee": 25,
+    "platformFee": 5,
+    "tax": 0,
+    "total": 31,
+    "savings": 0,
+    "appliedCoupon": null,
+    "breakdown": {
+      "itemTotal": 1,
+      "discountAmount": 0,
+      "deliveryFee": 25,
+      "platformFee": 5,
+      "gst": 0,
+      "total": 31
+    }
+  },
+  "deliveryFleet": "standard",
+  "note": "",
+  "sendCutlery": true,
+  "paymentMethod": "wallet",
+  "zoneId": "69c52beea8f708150588e604",
+  "additionalAddress": "rgregerd",
+  "hotelReference": null,
+  "hotelName": null,
+  "roomNumber": null
+}

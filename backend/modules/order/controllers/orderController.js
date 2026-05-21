@@ -1,4 +1,5 @@
 import Order from "../models/Order.js";
+import OrderEvent from "../models/OrderEvent.js";
 import Payment from "../../payment/models/Payment.js";
 import {
   createOrder as createRazorpayOrder,
@@ -132,13 +133,14 @@ export const createOrder = async (req, res) => {
 
     // Validate no placeholder strings in address
     const isPlaceholderStr = (str) => {
-      if (!str) return true;
+      if (!str) return false;
       const s = String(str).toLowerCase().trim();
       return s === "select location" || s === "updating location..." || s === "detecting...";
     };
 
     const hasPlaceholderAddress = address && (
       isPlaceholderStr(address.formattedAddress) ||
+      !address.formattedAddress ||
       isPlaceholderStr(address.address) ||
       isPlaceholderStr(address.street)
     );
