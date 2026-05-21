@@ -46,7 +46,15 @@ export function useLocation() {
     } catch (e) {}
     return false
   })
-  const manualOverrideEnabledRef = useRef(false)
+  const manualOverrideEnabledRef = useRef(
+    (() => {
+      try {
+        return sessionStorage.getItem("manualLocationOverride") === "true"
+      } catch {
+        return false
+      }
+    })()
+  )
 
   const watchIdRef = useRef(null)
   const updateTimerRef = useRef(null)
@@ -1875,6 +1883,9 @@ export function useLocation() {
 
       // Enable manual override mode: do not resume live tracking until user explicitly requests it.
       manualOverrideEnabledRef.current = true
+      try {
+        sessionStorage.setItem("manualLocationOverride", "true")
+      } catch {}
       stopWatchingLocation()
 
       const nextLoc = {
@@ -1972,6 +1983,12 @@ export function useLocation() {
     const checkPermissionAndStart = async () => {
       if (hasInitializedRef.current) return
       
+      if (manualOverrideEnabledRef.current) {
+        hasInitializedRef.current = true
+        setLoading(false)
+        return
+      }
+      
       // Only show Detecting state on startup if we do NOT have a cached location
       const hasCached = !!(location && (location.latitude || location.city || location.address));
       if (!hasCached) {
@@ -2046,6 +2063,9 @@ export function useLocation() {
     isFetchingLocationRef.current = false
     // User explicitly requested current GPS location; exit manual override mode.
     manualOverrideEnabledRef.current = false
+    try {
+      sessionStorage.setItem("manualLocationOverride", "false")
+    } catch {}
     
     setLoading(true)
     setError(null)

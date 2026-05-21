@@ -2137,7 +2137,12 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         longitude,
         formattedAddress: `${address.street}, ${address.city}, ${address.state}`
       }
-      localStorage.setItem("userLocation", JSON.stringify(locationData))
+      
+      if (typeof setManualLocation === "function") {
+        await setManualLocation(locationData, { updateDB: true, pauseWatchMs: 2500 })
+      } else {
+        localStorage.setItem("userLocation", JSON.stringify(locationData))
+      }
 
       // Update map position to show selected address
       setMapPosition([latitude, longitude])
@@ -2178,9 +2183,9 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         }, 300)
       }
 
-      // Don't close overlay - keep user on select location page
-      // onClose()
-      // window.location.reload()
+      // Close overlay and redirect to home page so user immediately sees updated location
+      onClose()
+      navigate("/")
     } catch (error) {
       console.error("Error selecting saved address:", error)
       toast.error("Failed to update location. Please try again.")
