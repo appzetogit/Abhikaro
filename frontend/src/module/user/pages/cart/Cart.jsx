@@ -122,6 +122,38 @@ export default function Cart() {
   const [showOrderSuccess, setShowOrderSuccess] = useState(false)
   const [placedOrderId, setPlacedOrderId] = useState(null)
 
+  // Restaurant and pricing state
+  const [restaurantData, setRestaurantData] = useState(null)
+  const [loadingRestaurant, setLoadingRestaurant] = useState(false)
+  const [pricing, setPricing] = useState(null)
+  const [loadingPricing, setLoadingPricing] = useState(false)
+  const pricingAbortRef = useRef(null)
+
+  // Addons state
+  const [addons, setAddons] = useState([])
+  const [loadingAddons, setLoadingAddons] = useState(false)
+
+  // Coupons state - fetched from backend
+  const [availableCoupons, setAvailableCoupons] = useState([])
+  const [loadingCoupons, setLoadingCoupons] = useState(false)
+
+  // Category offer (admin category offerPercentage) state
+  const [categoryOffers, setCategoryOffers] = useState([])
+  const [bestCategoryOffer, setBestCategoryOffer] = useState(null) // { id, percent, name, usageLimitPerDay }
+  const [isCategoryOfferApplied, setIsCategoryOfferApplied] = useState(false)
+  const [showCategoryOfferModal, setShowCategoryOfferModal] = useState(false)
+  const categoryOfferPromptShownRef = useRef(false)
+  const [hasUsedAdminOfferToday, setHasUsedAdminOfferToday] = useState(false)
+
+  // Fee settings from database (used as fallback if pricing not available)
+  const [feeSettings, setFeeSettings] = useState({
+    deliveryFee: 25,
+    freeDeliveryThreshold: 149,
+    platformFee: 5,
+    gstRate: 5,
+    deliveryFeeRanges: [], // Delivery fee ranges based on order value
+  })
+
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(-10)
 
   // Warm up Google Maps as soon as success screen appears so the tracking map renders instantly
@@ -249,37 +281,7 @@ export default function Cart() {
     }
   }
 
-  // Restaurant and pricing state
-  const [restaurantData, setRestaurantData] = useState(null)
-  const [loadingRestaurant, setLoadingRestaurant] = useState(false)
-  const [pricing, setPricing] = useState(null)
-  const [loadingPricing, setLoadingPricing] = useState(false)
-  const pricingAbortRef = useRef(null)
 
-  // Addons state
-  const [addons, setAddons] = useState([])
-  const [loadingAddons, setLoadingAddons] = useState(false)
-
-  // Coupons state - fetched from backend
-  const [availableCoupons, setAvailableCoupons] = useState([])
-  const [loadingCoupons, setLoadingCoupons] = useState(false)
-
-  // Category offer (admin category offerPercentage) state
-  const [categoryOffers, setCategoryOffers] = useState([])
-  const [bestCategoryOffer, setBestCategoryOffer] = useState(null) // { id, percent, name, usageLimitPerDay }
-  const [isCategoryOfferApplied, setIsCategoryOfferApplied] = useState(false)
-  const [showCategoryOfferModal, setShowCategoryOfferModal] = useState(false)
-  const categoryOfferPromptShownRef = useRef(false)
-  const [hasUsedAdminOfferToday, setHasUsedAdminOfferToday] = useState(false)
-
-  // Fee settings from database (used as fallback if pricing not available)
-  const [feeSettings, setFeeSettings] = useState({
-    deliveryFee: 25,
-    freeDeliveryThreshold: 149,
-    platformFee: 5,
-    gstRate: 5,
-    deliveryFeeRanges: [], // Delivery fee ranges based on order value
-  })
 
   // Helper: increment how many times current user has used this admin offer today (stored in localStorage)
   const markAdminOfferUsedToday = (categoryId, usageLimitPerDay) => {
