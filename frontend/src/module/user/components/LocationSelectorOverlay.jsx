@@ -47,6 +47,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   const { location, loading, requestLocation, setManualLocation } = useSharedLocation()
   const { addresses = [], addAddress, updateAddress, userProfile, isAuthenticated } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
+  const [editingAddressId, setEditingAddressId] = useState(null)
   const [mapPosition, setMapPosition] = useState([22.7196, 75.8577]) // Default Indore coordinates [lat, lng]
   const [addressFormData, setAddressFormData] = useState({
     street: "",
@@ -483,10 +484,12 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
 
         if (!isMounted || !mapContainerRef.current) return
 
-        // Initial location (Indore center or current location)
-        const initialLocation = location?.latitude && location?.longitude
-          ? { lat: location.latitude, lng: location.longitude }
-          : { lat: 22.7196, lng: 75.8577 }
+        // Initial location (Indore center, mapPosition, or current location)
+        const initialLocation = mapPosition && mapPosition[0] && mapPosition[1]
+          ? { lat: mapPosition[0], lng: mapPosition[1] }
+          : location?.latitude && location?.longitude
+            ? { lat: location.latitude, lng: location.longitude }
+            : { lat: 22.7196, lng: 75.8577 }
 
         // Create map
         const map = new google.maps.Map(mapContainerRef.current, {
@@ -974,6 +977,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   }
 
   const handleAddAddress = () => {
+    setEditingAddressId(null)
     setShowAddressForm(true)
     // Initialize form with current location data
     if (location?.latitude && location?.longitude) {
@@ -2046,17 +2050,24 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         longitude: mapPosition[1], // longitude from mapPosition[1]
       }
 
-      // Check if an address with the same label already exists
-      const existingAddressWithSameLabel = addresses.find(addr => addr.label === normalizedLabel)
-
-      if (existingAddressWithSameLabel) {
-        // Update existing address instead of creating a new one
-        await updateAddress(existingAddressWithSameLabel.id, addressToSave)
-        toast.success(`Address updated for ${normalizedLabel}!`)
+      if (editingAddressId) {
+        // Update existing address
+        await updateAddress(editingAddressId, addressToSave)
+        toast.success("Address updated successfully!")
       } else {
         // Create new address
-        await addAddress(addressToSave)
-        toast.success(`Address saved as ${normalizedLabel}!`)
+        // Check if an address with the same label already exists
+        const existingAddressWithSameLabel = addresses.find(addr => addr.label === normalizedLabel)
+
+        if (existingAddressWithSameLabel) {
+          // Update existing address instead of creating a new one
+          await updateAddress(existingAddressWithSameLabel.id, addressToSave)
+          toast.success(`Address updated for ${normalizedLabel}!`)
+        } else {
+          // Create new address
+          await addAddress(addressToSave)
+          toast.success(`Address saved as ${normalizedLabel}!`)
+        }
       }
 
       // Reset form
@@ -2069,6 +2080,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         label: "Home",
         phone: "",
       })
+      setEditingAddressId(null)
       setShowAddressForm(false)
       setLoadingAddress(false)
 
@@ -2093,6 +2105,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
 
   const handleCancelAddressForm = () => {
     setShowAddressForm(false)
+    setEditingAddressId(null)
     setAddressFormData({
       street: "",
       city: "",
@@ -2102,8 +2115,30 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       label: "Home",
       phone: "",
     })
-    onClose() // Ensure the overlay is closed
-    navigate("/")
+  }
+
+  const handleEditAddress = (address) => {
+    setEditingAddressId(address.id)
+    setShowAddressForm(true)
+
+    // Get coordinates from address location
+    const coordinates = address.location?.coordinates || []
+    const longitude = coordinates[0]
+    const latitude = coordinates[1]
+
+    if (latitude && longitude) {
+      setMapPosition([latitude, longitude])
+    }
+
+    setAddressFormData({
+      street: address.street || "",
+      city: address.city || "",
+      state: address.state || "",
+      zipCode: address.zipCode || "",
+      additionalDetails: address.additionalDetails || "",
+      label: address.label || "Home",
+      phone: address.phone || "",
+    })
   }
 
   const handleSelectSavedAddress = async (address) => {
@@ -2210,11 +2245,6 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     )
 
     return distance < 1000 ? `${Math.round(distance)} m` : `${(distance / 1000).toFixed(2)} km`
-  }
-
-  const handleEditAddress = (addressId) => {
-    // Edit address functionality removed - user can delete and add new address instead
-    toast.info("To edit address, please delete and add a new one")
   }
 
   if (!isOpen) return null
@@ -2597,11 +2627,11 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                         style={{ animation: `slideUp 0.3s ease-out ${0.25 + index * 0.05}s both` }}
                       >
                         <div
-                          className={`py-4 ${index !== 0 ? 'border-t border-gray-100 dark:border-gray-800' : ''}`}
+                          className={`py-4 flex items-center justify-between gap-4 ${index !== 0 ? 'border-t border-gray-100 dark:border-gray-800' : ''}`}
                         >
                           <button
                             onClick={() => handleSelectSavedAddress(address)}
-                            className="w-full flex items-start gap-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors p-2 -m-2"
+                            className="flex-1 flex items-start gap-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors p-2"
                           >
                             <div className="flex flex-col items-center">
                               <div className="h-10 w-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -2626,6 +2656,18 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
                               </p>
                             </div>
                           </button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleEditAddress(address)
+                            }}
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 px-3 py-1.5 rounded-lg flex items-center gap-1 flex-shrink-0"
+                          >
+                            Edit
+                          </Button>
                         </div>
                       </div>
                     )
