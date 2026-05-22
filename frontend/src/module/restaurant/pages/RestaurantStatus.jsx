@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import Lenis from "lenis"
 import { ArrowLeft, Settings, Clock } from "lucide-react"
@@ -31,9 +31,6 @@ export default function RestaurantStatus() {
   const [showOutsideTimingsDialog, setShowOutsideTimingsDialog] = useState(false)
   const [isDayClosed, setIsDayClosed] = useState(false)
   const [outletTimings, setOutletTimings] = useState(null)
-  // Tracks the timestamp of the last MANUAL toggle by the owner.
-  // Used to prevent incoming socket/polling events from overriding a fresh manual change.
-  const lastManualChangeTimeRef = useRef(0)
 
   // Auto On/Off schedule state
   const [isAutoOnOff, setIsAutoOnOff] = useState(false)
@@ -386,18 +383,11 @@ export default function RestaurantStatus() {
   }, [])
 
   // Listen for real-time restaurant status changes (e.g., from other devices or auto-schedule).
-  // Ignore events that arrive within 10 seconds of a manual owner toggle — prevents flicker
-  // caused by the backend cron briefly overriding manual changes.
+  // This always applies incoming updates — cooldown is not needed because when auto schedule is
+  // ON, the manual switch is disabled, so there's no conflict between cron and manual toggles.
   useEffect(() => {
-    const MANUAL_CHANGE_IGNORE_MS = 10000 // 10 seconds
     const handleStatusChange = (event) => {
       if (event.detail && typeof event.detail.isOnline === "boolean") {
-        // If a manual toggle happened within the cooldown window, ignore incoming events
-        const msSinceManualChange = Date.now() - lastManualChangeTimeRef.current
-        if (msSinceManualChange < MANUAL_CHANGE_IGNORE_MS) {
-          console.log('[Status] Ignoring incoming status event — within manual change cooldown:', msSinceManualChange, 'ms')
-          return
-        }
         setSuppressSwitchAnimation(true)
         setDeliveryStatus(event.detail.isOnline)
         setTimeout(() => setSuppressSwitchAnimation(false), 200)
@@ -411,19 +401,9 @@ export default function RestaurantStatus() {
   }, [])
 
 
-  // Handle delivery status change - FULL MANUAL CONTROL (no automatic restrictions)
+  // Handle delivery status change - FULL MANUAL CONTROL (no automatic restrictions).
+  // NOTE: This is only callable when isAutoOnOff is false (switch is enabled).
   const handleDeliveryStatusChange = async (checked) => {
-    // Restaurant owner has full manual control - no automatic restrictions
-    // They can turn delivery ON/OFF anytime regardless of timings
-    
-    // Stamp the time of this manual change immediately.
-    // The event listener above will ignore any incoming socket/polling events
-    // for the next 10 seconds to prevent the switch from flickering back.
-    const now = Date.now()
-    lastManualChangeTimeRef.current = now
-    // Also persist to localStorage so RestaurantSocketContext can read the same cooldown
-    localStorage.setItem('restaurant_manual_change_time', String(now))
-
     setDeliveryStatus(checked)
     try {
       // Save to localStorage
@@ -576,18 +556,25 @@ export default function RestaurantStatus() {
             <div className="flex-1">
               <p className="text-base font-bold text-gray-900 mb-1.5">Restaurant On/Off</p>
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${deliveryStatus ? 'bg-green-500' : 'bg-gray-600'}`}></div>
+                <div className={`w-2 h-2 rounded-full ${deliveryStatus ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                 <p className="text-sm text-gray-500">
                   {deliveryStatus ? 'Receiving orders' : 'Not receiving orders'}
                 </p>
               </div>
+              {/* Show hint when auto schedule is controlling the status */}
+              {isAutoOnOff && (
+                <p className="text-xs text-blue-600 mt-1.5 font-medium">
+                  🕐 Controlled by auto schedule — turn off schedule to control manually
+                </p>
+              )}
             </div>
             <Switch
               checked={deliveryStatus}
               onCheckedChange={handleDeliveryStatusChange}
-              disabled={!deliveryStatusLoaded}
+              disabled={!deliveryStatusLoaded || isAutoOnOff}
               className={[
                 "ml-4 data-[state=unchecked]:bg-gray-300 data-[state=checked]:bg-green-600",
+                isAutoOnOff ? "opacity-40 cursor-not-allowed" : "",
                 suppressSwitchAnimation ? "transition-none [&_[data-slot=switch-thumb]]:transition-none" : "",
               ].join(" ")}
             />

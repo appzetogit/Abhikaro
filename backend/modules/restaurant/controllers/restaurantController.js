@@ -1364,10 +1364,7 @@ export const updateDeliveryStatus = asyncHandler(async (req, res) => {
 
     const restaurant = await Restaurant.findByIdAndUpdate(
       restaurantId,
-      { 
-        isAcceptingOrders,
-        lastManualStatusChangeAt: new Date() // Stamp manual change time to prevent auto-cron override
-      },
+      { isAcceptingOrders },
       { new: true }
     ).select('-password');
 

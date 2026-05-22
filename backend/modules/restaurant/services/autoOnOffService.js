@@ -89,23 +89,6 @@ export const processAutoOnOffRestaurants = async () => {
       
       if (!openingTime || !closingTime) continue;
 
-      // ──────────────────────────────────────────────────────────────────────────
-      // Manual-Override Grace Window
-      // If the owner manually changed the delivery status within the last 5 minutes,
-      // skip auto-transitioning this restaurant entirely.
-      // This prevents the auto-cron from immediately fighting the owner's intent
-      // (e.g., owner sets offline at 1:44 PM which is exactly the opening time,
-      //  cron runs within 2-min window and forces it back online).
-      // ──────────────────────────────────────────────────────────────────────────
-      const MANUAL_OVERRIDE_GRACE_MS = 5 * 60 * 1000; // 5 minutes
-      if (restaurant.lastManualStatusChangeAt) {
-        const msSinceManualChange = now.getTime() - new Date(restaurant.lastManualStatusChangeAt).getTime();
-        if (msSinceManualChange < MANUAL_OVERRIDE_GRACE_MS) {
-          console.log(`[Auto On/Off] Skipping "${restaurant.name}" — manual override ${Math.round(msSinceManualChange / 1000)}s ago (grace window: ${MANUAL_OVERRIDE_GRACE_MS / 1000}s)`);
-          continue;
-        }
-      }
-
       // 1. Check if current day is in openDays
       let isDayOpen = true;
       if (restaurant.openDays && Array.isArray(restaurant.openDays) && restaurant.openDays.length > 0) {
