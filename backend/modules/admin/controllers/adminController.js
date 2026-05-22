@@ -1962,6 +1962,9 @@ export const getRestaurants = asyncHandler(async (req, res) => {
       if (restaurant.onboarding?.step1?.restaurantName) {
         restaurant.name = restaurant.onboarding.step1.restaurantName;
       }
+      if (restaurant.onboarding?.step1?.ownerName) {
+        restaurant.ownerName = restaurant.onboarding.step1.ownerName;
+      }
     });
 
     // Get total count

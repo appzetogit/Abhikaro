@@ -79,15 +79,22 @@ export const createWithdrawalRequest = asyncHandler(async (req, res) => {
 
     // Get restaurant details
     const restaurantDetails = await Restaurant.findById(restaurant._id).select(
-      "name restaurantId",
+      "name restaurantId onboarding",
     );
+
+    // Prefer the real name from onboarding over the auto-generated placeholder
+    const resolvedName =
+      restaurantDetails?.onboarding?.step1?.restaurantName ||
+      restaurantDetails?.name ||
+      restaurant.name ||
+      "Unknown";
 
     // Create withdrawal request
     const withdrawalRequest = await WithdrawalRequest.create({
       restaurantId: restaurant._id,
       amount: parseFloat(amount),
       status: "Pending",
-      restaurantName: restaurantDetails?.name || restaurant.name || "Unknown",
+      restaurantName: resolvedName,
       restaurantIdString:
         restaurantDetails?.restaurantId ||
         restaurant.restaurantId ||
@@ -252,7 +259,7 @@ export const getAllWithdrawalRequests = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
-      .populate("restaurantId", "name restaurantId address")
+      .populate("restaurantId", "name restaurantId address onboarding")
       .populate("processedBy", "name email")
       .lean();
 
@@ -267,7 +274,10 @@ export const getAllWithdrawalRequests = asyncHandler(async (req, res) => {
           id: req._id,
           restaurantId: req.restaurantId?._id || req.restaurantId,
           restaurantName:
-            req.restaurantName || req.restaurantId?.name || "Unknown",
+            req.restaurantId?.onboarding?.step1?.restaurantName ||
+            req.restaurantId?.name ||
+            req.restaurantName ||
+            "Unknown",
           restaurantIdString:
             req.restaurantIdString || req.restaurantId?.restaurantId || "N/A",
           restaurantAddress: req.restaurantId?.address || "N/A",

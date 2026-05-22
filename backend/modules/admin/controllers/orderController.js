@@ -1793,7 +1793,7 @@ export const getOngoingOrders = asyncHandler(async (req, res) => {
         time: timeStr,
         customerName: order.userId?.name || 'Unknown',
         customerPhone: maskedPhone,
-        restaurant: order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
+        restaurant: order.restaurantId?.onboarding?.step1?.restaurantName || order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
         total: formattedTotal,
         paymentStatus: paymentStatusDisplay,
         orderStatus: orderStatusDisplay,
@@ -1908,7 +1908,7 @@ export const getTransactionReport = asyncHandler(async (req, res) => {
     // Fetch orders with population
     const orders = await Order.find(query)
       .populate('userId', 'name email phone')
-      .populate('restaurantId', 'name slug')
+      .populate('restaurantId', 'name slug onboarding')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(skip)
@@ -2010,7 +2010,7 @@ export const getTransactionReport = asyncHandler(async (req, res) => {
       return {
         id: order._id.toString(),
         orderId: order.orderId,
-        restaurant: order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
+        restaurant: order.restaurantId?.onboarding?.step1?.restaurantName || order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
         customerName: order.userId?.name || 'Invalid Customer Data',
         totalItemAmount: totalItemAmount,
         itemDiscount: itemDiscount,
@@ -2118,9 +2118,15 @@ export const getRestaurantReport = asyncHandler(async (req, res) => {
     }
 
     // Get all restaurants matching the query
-    const restaurants = await Restaurant.find(restaurantQuery)
+    let restaurants = await Restaurant.find(restaurantQuery)
       .select('_id restaurantId name profileImage rating totalRatings isActive onboarding')
       .lean();
+      
+    // Filter out incomplete restaurants (those without an onboarding name)
+    restaurants = restaurants.filter(restaurant => 
+      restaurant.onboarding?.step1?.restaurantName && 
+      restaurant.onboarding.step1.restaurantName.trim() !== ''
+    );
     
     // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
     restaurants.forEach(restaurant => {
@@ -2417,7 +2423,7 @@ export const getRefundRequests = asyncHandler(async (req, res) => {
         .populate('userId', 'name email phone')
         .populate({
           path: 'restaurantId',
-          select: 'name slug',
+          select: 'name slug onboarding',
           match: { _id: { $exists: true } } // Only populate if it's a valid ObjectId
         })
         .sort({ cancelledAt: -1, createdAt: -1 })
@@ -2481,7 +2487,7 @@ export const getRefundRequests = asyncHandler(async (req, res) => {
         customerName: order.userId?.name || 'Unknown',
         customerPhone: customerPhone,
         customerEmail: order.userId?.email || '',
-        restaurant: order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
+        restaurant: order.restaurantId?.onboarding?.step1?.restaurantName || order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
         restaurantId: order.restaurantId?.toString() || order.restaurantId || '',
         totalAmount: order.pricing?.total || 0,
         paymentStatus: order.payment?.status === 'completed' ? 'Paid' : 'Pending',

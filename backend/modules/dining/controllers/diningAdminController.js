@@ -268,9 +268,15 @@ export const updateDiningOfferBanner = async (req, res) => {
 
 export const getActiveRestaurants = async (req, res) => {
     try {
-        const restaurants = await Restaurant.find()
+        let restaurants = await Restaurant.find()
             .select('name _id onboarding')
             .lean();
+            
+        // Filter out incomplete restaurants (those without an onboarding name)
+        restaurants = restaurants.filter(restaurant => 
+            restaurant.onboarding?.step1?.restaurantName && 
+            restaurant.onboarding.step1.restaurantName.trim() !== ''
+        );
         
         // Map restaurants to include the correct name (from onboarding.step1.restaurantName or name field)
         const restaurantsWithCorrectName = restaurants.map(restaurant => ({

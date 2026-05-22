@@ -21,18 +21,25 @@ export const getRestaurantWalletOverview = asyncHandler(async (req, res) => {
   const limitNum = Math.max(1, Math.min(200, parseInt(limit, 10) || 50));
   const skip = (pageNum - 1) * limitNum;
 
-  const query = {};
+  const query = {
+    "onboarding.step1.restaurantName": { $exists: true, $type: "string", $ne: "" }
+  };
+  
   if (search && String(search).trim()) {
     const q = String(search).trim();
-    query.$or = [
-      { name: { $regex: q, $options: "i" } },
-      // Many restaurants keep the "real" name in onboarding step1
-      { "onboarding.step1.restaurantName": { $regex: q, $options: "i" } },
-      { restaurantId: { $regex: q, $options: "i" } },
-      { phone: { $regex: q, $options: "i" } },
-      { ownerPhone: { $regex: q, $options: "i" } },
-      { ownerName: { $regex: q, $options: "i" } },
-      { "onboarding.step1.ownerName": { $regex: q, $options: "i" } },
+    // We use $and to combine the base filter with the search conditions
+    query.$and = [
+      {
+        $or: [
+          { name: { $regex: q, $options: "i" } },
+          { "onboarding.step1.restaurantName": { $regex: q, $options: "i" } },
+          { restaurantId: { $regex: q, $options: "i" } },
+          { phone: { $regex: q, $options: "i" } },
+          { ownerPhone: { $regex: q, $options: "i" } },
+          { ownerName: { $regex: q, $options: "i" } },
+          { "onboarding.step1.ownerName": { $regex: q, $options: "i" } },
+        ]
+      }
     ];
   }
 

@@ -353,14 +353,6 @@ export default function DiningList() {
                                                 <tr key={restaurant.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-3">
-                                                            <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
-                                                                <img
-                                                                    src={restaurant.logo}
-                                                                    alt={restaurant.name}
-                                                                    className="w-full h-full object-cover"
-                                                                    onError={(e) => { e.target.src = "https://via.placeholder.com/40" }}
-                                                                />
-                                                            </div>
                                                             <div className="flex flex-col">
                                                                 <span className="text-sm font-medium text-slate-900">{restaurant.name}</span>
                                                                 <span className="text-xs text-slate-500">#{formatRestaurantId(restaurant.originalData?.restaurantId || restaurant._id)}</span>

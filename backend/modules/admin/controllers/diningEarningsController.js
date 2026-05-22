@@ -45,7 +45,7 @@ export const getDiningEarnings = asyncHandler(async (req, res) => {
       },
     ]),
     TableBooking.find(match)
-      .populate("restaurant", "name slug")
+      .populate("restaurant", "name slug onboarding")
       .populate("user", "name phone email")
       .sort({ updatedAt: -1, createdAt: -1 })
       .skip(skip)
@@ -62,6 +62,14 @@ export const getDiningEarnings = asyncHandler(async (req, res) => {
     count: 0,
   };
 
+  // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+  const transformedList = list.map(item => {
+    if (item.restaurant && item.restaurant.onboarding?.step1?.restaurantName) {
+      item.restaurant.name = item.restaurant.onboarding.step1.restaurantName;
+    }
+    return item;
+  });
+
   return successResponse(res, 200, "Dining bookings fetched", {
     summary: {
       totalDiningRevenue: stats.totalDiningRevenue,
@@ -70,7 +78,7 @@ export const getDiningEarnings = asyncHandler(async (req, res) => {
       totalRestaurantEarnings: stats.totalRestaurantEarnings,
       totalTransactions: stats.count,
     },
-    data: list,
+    data: transformedList,
     pagination: {
       page: Math.max(1, parseInt(page, 10)),
       limit: limitNum,
