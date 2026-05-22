@@ -1,14 +1,23 @@
-import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom"
+import { Routes, Route, Navigate, useLocation, useNavigate, Outlet } from "react-router-dom"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AuthRedirect from "@/components/AuthRedirect"
 import NetworkStatusBanner from "@/components/NetworkStatusBanner"
 import { NetworkStatusProvider } from "@/lib/context/NetworkStatusContext.jsx"
+import { RestaurantSocketProvider } from "@/module/restaurant/context/RestaurantSocketContext"
 
 import { Suspense, lazy, useEffect, useState, useRef } from "react"
 import Loader from "@/components/Loader"
 import MetaPixel from "@/components/MetaPixel"
 import { restoreModuleSession, isModuleAuthenticated, getModuleToken } from "@/lib/utils/auth.js"
 import { registerFcmToken, registerNativeFcmToken } from "@/lib/fcmService.js"
+
+function RestaurantSocketLayout() {
+  return (
+    <RestaurantSocketProvider>
+      <Outlet />
+    </RestaurantSocketProvider>
+  )
+}
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@/module/user/components/UserRouter"))
@@ -342,6 +351,7 @@ export default function App() {
               <Route path="/restaurant/auth/google-callback" element={<AuthRedirect module="restaurant"><RestaurantGoogleCallback /></AuthRedirect>} />
 
               {/* Restaurant Protected Routes */}
+              <Route element={<RestaurantSocketLayout />}>
               <Route
                 path="/restaurant/onboarding"
                 element={
@@ -918,6 +928,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              </Route>
               {/* Delivery Public Routes */}
               <Route path="/delivery/sign-in" element={<DeliverySignIn />} />
               <Route path="/delivery/signup" element={<DeliverySignup />} />

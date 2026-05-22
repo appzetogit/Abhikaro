@@ -204,8 +204,17 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
 
   let transactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
 
-  // newest first
-  transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  // newest first (stable sort using database array index as fallback)
+  const indexed = transactions.map((t, idx) => ({ t, idx }));
+  indexed.sort((a, b) => {
+    const dateA = new Date(a.t.createdAt || a.t.processedAt || 0);
+    const dateB = new Date(b.t.createdAt || b.t.processedAt || 0);
+    if (dateA.getTime() !== dateB.getTime()) {
+      return dateB - dateA;
+    }
+    return b.idx - a.idx; // Stable fallback: reverse of chronological ledger order
+  });
+  transactions = indexed.map(({ t }) => t);
 
   if (type && type !== "all") {
     if (type === "payment") {

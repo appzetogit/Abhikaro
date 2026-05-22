@@ -47,11 +47,19 @@ export const getWallet = asyncHandler(async (req, res) => {
     const { allowed, nextWindowText } = await isWithdrawAllowedNow();
 
     // Get recent transactions (last 50)
-    const recentTransactions = (wallet.transactions || [])
-      .slice()
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    // Get recent transactions (last 50, stable sort using database array index as fallback)
+    const indexed = (wallet.transactions || []).map((t, idx) => ({ t, idx }));
+    indexed.sort((a, b) => {
+      const dateA = new Date(a.t.createdAt || a.t.processedAt || 0);
+      const dateB = new Date(b.t.createdAt || b.t.processedAt || 0);
+      if (dateA.getTime() !== dateB.getTime()) {
+        return dateB - dateA;
+      }
+      return b.idx - a.idx; // Stable fallback: reverse of chronological ledger order
+    });
+    const recentTransactions = indexed
       .slice(0, 50)
-      .map(t => ({
+      .map(({ t }) => ({
         id: t._id,
         amount: t.amount,
         type: t.type,
@@ -121,8 +129,20 @@ export const getWalletTransactions = asyncHandler(async (req, res) => {
       transactions = transactions.filter(t => t.status === status);
     }
 
-    // Sort by date (newest first)
-    transactions = transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // Sort by date (newest first, stable sort using database array index as fallback)
+    const indexed = transactions.map((t) => {
+      const idx = wallet.transactions.findIndex(originalTx => originalTx._id.toString() === t._id.toString());
+      return { t, idx };
+    });
+    indexed.sort((a, b) => {
+      const dateA = new Date(a.t.createdAt || a.t.processedAt || 0);
+      const dateB = new Date(b.t.createdAt || b.t.processedAt || 0);
+      if (dateA.getTime() !== dateB.getTime()) {
+        return dateB - dateA;
+      }
+      return b.idx - a.idx; // Stable fallback: reverse of chronological ledger order
+    });
+    transactions = indexed.map(({ t }) => t);
 
     // Paginate
     const skip = (parseInt(page) - 1) * parseInt(limit);

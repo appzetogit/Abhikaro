@@ -1,4 +1,49 @@
 import Restaurant from '../models/Restaurant.js';
+import { invalidateCachePattern } from '../../../shared/utils/cache.js';
+
+/**
+ * Automatically open or close restaurants based on their scheduled timings.
+ * Runs every minute via cron job.
+ */
+/**
+ * Parse standard time formats (e.g. "09:00 AM", "10:30 PM", "13:45", "4 AM")
+ * to the number of minutes from midnight (0 to 1439).
+ * Returns null if the format is invalid.
+ */
+const parseTimeToMinutes = (timeStr) => {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  
+  const cleanStr = timeStr.trim().toUpperCase();
+  // Match HH:MM with optional AM/PM
+  const match = cleanStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+  if (!match) {
+    // Try matching just hour (e.g. "4 AM" or "16")
+    const hourOnlyMatch = cleanStr.match(/^(\d{1,2})\s*(AM|PM)?$/);
+    if (hourOnlyMatch) {
+      let hour = parseInt(hourOnlyMatch[1], 10);
+      const ampm = hourOnlyMatch[2];
+      if (ampm === 'PM' && hour < 12) hour += 12;
+      if (ampm === 'AM' && hour === 12) hour = 0;
+      return hour * 60;
+    }
+    return null;
+  }
+  
+  let hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  const ampm = match[3];
+  
+  if (ampm === 'PM' && hour < 12) {
+    hour += 12;
+  } else if (ampm === 'AM' && hour === 12) {
+    hour = 0;
+  }
+  
+  if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
+    return hour * 60 + minute;
+  }
+  return null;
+};
 
 /**
  * Automatically open or close restaurants based on their scheduled timings.
@@ -8,32 +53,14 @@ export const processAutoOnOffRestaurants = async () => {
   try {
     const now = new Date();
     
-    // Get current day of week in Asia/Kolkata timezone
-    const currentDay = now.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' }); // "Mon", "Tue", etc.
-
-    // Extract hours and minutes in Asia/Kolkata timezone
-    let currentHour;
-    let currentMinute;
-    try {
-      const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Kolkata',
-        hour: 'numeric',
-        minute: 'numeric',
-        hourCycle: 'h23'
-      });
-      const parts = formatter.formatToParts(now);
-      const partValues = {};
-      for (const part of parts) {
-        partValues[part.type] = part.value;
-      }
-      currentHour = parseInt(partValues.hour, 10);
-      currentMinute = parseInt(partValues.minute, 10);
-    } catch (e) {
-      // Fallback in case of environment-specific Intl exceptions
-      const tzNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-      currentHour = tzNow.getHours();
-      currentMinute = tzNow.getMinutes();
-    }
+    // Calculate current time in Asia/Kolkata (UTC + 5.5 hours) mathematically
+    // to avoid locale/timezone parsing bugs on different server OS/environments.
+    const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const currentDay = days[istTime.getUTCDay()]; // "Mon", "Tue", etc.
+    const currentHour = istTime.getUTCHours();
+    const currentMinute = istTime.getUTCMinutes();
 
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
 
@@ -71,15 +98,11 @@ export const processAutoOnOffRestaurants = async () => {
         });
       }
 
-      // 2. Parse timings (format: "HH:mm")
-      const [openHour, openMinute] = openingTime.split(':').map(Number);
-      const [closeHour, closeMinute] = closingTime.split(':').map(Number);
+      // 2. Parse timings robustly (handles "09:00 AM", "10:00 PM", "13:45", etc.)
+      const openingTimeInMinutes = parseTimeToMinutes(openingTime);
+      const closingTimeInMinutes = parseTimeToMinutes(closingTime);
 
-      if (Number.isFinite(openHour) && Number.isFinite(openMinute) && 
-          Number.isFinite(closeHour) && Number.isFinite(closeMinute)) {
-        
-        const openingTimeInMinutes = openHour * 60 + openMinute;
-        const closingTimeInMinutes = closeHour * 60 + closeMinute;
+      if (openingTimeInMinutes !== null && closingTimeInMinutes !== null) {
 
         // 3. Smart Transition Logic
         // Transition to ON if: today is an open day, current time is in the opening window, and restaurant is OFF.
@@ -142,6 +165,19 @@ const emitRestaurantStatusChange = async (restaurant) => {
         restaurantNamespace.to(room).emit('restaurant_status_update', payload);
       });
       console.log(`[Auto On/Off Socket] Broadcasted status update to ${rooms.join(', ')}: isAcceptingOrders=${restaurant.isAcceptingOrders}`);
+    }
+
+    // Invalidate caches to ensure user discovery reflects the new status instantly
+    try {
+      await invalidateCachePattern('restaurants:*');
+      await invalidateCachePattern(`restaurant:${restaurant._id.toString()}*`);
+      await invalidateCachePattern(`restaurant:${restaurant.restaurantId}*`);
+      if (restaurant.slug) {
+        await invalidateCachePattern(`restaurant:${restaurant.slug}*`);
+      }
+      console.log(`[Cache Invalidation] Caches cleared for auto status update: ${restaurant.name}`);
+    } catch (cacheErr) {
+      console.error('Error invalidating caches for auto status update:', cacheErr);
     }
   } catch (error) {
     console.error('[Auto On/Off Socket] Error emitting status change:', error);

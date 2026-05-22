@@ -453,7 +453,26 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
 
   // 2. Ledger Recalculate: check if legacy balanceAfter is missing, or if we cleaned up or backfilled transactions
   const hasLegacy = wallet.transactions.some((t) => t.balanceAfter === 0 && t.amount > 0);
-  if (needsSave || (hasLegacy && wallet.transactions.length > 0)) {
+
+  // Self-Healing: check if there are actual balance math discrepancies in the ledger
+  let hasDiscrepancy = false;
+  if (!needsSave && !hasLegacy && wallet.transactions.length > 0) {
+    let testBalance = 0;
+    for (const t of wallet.transactions) {
+      if (t.status === 'Completed' || (t.type === 'withdrawal' && t.status === 'Pending')) {
+        const isAdd = ['payment', 'bonus', 'refund'].includes(t.type);
+        const amt = Number(t.amount) || 0;
+        testBalance = isAdd ? testBalance + amt : testBalance - amt;
+      }
+    }
+    testBalance = Math.max(0, testBalance);
+    if (Math.abs(testBalance - (wallet.totalBalance || 0)) > 0.01) {
+      console.log(`[RestaurantWallet] Discrepancy detected for wallet ${wallet._id}: totalBalance is ${wallet.totalBalance} but actual sum is ${testBalance}. Self-healing triggered.`);
+      hasDiscrepancy = true;
+    }
+  }
+
+  if (needsSave || (hasLegacy && wallet.transactions.length > 0) || hasDiscrepancy) {
     console.log(`[RestaurantWallet] Recalculating ledger and running balance for wallet: ${wallet._id}`);
     let runningBalance = 0;
     let totalEarned = 0;

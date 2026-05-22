@@ -1158,6 +1158,19 @@ export const updateRestaurantProfile = asyncHandler(async (req, res) => {
     Object.assign(restaurant, updateData);
     await restaurant.save();
 
+    // Invalidate caches to ensure user discovery reflects the updated profile instantly
+    try {
+      await invalidateCachePattern('restaurants:*');
+      await invalidateCachePattern(`restaurant:${restaurant._id.toString()}*`);
+      await invalidateCachePattern(`restaurant:${restaurant.restaurantId}*`);
+      if (restaurant.slug) {
+        await invalidateCachePattern(`restaurant:${restaurant.slug}*`);
+      }
+      console.log(`[Cache Invalidation] Caches cleared for restaurant profile update: ${restaurant.name}`);
+    } catch (cacheErr) {
+      console.error('Error invalidating caches for restaurant profile update:', cacheErr);
+    }
+
     return successResponse(res, 200, 'Restaurant profile updated successfully', {
       restaurant: {
         id: restaurant._id,
@@ -1357,6 +1370,19 @@ export const updateDeliveryStatus = asyncHandler(async (req, res) => {
 
     if (!restaurant) {
       return errorResponse(res, 404, 'Restaurant not found');
+    }
+
+    // Invalidate caches to ensure user discovery reflects the new status instantly
+    try {
+      await invalidateCachePattern('restaurants:*');
+      await invalidateCachePattern(`restaurant:${restaurant._id.toString()}*`);
+      await invalidateCachePattern(`restaurant:${restaurant.restaurantId}*`);
+      if (restaurant.slug) {
+        await invalidateCachePattern(`restaurant:${restaurant.slug}*`);
+      }
+      console.log(`[Cache Invalidation] Caches cleared for restaurant status update: ${restaurant.name || restaurantId}`);
+    } catch (cacheErr) {
+      console.error('Error invalidating caches for restaurant status update:', cacheErr);
     }
 
     // Emit socket event to notify all connected devices/tabs in real-time

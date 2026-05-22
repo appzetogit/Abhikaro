@@ -26,6 +26,25 @@ const formatCurrency = (amount) => {
   })}`
 }
 
+const cleanDescription = (description) => {
+  if (!description) return "—"
+  
+  // Strip 24-character hexadecimal MongoDB ObjectIds along with common prefixes
+  const mongoIdPattern = /(?:Order|Booking|Request\s+ID|Request|ID|Refund|Payment)?\s*[:#\s-]*\b[0-9a-fA-F]{24}\b/gi;
+  
+  let cleaned = description.replace(mongoIdPattern, "").trim();
+  
+  // Clean up any remaining leading/trailing punctuation or spacing
+  cleaned = cleaned
+    .replace(/^[-:#\s~+]+/, "")
+    .replace(/[-:#\s~+]+$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+    
+  return cleaned || "Order Payment";
+}
+
+
 export default function RestaurantFinance() {
   const navigate = useNavigate()
   const [restaurants, setRestaurants] = useState([])
@@ -593,9 +612,6 @@ export default function RestaurantFinance() {
                             </span>
                             {t?.orderId && (
                               <div className="flex items-center gap-1.5">
-                                <span className="inline-flex px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-[10px] font-semibold">
-                                  Order: {t.orderId}
-                                </span>
                                 <button
                                   type="button"
                                   disabled={loadingOrderId !== null}
@@ -612,7 +628,7 @@ export default function RestaurantFinance() {
                               </div>
                             )}
                           </div>
-                          <p className="text-xs text-slate-600 mt-0.5">{t.description || "—"}</p>
+                          <p className="text-xs text-slate-600 mt-0.5">{cleanDescription(t.description)}</p>
                           {t?.processedBy?.name && (
                             <p className="text-[11px] text-slate-500">
                               By: <span className="font-medium text-slate-700">{t.processedBy.name}</span>
