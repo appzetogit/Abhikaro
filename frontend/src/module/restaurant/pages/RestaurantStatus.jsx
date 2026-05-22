@@ -31,7 +31,9 @@ export default function RestaurantStatus() {
   const [showOutsideTimingsDialog, setShowOutsideTimingsDialog] = useState(false)
   const [isDayClosed, setIsDayClosed] = useState(false)
   const [outletTimings, setOutletTimings] = useState(null)
-  const hasAutoSyncedRef = useRef(false)
+  // Tracks the timestamp of the last MANUAL toggle by the owner.
+  // Used to prevent incoming socket/polling events from overriding a fresh manual change.
+  const lastManualChangeTimeRef = useRef(0)
 
   // Auto On/Off schedule state
   const [isAutoOnOff, setIsAutoOnOff] = useState(false)
@@ -383,10 +385,19 @@ export default function RestaurantStatus() {
     loadDeliveryStatus()
   }, [])
 
-  // Listen for real-time restaurant status changes (e.g., from other devices or auto-schedule)
+  // Listen for real-time restaurant status changes (e.g., from other devices or auto-schedule).
+  // Ignore events that arrive within 10 seconds of a manual owner toggle — prevents flicker
+  // caused by the backend cron briefly overriding manual changes.
   useEffect(() => {
+    const MANUAL_CHANGE_IGNORE_MS = 10000 // 10 seconds
     const handleStatusChange = (event) => {
       if (event.detail && typeof event.detail.isOnline === "boolean") {
+        // If a manual toggle happened within the cooldown window, ignore incoming events
+        const msSinceManualChange = Date.now() - lastManualChangeTimeRef.current
+        if (msSinceManualChange < MANUAL_CHANGE_IGNORE_MS) {
+          console.log('[Status] Ignoring incoming status event — within manual change cooldown:', msSinceManualChange, 'ms')
+          return
+        }
         setSuppressSwitchAnimation(true)
         setDeliveryStatus(event.detail.isOnline)
         setTimeout(() => setSuppressSwitchAnimation(false), 200)
@@ -399,31 +410,20 @@ export default function RestaurantStatus() {
     }
   }, [])
 
-  // Auto-turn ON delivery when restaurant is "online" (within timings / open slot).
-  // Avoid repeated toggles to prevent switch animation/flicker.
-  useEffect(() => {
-    if (!deliveryStatusLoaded) return
-    if (hasAutoSyncedRef.current) return
-    if (loading) return
-    if (isWithinTimings !== true) return
-    if (isDayClosed) return
-    if (deliveryStatus) {
-      hasAutoSyncedRef.current = true
-      return
-    }
-
-    hasAutoSyncedRef.current = true
-    setSuppressSwitchAnimation(true)
-    Promise.resolve(handleDeliveryStatusChange(true)).finally(() => {
-      setTimeout(() => setSuppressSwitchAnimation(false), 200)
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deliveryStatusLoaded, loading, isWithinTimings, isDayClosed, deliveryStatus])
 
   // Handle delivery status change - FULL MANUAL CONTROL (no automatic restrictions)
   const handleDeliveryStatusChange = async (checked) => {
     // Restaurant owner has full manual control - no automatic restrictions
     // They can turn delivery ON/OFF anytime regardless of timings
+    
+    // Stamp the time of this manual change immediately.
+    // The event listener above will ignore any incoming socket/polling events
+    // for the next 10 seconds to prevent the switch from flickering back.
+    const now = Date.now()
+    lastManualChangeTimeRef.current = now
+    // Also persist to localStorage so RestaurantSocketContext can read the same cooldown
+    localStorage.setItem('restaurant_manual_change_time', String(now))
+
     setDeliveryStatus(checked)
     try {
       // Save to localStorage

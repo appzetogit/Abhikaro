@@ -159,6 +159,12 @@ const restaurantSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Tracks when the owner last manually changed the delivery status.
+    // Used by autoOnOffService to avoid overriding manual changes within a grace window.
+    lastManualStatusChangeAt: {
+      type: Date,
+      default: null,
+    },
     // Additional display data for user module
     estimatedDeliveryTime: {
       type: String,

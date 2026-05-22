@@ -518,6 +518,18 @@ export const RestaurantSocketProvider = ({ children }) => {
       console.log('🔄 Restaurant status updated via Socket.IO:', data);
       if (data && typeof data.isAcceptingOrders === 'boolean') {
         const isOnline = data.isAcceptingOrders;
+        
+        // Respect manual-change cooldown: if the owner toggled manually within 10 seconds,
+        // don't override their choice with an incoming socket event (which may be from an
+        // old cron trigger that fought the manual change).
+        const MANUAL_CHANGE_IGNORE_MS = 10000;
+        const lastManualChange = parseInt(localStorage.getItem('restaurant_manual_change_time') || '0', 10);
+        const msSinceManualChange = Date.now() - lastManualChange;
+        if (msSinceManualChange < MANUAL_CHANGE_IGNORE_MS) {
+          console.log('[Socket] Ignoring restaurant_status_update — within manual change cooldown:', msSinceManualChange, 'ms');
+          return;
+        }
+
         // Sync localStorage
         localStorage.setItem('restaurant_online_status', JSON.stringify(isOnline));
         // Dispatch custom event for navbar and components
@@ -707,6 +719,15 @@ export const RestaurantSocketProvider = ({ children }) => {
 
     const pollStatus = async () => {
       try {
+        // Respect manual-change cooldown: skip polling updates within 10 seconds of a manual owner toggle
+        const MANUAL_CHANGE_IGNORE_MS = 10000;
+        const lastManualChange = parseInt(localStorage.getItem('restaurant_manual_change_time') || '0', 10);
+        const msSinceManualChange = Date.now() - lastManualChange;
+        if (msSinceManualChange < MANUAL_CHANGE_IGNORE_MS) {
+          // Still within cooldown, skip this poll
+          return;
+        }
+
         const response = await restaurantAPI.getCurrentRestaurant();
         const restaurant = response?.data?.data?.restaurant || response?.data?.restaurant;
         if (restaurant && typeof restaurant.isAcceptingOrders === 'boolean') {
