@@ -45,7 +45,7 @@ export default function OrdersPage({ statusKey = "all" }) {
       setIsLoading(true)
       const params = {
         page: 1,
-        limit: 1000, // Fetch all orders for now (can be optimized with pagination later)
+        limit: 10000, // Fetch all orders for now (can be optimized with pagination later)
         status: statusKey === "all" ? undefined : 
                statusKey === "restaurant-cancelled" ? "cancelled" : statusKey,
         cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined
@@ -153,7 +153,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         // Refresh the orders list to get updated data
         const params = {
           page: 1,
-          limit: 1000,
+          limit: 10000,
           status: statusKey === "all" ? undefined : 
                  statusKey === "restaurant-cancelled" ? "cancelled" : statusKey,
           cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined
