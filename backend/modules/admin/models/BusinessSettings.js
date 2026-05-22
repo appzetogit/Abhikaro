@@ -140,6 +140,11 @@ const businessSettingsSchema = new mongoose.Schema(
       min: 1,
       max: 50,
     },
+    payAtHotelMaxTotal: {
+      type: Number,
+      default: 699,
+      min: 0,
+    },
   },
   {
     timestamps: true,
@@ -165,6 +170,7 @@ businessSettingsSchema.statics.getSettings = async function () {
         deliveryCashLimit: 750,
         deliveryWithdrawalLimit: 100,
         deliveryAssignmentMode: "automatic",
+        payAtHotelMaxTotal: 699,
       });
     }
     // Manual assignment is no longer supported. Normalize any legacy values.
@@ -190,6 +196,7 @@ businessSettingsSchema.statics.getSettings = async function () {
         deliveryCashLimit: 750,
         deliveryWithdrawalLimit: 100,
         deliveryAssignmentMode: "automatic",
+        payAtHotelMaxTotal: 699,
       });
       await settings.save();
     }

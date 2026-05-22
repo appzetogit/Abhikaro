@@ -154,6 +154,10 @@ export default function Cart() {
     deliveryFeeRanges: [], // Delivery fee ranges based on order value
   })
 
+  const [businessSettings, setBusinessSettings] = useState({
+    payAtHotelMaxTotal: 699,
+  })
+
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(-10)
 
   // Warm up Google Maps as soon as success screen appears so the tracking map renders instantly
@@ -833,6 +837,23 @@ export default function Cart() {
     fetchFeeSettings()
   }, [])
 
+  // Fetch business settings on mount
+  useEffect(() => {
+    const fetchBusinessSettings = async () => {
+      try {
+        const response = await adminAPI.getPublicBusinessSettings()
+        if (response.data.success && response.data.data) {
+          setBusinessSettings({
+            payAtHotelMaxTotal: response.data.data.payAtHotelMaxTotal ?? 699,
+          })
+        }
+      } catch (error) {
+        // Keep default values on error
+      }
+    }
+    fetchBusinessSettings()
+  }, [])
+
   // Fetch admin category offers (offerPercentage) for matching flat offers
   useEffect(() => {
     const fetchCategoryOffers = async () => {
@@ -1024,8 +1045,8 @@ export default function Cart() {
   // User actually pays after admin offer as well
   const total = Math.max(0, totalAfterBaseDiscount - categoryOfferDiscount)
 
-  // Pay at Hotel rule: allow only up to ₹600
-  const PAY_AT_HOTEL_MAX_TOTAL = 699
+  // Pay at Hotel rule: allow only up to the configured limit
+  const PAY_AT_HOTEL_MAX_TOTAL = businessSettings.payAtHotelMaxTotal
   const canShowPayAtHotel = Boolean(isHotelOrder) && Number(total || 0) <= PAY_AT_HOTEL_MAX_TOTAL
 
   // If total crosses limit, force selection back to online

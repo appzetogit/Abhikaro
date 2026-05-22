@@ -25,6 +25,7 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
         companyName: settings?.companyName || "Food Delivery",
         logo: settings?.logo || { url: "", publicId: "" },
         favicon: settings?.favicon || { url: "", publicId: "" },
+        payAtHotelMaxTotal: settings?.payAtHotelMaxTotal ?? 699,
       },
     );
   } catch (error) {
@@ -38,6 +39,7 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
         companyName: "Food Delivery",
         logo: { url: "", publicId: "" },
         favicon: { url: "", publicId: "" },
+        payAtHotelMaxTotal: 699,
       },
     );
   }
@@ -83,6 +85,7 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       withdrawScheduleStartTime,
       maintenanceMode,
       homeCategoriesLimit,
+      payAtHotelMaxTotal,
     } = req.body;
 
     // Get existing settings
@@ -208,6 +211,18 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
         );
       }
       settings.homeCategoriesLimit = parsed;
+    }
+
+    if (payAtHotelMaxTotal !== undefined) {
+      const parsedTotal = Number(payAtHotelMaxTotal);
+      if (!Number.isFinite(parsedTotal) || parsedTotal < 0) {
+        return errorResponse(
+          res,
+          400,
+          "Pay at Hotel Max Total must be a positive number",
+        );
+      }
+      settings.payAtHotelMaxTotal = parsedTotal;
     }
 
     // Handle logo upload

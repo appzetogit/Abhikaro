@@ -2111,6 +2111,10 @@ export const adminAPI = {
     return apiClient.get(API_ENDPOINTS.ADMIN.BUSINESS_SETTINGS);
   },
 
+  getPublicBusinessSettings: () => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.BUSINESS_SETTINGS_PUBLIC);
+  },
+
   updateBusinessSettings: (data, files = {}) => {
     const formData = new FormData();
 
