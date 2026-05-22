@@ -5,6 +5,7 @@ import { ArrowLeft, Settings, Clock } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent } from "@/components/ui/card"
 import { restaurantAPI } from "@/lib/api"
+import { useRestaurantNotifications } from "../hooks/useRestaurantNotifications"
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,8 @@ import {
 import { Button } from "@/components/ui/button"
 
 export default function RestaurantStatus() {
+  // Initialize socket connection for real-time notifications and status updates
+  useRestaurantNotifications()
   const navigate = useNavigate()
   const [deliveryStatus, setDeliveryStatus] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
@@ -378,6 +381,22 @@ export default function RestaurantStatus() {
     }
 
     loadDeliveryStatus()
+  }, [])
+
+  // Listen for real-time restaurant status changes (e.g., from other devices or auto-schedule)
+  useEffect(() => {
+    const handleStatusChange = (event) => {
+      if (event.detail && typeof event.detail.isOnline === "boolean") {
+        setSuppressSwitchAnimation(true)
+        setDeliveryStatus(event.detail.isOnline)
+        setTimeout(() => setSuppressSwitchAnimation(false), 200)
+      }
+    }
+
+    window.addEventListener("restaurantStatusChanged", handleStatusChange)
+    return () => {
+      window.removeEventListener("restaurantStatusChanged", handleStatusChange)
+    }
   }, [])
 
   // Auto-turn ON delivery when restaurant is "online" (within timings / open slot).

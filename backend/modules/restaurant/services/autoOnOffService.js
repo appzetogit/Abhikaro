@@ -93,11 +93,13 @@ export const processAutoOnOffRestaurants = async () => {
           await restaurant.save();
           openedCount++;
           console.log(`[Auto On/Off] Opened restaurant "${restaurant.name}" (${restaurant.restaurantId}) at ${openingTime} (IST)`);
+          await emitRestaurantStatusChange(restaurant);
         } else if (shouldClose) {
           restaurant.isAcceptingOrders = false;
           await restaurant.save();
           closedCount++;
           console.log(`[Auto On/Off] Closed restaurant "${restaurant.name}" (${restaurant.restaurantId}) at ${closingTime} (IST)`);
+          await emitRestaurantStatusChange(restaurant);
         }
       }
     }
@@ -112,5 +114,36 @@ export const processAutoOnOffRestaurants = async () => {
   } catch (error) {
     console.error('Error in processAutoOnOffRestaurants:', error);
     throw error;
+  }
+};
+
+/**
+ * Emit restaurant status change to all connected clients via Socket.IO
+ * @param {Object} restaurant - Restaurant document
+ */
+const emitRestaurantStatusChange = async (restaurant) => {
+  try {
+    const serverModule = await import('../../../server.js');
+    const io = serverModule.getIO ? serverModule.getIO() : null;
+    if (io) {
+      const restaurantNamespace = io.of('/restaurant');
+      const rooms = [
+        `restaurant:${restaurant._id.toString()}`,
+        `restaurant:${restaurant.restaurantId}`
+      ];
+      
+      const payload = {
+        restaurantId: restaurant.restaurantId,
+        restaurantMongoId: restaurant._id.toString(),
+        isAcceptingOrders: restaurant.isAcceptingOrders
+      };
+      
+      rooms.forEach(room => {
+        restaurantNamespace.to(room).emit('restaurant_status_update', payload);
+      });
+      console.log(`[Auto On/Off Socket] Broadcasted status update to ${rooms.join(', ')}: isAcceptingOrders=${restaurant.isAcceptingOrders}`);
+    }
+  } catch (error) {
+    console.error('[Auto On/Off Socket] Error emitting status change:', error);
   }
 };

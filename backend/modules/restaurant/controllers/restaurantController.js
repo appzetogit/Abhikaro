@@ -1359,6 +1359,32 @@ export const updateDeliveryStatus = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, 'Restaurant not found');
     }
 
+    // Emit socket event to notify all connected devices/tabs in real-time
+    try {
+      const serverModule = await import('../../../server.js');
+      const io = serverModule.getIO ? serverModule.getIO() : null;
+      if (io) {
+        const restaurantNamespace = io.of('/restaurant');
+        const rooms = [
+          `restaurant:${restaurant._id.toString()}`,
+          `restaurant:${restaurant.restaurantId}`
+        ];
+        
+        const payload = {
+          restaurantId: restaurant.restaurantId,
+          restaurantMongoId: restaurant._id.toString(),
+          isAcceptingOrders: restaurant.isAcceptingOrders
+        };
+        
+        rooms.forEach(room => {
+          restaurantNamespace.to(room).emit('restaurant_status_update', payload);
+        });
+        console.log(`[Socket] Manual status update broadcasted to ${rooms.join(', ')}: isAcceptingOrders=${restaurant.isAcceptingOrders}`);
+      }
+    } catch (socketErr) {
+      console.error('Error emitting manual status update:', socketErr);
+    }
+
     return successResponse(res, 200, 'Delivery status updated successfully', {
       restaurant: {
         id: restaurant._id,

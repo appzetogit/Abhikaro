@@ -520,6 +520,20 @@ export const useRestaurantNotifications = () => {
     // If we listen to it here, sound will double-play. For restaurant, 'new_order' is the
     // single source of truth for when sound is allowed to play.
 
+    // Listen for restaurant status updates
+    socketRef.current.on('restaurant_status_update', (data) => {
+      console.log('🔄 Restaurant status updated via Socket.IO:', data);
+      if (data && typeof data.isAcceptingOrders === 'boolean') {
+        const isOnline = data.isAcceptingOrders;
+        // Sync localStorage
+        localStorage.setItem('restaurant_online_status', JSON.stringify(isOnline));
+        // Dispatch custom event for navbar and components
+        window.dispatchEvent(new CustomEvent('restaurantStatusChanged', { 
+          detail: { isOnline } 
+        }));
+      }
+    });
+
     // Listen for order status updates
     socketRef.current.on('order_status_update', (data) => {
       // Always forward status updates to the UI (e.g., cancelled) so popups/sounds can be dismissed in realtime
