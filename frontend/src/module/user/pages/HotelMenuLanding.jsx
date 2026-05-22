@@ -49,9 +49,9 @@ export default function HotelMenuLanding() {
         try {
             const position = await new Promise((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 15000,
-                    maximumAge: 0,
+                    enableHighAccuracy: false,
+                    timeout: 5000,
+                    maximumAge: Infinity,
                 });
             });
 
