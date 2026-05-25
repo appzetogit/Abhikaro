@@ -971,20 +971,28 @@ export default function CategoryPage() {
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-6 md:space-y-8 lg:space-y-10">
         <div className="max-w-7xl mx-auto">
           <section className="relative">
-            
-            {/* Loading Overlay */}
-            {isLoadingFilterResults && (
-              <div className="absolute inset-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg min-h-[400px]">
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="h-8 w-8 text-green-600 animate-spin" strokeWidth={2.5} />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {shouldShowOnlyCategoryDishes ? "Loading dishes..." : "Loading restaurants..."}
-                  </span>
-                </div>
+            {loadingRestaurants ? (
+              <div className="flex flex-col items-center justify-center py-20 min-h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+                <span className="mt-3 text-sm font-medium text-gray-600 dark:text-gray-400">
+                  {shouldShowOnlyCategoryDishes ? "Loading dishes..." : "Loading restaurants..."}
+                </span>
               </div>
-            )}
-            
-            {shouldShowOnlyCategoryDishes ? (
+            ) : (
+              <>
+                {/* Loading Overlay */}
+                {isLoadingFilterResults && (
+                  <div className="absolute inset-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg min-h-[400px]">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="h-8 w-8 text-green-600 animate-spin" strokeWidth={2.5} />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {shouldShowOnlyCategoryDishes ? "Loading dishes..." : "Loading restaurants..."}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                {shouldShowOnlyCategoryDishes ? (
               <div className={`divide-y divide-gray-200 dark:divide-gray-800 ${isLoadingFilterResults ? 'opacity-50' : 'opacity-100'} transition-opacity duration-300`}>
                 {filteredAllRestaurants.map((restaurant) => {
                   const dishKey = `${restaurant.id}-row`
@@ -1311,6 +1319,8 @@ export default function CategoryPage() {
                   Clear all filters
                 </Button>
               </div>
+            )}
+              </>
             )}
           </section>
         </div>

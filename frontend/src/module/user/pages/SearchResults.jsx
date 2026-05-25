@@ -658,7 +658,7 @@ export default function SearchResults() {
           </div>
         )}
 
-        {!!query.trim() && matchingCategories.length > 0 && (
+        {!loadingRestaurants && !!query.trim() && matchingCategories.length > 0 && (
           <section>
             <h2 className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4">
               CATEGORIES
@@ -762,10 +762,11 @@ export default function SearchResults() {
           </section>
         )}
 
-        <section>
-          <h2 className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4">
-            ALL FOODS
-          </h2>
+        {!loadingRestaurants && (
+          <section>
+            <h2 className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4">
+              ALL FOODS
+            </h2>
           
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {filteredFoodItems.map((food) => {
@@ -885,6 +886,7 @@ export default function SearchResults() {
             )}
           </div>
         </section>
+        )}
       </div>
       <StickyCartCard />
     </div>

@@ -57,6 +57,8 @@ export const createOrder = async (req, res) => {
       hotelName, // Hotel name for reference
       roomNumber, // Room number for pay_at_hotel orders
       additionalAddress, // Additional address details from frontend
+      userName, // Custom name entered in cart
+      userPhone, // Custom phone entered in cart
     } = req.body;
     // Support both camelCase and snake_case from client
     const paymentMethod = bodyPaymentMethod ?? req.body.payment_method;
@@ -750,6 +752,8 @@ export const createOrder = async (req, res) => {
     const order = new Order({
       orderId: generatedOrderId,
       userId,
+      userName: userName || req.user?.name || req.user?.fullName || null,
+      userPhone: userPhone || req.user?.phone || null,
       restaurantId: assignedRestaurantId,
       restaurantName: assignedRestaurantName,
       items,

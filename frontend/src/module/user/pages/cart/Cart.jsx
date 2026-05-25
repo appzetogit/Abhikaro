@@ -198,35 +198,42 @@ export default function Cart() {
   // - Initialize from sessionStorage if present
   // - Otherwise initialize once from profile (if fields empty)
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem("checkout_contact_draft")
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (parsed?.name) setContactName(String(parsed.name))
-        if (parsed?.phone) setContactPhone(String(parsed.phone))
-        return
+    if (userProfile) {
+      try {
+        const raw = sessionStorage.getItem("checkout_contact_draft")
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed?.name) {
+            setContactName(String(parsed.name))
+            if (parsed?.phone) setContactPhone(String(parsed.phone))
+            return
+          }
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
 
-    // If no draft, initialize once from profile (only if fields are empty)
-    setContactName((prev) => prev || (userProfile?.name || userProfile?.fullName || ""))
-    setContactPhone((prev) => prev || (userProfile?.phone || ""))
-  }, [])
+      // If no draft in sessionStorage, initialize/reset from profile
+      setContactName(userProfile.name || userProfile.fullName || "")
+      setContactPhone(userProfile.phone || "")
+    }
+  }, [userProfile])
 
   // Persist checkout contact draft for this session (does not touch profile)
   useEffect(() => {
-    try {
-      sessionStorage.setItem(
-        "checkout_contact_draft",
-        JSON.stringify({
-          name: contactName || "",
-          phone: contactPhone || "",
-        }),
-      )
-    } catch {
-      // ignore
+    // Only persist if we have a non-empty name/phone, preventing empty overwrites during initial mount/load
+    if (contactName || contactPhone) {
+      try {
+        sessionStorage.setItem(
+          "checkout_contact_draft",
+          JSON.stringify({
+            name: contactName || "",
+            phone: contactPhone || "",
+          }),
+        )
+      } catch {
+        // ignore
+      }
     }
   }, [contactName, contactPhone])
 
@@ -249,14 +256,27 @@ export default function Cart() {
     } catch {}
   }, [roomNumber])
 
-  // Clear checkout drafts when order is successfully placed
-  useEffect(() => {
-    if (showOrderSuccess) {
+  const clearCheckoutDrafts = () => {
+    try {
       sessionStorage.removeItem("checkout_additional_address")
       sessionStorage.removeItem("checkout_note")
       sessionStorage.removeItem("checkout_room_number")
+      sessionStorage.removeItem("checkout_contact_draft")
+      if (userProfile) {
+        setContactName(userProfile.name || userProfile.fullName || "")
+        setContactPhone(userProfile.phone || "")
+      }
+    } catch (e) {
+      // ignore
     }
-  }, [showOrderSuccess])
+  }
+
+  // Clear checkout drafts when order is successfully placed
+  useEffect(() => {
+    if (showOrderSuccess) {
+      clearCheckoutDrafts()
+    }
+  }, [showOrderSuccess, userProfile])
 
   const handleSaveContact = async () => {
     const trimmedName = String(contactName || "").trim()
@@ -1501,6 +1521,8 @@ export default function Cart() {
         paymentMethod: selectedPaymentMethod,
         zoneId: zoneId, // CRITICAL: Pass zoneId for strict zone validation
         additionalAddress: additionalAddress.trim(), // Additional address details (required)
+        userName: String(contactName || "").trim(),
+        userPhone: String(contactPhone || "").trim(),
         // Hotel order fields
         hotelReference: isHotelOrder ? sessionStorage.getItem('hotelReference') : null,
         hotelName: isHotelOrder ? sessionStorage.getItem('hotelReferenceName') : null,
@@ -1558,6 +1580,7 @@ export default function Cart() {
                 const createdOrderId = verify.data.data.orderId
                 // Success UI and cleanups
                 toast.success("Payment successful. Order placed!")
+                clearCheckoutDrafts()
                 setPlacedOrderId(createdOrderId)
                 setShowOrderSuccess(true)
                 window.dispatchEvent(new Event('orderStatusUpdated'))
@@ -1581,6 +1604,7 @@ export default function Cart() {
                 if (recon?.data?.success && recon?.data?.data?.orderId) {
                   const oid = recon.data.data.orderId
                   toast.success("Payment successful. Order placed!")
+                  clearCheckoutDrafts()
                   setPlacedOrderId(oid)
                   setShowOrderSuccess(true)
                   window.dispatchEvent(new Event('orderStatusUpdated'))
@@ -1600,6 +1624,7 @@ export default function Cart() {
                 const oid = st?.data?.data?.orderId
                 if (s === 'succeeded' && oid) {
                   toast.success("Order placed!")
+                  clearCheckoutDrafts()
                   setPlacedOrderId(oid)
                   setShowOrderSuccess(true)
                   window.dispatchEvent(new Event('orderStatusUpdated'))
@@ -1671,6 +1696,7 @@ export default function Cart() {
           markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
         }
         setPlacedOrderId(order?.orderId || order?.id || null)
+        clearCheckoutDrafts()
         setShowOrderSuccess(true)
         // Notify home screen tracking card to refresh active orders
         window.dispatchEvent(new Event('orderStatusUpdated'))
@@ -1703,6 +1729,7 @@ export default function Cart() {
           // Failed to create local tracking order
         }
         setPlacedOrderId(order?.orderId || order?.id || null)
+        clearCheckoutDrafts()
         setShowOrderSuccess(true)
         // Notify home screen tracking card to refresh active orders
         window.dispatchEvent(new Event('orderStatusUpdated'))
@@ -1792,6 +1819,7 @@ export default function Cart() {
               if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
                 markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
               }
+              clearCheckoutDrafts()
               setPlacedOrderId(order.orderId)
               setShowOrderSuccess(true)
               // Notify home screen tracking card to refresh active orders

@@ -56,7 +56,7 @@ function CompletedOrders({ onSelectOrder }) {
             orderId: order.orderId || order._id,
             mongoId: order._id,
             status: order.status || 'delivered',
-            customerName: order.userId?.name || 'Customer',
+            customerName: order.userName || order.userId?.name || 'Customer',
             type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
             tableOrToken: null,
             timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
@@ -250,7 +250,7 @@ function CancelledOrders({ onSelectOrder, fetchAllOrders }) {
             orderId: order.orderId || order._id,
             mongoId: order._id,
             status: order.status || 'cancelled',
-            customerName: order.userId?.name || 'Customer',
+            customerName: order.userName || order.userId?.name || 'Customer',
             type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
             tableOrToken: null,
             timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
@@ -941,6 +941,9 @@ export default function OrdersMain() {
               hotelId: full.hotelId ?? prev?.hotelId,
               qrReferenceId: full.qrReferenceId ?? prev?.qrReferenceId,
               hotelName: full.hotelName ?? prev?.hotelName,
+              userName: full.userName || prev?.userName,
+              userPhone: full.userPhone || prev?.userPhone,
+              userId: full.userId || prev?.userId,
             }))
           }
         }
@@ -1039,7 +1042,7 @@ export default function OrdersMain() {
                 ''
             }
           }
-          // Merge back important fields from full order to ensure payment/hotel flags exist
+           // Merge back important fields from full order to ensure payment/hotel flags exist
           setPopupOrder(prev => ({
             ...(prev || current),
             customerAddress: normalized || (prev?.customerAddress || prev?.address),
@@ -1052,7 +1055,10 @@ export default function OrdersMain() {
             hotelReference: o.hotelReference ?? prev?.hotelReference,
             hotelId: o.hotelId ?? prev?.hotelId,
             qrReferenceId: o.qrReferenceId ?? prev?.qrReferenceId,
-            hotelName: o.hotelName ?? prev?.hotelName
+            hotelName: o.hotelName ?? prev?.hotelName,
+            userName: o.userName || prev?.userName,
+            userPhone: o.userPhone || prev?.userPhone,
+            userId: o.userId || prev?.userId
           }))
         }
       } catch (_) {
@@ -1106,7 +1112,9 @@ export default function OrdersMain() {
               note: latestConfirmedOrder.note || '',
               sendCutlery: latestConfirmedOrder.sendCutlery,
               paymentMethod: latestConfirmedOrder.paymentMethod ?? latestConfirmedOrder.payment?.method,
-              payment: latestConfirmedOrder.payment
+              payment: latestConfirmedOrder.payment,
+              userName: latestConfirmedOrder.userName,
+              userPhone: latestConfirmedOrder.userPhone
             }
 
             console.log('📦 Found confirmed order (fallback):', orderForPopup)
@@ -1558,12 +1566,14 @@ export default function OrdersMain() {
 
     // Prepare order data for printing
     // Get customer data from multiple possible locations
-    const customerName = orderForPrint.userId?.name || 
+    const customerName = orderForPrint.userName ||
+                         orderForPrint.userId?.name || 
                          orderForPrint.customerName || 
                          orderForPrint.customer?.name || 
                          'Customer'
     
-    const customerPhone = orderForPrint.userId?.phone || 
+    const customerPhone = orderForPrint.userPhone ||
+                          orderForPrint.userId?.phone || 
                           orderForPrint.phone || 
                           orderForPrint.customerPhone || 
                           orderForPrint.customer?.phone || 
@@ -3197,7 +3207,7 @@ function PreparingOrders({ onSelectOrder, onCancel, onShowPopup, fetchAllOrders,
         orderId: order.orderId || order._id,
         mongoId: order._id,
         status: order.status || 'preparing',
-        customerName: order.userId?.name || 'Customer',
+        customerName: order.userName || order.userId?.name || 'Customer',
         type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
         tableOrToken: null,
         timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
@@ -3557,7 +3567,7 @@ function ReadyOrders({ onSelectOrder, onShowPopup, fetchAllOrders, getCachedOrde
       orderId: order.orderId || order._id,
       mongoId: order._id,
       status: order.status || 'ready',
-      customerName: order.userId?.name || 'Customer',
+      customerName: order.userName || order.userId?.name || 'Customer',
       type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
       tableOrToken: null,
       timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
@@ -3755,7 +3765,7 @@ const OutForDeliveryOrders = ({ onSelectOrder, onShowPopup, fetchAllOrders }) =>
             orderId: order.orderId || order._id,
             mongoId: order._id,
             status: order.status || 'out_for_delivery',
-            customerName: order.userId?.name || 'Customer',
+            customerName: order.userName || order.userId?.name || 'Customer',
             type: order.deliveryFleet === 'standard' ? 'Home Delivery' : 'Express Delivery',
             tableOrToken: null,
             timePlaced: new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),

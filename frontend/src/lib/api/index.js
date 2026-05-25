@@ -645,8 +645,8 @@ export const restaurantAPI = {
   },
 
   // Get all restaurants (for user module)
-  getRestaurants: (params = {}) => {
-    return apiClient.get(API_ENDPOINTS.RESTAURANT.LIST, { params });
+  getRestaurants: (params = {}, config = {}) => {
+    return apiClient.get(API_ENDPOINTS.RESTAURANT.LIST, { params, ...config });
   },
 
   // Get restaurants with dishes under ₹250

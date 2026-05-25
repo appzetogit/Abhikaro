@@ -1849,8 +1849,9 @@ export default function DeliveryHome() {
             selectedRestaurant?.lng ??
             null,
           customerName:
-            order.userId?.name || selectedRestaurant?.customerName || 'Customer',
+            order.userName || order.userId?.name || selectedRestaurant?.customerName || 'Customer',
           customerPhone:
+            order.userPhone ||
             order.userId?.phone ||
             order.userId?.mobile ||
             selectedRestaurant?.customerPhone ||
@@ -3421,8 +3422,8 @@ export default function DeliveryHome() {
                   return val
                 })(),
                 amount: earningsValue, // Also set amount for compatibility
-                customerName: order.userId?.name || selectedRestaurant?.customerName,
-                customerPhone: order.userId?.phone || order.userId?.mobile || selectedRestaurant?.customerPhone || null,
+                customerName: order.userName || order.userId?.name || selectedRestaurant?.customerName,
+                customerPhone: order.userPhone || order.userId?.phone || order.userId?.mobile || selectedRestaurant?.customerPhone || null,
                 customerAddress: order.address?.formattedAddress ||
                   (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
                   selectedRestaurant?.customerAddress,
@@ -4769,8 +4770,8 @@ export default function DeliveryHome() {
               if (customerLat && customerLng) {
                 const updatedRestaurant = {
                   ...selectedRestaurant,
-                  customerName: order.userId?.name || selectedRestaurant.customerName,
-                  customerPhone: order.userId?.phone || order.userId?.mobile || selectedRestaurant.customerPhone || null,
+                  customerName: order.userName || order.userId?.name || selectedRestaurant.customerName,
+                  customerPhone: order.userPhone || order.userId?.phone || order.userId?.mobile || selectedRestaurant.customerPhone || null,
                   customerAddress: order.address?.formattedAddress ||
                     (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
                     selectedRestaurant.customerAddress,
@@ -8650,8 +8651,8 @@ export default function DeliveryHome() {
             const customerLng = customerCoords?.[0]
 
             const updates = {
-              customerName: order.userId?.name || selectedRestaurant.customerName,
-              customerPhone: order.userId?.phone || order.userId?.mobile || selectedRestaurant.customerPhone || null,
+              customerName: order.userName || order.userId?.name || selectedRestaurant.customerName,
+              customerPhone: order.userPhone || order.userId?.phone || order.userId?.mobile || selectedRestaurant.customerPhone || null,
               customerAddress: order.address?.formattedAddress ||
                 (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
                 selectedRestaurant.customerAddress,
@@ -11938,7 +11939,8 @@ export default function DeliveryHome() {
 
                     if (order) {
                       // Customer phone is in order.userId.phone
-                      customerPhone = order.userId?.phone || 
+                      customerPhone = order.userPhone ||
+                                     order.userId?.phone || 
                                      order.userId?.mobile || 
                                      order.customerPhone || 
                                      null;

@@ -425,6 +425,18 @@ export default function OrderTracking() {
     }
   }, [])
 
+  // Clear checkout drafts on mount
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem("checkout_additional_address")
+      sessionStorage.removeItem("checkout_note")
+      sessionStorage.removeItem("checkout_room_number")
+      sessionStorage.removeItem("checkout_contact_draft")
+    } catch (e) {
+      // ignore
+    }
+  }, [])
+
   // Load advertise banner for tracking screen (admin-controlled)
   useEffect(() => {
     const loadBanner = async () => {

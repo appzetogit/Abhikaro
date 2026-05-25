@@ -126,8 +126,8 @@ export default function DispatchOrdersTable({ orders, visibleColumns, onViewOrde
                 {visibleColumns.customer && (
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium text-slate-700">{order.customerName}</span>
-                      <span className="text-xs text-slate-500 mt-0.5">{order.customerPhone}</span>
+                      <span className="text-sm font-medium text-slate-700">{order.userName || order.customerName}</span>
+                      <span className="text-xs text-slate-500 mt-0.5">{order.userPhone || order.customerPhone}</span>
                     </div>
                   </td>
                 )}

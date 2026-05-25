@@ -99,6 +99,7 @@ export default function Home() {
   const heroBannerFetchAbortRef = useRef(null)
   const landingFetchAbortRef = useRef(null)
   const categoriesFetchAbortRef = useRef(null)
+  const restaurantFetchAbortRef = useRef(null)
 
   // Rating & feedback popup (after order delivered)
   const [ratingModal, setRatingModal] = useState({ open: false, order: null })
@@ -534,7 +535,7 @@ export default function Home() {
         setHeroBannersData(cached)
         setHeroBannerImages(cached.map((b) => b?.imageUrl || b))
         heroBannersRetryRef.current = false
-        if (!silent) setLoadingBanners(false)
+        setLoadingBanners(false)
         return
       }
 
@@ -564,7 +565,7 @@ export default function Home() {
       }
     } finally {
       if (controller.signal.aborted) return
-      if (!silent) setLoadingBanners(false)
+      setLoadingBanners(false)
     }
   }, [])
 
@@ -583,7 +584,7 @@ export default function Home() {
       const cached = getCachedResponse(cacheKey, 5 * 60 * 1000) // 5 minutes
       if (cached && Array.isArray(cached)) {
         setRealCategories(cached)
-        if (!silent) setLoadingRealCategories(false)
+        setLoadingRealCategories(false)
         return
       }
 
@@ -603,16 +604,16 @@ export default function Home() {
         }))
         setRealCategories(adminCategories)
         setCachedResponse(cacheKey, adminCategories)
-      } else if (!silent) {
+      } else {
         setRealCategories([])
       }
     } catch (error) {
       if (controller.signal.aborted) return
       if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return
-      if (!silent) setRealCategories([])
+      setRealCategories([])
     } finally {
       if (controller.signal.aborted) return
-      if (!silent) setLoadingRealCategories(false)
+      setLoadingRealCategories(false)
     }
   }, [])
 
@@ -673,7 +674,7 @@ export default function Home() {
         setExploreMoreHeading(cached.settings?.exploreMoreHeading || "Explore More")
         setShowRecommendedSection(cached.settings?.showRecommendedSection === true)
         landingConfigRetryRef.current = false
-        if (!silent) setLoadingLandingConfig(false)
+        setLoadingLandingConfig(false)
         return
       }
 
@@ -716,7 +717,7 @@ export default function Home() {
       }
     } finally {
       if (controller.signal.aborted) return
-      if (!silent) setLoadingLandingConfig(false)
+      setLoadingLandingConfig(false)
     }
   }, [])
 
@@ -730,6 +731,7 @@ export default function Home() {
       heroBannerFetchAbortRef.current?.abort()
       landingFetchAbortRef.current?.abort()
       categoriesFetchAbortRef.current?.abort()
+      restaurantFetchAbortRef.current?.abort()
     }
   }, [])
 
@@ -1006,6 +1008,10 @@ export default function Home() {
 
   // Fetch restaurants from API with filters
   const fetchRestaurants = useCallback(async (filters = {}) => {
+    restaurantFetchAbortRef.current?.abort()
+    const controller = new AbortController()
+    restaurantFetchAbortRef.current = controller
+
     try {
       setLoadingRestaurants(true)
       if (!zoneId) {
@@ -1037,10 +1043,12 @@ export default function Home() {
       // First, test backend connection
       try {
         const healthCheck = await fetch(`${backendUrl}/health`)
+        if (controller.signal.aborted) return
         if (!healthCheck.ok) {
           throw new Error(`Backend health check failed: ${healthCheck.status}`)
         }
       } catch (healthError) {
+        if (controller.signal.aborted) return
         // Backend connection error - handled silently, toast notifications shown via axios interceptor
         setLoadingRestaurants(false)
         return
@@ -1116,7 +1124,8 @@ export default function Home() {
       }
       // Note: We show all restaurants regardless of zone, but apply grayscale styling if user is out of service
 
-      const response = await restaurantAPI.getRestaurants(params)
+      const response = await restaurantAPI.getRestaurants(params, { signal: controller.signal })
+      if (controller.signal.aborted) return
 
       if (response.data && response.data.success && response.data.data && response.data.data.restaurants) {
         const restaurantsArray = response.data.data.restaurants
@@ -1357,10 +1366,12 @@ export default function Home() {
         // Keep last-known results on unexpected response shape; a transient failure shouldn't blank the UI.
       }
     } catch (error) {
+      if (controller.signal.aborted) return
       // Don't set hardcoded data here - let the useMemo fallback handle it
       // This way, if API succeeds later, it will show the real data
       // Keep last-known results on transient errors; next successful fetch will replace them.
     } finally {
+      if (controller.signal.aborted) return
       setLoadingRestaurants(false)
     }
   }, [zoneId])

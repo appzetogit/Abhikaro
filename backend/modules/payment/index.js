@@ -256,6 +256,8 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
         const orderDoc = new Order({
           orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           userId: fresh.userId,
+          userName: payload.userName || (typeof req?.user === 'object' && (req.user?.name || req.user?.fullName)) || null,
+          userPhone: payload.userPhone || (typeof req?.user === 'object' && req.user?.phone) || null,
           restaurantId: payload.restaurantId,
           restaurantName: payload.restaurantName,
           items: payload.items,
@@ -673,6 +675,8 @@ router.post('/razorpay/webhook', async (req, res) => {
           const orderDoc = new Order({
             orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: fresh.userId,
+            userName: payload.userName || null,
+            userPhone: payload.userPhone || null,
             restaurantId: payload.restaurantId,
             restaurantName: payload.restaurantName,
             items: payload.items,

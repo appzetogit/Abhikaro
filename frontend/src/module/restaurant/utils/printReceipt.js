@@ -126,8 +126,8 @@ export async function generateOrderReceiptPDF(orderIdOrMongoId) {
     additionalAddress:
       order.address?.additionalDetails || order.address?.additionalAddress || "",
     customer: {
-      name: order.userId?.name || "Customer",
-      phone: order.userId?.phone || order.phone || "",
+      name: order.userName || order.userId?.name || "Customer",
+      phone: order.userPhone || order.userId?.phone || order.phone || "",
       email: order.userId?.email || order.email || "",
       location: `${order.address?.city || ""}${
         order.address?.state ? ", " + order.address.state : ""

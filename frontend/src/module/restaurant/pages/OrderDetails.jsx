@@ -172,8 +172,8 @@ export default function OrderDetails() {
             address: order.address?.street || order.address?.city || 'Address not available',
             additionalAddress: order.address?.additionalDetails || order.address?.additionalAddress || '', // Additional address details
             customer: {
-              name: order.userId?.name || 'Customer',
-              phone: order.userId?.phone || order.phone || '',
+              name: order.userName || order.userId?.name || 'Customer',
+              phone: order.userPhone || order.userId?.phone || order.phone || '',
               email: order.userId?.email || order.email || '',
               orderCount: 1,
               location: `${order.address?.city || ''}, ${order.address?.state || ''}`.trim(),

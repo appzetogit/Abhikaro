@@ -103,6 +103,8 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
       note: order.note || '',
       sendCutlery: order.sendCutlery,
       paymentMethod: resolvedPaymentMethod,
+      userName: order.userName || null,
+      userPhone: order.userPhone || null,
       // Enrich payload so frontend can immediately show Hotel (Online) for QR-origin orders
       paymentStatus: order.payment?.status || null,
       orderType: order.orderType || null,

@@ -183,8 +183,8 @@ export default function FeedNavbar({ className = "" }) {
             }
             return val;
           })(),
-          customerName: acceptedOrder.userId?.name || acceptedOrder.customerName,
-          customerPhone: acceptedOrder.userId?.phone || acceptedOrder.customerPhone,
+          customerName: acceptedOrder.userName || acceptedOrder.userId?.name || acceptedOrder.customerName,
+          customerPhone: acceptedOrder.userPhone || acceptedOrder.userId?.phone || acceptedOrder.customerPhone,
         };
 
         localStorage.setItem('activeOrder', JSON.stringify(activeOrderData));

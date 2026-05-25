@@ -457,6 +457,18 @@ export default function Orders() {
     }
   }, [])
 
+  // Clear checkout drafts on mount
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem("checkout_additional_address")
+      sessionStorage.removeItem("checkout_note")
+      sessionStorage.removeItem("checkout_room_number")
+      sessionStorage.removeItem("checkout_contact_draft")
+    } catch (e) {
+      // ignore
+    }
+  }, [])
+
   // Format date helper
   const formatDate = (dateString) => {
     const date = new Date(dateString)

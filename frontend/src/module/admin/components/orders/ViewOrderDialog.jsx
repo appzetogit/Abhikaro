@@ -349,8 +349,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
     hour12: true
   }).toUpperCase() : "")
 
-  const customerName = viewOrder?.customerName || viewOrder?.userId?.fullName || viewOrder?.userId?.name || "N/A"
-  const customerPhone = viewOrder?.customerPhone || viewOrder?.userId?.phone || "N/A"
+  const customerName = viewOrder?.userName || viewOrder?.customerName || viewOrder?.userId?.fullName || viewOrder?.userId?.name || "N/A"
+  const customerPhone = viewOrder?.userPhone || viewOrder?.customerPhone || viewOrder?.userId?.phone || "N/A"
   const customerEmail = viewOrder?.customerEmail || viewOrder?.userId?.email || "N/A"
   const restaurantName = viewOrder?.restaurant || viewOrder?.restaurantName || viewOrder?.restaurantId?.name || "N/A"
 
