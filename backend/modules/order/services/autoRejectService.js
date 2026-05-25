@@ -29,8 +29,12 @@ export async function processAutoRejectOrders() {
     const rejectedOrders = [];
 
     for (const order of validPendingOrders) {
-      const orderCreatedAt = new Date(order.createdAt);
-      const elapsedMs = now - orderCreatedAt;
+      // If the order has already been payment-confirmed, measure elapsed time from confirmation timestamp
+      // so UPI checkout delays do not trigger premature auto-rejection.
+      const referenceTime = order.tracking?.confirmed?.timestamp 
+        ? new Date(order.tracking.confirmed.timestamp) 
+        : new Date(order.createdAt);
+      const elapsedMs = now - referenceTime;
 
       // Check if accept time has expired
       if (elapsedMs >= ACCEPT_TIME_LIMIT_MS) {

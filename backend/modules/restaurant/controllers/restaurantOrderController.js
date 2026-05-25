@@ -441,14 +441,19 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     const ACCEPT_TIME_LIMIT_MS = ACCEPT_TIME_LIMIT_SECONDS * 1000;
     const isHotelPay =
       String(order?.payment?.method || "").toLowerCase() === "pay_at_hotel";
-    if (!isHotelPay && order?.createdAt) {
-      const elapsedMs = Date.now() - new Date(order.createdAt).getTime();
-      if (Number.isFinite(elapsedMs) && elapsedMs >= ACCEPT_TIME_LIMIT_MS) {
-        return errorResponse(
-          res,
-          400,
-          `Order cannot be accepted. Accept window expired (${ACCEPT_TIME_LIMIT_SECONDS}s). Current status: ${order.status}`,
-        );
+    if (!isHotelPay) {
+      // Measure window from when the order was confirmed/verified (payment completed) rather than createdAt
+      // This handles online payment checkout/entering OTP/UPI lag without eating into restaurant accept window.
+      const referenceTime = order?.tracking?.confirmed?.timestamp || order?.createdAt;
+      if (referenceTime) {
+        const elapsedMs = Date.now() - new Date(referenceTime).getTime();
+        if (Number.isFinite(elapsedMs) && elapsedMs >= ACCEPT_TIME_LIMIT_MS) {
+          return errorResponse(
+            res,
+            400,
+            `Order cannot be accepted. Accept window expired (${ACCEPT_TIME_LIMIT_SECONDS}s). Current status: ${order.status}`,
+          );
+        }
       }
     }
 
@@ -532,115 +537,109 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       console.error("Error calculating settlement on accept:", settlementError);
     }
 
-    // Trigger ETA recalculation for restaurant accepted event
-    try {
-      const etaEventService = (
-        await import("../../order/services/etaEventService.js")
-      ).default;
-      await etaEventService.handleRestaurantAccepted(
-        order._id.toString(),
-        new Date(),
-      );
-      console.log(
-        `✅ ETA updated after restaurant accepted order ${order.orderId}`,
-      );
-    } catch (etaError) {
-      console.error("Error updating ETA after restaurant accept:", etaError);
-      // Continue even if ETA update fails
-    }
+    // Trigger ETA recalculation in background
+    (async () => {
+      try {
+        const etaEventService = (
+          await import("../../order/services/etaEventService.js")
+        ).default;
+        await etaEventService.handleRestaurantAccepted(
+          order._id.toString(),
+          new Date(),
+        );
+        console.log(
+          `✅ ETA updated after restaurant accepted order ${order.orderId}`,
+        );
+      } catch (etaError) {
+        console.error("Error updating ETA after restaurant accept:", etaError);
+      }
+    })();
 
-    // Notify about status update
+    // Notify about status update (keep inline as Socket.IO emit is instant)
     try {
       await notifyRestaurantOrderUpdate(order._id.toString(), "preparing");
     } catch (notifError) {
       console.error("Error sending notification:", notifError);
     }
 
-    // Send push notification to user when restaurant accepts order
-    try {
-      const { notifyUserRestaurantAccepted } = 
-        await import("../../fcm/services/pushNotificationService.js");
-      await notifyUserRestaurantAccepted(order);
-    } catch (pushError) {
-      console.error("❌ Error sending push notification:", pushError);
-    }
-
-    // Priority-based order notification: notify nearest delivery partners immediately after accept.
-    // IMPORTANT: This must run for ALL payment methods (online/wallet/cash/pay_at_hotel).
-    // Delivery eligibility should be decided by delivery/fulfillment flags, not payment method.
-    if (!order.deliveryPartnerId) {
+    // Send push notification to user in background
+    (async () => {
       try {
-        // Canonical restaurant identifier to use for delivery assignment + lookup
-        // (Used by `findNearestDeliveryBoys` and restaurant location fetch below)
-        // IMPORTANT: Prefer Mongo _id for DB lookups (Restaurant.findById, Zone.restaurantId in many deployments).
-        // Using business restaurantId first can silently fail to find location/zone and prevent notifications.
-        const restaurantId = ridMongo || ridBusiness || ridGeneric;
+        const { notifyUserRestaurantAccepted } = 
+          await import("../../fcm/services/pushNotificationService.js");
+        await notifyUserRestaurantAccepted(order);
+      } catch (pushError) {
+        console.error("❌ Error sending push notification:", pushError);
+      }
+    })();
 
-        if (!restaurantId) {
-          console.error(
-            `❌ Missing restaurantId for delivery assignment on order ${order.orderId}.`,
-          );
-          // Don't fail the order acceptance if notification fails
-          return successResponse(res, 200, "Order accepted successfully", { order });
-        }
+    // Wrap notification, ETA updates, and delivery dispatch in background async tasks to prevent blocking API response
+    if (!order.deliveryPartnerId) {
+      (async () => {
+        try {
+          // Canonical restaurant identifier to use for delivery assignment + lookup
+          const restaurantId = ridMongo || ridBusiness || ridGeneric;
 
-        // Manual assignment is no longer supported.
-        const assignmentMode = "automatic";
-
-        console.log(
-          `🔄 Starting priority-based order notification for order ${order.orderId}...`,
-        );
-
-        // Get restaurant location (required for both manual + automatic modes)
-        let restaurantDoc = null;
-        if (mongoose.Types.ObjectId.isValid(restaurantId) && String(restaurantId).length === 24) {
-          restaurantDoc = await Restaurant.findById(restaurantId).lean();
-        }
-        if (!restaurantDoc) {
-          // Try all known id variations (mongo/business/generic) so we don't miss location due to id format mismatch.
-          const orConds = [];
-          if (ridMongo) orConds.push({ _id: ridMongo });
-          if (ridBusiness) orConds.push({ restaurantId: ridBusiness });
-          if (ridGeneric) orConds.push({ restaurantId: ridGeneric });
-          // Back-compat: also try with the chosen restaurantId as both restaurantId and _id
-          if (restaurantId) {
-            orConds.push({ restaurantId: restaurantId });
-            orConds.push({ _id: restaurantId });
+          if (!restaurantId) {
+            console.error(
+              `❌ Missing restaurantId for delivery assignment on order ${order.orderId}.`,
+            );
+            return;
           }
-          restaurantDoc = await Restaurant.findOne({ $or: orConds }).lean();
-        }
 
-        if (!restaurantDoc) {
-          console.error(
-            `❌ Restaurant not found for restaurantId: ${restaurantId}`,
+          // Manual assignment is no longer supported.
+          const assignmentMode = "automatic";
+
+          console.log(
+            `🔄 Starting priority-based order notification for order ${order.orderId}...`,
           );
-        } else if (
-          !restaurantDoc.location ||
-          !restaurantDoc.location.coordinates ||
-          restaurantDoc.location.coordinates.length < 2 ||
-          (restaurantDoc.location.coordinates[0] === 0 &&
-            restaurantDoc.location.coordinates[1] === 0)
-        ) {
-          console.error(
-            `❌ Restaurant location not found or invalid for restaurant ${restaurantId}`,
-          );
-        } else {
-          const [restaurantLng, restaurantLat] =
-            restaurantDoc.location.coordinates;
+
+          // Get restaurant location
+          let restaurantDoc = null;
+          if (mongoose.Types.ObjectId.isValid(restaurantId) && String(restaurantId).length === 24) {
+            restaurantDoc = await Restaurant.findById(restaurantId).lean();
+          }
+          if (!restaurantDoc) {
+            const orConds = [];
+            if (ridMongo) orConds.push({ _id: ridMongo });
+            if (ridBusiness) orConds.push({ restaurantId: ridBusiness });
+            if (ridGeneric) orConds.push({ restaurantId: ridGeneric });
+            if (restaurantId) {
+              orConds.push({ restaurantId: restaurantId });
+              orConds.push({ _id: restaurantId });
+            }
+            restaurantDoc = await Restaurant.findOne({ $or: orConds }).lean();
+          }
+
+          if (!restaurantDoc) {
+            console.error(
+              `❌ Restaurant not found for restaurantId: ${restaurantId}`,
+            );
+            return;
+          }
+
+          if (
+            !restaurantDoc.location ||
+            !restaurantDoc.location.coordinates ||
+            restaurantDoc.location.coordinates.length < 2 ||
+            (restaurantDoc.location.coordinates[0] === 0 &&
+              restaurantDoc.location.coordinates[1] === 0)
+          ) {
+            console.error(
+              `❌ Restaurant location not found or invalid for restaurant ${restaurantId}`,
+            );
+            return;
+          }
+
+          const [restaurantLng, restaurantLat] = restaurantDoc.location.coordinates;
           console.log(
             `📍 Restaurant location: ${restaurantLat}, ${restaurantLng}`,
           );
 
-          // --- Continuous resend loop (server-side) ---
-          // Requirement: after restaurant accepts, keep notifying delivery partners until someone accepts.
-          // This must work even if restaurant app is closed, so we schedule it in backend.
-          // Capped to avoid spamming / leaks.
+          // --- Continuous resend loop ---
           const shouldRunResendLoop = true;
-          // Periodic refresh until assigned (no FCM on this phase — see deliveryNotificationService).
-          // 30s * 10 ≈ 5 minutes of background retries without spamming riders.
           const RESEND_LOOP_MS = 30 * 1000;
           const RESEND_MAX_ATTEMPTS = 10;
-          // In-memory map to avoid multiple loops per order (per node process)
           global.__deliveryResendLoops = global.__deliveryResendLoops || new Map();
           const loopKey = String(order._id);
 
@@ -651,15 +650,10 @@ export const acceptOrder = asyncHandler(async (req, res) => {
               const state = global.__deliveryResendLoops.get(loopKey);
               if (!state) return;
 
-              // Stop if assigned / no longer eligible / exceeded attempts
               const fresh = await Order.findById(order._id)
                 .select("deliveryPartnerId status")
                 .lean();
-              if (!fresh) {
-                global.__deliveryResendLoops.delete(loopKey);
-                return;
-              }
-              if (fresh.deliveryPartnerId) {
+              if (!fresh || fresh.deliveryPartnerId) {
                 global.__deliveryResendLoops.delete(loopKey);
                 return;
               }
@@ -676,13 +670,12 @@ export const acceptOrder = asyncHandler(async (req, res) => {
               state.attempts += 1;
               global.__deliveryResendLoops.set(loopKey, state);
 
-              // Find nearest delivery partners
               const candidates = await findNearestDeliveryBoys(
                 restaurantLat,
                 restaurantLng,
                 restaurantId,
-                50, // km
-                10, // top N (keep smaller since loop is frequent)
+                50,
+                10,
                 { ignoreManualZoneFilter: true },
               );
 
@@ -696,7 +689,6 @@ export const acceptOrder = asyncHandler(async (req, res) => {
 
               const deliveryPartnerIds = candidates.map((db) => db.deliveryPartnerId);
 
-              // Save minimal debug info on order
               await Order.findByIdAndUpdate(order._id, {
                 $set: {
                   "assignmentInfo.lastResendAt": new Date(),
@@ -713,7 +705,6 @@ export const acceptOrder = asyncHandler(async (req, res) => {
               );
             };
 
-            // Start immediately + repeat
             tick().catch(() => {});
             const timer = setInterval(() => {
               const freshState = global.__deliveryResendLoops.get(loopKey);
@@ -730,186 +721,181 @@ export const acceptOrder = asyncHandler(async (req, res) => {
           const freshOrder = await Order.findById(order._id);
           if (!freshOrder) {
             console.error(`❌ Order ${order.orderId} not found after save`);
-          } else if (freshOrder.deliveryPartnerId) {
+            return;
+          }
+          if (freshOrder.deliveryPartnerId) {
             console.log(
               `⚠️ Order ${order.orderId} already has delivery partner: ${freshOrder.deliveryPartnerId}`,
             );
+            return;
+          }
+
+          // Pre-emptively bump resendVersion and set assignedBy immediately
+          try {
+            freshOrder.assignmentInfo = {
+              ...(freshOrder.assignmentInfo || {}),
+              resendVersion: (freshOrder.assignmentInfo?.resendVersion || 0) + 1,
+              assignedBy: "restaurant_accept",
+            };
+            await freshOrder.save();
+          } catch (e) {
+            console.error("❌ Error updating assignmentInfo.resendVersion on accept:", e);
+          }
+
+          // Step 1: Find nearest delivery boys
+          const priorityDeliveryBoys = await findNearestDeliveryBoys(
+            restaurantLat,
+            restaurantLng,
+            restaurantId,
+            20,
+            20,
+            { ignoreManualZoneFilter: true },
+          );
+
+          if (priorityDeliveryBoys && priorityDeliveryBoys.length > 0) {
+            console.log(
+              `✅ Found ${priorityDeliveryBoys.length} priority delivery partners within 20km`,
+            );
+
+            freshOrder.assignmentInfo = {
+              ...(freshOrder.assignmentInfo || {}),
+              priorityNotifiedAt: new Date(),
+              priorityDeliveryPartnerIds: priorityDeliveryBoys.map(
+                (db) => db.deliveryPartnerId,
+              ),
+              notificationPhase: "priority",
+            };
+            await freshOrder.save();
+
+            const populatedOrder = await Order.findById(freshOrder._id)
+              .populate("userId", "name phone")
+              .populate(
+                "restaurantId",
+                "name address location phone ownerPhone",
+              )
+              .lean();
+
+            if (populatedOrder) {
+              const priorityIds = priorityDeliveryBoys.map(
+                (db) => db.deliveryPartnerId,
+              );
+
+              await notifyMultipleDeliveryBoys(
+                populatedOrder,
+                priorityIds,
+                "priority",
+              );
+              console.log(
+                `✅ Notified ${priorityIds.length} priority delivery partners for order ${order.orderId}`,
+              );
+
+              // Step 2 (instant): expanded notify
+              try {
+                const checkOrder = await Order.findById(order._id);
+                if (checkOrder && !checkOrder.deliveryPartnerId) {
+                  const allDeliveryBoys = await findNearestDeliveryBoys(
+                    restaurantLat,
+                    restaurantLng,
+                    restaurantId,
+                    50,
+                    20,
+                    { ignoreManualZoneFilter: true },
+                  );
+
+                  const expandedDeliveryBoys = allDeliveryBoys.filter(
+                    (db) => !priorityIds.includes(db.deliveryPartnerId),
+                  );
+
+                  if (expandedDeliveryBoys && expandedDeliveryBoys.length > 0) {
+                    const expandedIds = expandedDeliveryBoys.map((db) => db.deliveryPartnerId);
+
+                    checkOrder.assignmentInfo = {
+                      ...(checkOrder.assignmentInfo || {}),
+                      expandedNotifiedAt: new Date(),
+                      expandedDeliveryPartnerIds: expandedIds,
+                      notificationPhase: "expanded",
+                    };
+                    await checkOrder.save();
+
+                    const expandedOrder = await Order.findById(checkOrder._id)
+                      .populate("userId", "name phone")
+                      .populate("restaurantId", "name address location phone ownerPhone")
+                      .lean();
+
+                    if (expandedOrder) {
+                      await notifyMultipleDeliveryBoys(expandedOrder, expandedIds, "expanded");
+                      console.log(
+                        `✅ Notified ${expandedIds.length} expanded delivery partners instantly for order ${order.orderId}`,
+                      );
+                    }
+                  }
+                }
+              } catch (expandError) {
+                console.error(
+                  `❌ Error in instant expanded notification for order ${order.orderId}:`,
+                  expandError,
+                );
+              }
+            }
           } else {
-            // Step 1: Find nearest delivery boys (use a wider radius so "accept" immediately reaches riders;
-            // tighter radii can result in 0 candidates and make it look like only manual "Resend" works)
-            const priorityDeliveryBoys = await findNearestDeliveryBoys(
+            // Fallback order of operations:
+            console.log(
+              `⚠️ No priority delivery partners found, searching for any available delivery partner`,
+            );
+            const anyDeliveryBoy = await findNearestDeliveryBoy(
               restaurantLat,
               restaurantLng,
               restaurantId,
-              20,
-              20,
-              { ignoreManualZoneFilter: true },
+              50,
             );
 
-            if (priorityDeliveryBoys && priorityDeliveryBoys.length > 0) {
-              console.log(
-                `✅ Found ${priorityDeliveryBoys.length} priority delivery partners within 20km`,
+            const populatedOrder = await Order.findById(freshOrder._id)
+              .populate("userId", "name phone")
+              .populate("restaurantId", "name address location phone ownerPhone")
+              .lean();
+
+            if (anyDeliveryBoy && populatedOrder) {
+              await notifyMultipleDeliveryBoys(
+                populatedOrder,
+                [anyDeliveryBoy.deliveryPartnerId],
+                "immediate",
               );
+              console.log(
+                `✅ Notified delivery partner immediately for order ${order.orderId}`,
+              );
+            } else if (populatedOrder) {
+              try {
+                const fallbackRiders = await Delivery.find({
+                  'availability.isOnline': true,
+                  status: { $in: ['approved', 'active'] },
+                  isActive: true,
+                  'availability.currentLocation.coordinates': { $exists: true, $ne: [0, 0] },
+                })
+                  .select('_id')
+                  .limit(50)
+                  .lean();
 
-              // Store priority notification info in order
-              freshOrder.assignmentInfo = {
-                priorityNotifiedAt: new Date(),
-                priorityDeliveryPartnerIds: priorityDeliveryBoys.map(
-                  (db) => db.deliveryPartnerId,
-                ),
-                notificationPhase: "priority",
-              };
-              await freshOrder.save();
-
-              // Reload order with populated userId and restaurantId (with location)
-              const populatedOrder = await Order.findById(freshOrder._id)
-                .populate("userId", "name phone")
-                .populate(
-                  "restaurantId",
-                  "name address location phone ownerPhone",
-                )
-                .lean();
-
-              if (populatedOrder) {
-                // Notify priority delivery boys (without assigning)
-                const priorityIds = priorityDeliveryBoys.map(
-                  (db) => db.deliveryPartnerId,
-                );
-
-                // Bump resendVersion so delivery clients treat this as a fresh request (same behavior as manual Resend button)
-                try {
-                  await Order.findByIdAndUpdate(freshOrder._id, {
-                    $inc: { 'assignmentInfo.resendVersion': 1 },
-                    $set: { 'assignmentInfo.assignedBy': 'restaurant_accept' },
-                  });
-                } catch (e) {
-                  // ignore
-                }
-                await notifyMultipleDeliveryBoys(
-                  populatedOrder,
-                  priorityIds,
-                  "priority",
-                );
-                console.log(
-                  `✅ Notified ${priorityIds.length} priority delivery partners for order ${order.orderId}`,
-                );
-
-                // Step 2 (instant): also notify other nearby delivery boys immediately (no 30s delay)
-                try {
-                  const checkOrder = await Order.findById(order._id);
-                  if (checkOrder && !checkOrder.deliveryPartnerId) {
-                    const allDeliveryBoys = await findNearestDeliveryBoys(
-                      restaurantLat,
-                      restaurantLng,
-                      restaurantId,
-                      50, // km
-                      20,
-                      { ignoreManualZoneFilter: true },
-                    );
-
-                    const expandedDeliveryBoys = allDeliveryBoys.filter(
-                      (db) => !priorityIds.includes(db.deliveryPartnerId),
-                    );
-
-                    if (expandedDeliveryBoys && expandedDeliveryBoys.length > 0) {
-                      const expandedIds = expandedDeliveryBoys.map((db) => db.deliveryPartnerId);
-
-                      checkOrder.assignmentInfo = {
-                        ...(checkOrder.assignmentInfo || {}),
-                        expandedNotifiedAt: new Date(),
-                        expandedDeliveryPartnerIds: expandedIds,
-                        notificationPhase: "expanded",
-                      };
-                      await checkOrder.save();
-
-                      const expandedOrder = await Order.findById(checkOrder._id)
-                        .populate("userId", "name phone")
-                        .populate("restaurantId", "name address location phone ownerPhone")
-                        .lean();
-
-                      if (expandedOrder) {
-                        await notifyMultipleDeliveryBoys(expandedOrder, expandedIds, "expanded");
-                        console.log(
-                          `✅ Notified ${expandedIds.length} expanded delivery partners instantly for order ${order.orderId}`,
-                        );
-                      }
-                    }
-                  }
-                } catch (expandError) {
-                  console.error(
-                    `❌ Error in instant expanded notification for order ${order.orderId}:`,
-                    expandError,
+                const fallbackIds = fallbackRiders.map((d) => d._id?.toString?.()).filter(Boolean);
+                if (fallbackIds.length > 0) {
+                  await notifyMultipleDeliveryBoys(populatedOrder, fallbackIds, 'fallback_any_online');
+                  console.log(
+                    `✅ Fallback notified ${fallbackIds.length} online delivery partners for order ${order.orderId}`,
                   );
+                } else {
+                  console.warn(`⚠️ No online delivery partners with valid location found for fallback on order ${order.orderId}`);
                 }
-              }
-            } else {
-              // No priority delivery boys found.
-              // Fallback order of operations:
-              // 1) Try nearest single partner within wider radius
-              // 2) If still none, notify a capped set of ANY online riders with valid location
-              console.log(
-                `⚠️ No priority delivery partners found, searching for any available delivery partner`,
-              );
-              const anyDeliveryBoy = await findNearestDeliveryBoy(
-                restaurantLat,
-                restaurantLng,
-                restaurantId,
-                50,
-              );
-
-              const populatedOrder = await Order.findById(freshOrder._id)
-                .populate("userId", "name phone")
-                .populate("restaurantId", "name address location phone ownerPhone")
-                .lean();
-
-              if (anyDeliveryBoy && populatedOrder) {
-                await notifyMultipleDeliveryBoys(
-                  populatedOrder,
-                  [anyDeliveryBoy.deliveryPartnerId],
-                  "immediate",
-                );
-                console.log(
-                  `✅ Notified delivery partner immediately for order ${order.orderId}`,
-                );
-              } else if (populatedOrder) {
-                // HARD fallback: notify any online riders (still capped) so order doesn't get stuck.
-                try {
-                  const fallbackRiders = await Delivery.find({
-                    'availability.isOnline': true,
-                    status: { $in: ['approved', 'active'] },
-                    isActive: true,
-                    'availability.currentLocation.coordinates': { $exists: true, $ne: [0, 0] },
-                  })
-                    .select('_id')
-                    .limit(50)
-                    .lean();
-
-                  const fallbackIds = fallbackRiders.map((d) => d._id?.toString?.()).filter(Boolean);
-                  if (fallbackIds.length > 0) {
-                    await notifyMultipleDeliveryBoys(populatedOrder, fallbackIds, 'fallback_any_online');
-                    console.log(
-                      `✅ Fallback notified ${fallbackIds.length} online delivery partners for order ${order.orderId}`,
-                    );
-                  } else {
-                    console.warn(`⚠️ No online delivery partners with valid location found for fallback on order ${order.orderId}`);
-                  }
-                } catch (fallbackErr) {
-                  console.error(`❌ Fallback notify failed for order ${order.orderId}:`, fallbackErr);
-                }
-              } else {
-                console.warn(`⚠️ Could not populate order for delivery notifications (order ${order.orderId})`);
+              } catch (fallbackErr) {
+                console.error(`❌ Fallback notify failed for order ${order.orderId}:`, fallbackErr);
               }
             }
           }
+        } catch (assignmentError) {
+          console.error(
+            "❌ Error in priority-based order notification:",
+            assignmentError,
+          );
         }
-      } catch (assignmentError) {
-        console.error(
-          "❌ Error in priority-based order notification:",
-          assignmentError,
-        );
-        console.error("❌ Error stack:", assignmentError.stack);
-        // Don't fail the order acceptance if notification fails
-      }
+      })();
     } else {
       console.log(
         `ℹ️ Order ${order.orderId} already has delivery partner assigned: ${order.deliveryPartnerId}`,
