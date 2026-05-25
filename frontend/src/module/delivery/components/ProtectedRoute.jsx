@@ -45,10 +45,6 @@ export default function ProtectedRoute({ children }) {
   const path = location.pathname || ""
   const isSignupRoute = useMemo(() => path.startsWith("/delivery/signup"), [path])
 
-  if (!isAuthenticated) {
-    return <Navigate to="/delivery/sign-in" replace />
-  }
-
   useEffect(() => {
     if (!isAuthenticated) return
     if (isSignupRoute) {
@@ -96,6 +92,10 @@ export default function ProtectedRoute({ children }) {
       cancelled = true
     }
   }, [isAuthenticated, isSignupRoute, navigate])
+
+  if (!isAuthenticated) {
+    return <Navigate to="/delivery/sign-in" replace />
+  }
 
   if (!isSignupRoute && checkingSignup) {
     return <Loader />

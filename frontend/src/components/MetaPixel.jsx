@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 
 const MetaPixel = () => {
-  const location = useLocation();
+  const { pathname, search } = useLocation();
   const isFirstRun = useRef(true);
 
   useEffect(() => {
@@ -21,7 +21,7 @@ const MetaPixel = () => {
     if (typeof window !== "undefined" && window.FB && window.FB.AppEvents) {
       window.FB.AppEvents.logPageView();
     }
-  }, [location.pathname, location.search]);
+  }, [pathname, search]);
 
   return null;
 };

@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom"
 import { useMemo, useRef, useEffect, useState } from "react"
-import { motion } from "framer-motion"
+import { LazyMotion, domAnimation, m } from "framer-motion"
 import {
   FileText,
   Package,
@@ -36,11 +36,26 @@ const findActiveTab = (tabs, pathname) =>
 export default function BottomNavOrders() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const [isTransitioning, setIsTransitioning] = useState(false)
-  const [transitionPhase, setTransitionPhase] = useState('idle') // 'idle', 'entering', 'exiting'
-  const [transitionDirection, setTransitionDirection] = useState('right')
+  const [transition, setTransition] = useState({
+    isTransitioning: false,
+    phase: 'idle',
+    direction: 'right'
+  })
+  const { isTransitioning, phase: transitionPhase, direction: transitionDirection } = transition
+
+  const triggerTransitionPhase = (phase, isTransitioningVal = true) => {
+    setTransition(prev => ({ ...prev, phase, isTransitioning: isTransitioningVal }))
+  }
+
   const prevIsHubModeRef = useRef(null)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [keyboardOffset, setKeyboardOffset] = useState(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return 0
+    const vv = window.visualViewport
+    const layoutHeight = document.documentElement?.clientHeight || window.innerHeight
+    const visualHeight = vv.height || 0
+    const offsetTop = vv.offsetTop || 0
+    return Math.max(0, layoutHeight - (visualHeight + offsetTop))
+  })
 
   // Keep bottom nav at screen bottom (hide behind keyboard instead of jumping up)
   useEffect(() => {
@@ -56,9 +71,8 @@ export default function BottomNavOrders() {
       setKeyboardOffset(bottomInset)
     }
 
-    computeOffset()
     vv.addEventListener("resize", computeOffset)
-    vv.addEventListener("scroll", computeOffset)
+    vv.addEventListener("scroll", computeOffset, { passive: true })
     window.addEventListener("resize", computeOffset)
 
     return () => {
@@ -67,12 +81,6 @@ export default function BottomNavOrders() {
       window.removeEventListener("resize", computeOffset)
     }
   }, [])
-
-  // Hide on internal pages (create-offers flow)
-  const isInternalPage = pathname.includes("/create-offers")
-  if (isInternalPage) {
-    return null
-  }
 
   // 🔒 single source of truth for mode
   const isHubMode = useMemo(() => {
@@ -98,15 +106,14 @@ export default function BottomNavOrders() {
       // Start exit phase - animate new page sliding in to center
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          setTransitionPhase('exiting')
+          triggerTransitionPhase('exiting')
           document.body.style.transform = 'translate3d(0, 0, 0)'
         })
       })
       
       // After exit completes, reset
       const exitTimer = setTimeout(() => {
-        setTransitionPhase('idle')
-        setIsTransitioning(false)
+        triggerTransitionPhase('idle', false)
         document.body.style.filter = ''
         document.body.style.transform = ''
         document.body.style.transition = ''
@@ -169,195 +176,218 @@ export default function BottomNavOrders() {
   const handleToggleMode = () => {
     const newMode = !isHubMode
     const direction = newMode ? 'right' : 'left' // right = to Hub, left = to Orders
-    setTransitionDirection(direction)
     
-    // Set initial state
-    setIsTransitioning(true)
-    setTransitionPhase('idle')
+    // Set initial state all in one call
+    setTransition({
+      direction,
+      isTransitioning: true,
+      phase: 'idle'
+    })
     
     // Force a reflow to ensure initial position is set, then start entering
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        setTransitionPhase('entering')
+        triggerTransitionPhase('entering')
         
         // After old page slides out, navigate and start exit (new page slides in)
         setTimeout(() => {
           navigate(isHubMode ? "/restaurant" : "/restaurant/to-hub")
           // Start exit phase - new page slides in from opposite direction
           requestAnimationFrame(() => {
-            setTransitionPhase('exiting')
+            triggerTransitionPhase('exiting')
           })
         }, 200) // Wait for enter animation to complete (under 250ms)
       })
     })
   }
 
+  const isInternalPage = pathname.includes("/create-offers")
+  if (isInternalPage) {
+    return null
+  }
+
   return (
-    <>
-      {/* Floating badge indicator - 60fps smooth, under 250ms */}
-      {isTransitioning && (
-        <>
-          {/* Badge with switching text - floating on top */}
-          <div
-            className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center"
-            style={{
-              opacity: transitionPhase === 'entering' ? 1 : transitionPhase === 'exiting' ? 0 : 0,
-              transition: 'opacity 0.2s ease-out',
-            }}
-          >
-            <div
-              className="flex flex-col items-center gap-3"
-              style={{
-                transform: transitionPhase === 'entering' 
-                  ? 'translate3d(0, 0, 0) scale(1)' 
-                  : 'translate3d(0, -20px, 0) scale(0.9)',
-                transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-            >
-              {/* Badge container */}
-              <div
-                className="px-6 py-3 rounded-full backdrop-blur-xl border shadow-2xl"
-                style={{
-                  background: transitionDirection === 'right'
-                    ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(147, 51, 234, 0.25))'
-                    : 'linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(251, 146, 60, 0.25))',
-                  borderColor: transitionDirection === 'right'
-                    ? 'rgba(59, 130, 246, 0.4)'
-                    : 'rgba(236, 72, 153, 0.4)',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
-                }}
+    <LazyMotion features={domAnimation}>
+      <>
+        {/* Floating badge indicator - 60fps smooth, under 250ms */}
+        <TransitionIndicator
+          transitionPhase={transitionPhase}
+          transitionDirection={transitionDirection}
+        />
+
+        <div
+          className="fixed -bottom-2 left-0 right-0 z-40"
+          style={{
+            paddingBottom: "env(safe-area-inset-bottom)",
+            transform: keyboardOffset ? `translateY(${keyboardOffset}px)` : undefined,
+            transition: "transform 150ms ease-out",
+          }}
+        >
+          <div className="flex items-center gap-2 w-full">
+
+            {/* Left toggle (Hub → Orders) */}
+            {isHubMode && (
+              <button
+                type="button"
+                onClick={handleToggleMode}
+                className="flex flex-col items-center gap-1 bg-neutral-950 text-white/90 pr-3 py-3 rounded-r-full rounded-l-[12px] shadow-md border border-neutral-950 active:scale-95"
               >
-                <div className="flex items-center gap-2">
-                  <ArrowRightLeft 
-                    className={`w-5 h-5 ${
-                      transitionDirection === 'right' ? 'text-blue-400' : 'text-pink-400'
-                    }`}
-                    style={{
-                      animation: transitionPhase === 'entering' ? 'spin 0.4s ease-in-out' : 'none',
-                    }}
-                  />
-                  <span className="text-white font-medium text-sm">
-                    {transitionDirection === 'right' ? 'Switching to Hub' : 'Switching to Orders'}
-                  </span>
+                <ArrowRightLeft className="size-4" />
+                <span className="text-[11px]">To Orders</span>
+              </button>
+            )}
+
+            <div className="flex-1">
+              <div className={`bg-neutral-950 rounded-full py-1.5 px-1 shadow-lg relative ${isHubMode ? "mr-1" : "ml-1"}`}>
+                <div className="flex items-center justify-around relative">
+                  {tabs.map(tab => (
+                    <TabButton
+                      key={tab.id}
+                      tab={tab}
+                      isActive={activeTab === tab.id}
+                      onClick={() => handleTabClick(tab)}
+                    />
+                  ))}
                 </div>
               </div>
-              
-              {/* Loading indicator dots */}
-              <div className="flex gap-1.5">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="w-2 h-2 rounded-full"
-                    style={{
-                      background: transitionDirection === 'right'
-                        ? 'rgba(59, 130, 246, 0.9)'
-                        : 'rgba(236, 72, 153, 0.9)',
-                      animation: transitionPhase === 'entering'
-                        ? `pulse 1s ease-in-out ${i * 0.15}s infinite`
-                        : 'none',
-                    }}
-                  />
-                ))}
-              </div>
+            </div>
+
+            {/* Right toggle (Orders → Hub) */}
+            {!isHubMode && (
+              <button
+                type="button"
+                onClick={handleToggleMode}
+                className="flex flex-col items-center gap-1 bg-neutral-950 text-white/90 pl-3 py-3 rounded-l-full rounded-r-[12px] shadow-md border border-neutral-950 active:scale-95"
+              >
+                <ArrowRightLeft className="size-4" />
+                <span className="text-[11px]">To Hub</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </>
+    </LazyMotion>
+  )
+}
+
+function TransitionIndicator({ transitionPhase, transitionDirection }) {
+  if (transitionPhase === 'idle') return null
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center"
+        style={{
+          opacity: transitionPhase === 'entering' ? 1 : 0,
+          transition: 'opacity 0.2s ease-out',
+        }}
+      >
+        <div
+          className="flex flex-col items-center gap-3"
+          style={{
+            transform: transitionPhase === 'entering' 
+              ? 'translate3d(0, 0, 0) scale(1)' 
+              : 'translate3d(0, -20px, 0) scale(0.9)',
+            transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+        >
+          {/* Badge container */}
+          <div
+            className="px-6 py-3 rounded-full backdrop-blur-xl border shadow-2xl"
+            style={{
+              background: transitionDirection === 'right'
+                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(147, 51, 234, 0.25))'
+                : 'linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(251, 146, 60, 0.25))',
+              borderColor: transitionDirection === 'right'
+                ? 'rgba(59, 130, 246, 0.4)'
+                : 'rgba(236, 72, 153, 0.4)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <ArrowRightLeft 
+                className={`size-5 ${
+                  transitionDirection === 'right' ? 'text-blue-400' : 'text-pink-400'
+                }`}
+                style={{
+                  animation: transitionPhase === 'entering' ? 'spin 0.4s ease-in-out' : 'none',
+                }}
+              />
+              <span className="text-white font-medium text-sm">
+                {transitionDirection === 'right' ? 'Switching to Hub' : 'Switching to Orders'}
+              </span>
             </div>
           </div>
           
-          {/* CSS animations */}
-          <style>{`
-            @keyframes pulse {
-              0%, 100% {
-                opacity: 0.4;
-                transform: scale(0.8);
-              }
-              50% {
-                opacity: 1;
-                transform: scale(1);
-              }
-            }
-            @keyframes spin {
-              from {
-                transform: rotate(0deg);
-              }
-              to {
-                transform: rotate(180deg);
-              }
-            }
-          `}</style>
-        </>
-      )}
-
-      <div
-        className="fixed -bottom-2 left-0 right-0 z-40"
-        style={{
-          paddingBottom: "env(safe-area-inset-bottom)",
-          transform: keyboardOffset ? `translateY(${keyboardOffset}px)` : undefined,
-          transition: "transform 150ms ease-out",
-          willChange: "transform",
-        }}
-      >
-        <div className="flex items-center gap-2 w-full">
-
-        {/* Left toggle (Hub → Orders) */}
-        {isHubMode && (
-          <button
-            onClick={handleToggleMode}
-            className="flex flex-col items-center gap-1 bg-black text-white/90 pr-3 py-3 rounded-r-full rounded-l-[12px] shadow-md border border-black active:scale-95"
-          >
-            <ArrowRightLeft className="w-4 h-4" />
-            <span className="text-[11px]">To Orders</span>
-          </button>
-        )}
-
-        <div className="flex-1">
-          <div className={`bg-black rounded-full py-1.5 px-1 shadow-lg relative ${isHubMode ? "mr-1" : "ml-1"}`}>
-            <div className="flex items-center justify-around relative">
-              {tabs.map(tab => {
-                const Icon = tab.icon
-                const isActive = activeTab === tab.id
-
-                return (
-                  <motion.button
-                    key={tab.id}
-                    onClick={() => handleTabClick(tab)}
-                    aria-current={isActive ? "page" : undefined}
-                    className="relative flex flex-col items-center gap-1 px-4 py-2 rounded-full overflow-hidden z-10"
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    {isActive && (
-                      <motion.div
-                        layoutId="bottomNavActive"
-                        className="absolute inset-0 bg-neutral-700 rounded-full -z-10"
-                        initial={false}
-                        transition={{
-                          type: "spring",
-                          stiffness: 500,
-                          damping: 30,
-                        }}
-                      />
-                    )}
-                    <Icon className={`w-5 h-4 relative z-10 transition-colors duration-300 ease-in-out ${isActive ? "text-white" : "text-white/80"}`} />
-                    <span className={`text-[11px] relative z-10 transition-colors duration-300 ease-in-out ${isActive ? "text-white" : "text-white/80"}`}>
-                      {tab.label}
-                    </span>
-                  </motion.button>
-                )
-              })}
-            </div>
+          {/* Loading indicator dots */}
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="size-2 rounded-full"
+                style={{
+                  background: transitionDirection === 'right'
+                    ? 'rgba(59, 130, 246, 0.9)'
+                    : 'rgba(236, 72, 153, 0.9)',
+                  animation: transitionPhase === 'entering'
+                    ? `pulse 1s ease-in-out ${i * 0.15}s infinite`
+                    : 'none',
+                }}
+              />
+            ))}
           </div>
         </div>
-
-        {/* Right toggle (Orders → Hub) */}
-        {!isHubMode && (
-          <button
-            onClick={handleToggleMode}
-            className="flex flex-col items-center gap-1 bg-black text-white/90 pl-3 py-3 rounded-l-full rounded-r-[12px] shadow-md border border-black active:scale-95"
-          >
-            <ArrowRightLeft className="w-4 h-4" />
-            <span className="text-[11px]">To Hub</span>
-          </button>
-        )}
-        </div>
       </div>
+      
+      {/* CSS animations */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 0.4;
+            transform: scale(0.8);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(180deg);
+          }
+        }
+      `}</style>
     </>
+  )
+}
+
+function TabButton({ tab, isActive, onClick }) {
+  const Icon = tab.icon
+  return (
+    <m.button
+      onClick={onClick}
+      aria-current={isActive ? "page" : undefined}
+      className="relative flex flex-col items-center gap-1 px-4 py-2 rounded-full overflow-hidden z-10"
+      whileTap={{ scale: 0.95 }}
+    >
+      {isActive && (
+        <m.div
+          layoutId="bottomNavActive"
+          className="absolute inset-0 bg-neutral-700 rounded-full -z-10"
+          initial={false}
+          transition={{
+            type: "spring",
+            stiffness: 500,
+            damping: 30,
+          }}
+        />
+      )}
+      <Icon className={`w-5 h-4 relative z-10 transition-colors duration-300 ease-in-out ${isActive ? "text-white" : "text-white/80"}`} />
+      <span className={`text-[11px] relative z-10 transition-colors duration-300 ease-in-out ${isActive ? "text-white" : "text-white/80"}`}>
+        {tab.label}
+      </span>
+    </m.button>
   )
 }

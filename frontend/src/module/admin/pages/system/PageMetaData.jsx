@@ -4,6 +4,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import { exportSEOPagesToCSV, exportSEOPagesToExcel, exportSEOPagesToPDF, exportSEOPagesToJSON } from "../../components/seo/seoExportUtils"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
 
@@ -25,19 +26,21 @@ const seoPages = [
 ]
 
 export default function PageMetaDataPageMetaData() {
+  const companyName = useCompanyName()
   const [searchQuery, setSearchQuery] = useState("")
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [editingPage, setEditingPage] = useState(null)
-  const [seoData, setSeoData] = useState({
-    title: "",
-    description: "",
-    keywords: "",
-    metaTitle: "",
-    metaDescription: "",
-    ogTitle: "",
-    ogDescription: "",
-    ogImage: ""
+  const [dialogs, setDialogs] = useState({ settings: false, edit: false })
+  const [editState, setEditState] = useState({
+    page: null,
+    data: {
+      title: "",
+      description: "",
+      keywords: "",
+      metaTitle: "",
+      metaDescription: "",
+      ogTitle: "",
+      ogDescription: "",
+      ogImage: ""
+    }
   })
   const [visibleColumns, setVisibleColumns] = useState({
     si: true,
@@ -59,39 +62,42 @@ export default function PageMetaDataPageMetaData() {
   const handleEdit = (pageId) => {
     const page = seoPages.find(p => p.id === pageId)
     if (page) {
-      setEditingPage(page)
-      // Load existing SEO data (in real app, this would come from API)
-      setSeoData({
-        title: page.name,
-        description: "",
-        keywords: "",
-        metaTitle: `${page.name} - ${companyName}`,
-        metaDescription: `SEO description for ${page.name}`,
-        ogTitle: `${page.name} - ${companyName}`,
-        ogDescription: `Open Graph description for ${page.name}`,
-        ogImage: ""
+      setEditState({
+        page,
+        data: {
+          title: page.name,
+          description: "",
+          keywords: "",
+          metaTitle: `${page.name} - ${companyName}`,
+          metaDescription: `SEO description for ${page.name}`,
+          ogTitle: `${page.name} - ${companyName}`,
+          ogDescription: `Open Graph description for ${page.name}`,
+          ogImage: ""
+        }
       })
-      setIsEditDialogOpen(true)
+      setDialogs(prev => ({ ...prev, edit: true }))
     }
   }
 
-  const handleSaveSEO = () => {
-    if (!editingPage) return
+  const handleSaveSEO = (updatedData) => {
+    if (!editState.page) return
     
     // In real app, this would save to API
-    console.log("Saving SEO data for:", editingPage.name, seoData)
-    alert(`SEO data saved successfully for ${editingPage.name}!`)
-    setIsEditDialogOpen(false)
-    setEditingPage(null)
-    setSeoData({
-      title: "",
-      description: "",
-      keywords: "",
-      metaTitle: "",
-      metaDescription: "",
-      ogTitle: "",
-      ogDescription: "",
-      ogImage: ""
+    console.log("Saving SEO data for:", editState.page.name, updatedData)
+    alert(`SEO data saved successfully for ${editState.page.name}!`)
+    setDialogs(prev => ({ ...prev, edit: false }))
+    setEditState({
+      page: null,
+      data: {
+        title: "",
+        description: "",
+        keywords: "",
+        metaTitle: "",
+        metaDescription: "",
+        ogTitle: "",
+        ogDescription: "",
+        ogImage: ""
+      }
     })
   }
 
@@ -132,8 +138,8 @@ export default function PageMetaDataPageMetaData() {
         {/* Page Title */}
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-3 mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center">
-              <Settings className="w-3.5 h-3.5 text-white" />
+            <div className="size-7 rounded-lg bg-blue-500 flex items-center justify-center">
+              <Settings className="size-3.5 text-white" />
             </div>
             <h1 className="text-lg font-bold text-slate-900">Manage Page SEO</h1>
           </div>
@@ -148,44 +154,46 @@ export default function PageMetaDataPageMetaData() {
                 placeholder="Search by page name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Search SEO pages"
                 className="pl-7 pr-2 py-1.5 w-full text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="px-4 py-1.5 text-xs font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1 transition-all">
-                  <Download className="w-3.5 h-3.5" />
+                <button type="button" className="px-4 py-1.5 text-xs font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1 transition-all">
+                  <Download className="size-3.5" />
                   <span className="font-bold">Export</span>
-                  <ChevronDown className="w-3 h-3" />
+                  <ChevronDown className="size-3" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-50">
                 <DropdownMenuLabel>Export Format</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => handleExport("csv")} className="cursor-pointer">
-                  <FileText className="w-4 h-4 mr-2" />
+                  <FileText className="size-4 mr-2" />
                   Export as CSV
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleExport("excel")} className="cursor-pointer">
-                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  <FileSpreadsheet className="size-4 mr-2" />
                   Export as Excel
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleExport("pdf")} className="cursor-pointer">
-                  <FileText className="w-4 h-4 mr-2" />
+                  <FileText className="size-4 mr-2" />
                   Export as PDF
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleExport("json")} className="cursor-pointer">
-                  <Code className="w-4 h-4 mr-2" />
+                  <Code className="size-4 mr-2" />
                   Export as JSON
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <button 
-              onClick={() => setIsSettingsOpen(true)}
+              type="button"
+              onClick={() => setDialogs(prev => ({ ...prev, settings: true }))}
               className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-all"
             >
-              <Settings className="w-4 h-4" />
+              <Settings className="size-4" />
             </button>
           </div>
         </div>
@@ -202,256 +210,304 @@ export default function PageMetaDataPageMetaData() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  {visibleColumns.si && (
-                    <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      <div className="flex items-center gap-2">
-                        <span>SI</span>
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
-                      </div>
-                    </th>
-                  )}
-                  {visibleColumns.pages && (
-                    <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      <div className="flex items-center gap-2">
-                        <span>Pages</span>
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
-                      </div>
-                    </th>
-                  )}
-                  {visibleColumns.actions && (
-                    <th className="px-3 py-2 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Action</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-slate-100">
-                {filteredPages.length === 0 ? (
-                  <tr>
-                    <td colSpan={Object.values(visibleColumns).filter(v => v).length} className="px-6 py-8 text-center">
-                      <p className="text-xs text-slate-500">No pages found</p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredPages.map((page, index) => (
-                    <tr key={page.id} className="hover:bg-slate-50 transition-colors">
-                      {visibleColumns.si && (
-                        <td className="px-3 py-2.5">
-                          <span className="text-xs text-slate-700">{index + 1}</span>
-                        </td>
-                      )}
-                      {visibleColumns.pages && (
-                        <td className="px-3 py-2.5">
-                          <span className="text-xs text-slate-700">{page.name}</span>
-                        </td>
-                      )}
-                      {visibleColumns.actions && (
-                        <td className="px-3 py-2.5 whitespace-nowrap text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(page.id)}
-                            className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1 mx-auto"
-                          >
-                            <Pencil className="w-3 h-3" />
-                            <span>Edit Content</span>
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <SEOTable
+            filteredPages={filteredPages}
+            visibleColumns={visibleColumns}
+            onEdit={handleEdit}
+          />
         </div>
       </div>
 
       {/* Settings Dialog */}
-      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-md bg-white p-0">
-          <DialogHeader className="px-6 pt-6 pb-4">
-            <DialogTitle className="flex items-center gap-2">
-              <Settings className="w-4 h-4" />
-              Table Settings
-            </DialogTitle>
-          </DialogHeader>
-          <div className="px-6 pb-6 space-y-4">
-            <div>
-              <h3 className="text-xs font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                <Columns className="w-4 h-4" />
-                Visible Columns
-              </h3>
-              <div className="space-y-2">
-                {Object.entries(columnsConfig).map(([key, label]) => (
-                  <label
-                    key={key}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={visibleColumns[key]}
-                      onChange={() => toggleColumn(key)}
-                      className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
-                    />
-                    <span className="text-xs text-slate-700">{label}</span>
-                    {visibleColumns[key] && (
-                      <Check className="w-4 h-4 text-emerald-600 ml-auto" />
-                    )}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
-              <button
-                onClick={resetColumns}
-                className="px-4 py-2 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all"
-              >
-                Reset
-              </button>
-              <button
-                onClick={() => setIsSettingsOpen(false)}
-                className="px-4 py-2 text-xs font-medium rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-all shadow-md"
-              >
-                Apply
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <TableSettingsDialog
+        isOpen={dialogs.settings}
+        onOpenChange={(val) => setDialogs(prev => ({ ...prev, settings: val }))}
+        visibleColumns={visibleColumns}
+        toggleColumn={toggleColumn}
+        resetColumns={resetColumns}
+        columnsConfig={columnsConfig}
+      />
 
       {/* Edit SEO Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-3xl bg-white max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="w-4 h-4" />
-              Edit SEO Content - {editingPage?.name}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Page Title</Label>
-              <Input
-                id="title"
-                value={seoData.title}
-                onChange={(e) => setSeoData({ ...seoData, title: e.target.value })}
-                placeholder="Enter page title"
-                className="w-full"
-              />
-            </div>
+      {dialogs.edit && (
+        <EditSEODialog
+          key={editState.page?.id || "edit-dialog"}
+          isOpen={dialogs.edit}
+          onOpenChange={(val) => setDialogs(prev => ({ ...prev, edit: val }))}
+          editingPage={editState.page}
+          initialData={editState.data}
+          onSave={handleSaveSEO}
+        />
+      )}
+    </div>
+  )
+}
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={seoData.description}
-                onChange={(e) => setSeoData({ ...seoData, description: e.target.value })}
-                placeholder="Enter page description"
-                rows={3}
-                className="w-full"
-              />
-            </div>
+function EditSEODialog({ isOpen, onOpenChange, editingPage, initialData, onSave }) {
+  const [seoData, setSeoData] = useState(initialData)
 
-            <div className="space-y-2">
-              <Label htmlFor="keywords">Keywords</Label>
-              <Input
-                id="keywords"
-                value={seoData.keywords}
-                onChange={(e) => setSeoData({ ...seoData, keywords: e.target.value })}
-                placeholder="Enter keywords (comma separated)"
-                className="w-full"
-              />
-            </div>
+  const handleSave = () => {
+    onSave(seoData)
+  }
 
-            <div className="border-t border-slate-200 pt-4">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Meta Tags</h3>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="metaTitle">Meta Title</Label>
-                  <Input
-                    id="metaTitle"
-                    value={seoData.metaTitle}
-                    onChange={(e) => setSeoData({ ...seoData, metaTitle: e.target.value })}
-                    placeholder="Enter meta title"
-                    className="w-full"
-                  />
-                </div>
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl bg-white max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="size-4" />
+            Edit SEO Content - {editingPage?.name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="title">Page Title</Label>
+            <Input
+              id="title"
+              value={seoData.title || ""}
+              onChange={(e) => setSeoData({ ...seoData, title: e.target.value })}
+              placeholder="Enter page title"
+              className="w-full"
+            />
+          </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="metaDescription">Meta Description</Label>
-                  <Textarea
-                    id="metaDescription"
-                    value={seoData.metaDescription}
-                    onChange={(e) => setSeoData({ ...seoData, metaDescription: e.target.value })}
-                    placeholder="Enter meta description"
-                    rows={2}
-                    className="w-full"
-                  />
-                </div>
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={seoData.description || ""}
+              onChange={(e) => setSeoData({ ...seoData, description: e.target.value })}
+              placeholder="Enter page description"
+              rows={3}
+              className="w-full"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="keywords">Keywords</Label>
+            <Input
+              id="keywords"
+              value={seoData.keywords || ""}
+              onChange={(e) => setSeoData({ ...seoData, keywords: e.target.value })}
+              placeholder="Enter keywords (comma separated)"
+              className="w-full"
+            />
+          </div>
+
+          <div className="border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Meta Tags</h3>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="metaTitle">Meta Title</Label>
+                <Input
+                  id="metaTitle"
+                  value={seoData.metaTitle || ""}
+                  onChange={(e) => setSeoData({ ...seoData, metaTitle: e.target.value })}
+                  placeholder="Enter meta title"
+                  className="w-full"
+                />
               </div>
-            </div>
 
-            <div className="border-t border-slate-200 pt-4">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Open Graph Tags</h3>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="ogTitle">OG Title</Label>
-                  <Input
-                    id="ogTitle"
-                    value={seoData.ogTitle}
-                    onChange={(e) => setSeoData({ ...seoData, ogTitle: e.target.value })}
-                    placeholder="Enter OG title"
-                    className="w-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ogDescription">OG Description</Label>
-                  <Textarea
-                    id="ogDescription"
-                    value={seoData.ogDescription}
-                    onChange={(e) => setSeoData({ ...seoData, ogDescription: e.target.value })}
-                    placeholder="Enter OG description"
-                    rows={2}
-                    className="w-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ogImage">OG Image URL</Label>
-                  <Input
-                    id="ogImage"
-                    value={seoData.ogImage}
-                    onChange={(e) => setSeoData({ ...seoData, ogImage: e.target.value })}
-                    placeholder="Enter OG image URL"
-                    className="w-full"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="metaDescription">Meta Description</Label>
+                <Textarea
+                  id="metaDescription"
+                  value={seoData.metaDescription || ""}
+                  onChange={(e) => setSeoData({ ...seoData, metaDescription: e.target.value })}
+                  placeholder="Enter meta description"
+                  rows={2}
+                  className="w-full"
+                />
               </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-              <button
-                onClick={() => {
-                  setIsEditDialogOpen(false)
-                  setEditingPage(null)
-                }}
-                className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveSEO}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all"
-              >
-                Save Changes
-              </button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+
+          <div className="border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Open Graph Tags</h3>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="ogTitle">OG Title</Label>
+                <Input
+                  id="ogTitle"
+                  value={seoData.ogTitle || ""}
+                  onChange={(e) => setSeoData({ ...seoData, ogTitle: e.target.value })}
+                  placeholder="Enter OG title"
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ogDescription">OG Description</Label>
+                <Textarea
+                  id="ogDescription"
+                  value={seoData.ogDescription || ""}
+                  onChange={(e) => setSeoData({ ...seoData, ogDescription: e.target.value })}
+                  placeholder="Enter OG description"
+                  rows={2}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ogImage">OG Image URL</Label>
+                <Input
+                  id="ogImage"
+                  value={seoData.ogImage || ""}
+                  onChange={(e) => setSeoData({ ...seoData, ogImage: e.target.value })}
+                  placeholder="Enter OG image URL"
+                  className="w-full"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all"
+            >
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function SEOTable({ filteredPages, visibleColumns, onEdit }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            {visibleColumns.si && (
+              <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                <div className="flex items-center gap-2">
+                  <span>SI</span>
+                  <ArrowUpDown className="size-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                </div>
+              </th>
+            )}
+            {visibleColumns.pages && (
+              <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                <div className="flex items-center gap-2">
+                  <span>Pages</span>
+                  <ArrowUpDown className="size-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                </div>
+              </th>
+            )}
+            {visibleColumns.actions && (
+              <th className="px-3 py-2 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Action</th>
+            )}
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-slate-100">
+          {filteredPages.length === 0 ? (
+            <tr>
+              <td colSpan={Object.values(visibleColumns).filter(v => v).length} className="px-6 py-8 text-center">
+                <p className="text-xs text-slate-500">No pages found</p>
+              </td>
+            </tr>
+          ) : (
+            filteredPages.map((page, index) => (
+              <tr key={page.id} className="hover:bg-slate-50 transition-colors">
+                {visibleColumns.si && (
+                  <td className="px-3 py-2.5">
+                    <span className="text-xs text-slate-700">{index + 1}</span>
+                  </td>
+                )}
+                {visibleColumns.pages && (
+                  <td className="px-3 py-2.5">
+                    <span className="text-xs text-slate-700">{page.name}</span>
+                  </td>
+                )}
+                {visibleColumns.actions && (
+                  <td className="px-3 py-2.5 whitespace-nowrap text-center">
+                    <button
+                      type="button"
+                      onClick={() => onEdit(page.id)}
+                      className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1 mx-auto"
+                    >
+                      <Pencil className="size-3" />
+                      <span>Edit Content</span>
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
     </div>
+  )
+}
+
+function TableSettingsDialog({ isOpen, onOpenChange, visibleColumns, toggleColumn, resetColumns, columnsConfig }) {
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md bg-white p-0">
+        <DialogHeader className="px-6 pt-6 pb-4">
+          <DialogTitle className="flex items-center gap-2">
+            <Settings className="size-4" />
+            Table Settings
+          </DialogTitle>
+        </DialogHeader>
+        <div className="px-6 pb-6 space-y-4">
+          <div>
+            <h3 className="text-xs font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <Columns className="size-4" />
+              Visible Columns
+            </h3>
+            <div className="space-y-2">
+              {Object.entries(columnsConfig).map(([key, labelText]) => (
+                <label
+                  key={key}
+                  htmlFor={`col-${key}`}
+                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"
+                >
+                  <input
+                    id={`col-${key}`}
+                    type="checkbox"
+                    checked={visibleColumns[key]}
+                    onChange={() => toggleColumn(key)}
+                    aria-label={labelText}
+                    className="size-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
+                  />
+                  <span className="text-xs text-slate-700">{labelText}</span>
+                  {visibleColumns[key] && (
+                    <Check className="size-4 text-emerald-600 ml-auto" />
+                  )}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={resetColumns}
+              className="px-4 py-2 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="px-4 py-2 text-xs font-medium rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-all shadow-md"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
