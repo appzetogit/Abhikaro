@@ -3,7 +3,8 @@ import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import { restaurantAPI, diningAPI, adminAPI } from "@/lib/api"
-import { API_BASE_URL } from "@/lib/api/config"
+import { API_BASE_URL, BACKEND_ORIGIN } from "@/lib/api/config"
+import OptimizedImage from "@/components/OptimizedImage"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { useSharedLocation } from "@/lib/context/LocationContext"
@@ -1692,7 +1693,7 @@ export default function RestaurantDetails() {
                             {/* Right Side - Image and Add Button */}
                             <div className="relative w-32 h-32 flex-shrink-0">
                               {getItemImageUrl(item) ? (
-                                <img
+                                <OptimizedImage
                                   src={getItemImageUrl(item)}
                                   alt={item.name}
                                   className="w-full h-full object-cover rounded-2xl shadow-sm"
@@ -1939,7 +1940,7 @@ export default function RestaurantDetails() {
                                       {/* Right Side - Image and Add Button */}
                                       <div className="relative w-32 h-32 flex-shrink-0">
                                         {getItemImageUrl(item) ? (
-                                          <img
+                                          <OptimizedImage
                                             src={getItemImageUrl(item)}
                                             alt={item.name}
                                             className="w-full h-full object-cover rounded-2xl shadow-sm"
@@ -2573,7 +2574,7 @@ export default function RestaurantDetails() {
                   {/* Image Section */}
                   <div className="relative w-full h-64 overflow-hidden rounded-t-3xl">
                     {getItemImageUrl(selectedItem) ? (
-                      <img
+                      <OptimizedImage
                         src={getItemImageUrl(selectedItem)}
                         alt={selectedItem.name}
                         className="w-full h-full object-cover"

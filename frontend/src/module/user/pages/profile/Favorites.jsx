@@ -4,6 +4,8 @@ import { useState } from "react"
 import { Heart, Star, Clock, MapPin, ArrowRight, ArrowLeft, Bookmark } from "lucide-react"
 import AnimatedPage from "../../components/AnimatedPage"
 import ScrollReveal from "../../components/ScrollReveal"
+import { BACKEND_ORIGIN } from "@/lib/api/config"
+import OptimizedImage from "@/components/OptimizedImage"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useProfile } from "../../context/ProfileContext"
@@ -129,7 +131,7 @@ export default function Favorites() {
               <Link to={`/user/restaurants/${restaurant.slug}`}>
                 <Card className="overflow-hidden h-full">
                   <div className="h-32 w-full relative overflow-hidden">
-                    <img
+                    <OptimizedImage
                       src={restaurant.image}
                       alt={restaurant.name}
                       className="w-full h-full object-cover"
@@ -209,7 +211,7 @@ export default function Favorites() {
                     <Link to={`/user/restaurants/${restaurantSlug}?dish=${dish.id}`}>
                       <Card className="overflow-hidden h-full cursor-pointer hover:shadow-lg transition-shadow">
                         <div className="h-32 w-full relative overflow-hidden">
-                          <img
+                          <OptimizedImage
                             src={dish.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&h=600&fit=crop&q=80"}
                             alt={dish.name}
                             className="w-full h-full object-cover"

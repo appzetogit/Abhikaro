@@ -39,7 +39,7 @@ import { getCachedResponse, setCachedResponse } from "@/lib/utils/apiResponseCac
 import offerImage from "@/assets/offerimage.png"
 import closeappImage from "@/assets/closeapp.png"
 import api, { restaurantAPI, orderAPI } from "@/lib/api"
-import { API_BASE_URL, API_ENDPOINTS } from "@/lib/api/config"
+import { API_BASE_URL, API_ENDPOINTS, BACKEND_ORIGIN } from "@/lib/api/config"
 import OptimizedImage from "@/components/OptimizedImage"
 import FlipBadge from "@/components/FlipBadge"
 // Explore More Icons
@@ -1018,8 +1018,6 @@ export default function Home() {
         setLoadingRestaurants(false)
         return
       }
-      const backendUrl = API_BASE_URL.replace('/api', '')
-
       const normalizeImageUrl = (rawUrl) => {
         if (!rawUrl || typeof rawUrl !== 'string') return null
         const url = rawUrl.trim()
@@ -1032,17 +1030,17 @@ export default function Home() {
           return `https://${url.slice('http://'.length)}`
         }
         if (url.startsWith('/')) {
-          return `${backendUrl}${url}`
+          return `${BACKEND_ORIGIN}${url}`
         }
         if (!/^https?:\/\//i.test(url)) {
-          return `${backendUrl}/${url.replace(/^\/+/, '')}`
+          return `${BACKEND_ORIGIN}/${url.replace(/^\/+/, '')}`
         }
         return url
       }
 
       // First, test backend connection
       try {
-        const healthCheck = await fetch(`${backendUrl}/health`)
+        const healthCheck = await fetch(`${BACKEND_ORIGIN}/health`)
         if (controller.signal.aborted) return
         if (!healthCheck.ok) {
           throw new Error(`Backend health check failed: ${healthCheck.status}`)
@@ -2044,7 +2042,7 @@ export default function Home() {
                     <div className="group min-w-0">
                       <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
                         {restaurant.image && !brokenRecommendedImageBySlug[restaurantSlug] ? (
-                          <img
+                          <OptimizedImage
                             src={restaurant.image}
                             alt={restaurantName}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

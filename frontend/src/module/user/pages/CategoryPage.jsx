@@ -16,6 +16,8 @@ import { restaurantAPI, adminAPI } from "@/lib/api"
 import { useProfile } from "../context/ProfileContext"
 import { useCart } from "../context/CartContext"
 import { useSharedLocation } from "@/lib/context/LocationContext"
+import { BACKEND_ORIGIN } from "@/lib/api/config"
+import OptimizedImage from "@/components/OptimizedImage"
 
 // Filter options
 const filterOptions = [
@@ -881,7 +883,7 @@ export default function CategoryPage() {
                       <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-2 transition-all ${
                         isSelected ? 'border-green-600 shadow-lg' : 'border-transparent'
                       }`}>
-                        <img 
+                        <OptimizedImage 
                           src={cat.image} 
                           alt={cat.name}
                           className="w-full h-full object-cover"
@@ -1086,7 +1088,7 @@ export default function CategoryPage() {
                       <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex-shrink-0">
                         <div className="w-full h-full rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800">
                           {(restaurant.categoryDishImage || restaurant.image) ? (
-                            <img
+                            <OptimizedImage
                               src={restaurant.categoryDishImage || restaurant.image}
                               alt={dishName}
                               className="w-full h-full object-cover rounded-2xl"
@@ -1182,7 +1184,7 @@ export default function CategoryPage() {
                       <div className="relative h-44 sm:h-52 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-md flex-shrink-0">
                         {/* Use category dish image if available, otherwise restaurant image */}
                         {restaurant.categoryDishImage ? (
-                          <img
+                          <OptimizedImage
                             src={restaurant.categoryDishImage}
                             alt={restaurant.categoryDishName || restaurant.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -1201,7 +1203,7 @@ export default function CategoryPage() {
                             }}
                           />
                         ) : restaurant.image ? (
-                        <img
+                        <OptimizedImage
                           src={restaurant.image}
                           alt={restaurant.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"

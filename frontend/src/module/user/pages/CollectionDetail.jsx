@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useProfile } from "../context/ProfileContext"
+import { BACKEND_ORIGIN } from "@/lib/api/config"
+import OptimizedImage from "@/components/OptimizedImage"
 
 export default function CollectionDetail() {
   const { id } = useParams()
@@ -120,7 +122,7 @@ export default function CollectionDetail() {
                       const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || 'Restaurant'
                       return (
                         <>
-                          <img
+                          <OptimizedImage
                             src={restaurant.image}
                             alt={restaurantName}
                             className="w-full h-full object-cover"
