@@ -5,7 +5,9 @@ import { initializeCloudinary } from '../../../config/cloudinary.js';
 export const uploadSingleMedia = async (req, res) => {
   try {
     // Initialize Cloudinary if not already initialized
-    await initializeCloudinary();
+    if (process.env.USE_LOCAL_STORAGE !== 'true') {
+      await initializeCloudinary();
+    }
 
     if (!req.file) {
       return errorResponse(res, 400, 'No file provided');
@@ -74,7 +76,9 @@ export const uploadSingleMedia = async (req, res) => {
 export const uploadBase64Media = async (req, res) => {
   try {
     // Initialize Cloudinary if not already initialized
-    await initializeCloudinary();
+    if (process.env.USE_LOCAL_STORAGE !== 'true') {
+      await initializeCloudinary();
+    }
 
     const { base64, mimeType, fileName, folder } = req.body;
 

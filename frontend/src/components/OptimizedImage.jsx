@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { BACKEND_ORIGIN } from '@/lib/api/config'
 
 /**
  * OptimizedImage Component
@@ -13,7 +14,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
  * - Error handling with fallback
  */
 const OptimizedImage = React.memo(({
-  src,
+  src: rawSrc,
   alt,
   className = '',
   priority = false, // For above-the-fold images
@@ -25,6 +26,14 @@ const OptimizedImage = React.memo(({
   onError,
   ...props
 }) => {
+  const src = useMemo(() => {
+    if (!rawSrc || typeof rawSrc !== 'string' || rawSrc === '') return rawSrc
+    if (rawSrc.startsWith('/uploads') && !rawSrc.startsWith('//') && !rawSrc.startsWith('data:')) {
+      return `${BACKEND_ORIGIN}${rawSrc}`
+    }
+    return rawSrc
+  }, [rawSrc])
+
   const [isLoaded, setIsLoaded] = useState(false)
   const [hasError, setHasError] = useState(false)
   const [isInView, setIsInView] = useState(priority) // Start visible if priority

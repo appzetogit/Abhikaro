@@ -867,7 +867,7 @@ export default function RestaurantOnboarding() {
       toast.success("Step 1 (Basic Info) auto-filled")
     } else if (step === 2) {
       setStep2({
-        profileImage: "https://res.cloudinary.com/dbv5id2cy/image/upload/v1707212002/restaurant_profile.jpg",
+        profileImage: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'><rect width='800' height='600' fill='%23f3f4f6'/><rect x='100' y='200' width='600' height='300' rx='10' fill='%23e5e7eb'/><path d='M100 200 L400 100 L700 200 Z' fill='%23d1d5db'/><circle cx='400' cy='350' r='80' fill='%239ca3af'/><text x='400' y='360' font-family='sans-serif' font-size='24' fill='white' text-anchor='middle'>Restaurant Profile</text></svg>",
         cuisines: ["North Indian", "Chinese", "Bakery"],
         openingTime: "10:00",
         closingTime: "23:00",
@@ -880,15 +880,15 @@ export default function RestaurantOnboarding() {
       setStep3({
         panNumber: "ABCDE1234F",
         nameOnPan: "Akash Sharma",
-        panImage: "https://res.cloudinary.com/dbv5id2cy/image/upload/v1707212003/pan_placeholder.jpg",
+        panImage: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500' viewBox='0 0 800 500'><rect width='800' height='500' rx='15' fill='%23eff6ff'/><rect x='50' y='50' width='700' height='400' rx='10' fill='none' stroke='%233b82f6' stroke-width='4' stroke-dasharray='10 10'/><text x='400' y='260' font-family='sans-serif' font-size='28' fill='%233b82f6' text-anchor='middle' font-weight='bold'>PAN CARD PLACEHOLDER</text></svg>",
         gstRegistered: true,
         gstNumber: "07ABCDE1234F1Z5",
         gstLegalName: "Tastizo Premium Ventures",
         gstAddress: "Sector 18, Noida, Uttar Pradesh 201301",
-        gstImage: "https://res.cloudinary.com/dbv5id2cy/image/upload/v1707212004/gst_placeholder.jpg",
+        gstImage: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='1000' viewBox='0 0 800 1000'><rect width='800' height='1000' fill='%23f9fafb'/><rect x='50' y='50' width='700' height='900' rx='8' fill='none' stroke='%2310b981' stroke-width='4'/><text x='400' y='500' font-family='sans-serif' font-size='28' fill='%2310b981' text-anchor='middle' font-weight='bold'>GSTIN CERTIFICATE PLACEHOLDER</text></svg>",
         fssaiNumber: "12345678901234",
         fssaiExpiry: expiryDate.toISOString().split("T")[0],
-        fssaiImage: "https://res.cloudinary.com/dbv5id2cy/image/upload/v1707212005/fssai_placeholder.jpg",
+        fssaiImage: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='1000' viewBox='0 0 800 1000'><rect width='800' height='1000' fill='%23fdfaf2'/><rect x='50' y='50' width='700' height='900' rx='8' fill='none' stroke='%23f59e0b' stroke-width='4'/><text x='400' y='500' font-family='sans-serif' font-size='28' fill='%23f59e0b' text-anchor='middle' font-weight='bold'>FSSAI LICENSE PLACEHOLDER</text></svg>",
         accountNumber: "9182736455432",
         confirmAccountNumber: "9182736455432",
         ifscCode: "HDFC0001234",

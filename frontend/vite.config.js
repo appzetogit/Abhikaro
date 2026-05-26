@@ -164,6 +164,10 @@ export default defineConfig(({ mode }) => {
           target: process.env.VITE_BACKEND_URL || "http://localhost:5001",
           changeOrigin: true,
         },
+        "/uploads": {
+          target: process.env.VITE_BACKEND_URL || "http://localhost:5001",
+          changeOrigin: true,
+        },
       },
     },
     build: {

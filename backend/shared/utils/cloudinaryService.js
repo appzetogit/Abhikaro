@@ -1,6 +1,9 @@
 import multer from 'multer';
 import { Readable } from 'stream';
+import fs from 'fs';
+import path from 'path';
 import { cloudinary } from '../../config/cloudinary.js';
+import { compressImage } from './imageOptimizer.js';
 
 // Use in‑memory storage; we stream to Cloudinary
 const storage = multer.memoryStorage();
@@ -37,12 +40,86 @@ export const uploadMiddleware = multer({
 });
 
 /**
+ * Upload a file to local storage instead of Cloudinary.
+ * @param {Buffer} buffer - File buffer
+ * @param {Object} options - Upload options (folder, etc.)
+ * @returns {Promise<Object>} Local upload result object mimicking Cloudinary response
+ */
+export function uploadToLocal(buffer, options = {}) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (!buffer || !Buffer.isBuffer(buffer)) {
+        return reject(new Error('Invalid buffer provided'));
+      }
+      if (buffer.length === 0) {
+        return reject(new Error('Empty buffer provided'));
+      }
+
+      const folder = options.folder || 'uploads';
+      const isVideo = options.resource_type === 'video';
+
+      // ── Image compression step ──────────────────────────────────────────────
+      let finalBuffer = buffer;
+      let fileExtension = isVideo ? (options.format || 'mp4') : (options.format || 'jpg');
+
+      if (!isVideo) {
+        try {
+          const compressed = await compressImage(buffer, { folder, isVideo: false });
+          finalBuffer = compressed.buffer;
+          fileExtension = compressed.extension;
+        } catch (compErr) {
+          // Non-fatal: fall back to raw buffer if compression errors out
+          console.warn('⚠️  Compression skipped, using raw buffer:', compErr.message);
+          fileExtension = options.format || 'jpg';
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
+      const targetDir = path.join(process.cwd(), 'public', 'uploads', folder);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      const uniqueId = Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+      const filename = `${options.public_id ? path.basename(options.public_id) : uniqueId}.${fileExtension}`;
+      const filepath = path.join(targetDir, filename);
+
+      fs.writeFile(filepath, finalBuffer, (err) => {
+        if (err) {
+          console.error('❌ Local file write error:', err);
+          return reject(err);
+        }
+
+        const relativeUrl = `/uploads/${folder}/${filename}`;
+        console.log('✅ Local upload successful:', relativeUrl);
+
+        resolve({
+          secure_url: relativeUrl,
+          url: relativeUrl,
+          public_id: `${folder}/${filename.replace('.' + fileExtension, '')}`,
+          resource_type: options.resource_type || 'image',
+          bytes: finalBuffer.length,
+          format: fileExtension
+        });
+      });
+    } catch (error) {
+      console.error('❌ Error in uploadToLocal:', error);
+      reject(error);
+    }
+  });
+}
+
+/**
  * Upload a single buffer to Cloudinary.
  * @param {Buffer} buffer - File buffer
  * @param {Object} options - Cloudinary upload options (folder, resource_type, etc.)
  * @returns {Promise<Object>} Cloudinary upload result
  */
 export function uploadToCloudinary(buffer, options = {}) {
+  if (process.env.USE_LOCAL_STORAGE === 'true') {
+    return uploadToLocal(buffer, options);
+  }
+
   return new Promise((resolve, reject) => {
     try {
       // Validate buffer
@@ -124,6 +201,26 @@ export function uploadToCloudinary(buffer, options = {}) {
  */
 export function deleteFromCloudinary(publicId) {
   return new Promise((resolve, reject) => {
+    if (process.env.USE_LOCAL_STORAGE === 'true' || (publicId && publicId.includes('/'))) {
+      try {
+        const localPath = path.join(process.cwd(), 'public', 'uploads', publicId);
+        const dir = path.dirname(localPath);
+        const base = path.basename(localPath);
+        if (fs.existsSync(dir)) {
+          const files = fs.readdirSync(dir);
+          const matched = files.filter(f => f.startsWith(base));
+          for (const f of matched) {
+            fs.unlinkSync(path.join(dir, f));
+            console.log(`🗑️ Deleted local file: ${path.join(dir, f)}`);
+          }
+        }
+        return resolve({ result: 'ok' });
+      } catch (err) {
+        console.error('❌ Error deleting local file:', err);
+        return reject(err);
+      }
+    }
+
     cloudinary.uploader.destroy(publicId, (error, result) => {
       if (error) return reject(error);
       resolve(result);
