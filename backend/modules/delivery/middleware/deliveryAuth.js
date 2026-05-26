@@ -37,6 +37,16 @@ export const authenticate = async (req, res, next) => {
       return errorResponse(res, 401, 'Delivery boy not found');
     }
 
+    // Check for active session ID to prevent concurrent logins
+    if (!decoded.sessionId || decoded.sessionId !== delivery.activeSessionId) {
+      console.warn('❌ Delivery session invalid/expired due to login on another device:', {
+        userId: decoded.userId,
+        tokenSessionId: decoded.sessionId,
+        activeSessionId: delivery.activeSessionId
+      });
+      return errorResponse(res, 401, 'Your session has expired because of a new login on another device.');
+    }
+
     // Allow blocked/pending status partners to access (they can see rejection reason or verification message)
     // Only block if account is inactive AND not blocked/pending (blocked/pending partners can login)
     if (!delivery.isActive && delivery.status !== 'blocked' && delivery.status !== 'pending') {
@@ -75,7 +85,7 @@ export const optionalAuthenticate = async (req, res, next) => {
 
     if (decoded.role === 'delivery') {
       const delivery = await Delivery.findById(decoded.userId).select('-password -refreshToken');
-      if (delivery && (delivery.isActive || delivery.status === 'blocked' || delivery.status === 'pending')) {
+      if (delivery && (delivery.isActive || delivery.status === 'blocked' || delivery.status === 'pending') && decoded.sessionId === delivery.activeSessionId) {
         req.delivery = delivery;
         req.token = decoded;
       }

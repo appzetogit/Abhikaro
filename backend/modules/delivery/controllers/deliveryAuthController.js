@@ -1,6 +1,7 @@
 import Delivery from '../models/Delivery.js';
 import otpService from '../../auth/services/otpService.js';
 import jwtService from '../../auth/services/jwtService.js';
+import crypto from 'crypto';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import { asyncHandler } from '../../../shared/middleware/asyncHandler.js';
 import { handleAuthFcmToken } from '../../fcm/services/notificationTriggers.js';
@@ -243,11 +244,16 @@ export const verifyOTP = asyncHandler(async (req, res) => {
 
       const requiredStep = getRequiredSignupStep(delivery);
       if (requiredStep) {
+        // Generate new session ID for unique active session tracking
+        const sessionId = crypto.randomUUID();
+        delivery.activeSessionId = sessionId;
+
         // Generate tokens for signup flow
         const tokens = jwtService.generateTokens({
           userId: delivery._id.toString(),
           role: 'delivery',
-          email: delivery.email || delivery.phone || delivery.deliveryId
+          email: delivery.email || delivery.phone || delivery.deliveryId,
+          sessionId
         });
 
         // Store refresh token
@@ -306,11 +312,16 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       return errorResponse(res, 403, 'Your account has been deactivated. Please contact support.');
     }
 
+    // Generate new session ID for unique active session tracking
+    const sessionId = crypto.randomUUID();
+    delivery.activeSessionId = sessionId;
+
     // Generate tokens
     const tokens = jwtService.generateTokens({
       userId: delivery._id.toString(),
       role: 'delivery',
-      email: delivery.email || delivery.phone || delivery.deliveryId
+      email: delivery.email || delivery.phone || delivery.deliveryId,
+      sessionId
     });
 
     // Store refresh token in database
@@ -413,11 +424,17 @@ export const refreshToken = asyncHandler(async (req, res) => {
       return errorResponse(res, 401, 'Invalid refresh token');
     }
 
+    // Verify that the refresh token's sessionId matches the active session ID in database
+    if (!decoded.sessionId || decoded.sessionId !== delivery.activeSessionId) {
+      return errorResponse(res, 401, 'Session has expired because of a new login on another device.');
+    }
+
     // Generate new access token
     const accessToken = jwtService.generateAccessToken({
       userId: delivery._id.toString(),
       role: 'delivery',
-      email: delivery.email || delivery.phone || delivery.deliveryId
+      email: delivery.email || delivery.phone || delivery.deliveryId,
+      sessionId: decoded.sessionId // Maintain the same sessionId
     });
 
     // Update refresh token cookie expiry to extend session
@@ -443,8 +460,9 @@ export const refreshToken = asyncHandler(async (req, res) => {
 export const logout = asyncHandler(async (req, res) => {
   // Get delivery boy from request (set by auth middleware)
   if (req.delivery) {
-    // Clear refresh token from database
+    // Clear refresh token and active session from database
     req.delivery.refreshToken = null;
+    req.delivery.activeSessionId = null;
     await req.delivery.save();
   }
 

@@ -37,6 +37,16 @@ export const authenticate = async (req, res, next) => {
       return errorResponse(res, 401, 'Restaurant not found');
     }
 
+    // Check for active session ID to prevent concurrent logins
+    if (!decoded.sessionId || decoded.sessionId !== restaurant.activeSessionId) {
+      console.warn('❌ Restaurant session invalid/expired due to login on another device:', {
+        userId: decoded.userId,
+        tokenSessionId: decoded.sessionId,
+        activeSessionId: restaurant.activeSessionId
+      });
+      return errorResponse(res, 401, 'Your session has expired because of a new login on another device.');
+    }
+
     // Allow inactive restaurants to access onboarding and profile routes
     // They need to complete onboarding even if not yet approved by admin
     // Only block inactive restaurants from accessing other restricted routes

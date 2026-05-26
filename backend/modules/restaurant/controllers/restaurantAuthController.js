@@ -2,6 +2,7 @@ import Restaurant from "../models/Restaurant.js";
 import otpService from "../../auth/services/otpService.js";
 import jwtService from "../../auth/services/jwtService.js";
 import firebaseAuthService from "../../auth/services/firebaseAuthService.js";
+import crypto from "crypto";
 import {
   successResponse,
   errorResponse,
@@ -681,11 +682,17 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       }
     }
 
+    // Generate new session ID for unique active session tracking
+    const sessionId = crypto.randomUUID();
+    restaurant.activeSessionId = sessionId;
+    await restaurant.save();
+
     // Generate tokens (email may be null for phone signups)
     const tokens = jwtService.generateTokens({
       userId: restaurant._id.toString(),
       role: "restaurant",
       email: restaurant.email || restaurant.phone || restaurant.restaurantId,
+      sessionId,
     });
 
     // Set refresh token in httpOnly cookie
@@ -808,11 +815,17 @@ export const register = asyncHandler(async (req, res) => {
 
   const restaurant = await Restaurant.create(restaurantData);
 
+  // Generate new session ID for unique active session tracking
+  const sessionId = crypto.randomUUID();
+  restaurant.activeSessionId = sessionId;
+  await restaurant.save();
+
   // Generate tokens (email may be null for phone signups)
   const tokens = jwtService.generateTokens({
     userId: restaurant._id.toString(),
     role: "restaurant",
     email: restaurant.email || restaurant.phone || restaurant.restaurantId,
+    sessionId,
   });
 
   // Set refresh token in httpOnly cookie
@@ -886,11 +899,17 @@ export const login = asyncHandler(async (req, res) => {
     return errorResponse(res, 401, "Invalid email or password");
   }
 
+  // Generate new session ID for unique active session tracking
+  const sessionId = crypto.randomUUID();
+  restaurant.activeSessionId = sessionId;
+  await restaurant.save();
+
   // Generate tokens (email may be null for phone signups)
   const tokens = jwtService.generateTokens({
     userId: restaurant._id.toString(),
     role: "restaurant",
     email: restaurant.email || restaurant.phone || restaurant.restaurantId,
+    sessionId,
   });
 
   // Set refresh token in httpOnly cookie
@@ -1032,6 +1051,11 @@ export const refreshToken = asyncHandler(async (req, res) => {
       return errorResponse(res, 401, "Restaurant not found");
     }
 
+    // Verify that the refresh token's sessionId matches the active session ID in database
+    if (!decoded.sessionId || decoded.sessionId !== restaurant.activeSessionId) {
+      return errorResponse(res, 401, "Session has expired because of a new login on another device.");
+    }
+
     // Allow inactive restaurants to refresh tokens - they need access to complete onboarding
     // The middleware will handle blocking inactive restaurants from accessing restricted routes
 
@@ -1040,6 +1064,7 @@ export const refreshToken = asyncHandler(async (req, res) => {
       userId: restaurant._id.toString(),
       role: "restaurant",
       email: restaurant.email || restaurant.phone || restaurant.restaurantId,
+      sessionId: decoded.sessionId, // Maintain the same sessionId
     });
 
     // Update refresh token cookie expiry to extend session
@@ -1063,6 +1088,12 @@ export const refreshToken = asyncHandler(async (req, res) => {
  * POST /api/restaurant/auth/logout
  */
 export const logout = asyncHandler(async (req, res) => {
+  // Clear activeSessionId if authenticated
+  if (req.restaurant) {
+    req.restaurant.activeSessionId = null;
+    await req.restaurant.save();
+  }
+
   // Clear refresh token cookie
   res.clearCookie("refreshToken", {
     httpOnly: true,
@@ -1375,11 +1406,17 @@ export const firebaseGoogleLogin = asyncHandler(async (req, res) => {
       );
     }
 
+    // Generate new session ID for unique active session tracking
+    const sessionId = crypto.randomUUID();
+    restaurant.activeSessionId = sessionId;
+    await restaurant.save();
+
     // Generate JWT tokens for our app (email may be null for phone signups)
     const tokens = jwtService.generateTokens({
       userId: restaurant._id.toString(),
       role: "restaurant",
       email: restaurant.email || restaurant.phone || restaurant.restaurantId,
+      sessionId,
     });
 
     // Set refresh token in httpOnly cookie

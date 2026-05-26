@@ -276,6 +276,10 @@ const deliverySchema = new mongoose.Schema(
     fcmtokenMobile: {
       type: String,
       default: null
+    },
+    activeSessionId: {
+      type: String,
+      default: null
     }
   },
   {
