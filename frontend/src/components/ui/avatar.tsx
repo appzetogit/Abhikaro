@@ -2,6 +2,7 @@ import * as React from "react"
 import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
 import { cn } from "@/lib/utils"
+import { BACKEND_ORIGIN } from "@/lib/api/config"
 
 function Avatar({
   className,
@@ -21,12 +22,22 @@ function Avatar({
 
 function AvatarImage({
   className,
+  src,
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+  const resolvedSrc = React.useMemo(() => {
+    if (!src) return src;
+    if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("http:") || src.startsWith("https:")) {
+      return src;
+    }
+    return `${BACKEND_ORIGIN}/${src.replace(/^\/+/, "")}`;
+  }, [src]);
+
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
       className={cn("aspect-square size-full", className)}
+      src={resolvedSrc}
       {...props}
     />
   )
