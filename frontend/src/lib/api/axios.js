@@ -1,10 +1,40 @@
 import axios from "axios";
 import { toast } from "sonner";
-import { API_BASE_URL } from "./config.js";
+import { API_BASE_URL, BACKEND_ORIGIN } from "./config.js";
 import { getRoleFromToken, clearModuleAuth, getModuleToken } from "../utils/auth.js";
 import { getNetworkStatus } from "../utils/networkStatus.js";
 import { deduplicateRequest, clearRequestCache } from "../utils/requestDeduplication.js";
 import { log } from "../utils/logger.js";
+
+/**
+ * Recursively resolves relative /uploads paths to absolute BACKEND_ORIGIN/uploads paths
+ */
+const resolveUploadsUrls = (obj, origin) => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') {
+    if (obj.startsWith('/uploads/') && !obj.startsWith('//') && !obj.startsWith('data:')) {
+      const baseOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+      return `${baseOrigin}${obj}`;
+    }
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => resolveUploadsUrls(item, origin));
+  }
+  if (typeof obj === 'object') {
+    if (obj instanceof Blob || obj instanceof File || (typeof HTMLElement !== 'undefined' && obj instanceof HTMLElement)) {
+      return obj;
+    }
+    const newObj = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        newObj[key] = resolveUploadsUrls(obj[key], origin);
+      }
+    }
+    return newObj;
+  }
+  return obj;
+};
 
 // Network error tracking to prevent spam
 const networkErrorState = {
@@ -316,6 +346,11 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response) => {
+    // Dynamically resolve relative /uploads URLs inside the response data
+    if (response.data) {
+      response.data = resolveUploadsUrls(response.data, BACKEND_ORIGIN);
+    }
+
     // Reset network error state on successful response (backend is back online)
     if (networkErrorState.errorCount > 0) {
       networkErrorState.errorCount = 0;
