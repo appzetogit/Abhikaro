@@ -6,9 +6,14 @@ import "dotenv/config";
 process.env.REDIS_ENABLED = 'false';
 
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import mongoSanitize from 'express-mongo-sanitize';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
@@ -393,7 +398,7 @@ connectRedis().then(async (redisClient) => {
 });
 
 // Serve static files from 'public' directory (e.g., audio, images)
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Secure headers with Helmet
 app.use(helmet({

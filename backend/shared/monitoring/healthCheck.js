@@ -4,6 +4,9 @@
  */
 
 import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { isRedisConnected } from '../../config/redis.js';
 import { getPerformanceMetrics } from '../middleware/performanceMonitor.js';
 import { getAllMetrics } from '../utils/metrics.js';
@@ -170,6 +173,42 @@ export async function comprehensiveHealthCheck() {
       // Cloudinary errors are critical - mark as unhealthy
       checks.status = 'unhealthy';
     }
+  }
+
+  // Local storage write test
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const backendDir = path.resolve(__dirname, '../..');
+    const uploadDir = path.join(backendDir, 'public', 'uploads');
+    
+    // Check if directory exists or create it
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    // Try to write a test file
+    const testFilePath = path.join(uploadDir, 'health-test.txt');
+    fs.writeFileSync(testFilePath, `healthcheck-${Date.now()}`);
+    
+    // Try to read and delete it
+    fs.readFileSync(testFilePath, 'utf8');
+    fs.unlinkSync(testFilePath);
+    
+    checks.checks.localStorage = {
+      status: 'healthy',
+      path: uploadDir,
+      writeable: true,
+      note: 'Local uploads directory is writeable'
+    };
+  } catch (error) {
+    checks.checks.localStorage = {
+      status: 'unhealthy',
+      writeable: false,
+      error: error.message,
+      code: error.code
+    };
+    checks.status = 'unhealthy';
   }
 
   return checks;

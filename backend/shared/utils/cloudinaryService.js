@@ -2,8 +2,13 @@ import multer from 'multer';
 import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { cloudinary } from '../../config/cloudinary.js';
 import { compressImage } from './imageOptimizer.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendDir = path.resolve(__dirname, '../..');
 
 // Use in‑memory storage; we stream to Cloudinary
 const storage = multer.memoryStorage();
@@ -75,7 +80,7 @@ export function uploadToLocal(buffer, options = {}) {
       }
       // ────────────────────────────────────────────────────────────────────────
 
-      const targetDir = path.join(process.cwd(), 'public', 'uploads', folder);
+      const targetDir = path.join(backendDir, 'public', 'uploads', folder);
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true });
       }
@@ -203,7 +208,7 @@ export function deleteFromCloudinary(publicId) {
   return new Promise((resolve, reject) => {
     if (process.env.USE_LOCAL_STORAGE === 'true' || (publicId && publicId.includes('/'))) {
       try {
-        const localPath = path.join(process.cwd(), 'public', 'uploads', publicId);
+        const localPath = path.join(backendDir, 'public', 'uploads', publicId);
         const dir = path.dirname(localPath);
         const base = path.basename(localPath);
         if (fs.existsSync(dir)) {
