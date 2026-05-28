@@ -675,7 +675,7 @@ export default function OrdersMain() {
     Array.isArray(ordersCacheRef.current.data) ? ordersCacheRef.current.data : []
 
   // Restaurant notifications hook for real-time orders
-  const { newOrder, clearNewOrder, isConnected, stopNotificationSound, isSoundUnlocked, unlockSound } =
+  const { newOrder, clearNewOrder, isConnected, stopNotificationSound, isSoundUnlocked, unlockSound, startRingingForOrder } =
     useRestaurantNotifications()
 
   const rejectReasons = [
@@ -1174,8 +1174,20 @@ export default function OrdersMain() {
     }
   }, [fetchAllOrders]) // Now fetchAllOrders is stable via useCallback
 
-  // Sound for new orders is handled by `useRestaurantNotifications` (socket event gating + autoplay policy).
-  // This page intentionally does NOT play any audio on popup open.
+  // Control audio playback based on showNewOrderPopup (ensure sound plays continuously as long as actionable popup is visible)
+  useEffect(() => {
+    if (showNewOrderPopup && !(popupOrder?.isViewOnly)) {
+      const current = popupOrder || newOrder
+      if (current && typeof startRingingForOrder === 'function') {
+        console.log('🎵 Starting looping notification sound for order popup:', current.orderId)
+        startRingingForOrder(current, { durationMs: 5 * 60 * 1000 })
+      }
+    } else {
+      if (typeof stopNotificationSound === 'function') {
+        stopNotificationSound()
+      }
+    }
+  }, [showNewOrderPopup, popupOrder, newOrder, startRingingForOrder, stopNotificationSound])
 
   // Close popup immediately if the user cancels the order (realtime via Socket.IO -> window event)
   useEffect(() => {

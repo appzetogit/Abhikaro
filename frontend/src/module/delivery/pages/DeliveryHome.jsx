@@ -2464,26 +2464,7 @@ export default function DeliveryHome() {
 
   // Handle reject order
   const handleRejectClick = () => {
-    // Stop sound immediately when rider taps "Deny" (even before selecting a reason)
-    try {
-      if (alertAudioRef.current) {
-        try {
-          if (alertAudioEndedHandlerRef.current) {
-            alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
-          }
-        } catch (_) { }
-        alertAudioRef.current.pause()
-        alertAudioRef.current.currentTime = 0
-        alertAudioRef.current = null
-        alertAudioEndedHandlerRef.current = null
-      }
-    } catch (_) { }
-    // Also stop the socket-driven one-shot notification sound (if any)
-    try {
-      if (typeof stopNotificationSound === 'function') {
-        stopNotificationSound()
-      }
-    } catch (_) { }
+    // Keep the sound playing while the rider is selecting a reason; only stop when they actually confirm.
     setShowRejectPopup(true)
   }
 
@@ -2536,19 +2517,6 @@ export default function DeliveryHome() {
   const handleRejectCancel = () => {
     setShowRejectPopup(false)
     setRejectReason("")
-    // If rider cancels deny, resume ringtone while the new order popup is still open
-    try {
-      if (showNewOrderPopup && (newOrder || selectedRestaurant)) {
-        setTimeout(async () => {
-          try {
-            const audio = await playAlertSound()
-            if (audio) {
-              alertAudioRef.current = audio
-            }
-          } catch (_) { }
-        }, 100)
-      }
-    } catch (_) { }
   }
 
   // Reset popup state on page load/refresh - ensure no popup shows on refresh
