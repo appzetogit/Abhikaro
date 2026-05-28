@@ -653,8 +653,15 @@ export default function DeliveryHome() {
   const alertAudioEndedHandlerRef = useRef(null)
   const alertAudioUnlockedRef = useRef(false)
   const ringingOrderKeyRef = useRef(null)
-  const userInteractedRef = useRef(false) // Track user interaction for autoplay policy
-  const [hasUserInteracted, setHasUserInteracted] = useState(false) // Triggers retry when autoplay becomes allowed
+  const initialSoundUnlocked = (() => {
+    try {
+      return localStorage.getItem('delivery_sound_unlocked') === '1'
+    } catch {
+      return false
+    }
+  })()
+  const userInteractedRef = useRef(initialSoundUnlocked) // Track user interaction for autoplay policy
+  const [hasUserInteracted, setHasUserInteracted] = useState(initialSoundUnlocked) // Triggers retry when autoplay becomes allowed
   const newOrderAcceptButtonRef = useRef(null)
   const newOrderAcceptButtonSwipeStartX = useRef(0)
   const newOrderAcceptButtonSwipeStartY = useRef(0)
@@ -2123,6 +2130,9 @@ export default function DeliveryHome() {
     const handleUserInteraction = () => {
       userInteractedRef.current = true
       setHasUserInteracted(true)
+      try {
+        localStorage.setItem('delivery_sound_unlocked', '1')
+      } catch (_) { }
 
       // Attempt to "unlock" audio playback on mobile browsers by creating/playing
       // the alert audio within the user gesture, then immediately pausing.

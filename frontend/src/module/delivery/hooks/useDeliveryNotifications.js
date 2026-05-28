@@ -12,8 +12,15 @@ export const useDeliveryNotifications = () => {
   // Step 1: All refs first (unconditional)
   const socketRef = useRef(null);
   const audioRef = useRef(null);
-  // Track user interaction for autoplay policy
-  const userInteractedRef = useRef(false);
+  // Track user interaction for autoplay policy (restore from localStorage to bypass autoplay block on page reload)
+  const initialUnlocked = (() => {
+    try {
+      return localStorage.getItem('delivery_sound_unlocked') === '1';
+    } catch {
+      return false;
+    }
+  })();
+  const userInteractedRef = useRef(initialUnlocked);
   // Track orders that this delivery partner has explicitly rejected (to avoid re-notifying)
   const rejectedOrderIdsRef = useRef(new Set());
   // NOTE: Do NOT add new hooks above existing state hooks lightly.
@@ -194,6 +201,9 @@ export const useDeliveryNotifications = () => {
   useEffect(() => {
     const handleUserInteraction = () => {
       userInteractedRef.current = true;
+      try {
+        localStorage.setItem('delivery_sound_unlocked', '1');
+      } catch (_) {}
       document.removeEventListener('click', handleUserInteraction, { capture: true });
       document.removeEventListener('touchstart', handleUserInteraction, { capture: true });
       document.removeEventListener('keydown', handleUserInteraction, { capture: true });
@@ -440,6 +450,11 @@ export const useDeliveryNotifications = () => {
     socketRef.current.on('new_order', (orderData) => {
       const orderId = normalizeOrderId(orderData);
 
+      // Play sound immediately when new_order socket event is received
+      try {
+        playNotificationSound(orderId);
+      } catch (_) {}
+
       // If it's a resend, allow it even if previously rejected
       if (orderId && isResendSignal(orderData)) {
         unmarkOrderRejected(orderId);
@@ -506,6 +521,11 @@ export const useDeliveryNotifications = () => {
     // Listen for priority-based order notifications (new_order_available)
     socketRef.current.on('new_order_available', (orderData) => {
       const orderId = normalizeOrderId(orderData);
+
+      // Play sound immediately when new_order_available socket event is received
+      try {
+        playNotificationSound(orderId);
+      } catch (_) {}
 
       // If it's a resend, allow it even if previously rejected
       if (orderId && isResendSignal(orderData)) {
