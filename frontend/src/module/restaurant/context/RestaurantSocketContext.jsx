@@ -30,7 +30,6 @@ export const RestaurantSocketProvider = ({ children }) => {
   const ringTimeoutRef = useRef(null);
   const ringingOrderIdRef = useRef(null);
   const ringEndedHandlerRef = useRef(null);
-  const ringPauseHandlerRef = useRef(null);
   const ringActiveUntilMsRef = useRef(null);
   const [isSoundUnlocked, setIsSoundUnlocked] = useState(initialUnlocked);
   const [restaurantId, setRestaurantId] = useState(null);
@@ -96,7 +95,6 @@ export const RestaurantSocketProvider = ({ children }) => {
   const stopNotificationSound = useCallback(() => {
     // Capture handlers before nulling refs, so we can reliably remove listeners.
     const endedHandler = ringEndedHandlerRef.current;
-    const pauseHandler = ringPauseHandlerRef.current;
 
     try {
       if (ringIntervalRef.current) {
@@ -107,37 +105,34 @@ export const RestaurantSocketProvider = ({ children }) => {
         clearTimeout(ringTimeoutRef.current);
         ringTimeoutRef.current = null;
       }
-      // Remove listeners used for resilience while ringing
-      try {
-        if (audioRef.current && endedHandler) {
-          audioRef.current.removeEventListener('ended', endedHandler);
-        }
-        if (audioRef.current && pauseHandler) {
-          audioRef.current.removeEventListener('pause', pauseHandler);
-        }
-      } catch {
-        // ignore
-      }
-      ringEndedHandlerRef.current = null;
-      ringPauseHandlerRef.current = null;
-      ringingOrderIdRef.current = null;
-      ringActiveUntilMsRef.current = null;
-    } catch {
-      // ignore
-    }
-
-    try {
+      
       if (audioRef.current) {
-        // Ensure loop is disabled after we stop ringing
+        // Ensure loop is disabled and listeners removed before pausing
         try {
           audioRef.current.loop = false;
         } catch {
           // ignore
         }
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
+        try {
+          if (endedHandler) {
+            audioRef.current.removeEventListener('ended', endedHandler);
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        } catch (_) {
+          // ignore
+        }
       }
-    } catch (_) {
+      
+      ringEndedHandlerRef.current = null;
+      ringingOrderIdRef.current = null;
+      ringActiveUntilMsRef.current = null;
+    } catch {
       // ignore
     }
   }, []);
@@ -202,29 +197,6 @@ export const RestaurantSocketProvider = ({ children }) => {
             }
           };
           audioRef.current.addEventListener('ended', ringEndedHandlerRef.current);
-        } catch {
-          // ignore
-        }
-
-        // Resilience: some WebViews pause looping audio after a while. If we're still in the ring window,
-        // and audio pauses unexpectedly, try to resume.
-        try {
-          if (ringPauseHandlerRef.current) {
-            audioRef.current.removeEventListener('pause', ringPauseHandlerRef.current);
-          }
-          ringPauseHandlerRef.current = () => {
-            try {
-              if (!userInteractedRef.current) return;
-              if (!ringingOrderIdRef.current) return;
-              if (ringActiveUntilMsRef.current && Date.now() > ringActiveUntilMsRef.current) return;
-              // If the popup is still active, keep ringing
-              audioRef.current.currentTime = 0;
-              audioRef.current.play().catch(() => {});
-            } catch {
-              // ignore
-            }
-          };
-          audioRef.current.addEventListener('pause', ringPauseHandlerRef.current);
         } catch {
           // ignore
         }

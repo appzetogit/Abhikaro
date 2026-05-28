@@ -91,7 +91,7 @@ export default function Cart() {
   const { cart, updateQuantity, addToCart, getCartCount, clearCart, cleanCartForRestaurant } = cartContext;
   const { getDefaultAddress, getDefaultPaymentMethod, addresses, paymentMethods, userProfile } = useProfile()
   const { createOrder } = useOrders()
-  const { location: currentLocation, zoneId, requestLocation } = useSharedLocation() // Get live location address and zone
+  const { location: currentLocation, zoneId, requestLocation, isManualOverrideEnabled } = useSharedLocation() // Get live location address, zone, and manual override state
 
   const [showCoupons, setShowCoupons] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null)
@@ -1233,8 +1233,8 @@ export default function Cart() {
 
     let finalAddress = checkoutDeliveryAddress;
 
-    // 2. Fetch/force fresh live GPS coordinates if user is using Live location
-    if (!hasManuallySelectedDeliveryAddress) {
+    // 2. Fetch/force fresh live GPS coordinates if user is using Live location and no manual override is active
+    if (!hasManuallySelectedDeliveryAddress && !isManualOverrideEnabled) {
       const toastId = toast.loading("Verifying your precise live location...")
       try {
         const freshLoc = await requestLocation()

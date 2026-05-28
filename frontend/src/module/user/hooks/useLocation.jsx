@@ -1897,7 +1897,7 @@ export function useLocation() {
 
       // Update state immediately
       try {
-        // No localStorage persistence as requested
+        localStorage.setItem("userLocation", JSON.stringify(nextLoc))
       } catch {}
 
       lastProcessedCoordsRef.current = { latitude: lat, longitude: lng }

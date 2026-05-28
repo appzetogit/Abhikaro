@@ -486,18 +486,58 @@ export default function MenuAdd() {
       let updatedSections = []
       
       if (editingDish) {
-        // Editing existing dish - replace it
-        updatedSections = currentMenu.sections.map(section => {
-          if (section.id === editingDish.section.id || section.name === editingDish.section.name) {
-            return {
-              ...section,
-              items: (section.items || []).map(item => 
-                String(item.id) === String(editingDish.dish.id) ? dishData : item
-              )
+        // Editing existing dish
+        if (editingDish.section.name !== formData.category) {
+          // Category changed: remove from old section
+          updatedSections = currentMenu.sections.map(section => {
+            if (section.id === editingDish.section.id || section.name === editingDish.section.name) {
+              return {
+                ...section,
+                items: (section.items || []).filter(item => String(item.id) !== String(editingDish.dish.id))
+              }
             }
+            return section
+          })
+
+          // Add to new section
+          let sectionFound = false
+          updatedSections = updatedSections.map(section => {
+            if (section.name === formData.category) {
+              sectionFound = true
+              return {
+                ...section,
+                items: [...(section.items || []), dishData]
+              }
+            }
+            return section
+          })
+
+          // Create new section if it doesn't exist
+          if (!sectionFound) {
+            const newSection = {
+              id: `section-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              name: formData.category,
+              items: [dishData],
+              subsections: [],
+              isEnabled: true,
+              order: updatedSections.length,
+            }
+            updatedSections.push(newSection)
           }
-          return section
-        })
+        } else {
+          // Category not changed - replace in place
+          updatedSections = currentMenu.sections.map(section => {
+            if (section.id === editingDish.section.id || section.name === editingDish.section.name) {
+              return {
+                ...section,
+                items: (section.items || []).map(item => 
+                  String(item.id) === String(editingDish.dish.id) ? dishData : item
+                )
+              }
+            }
+            return section
+          })
+        }
       } else {
         // Adding new dish
         // Find section by name (category) and add item

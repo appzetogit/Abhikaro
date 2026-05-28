@@ -2288,9 +2288,15 @@ export default function DeliveryHome() {
     // Stop audio when countdown reaches 0
     try {
       if (alertAudioRef.current) {
+        try {
+          if (alertAudioEndedHandlerRef.current) {
+            alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+          }
+        } catch (_) { }
         alertAudioRef.current.pause()
         alertAudioRef.current.currentTime = 0
         alertAudioRef.current = null
+        alertAudioEndedHandlerRef.current = null
       }
     } catch (_) { }
 
@@ -2461,9 +2467,15 @@ export default function DeliveryHome() {
     // Stop sound immediately when rider taps "Deny" (even before selecting a reason)
     try {
       if (alertAudioRef.current) {
+        try {
+          if (alertAudioEndedHandlerRef.current) {
+            alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+          }
+        } catch (_) { }
         alertAudioRef.current.pause()
         alertAudioRef.current.currentTime = 0
         alertAudioRef.current = null
+        alertAudioEndedHandlerRef.current = null
       }
     } catch (_) { }
     // Also stop the socket-driven one-shot notification sound (if any)
@@ -2477,8 +2489,15 @@ export default function DeliveryHome() {
 
   const handleRejectConfirm = () => {
     if (alertAudioRef.current) {
+      try {
+        if (alertAudioEndedHandlerRef.current) {
+          alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+        }
+      } catch (_) { }
       alertAudioRef.current.pause()
       alertAudioRef.current.currentTime = 0
+      alertAudioRef.current = null
+      alertAudioEndedHandlerRef.current = null
     }
     // Also stop the socket-driven one-shot notification sound (if any)
     if (typeof stopNotificationSound === 'function') {
@@ -2552,9 +2571,15 @@ export default function DeliveryHome() {
 
     // Stop and cleanup audio
     if (alertAudioRef.current) {
+      try {
+        if (alertAudioEndedHandlerRef.current) {
+          alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+        }
+      } catch (_) { }
       alertAudioRef.current.pause()
       alertAudioRef.current.currentTime = 0
       alertAudioRef.current = null
+      alertAudioEndedHandlerRef.current = null
     }
   }, []) // Only run on mount
 
@@ -3145,9 +3170,15 @@ export default function DeliveryHome() {
     if (deltaX > threshold) {
       // Stop any notification sounds immediately when user accepts
       if (alertAudioRef.current) {
+        try {
+          if (alertAudioEndedHandlerRef.current) {
+            alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+          }
+        } catch (_) { }
         alertAudioRef.current.pause()
         alertAudioRef.current.currentTime = 0
         alertAudioRef.current = null
+        alertAudioEndedHandlerRef.current = null
       }
       if (typeof stopNotificationSound === 'function') {
         stopNotificationSound()
@@ -3220,9 +3251,15 @@ export default function DeliveryHome() {
         if (response.data?.success && response.data.data) {
           // Stop audio immediately when order is successfully accepted
           if (alertAudioRef.current) {
+            try {
+              if (alertAudioEndedHandlerRef.current) {
+                alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+              }
+            } catch (_) { }
             alertAudioRef.current.pause()
             alertAudioRef.current.currentTime = 0
             alertAudioRef.current = null
+            alertAudioEndedHandlerRef.current = null
           }
 
           const orderData = response.data.data
