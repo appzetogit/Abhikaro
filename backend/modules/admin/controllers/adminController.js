@@ -2100,6 +2100,33 @@ export const updateRestaurant = asyncHandler(async (req, res) => {
 
     await restaurant.save();
 
+    // Emit socket event to notify all connected devices/tabs in real-time
+    try {
+      const serverModule = await import('../../../server.js');
+      const io = serverModule.getIO ? serverModule.getIO() : null;
+      if (io) {
+        const restaurantNamespace = io.of('/restaurant');
+        const rooms = [
+          `restaurant:${restaurant._id.toString()}`,
+          `restaurant:${restaurant.restaurantId}`
+        ];
+        
+        const payload = {
+          restaurantId: restaurant.restaurantId,
+          restaurantMongoId: restaurant._id.toString(),
+          isAcceptingOrders: restaurant.isAcceptingOrders,
+          isActive: restaurant.isActive
+        };
+        
+        rooms.forEach(room => {
+          restaurantNamespace.to(room).emit('restaurant_status_update', payload);
+        });
+        console.log(`[Socket] Admin profile update broadcasted to ${rooms.join(', ')}: isActive=${restaurant.isActive}, isAcceptingOrders=${restaurant.isAcceptingOrders}`);
+      }
+    } catch (socketErr) {
+      console.error('Error emitting status update from admin profile update:', socketErr);
+    }
+
     logger.info("Restaurant updated from admin panel", {
       restaurantId: restaurant._id.toString(),
       updatedBy: req.user?._id,
@@ -2155,6 +2182,33 @@ export const updateRestaurantStatus = asyncHandler(async (req, res) => {
     // - Details caches: restaurant:*
     await invalidateCachePattern("restaurants:*");
     await invalidateCachePattern("restaurant:*");
+
+    // Emit socket event to notify all connected devices/tabs in real-time
+    try {
+      const serverModule = await import('../../../server.js');
+      const io = serverModule.getIO ? serverModule.getIO() : null;
+      if (io) {
+        const restaurantNamespace = io.of('/restaurant');
+        const rooms = [
+          `restaurant:${restaurant._id.toString()}`,
+          `restaurant:${restaurant.restaurantId}`
+        ];
+        
+        const payload = {
+          restaurantId: restaurant.restaurantId,
+          restaurantMongoId: restaurant._id.toString(),
+          isAcceptingOrders: restaurant.isAcceptingOrders,
+          isActive: restaurant.isActive
+        };
+        
+        rooms.forEach(room => {
+          restaurantNamespace.to(room).emit('restaurant_status_update', payload);
+        });
+        console.log(`[Socket] Admin status update broadcasted to ${rooms.join(', ')}: isActive=${restaurant.isActive}`);
+      }
+    } catch (socketErr) {
+      console.error('Error emitting status update from admin:', socketErr);
+    }
 
     logger.info(`Restaurant status updated: ${id}`, {
       isActive,

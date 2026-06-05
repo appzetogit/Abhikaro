@@ -158,7 +158,8 @@ const emitRestaurantStatusChange = async (restaurant) => {
       const payload = {
         restaurantId: restaurant.restaurantId,
         restaurantMongoId: restaurant._id.toString(),
-        isAcceptingOrders: restaurant.isAcceptingOrders
+        isAcceptingOrders: restaurant.isAcceptingOrders,
+        isActive: restaurant.isActive
       };
       
       rooms.forEach(room => {

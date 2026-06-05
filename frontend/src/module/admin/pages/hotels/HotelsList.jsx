@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { uploadToCloudinary } from "@/lib/utils/cloudinary"
 import qrPosterTemplate from "@/assets/qrcode.png"
+import { exportHotelsToPDF } from "./hotelsExportUtils"
 
 const ITEMS_PER_PAGE = 15
 
@@ -790,6 +791,16 @@ export default function HotelsList() {
     }
   }
 
+  const handleExportPDF = () => {
+    if (filteredAndSortedHotels.length === 0) {
+      toast.error("No data to export")
+      return
+    }
+    
+    exportHotelsToPDF(filteredAndSortedHotels, "hotels_list")
+    toast.success("PDF report generated successfully")
+  }
+
   if (loading) {
     return (
       <div className="p-4 lg:p-6 bg-slate-50 min-h-screen flex items-center justify-center">
@@ -811,13 +822,24 @@ export default function HotelsList() {
             Total Hotels: <span className="font-semibold">{hotels.length}</span>
           </p>
         </div>
-        <Button
-          onClick={() => setAddDialog(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Add Hotel
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={handleExportPDF}
+            variant="outline"
+            className="flex items-center gap-2 border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-medium cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span className="font-bold">Export PDF</span>
+          </Button>
+
+          <Button
+            onClick={() => setAddDialog(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add Hotel
+          </Button>
+        </div>
       </div>
 
       {/* Search and Sort */}

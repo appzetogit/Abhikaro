@@ -139,7 +139,7 @@ export default function HotelLeaderboard() {
   }, [active.payload, tab])
 
   return (
-    <div className="min-h-screen bg-[#f6f7fb] pb-20">
+    <div className="min-h-screen bg-[#f6f7fb] pb-40 md:pb-24">
       <div className="bg-gradient-to-b from-rose-400 via-orange-300 to-white">
         <div className="mx-auto max-w-5xl px-4 pb-6 pt-6">
           <div className="flex items-center justify-between">
@@ -328,6 +328,38 @@ export default function HotelLeaderboard() {
           )}
         </div>
       </div>
+
+      {/* Sticky Current Hotel Rank Bar */}
+      {!active.loading && active.payload?.me && (
+        <div className="fixed bottom-[64px] md:bottom-0 left-0 right-0 z-40 bg-[#fffbeb] border-t-2 border-amber-400 shadow-[0_-8px_30px_rgba(251,191,36,0.15)] transition-all duration-300">
+          <div className="mx-auto max-w-5xl px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white font-black text-base shadow-[0_2px_8px_rgba(245,158,11,0.3)]">
+                #{active.payload.me.rank}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">Your Position</div>
+                <div className="truncate text-sm font-extrabold text-gray-900">
+                  {active.payload.me.hotelName || "Your Hotel"} <span className="text-xs text-amber-600 font-semibold">(You)</span>
+                </div>
+              </div>
+            </div>
+            <div className="shrink-0 flex flex-col items-end gap-1">
+              <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">
+                {Number(active.payload.me.orders || 0).toLocaleString("en-IN")} orders
+              </div>
+              {(() => {
+                const reward = getRewardForRank(active.payload.me.rank)
+                return reward ? (
+                  <div className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/50">
+                    🏆 {reward.label}
+                  </div>
+                ) : null
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       <BottomNavigation />
     </div>

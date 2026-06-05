@@ -1,5 +1,9 @@
 // src/context/cart-context.jsx
-import { createContext, useContext, useEffect, useMemo, useState } from "react"
+import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from "react"
+import { toast } from "sonner"
+import { restaurantAPI } from "@/lib/api"
+import io from "socket.io-client"
+import { BACKEND_ORIGIN } from "@/lib/api/config"
 
 // Default cart context value to prevent errors during initial render
 const defaultCartContext = {
@@ -52,6 +56,11 @@ export function CartProvider({ children }) {
       return []
     }
   })
+
+  const cartRef = useRef(cart)
+  useEffect(() => {
+    cartRef.current = cart
+  }, [cart])
 
   // Track last add event for animation
   const [lastAddEvent, setLastAddEvent] = useState(null)
@@ -327,7 +336,7 @@ export function CartProvider({ children }) {
 
   const getCartItem = (itemId) => cart.find((i) => i.id === itemId)
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCart([])
     // Explicitly clear localStorage to ensure cart is cleared immediately
     try {
@@ -335,7 +344,7 @@ export function CartProvider({ children }) {
     } catch {
       // ignore storage errors (private mode, quota, etc.)
     }
-  }
+  }, [])
 
   // Clean cart to remove items from different restaurants
   // Keeps only items from the specified restaurant
@@ -435,6 +444,96 @@ export function CartProvider({ children }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only run once on mount to clean up localStorage data
+
+  const cartRestaurantId = cart[0]?.restaurantId;
+
+  // Periodically check if the restaurant associated with the cart has gone offline or inactive (Fallback mechanism)
+  useEffect(() => {
+    if (!cartRestaurantId) return;
+
+    const checkRestaurantStatus = async () => {
+      try {
+        const response = await restaurantAPI.getRestaurantById(cartRestaurantId);
+        const restaurant = response?.data?.data?.restaurant || response?.data?.restaurant;
+
+        if (restaurant) {
+          const isAccepting = restaurant.isAcceptingOrders !== false && restaurant.isAcceptingOrders !== 0;
+          const isActive = restaurant.isActive !== false;
+          
+          if (!isAccepting || !isActive) {
+            clearCart();
+            const restaurantName = restaurant.name || cartRef.current[0]?.restaurant || "The restaurant";
+            toast.warning(`${restaurantName} is now offline/closed. Cart has been cleared.`, {
+              id: "restaurant-offline-toast",
+              duration: 5000
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error checking restaurant status for cart:", error);
+      }
+    };
+
+    // Run immediately
+    checkRestaurantStatus();
+
+    // Check status every 15 seconds
+    const interval = setInterval(checkRestaurantStatus, 15000);
+    return () => clearInterval(interval);
+  }, [cartRestaurantId, clearCart]);
+
+  // Connect to restaurant socket room for instant status updates when cart has items
+  useEffect(() => {
+    if (!cartRestaurantId) return;
+
+    // Construct Socket.IO URL
+    const socketUrl = `${BACKEND_ORIGIN}/restaurant`;
+
+    const socket = io(socketUrl, {
+      path: "/socket.io/",
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+    });
+
+    socket.on("connect", () => {
+      console.log(`[CartContext Socket] Connected to /restaurant and joining room: restaurant:${cartRestaurantId}`);
+      socket.emit("join-restaurant", cartRestaurantId);
+    });
+
+    socket.on("restaurant_status_update", (data) => {
+      console.log("[CartContext Socket] Received restaurant status update:", data);
+
+      const isMatchingRestaurant = 
+        String(data.restaurantId) === String(cartRestaurantId) || 
+        String(data.restaurantMongoId) === String(cartRestaurantId);
+
+      if (isMatchingRestaurant) {
+        const isAccepting = data.isAcceptingOrders !== false && data.isAcceptingOrders !== 0;
+        const isActive = data.isActive !== false;
+
+        if (!isAccepting || !isActive) {
+          clearCart();
+          const restaurantName = cartRef.current[0]?.restaurant || "The restaurant";
+          toast.warning(`${restaurantName} is now offline/closed. Cart has been cleared.`, {
+            id: "restaurant-offline-toast",
+            duration: 5000
+          });
+        }
+      }
+    });
+
+    socket.on("disconnect", () => {
+      console.log("[CartContext Socket] Disconnected");
+    });
+
+    return () => {
+      console.log("[CartContext Socket] Cleaning up socket connection");
+      socket.disconnect();
+    };
+  }, [cartRestaurantId, clearCart]);
 
   // Transform cart to match AddToCartAnimation expected structure
   const cartForAnimation = useMemo(() => {
