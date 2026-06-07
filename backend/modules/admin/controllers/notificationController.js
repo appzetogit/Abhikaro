@@ -7,10 +7,12 @@ import {
   notifyHotelFromAdmin,
   notifyAllAdmins
 } from '../../fcm/services/pushNotificationService.js';
+import { sendNotification } from '../../fcm/services/fcmService.js';
 import User from '../../auth/models/User.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import Delivery from '../../delivery/models/Delivery.js';
 import Hotel from '../../hotel/models/Hotel.js';
+import Admin from '../../admin/models/Admin.js';
 import AdminNotification from '../models/AdminNotification.js';
 
 /**
@@ -121,6 +123,9 @@ export const sendNotificationToDelivery = asyncHandler(async (req, res) => {
 /**
  * Send notification to all users/restaurants/delivery from admin
  * POST /api/admin/notifications/broadcast
+ *
+ * Returns 202 Accepted immediately; FCM fan-out runs in the background
+ * to avoid nginx 502 timeouts when there are many recipients.
  */
 export const broadcastNotification = asyncHandler(async (req, res) => {
   const { target, title, body, data } = req.body;
@@ -133,100 +138,127 @@ export const broadcastNotification = asyncHandler(async (req, res) => {
     return errorResponse(res, 400, 'Target must be one of: user, restaurant, delivery, hotel, admin, all');
   }
 
+  const payload = { title, body, data: data || {} };
+
+  // Persist to DB for history (best-effort, before we respond)
   try {
-    const payload = { title, body, data: data || {} };
-    // Persist to DB for history (best-effort)
-    try {
-      const image =
-        payload?.data?.image ||
-        payload?.data?.banner ||
-        payload?.data?.imageUrl ||
-        null;
-      await AdminNotification.create({
-        target,
-        title,
-        body,
-        image,
-        data: payload.data || {},
-        createdBy: req.user?._id || null
-      });
-    } catch (e) {
-      // Do not block sending if history save fails
-      console.error("Failed to save admin notification history:", e);
-    }
-
-    let results = [];
-
-    if (target === 'all' || target === 'user') {
-      const users = await User.find({
-        $or: [
-          { fcmtokenWeb: { $exists: true, $ne: null } },
-          { fcmtokenMobile: { $exists: true, $ne: null } }
-        ]
-      }).select('_id').lean();
-      
-      const userResults = await Promise.allSettled(
-        users.map(user => notifyUserFromAdmin(user._id.toString(), payload))
-      );
-      results.push(...userResults);
-    }
-
-    if (target === 'all' || target === 'restaurant') {
-      const restaurants = await Restaurant.find({
-        $or: [
-          { fcmtokenWeb: { $exists: true, $ne: null } },
-          { fcmtokenMobile: { $exists: true, $ne: null } }
-        ]
-      }).select('_id').lean();
-      
-      const restaurantResults = await Promise.allSettled(
-        restaurants.map(restaurant => notifyRestaurantFromAdmin(restaurant._id.toString(), payload))
-      );
-      results.push(...restaurantResults);
-    }
-
-    if (target === 'all' || target === 'delivery') {
-      const deliveries = await Delivery.find({
-        $or: [
-          { fcmtokenWeb: { $exists: true, $ne: null } },
-          { fcmtokenMobile: { $exists: true, $ne: null } }
-        ]
-      }).select('_id').lean();
-      
-      const deliveryResults = await Promise.allSettled(
-        deliveries.map(delivery => notifyDeliveryFromAdmin(delivery._id.toString(), payload))
-      );
-      results.push(...deliveryResults);
-    }
-
-    if (target === 'all' || target === 'hotel') {
-      const hotels = await Hotel.find({
-        $or: [
-          { fcmtokenWeb: { $exists: true, $ne: null } },
-          { fcmtokenMobile: { $exists: true, $ne: null } }
-        ]
-      }).select('_id').lean();
-
-      const hotelResults = await Promise.allSettled(
-        hotels.map(hotel => notifyHotelFromAdmin(hotel._id.toString(), payload))
-      );
-      results.push(...hotelResults);
-    }
-
-    if (target === 'all' || target === 'admin') {
-      await notifyAllAdmins(payload);
-    }
-
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-    
-    return successResponse(res, 200, `Broadcast notification sent to ${successCount} recipient(s)`, {
-      successCount,
-      totalCount: results.length
+    const image =
+      payload?.data?.image ||
+      payload?.data?.banner ||
+      payload?.data?.imageUrl ||
+      null;
+    await AdminNotification.create({
+      target,
+      title,
+      body,
+      image,
+      data: payload.data || {},
+      createdBy: req.user?._id || null
     });
-  } catch (error) {
-    console.error('Error broadcasting notification:', error);
-    return errorResponse(res, 500, 'Failed to broadcast notification');
+  } catch (e) {
+    console.error("Failed to save admin notification history:", e);
   }
+
+  // ── Respond immediately — prevents nginx 502 timeout on large broadcasts ──
+  res.status(202).json({
+    success: true,
+    message: 'Broadcast accepted and is being processed in the background',
+    target,
+  });
+
+  // ── Background fan-out (fire-and-forget after response is sent) ───────────
+  (async () => {
+    try {
+      const fcmData = {
+        type: 'admin_notification',
+        ...payload.data,
+        tag: payload.data?.tag || `admin_broadcast_${target}_${Date.now()}`,
+      };
+      const notification = { title, body };
+
+      // Extract unique non-empty FCM tokens directly from DB docs.
+      // Avoids N individual Model.findById() calls that caused the original timeout.
+      const extractTokens = (docs) => {
+        const seen = new Set();
+        for (const doc of docs) {
+          if (doc.fcmtokenMobile) seen.add(String(doc.fcmtokenMobile));
+          if (doc.fcmtokenWeb)    seen.add(String(doc.fcmtokenWeb));
+        }
+        return Array.from(seen).filter(Boolean);
+      };
+
+      // Send in chunks of 500 to stay within FCM multicast limits
+      const CHUNK = 500;
+      const sendInChunks = async (tokens, label) => {
+        if (!tokens.length) {
+          console.log(`[Broadcast] No tokens for ${label}`);
+          return;
+        }
+        let success = 0, fail = 0;
+        for (let i = 0; i < tokens.length; i += CHUNK) {
+          const chunk = tokens.slice(i, i + CHUNK);
+          const result = await sendNotification(chunk, notification, fcmData);
+          success += result?.successCount || 0;
+          fail    += result?.failureCount || 0;
+        }
+        console.log(`[Broadcast] ${label}: ${success} sent, ${fail} failed`);
+      };
+
+      if (target === 'all' || target === 'user') {
+        const docs = await User.find({
+          $or: [
+            { fcmtokenWeb:    { $exists: true, $ne: null } },
+            { fcmtokenMobile: { $exists: true, $ne: null } },
+          ]
+        }).select('fcmtokenWeb fcmtokenMobile').lean();
+        await sendInChunks(extractTokens(docs), 'users');
+      }
+
+      if (target === 'all' || target === 'restaurant') {
+        const docs = await Restaurant.find({
+          $or: [
+            { fcmtokenWeb:    { $exists: true, $ne: null } },
+            { fcmtokenMobile: { $exists: true, $ne: null } },
+          ]
+        }).select('fcmtokenWeb fcmtokenMobile').lean();
+        await sendInChunks(extractTokens(docs), 'restaurants');
+      }
+
+      if (target === 'all' || target === 'delivery') {
+        const docs = await Delivery.find({
+          $or: [
+            { fcmtokenWeb:    { $exists: true, $ne: null } },
+            { fcmtokenMobile: { $exists: true, $ne: null } },
+          ]
+        }).select('fcmtokenWeb fcmtokenMobile').lean();
+        await sendInChunks(extractTokens(docs), 'delivery');
+      }
+
+      if (target === 'all' || target === 'hotel') {
+        const docs = await Hotel.find({
+          $or: [
+            { fcmtokenWeb:    { $exists: true, $ne: null } },
+            { fcmtokenMobile: { $exists: true, $ne: null } },
+          ]
+        }).select('fcmtokenWeb fcmtokenMobile').lean();
+        await sendInChunks(extractTokens(docs), 'hotels');
+      }
+
+      if (target === 'all' || target === 'admin') {
+        const docs = await Admin.find({
+          $or: [
+            { fcmtokenWeb:    { $exists: true, $ne: null } },
+            { fcmtokenMobile: { $exists: true, $ne: null } },
+          ]
+        }).select('fcmtokenWeb fcmtokenMobile').lean();
+        await sendInChunks(extractTokens(docs), 'admins');
+      }
+
+      console.log(`[Broadcast] ✅ Completed for target=${target}`);
+    } catch (bgErr) {
+      console.error('[Broadcast] ❌ Background fan-out error:', bgErr);
+    }
+  })();
 });
 
 /**
