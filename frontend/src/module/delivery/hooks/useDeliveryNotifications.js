@@ -21,8 +21,9 @@ export const useDeliveryNotifications = () => {
     }
   })();
   const userInteractedRef = useRef(initialUnlocked);
-  // Track orders that this delivery partner has explicitly rejected (to avoid re-notifying)
   const rejectedOrderIdsRef = useRef(new Set());
+  const lastConnectedRef = useRef(false);
+
   // NOTE: Do NOT add new hooks above existing state hooks lightly.
   // HMR can surface "hook order changed" errors. For in-flight fetch dedupe, we store
   // the Map on the existing `socketRef` object (no new hooks required).
@@ -54,7 +55,7 @@ export const useDeliveryNotifications = () => {
       payload.assignmentInfo?.assignedBy ||
       payload.fullOrder?.assignmentInfo?.assignedBy ||
       null;
-    return assignedBy === 'manual_resend' || assignedBy === 'admin_manual_resend';
+    return assignedBy === 'manual_resend' || assignedBy === 'admin_manual_resend' || assignedBy === 'manual';
   }, []);
 
   const unmarkOrderRejected = useCallback((orderId) => {
@@ -448,12 +449,8 @@ export const useDeliveryNotifications = () => {
     });
 
     socketRef.current.on('new_order', (orderData) => {
+      console.log("🔔 [useDeliveryNotifications] Socket 'new_order' event received:", orderData);
       const orderId = normalizeOrderId(orderData);
-
-      // Play sound immediately when new_order socket event is received
-      try {
-        playNotificationSound(orderId);
-      } catch (_) {}
 
       // If it's a resend, allow it even if previously rejected
       if (orderId && isResendSignal(orderData)) {
@@ -463,6 +460,11 @@ export const useDeliveryNotifications = () => {
       if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
         return;
       }
+
+      // Play sound immediately when new_order socket event is received
+      try {
+        playNotificationSound(orderId);
+      } catch (_) {}
 
       // Always prefer canonical order details from API for payout fields.
       // Socket payload can be stale/incomplete (e.g., estimatedEarnings mismatch), causing popup to show wrong amount.
@@ -520,12 +522,8 @@ export const useDeliveryNotifications = () => {
 
     // Listen for priority-based order notifications (new_order_available)
     socketRef.current.on('new_order_available', (orderData) => {
+      console.log("🔔 [useDeliveryNotifications] Socket 'new_order_available' event received:", orderData);
       const orderId = normalizeOrderId(orderData);
-
-      // Play sound immediately when new_order_available socket event is received
-      try {
-        playNotificationSound(orderId);
-      } catch (_) {}
 
       // If it's a resend, allow it even if previously rejected
       if (orderId && isResendSignal(orderData)) {
@@ -535,6 +533,11 @@ export const useDeliveryNotifications = () => {
       if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
         return;
       }
+
+      // Play sound immediately when new_order_available socket event is received
+      try {
+        playNotificationSound(orderId);
+      } catch (_) {}
 
       const hasUsefulPayload =
         !!orderData?.restaurantLocation ||
@@ -611,7 +614,6 @@ export const useDeliveryNotifications = () => {
         // changing. If we dedupe same-order state, resend becomes silent.
         // So we (a) force a state bump and (b) trigger a one-shot sound attempt here.
         const eventTs = Date.now();
-        // eslint-disable-next-line no-console
         console.log('[DeliverySocket] play_notification_sound → ring', { orderId, type, isResend: isResendSignal(data) });
         playNotificationSound(`${orderId || 'order'}:${eventTs}`);
 
@@ -700,6 +702,7 @@ export const useDeliveryNotifications = () => {
         socketRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliveryPartnerId, fetchOrderDetailsForPopup, playNotificationSound]);
 
   // Helper functions
@@ -718,6 +721,56 @@ export const useDeliveryNotifications = () => {
       // Silently ignore audio stop errors
     }
   }, []);
+
+  // Monitor socket reconnection to auto-fetch available orders and sync popup state
+  useEffect(() => {
+    if (!deliveryPartnerId) return;
+
+    const connectionRestored = isConnected && !lastConnectedRef.current;
+    lastConnectedRef.current = isConnected;
+
+    if (!connectionRestored) return;
+
+    const checkAvailableOrders = async () => {
+      try {
+        const res = await deliveryAPI.getAvailableOrders();
+        if (res.data?.success) {
+          const orders = res.data.data?.orders || [];
+          
+          // 1. If we currently have a newOrder popup showing, verify it's still available
+          if (newOrder) {
+            const currentOid = normalizeOrderId(newOrder);
+            const stillAvailable = orders.some(o => normalizeOrderId(o) === currentOid);
+            if (!stillAvailable && currentOid) {
+              setNewOrder(null);
+              stopNotificationSound();
+              return;
+            }
+          }
+
+          // 2. If no popup is showing, check if there's any available order we should show
+          if (!newOrder && orders.length > 0) {
+            const unrejectedOrder = orders.find(order => {
+              const oid = normalizeOrderId(order);
+              return oid && !rejectedOrderIdsRef.current.has(oid);
+            });
+
+            if (unrejectedOrder) {
+              console.log("🔔 [useDeliveryNotifications] Auto-fetch found unrejected order on connect:", unrejectedOrder);
+              setNewOrder({
+                ...unrejectedOrder,
+                _clientNeedsNormalization: true
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error checking available orders on socket connect:", e);
+      }
+    };
+
+    checkAvailableOrders();
+  }, [deliveryPartnerId, isConnected, newOrder, normalizeOrderId, stopNotificationSound]);
 
   // Mark an order as explicitly rejected by this delivery partner (client-side)
   const markOrderRejected = (orderId) => {

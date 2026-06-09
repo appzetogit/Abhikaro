@@ -17,11 +17,11 @@ export const getHotelLeaderboard = asyncHandler(async (req, res) => {
   let periodLabel;
 
   if (period === "6months") {
-    // Fixed 6-month window (resets every 6 months): Jan-Jun or Jul-Dec (current window to date)
-    const isFirstHalf = now.getMonth() < 6; // 0-5 => Jan-Jun
-    const startMonth = isFirstHalf ? 0 : 6;
+    // Fixed seasonal window: Jan-May or Jun-Dec (current window to date)
+    const isFirstHalf = now.getMonth() < 5; // 0-4 => Jan-May
+    const startMonth = isFirstHalf ? 0 : 5;
     startDate = new Date(now.getFullYear(), startMonth, 1, 0, 0, 0, 0);
-    periodLabel = isFirstHalf ? `Jan–Jun ${now.getFullYear()}` : `Jul–Dec ${now.getFullYear()}`;
+    periodLabel = isFirstHalf ? `Jan–May ${now.getFullYear()}` : `Jun–Dec ${now.getFullYear()}`;
   } else {
     startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
     periodLabel = "This month";

@@ -1064,6 +1064,38 @@ export default function HotelLeaderboard() {
               </div>
             ) : null}
 
+            {/* Leaderboard Visibility / Hide Winner section */}
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4 mb-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-neutral-900">Leaderboard Visibility</p>
+                  <p className="text-xs text-neutral-500">
+                    If hidden, the winner details will show as "We will announce soon" on the hotel app.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetKey = winnerPeriodKey === "6months" ? "sixMonths" : "month"
+                    setRewards((prev) => {
+                      const next = structuredClone(prev || {})
+                      if (!next.hideWinner) next.hideWinner = { month: false, sixMonths: false }
+                      next.hideWinner[targetKey] = !next.hideWinner[targetKey]
+                      return next
+                    })
+                  }}
+                  className={cn(
+                    "rounded-xl px-4 py-2 text-xs font-bold transition-all shadow-sm ring-1 shrink-0",
+                    rewards?.hideWinner?.[winnerPeriodKey === "6months" ? "sixMonths" : "month"]
+                      ? "bg-red-500 text-white ring-red-400 hover:bg-red-600"
+                      : "bg-emerald-500 text-white ring-emerald-400 hover:bg-emerald-600"
+                  )}
+                >
+                  {rewards?.hideWinner?.[winnerPeriodKey === "6months" ? "sixMonths" : "month"] ? "Hidden (Show Winner)" : "Visible (Remove/Hide Winner)"}
+                </button>
+              </div>
+            </div>
+
             <div className="rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-neutral-900">Profile photo</p>

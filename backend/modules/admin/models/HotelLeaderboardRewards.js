@@ -37,6 +37,10 @@ const hotelLeaderboardRewardsSchema = new mongoose.Schema(
       month: { type: imageSchema, default: () => ({}) },
       sixMonths: { type: imageSchema, default: () => ({}) },
     },
+    hideWinner: {
+      month: { type: Boolean, default: false },
+      sixMonths: { type: Boolean, default: false },
+    },
     monthly: {
       gifts: { type: [giftSchema], default: [] }, // positions 1-5
       discounts: { type: [discountSchema], default: [] }, // positions 6-10

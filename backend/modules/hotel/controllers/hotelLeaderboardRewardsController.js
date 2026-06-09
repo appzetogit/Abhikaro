@@ -73,6 +73,10 @@ export const getHotelLeaderboardRewards = asyncHandler(async (req, res) => {
   const normalized = {
     banners: normalizeBanners(payload?.banners?.length ? payload.banners : (payload?.banner?.url ? [payload.banner] : [])),
     winnerProfiles: normalizeWinnerProfiles(payload?.winnerProfiles),
+    hideWinner: {
+      month: payload?.hideWinner?.month === true,
+      sixMonths: payload?.hideWinner?.sixMonths === true,
+    },
     monthly: {
       gifts: normalizeGifts(payload?.monthly?.gifts, [1, 2, 3, 4, 5]),
       discounts: normalizeDiscounts(payload?.monthly?.discounts, [6, 7, 8, 9, 10]),

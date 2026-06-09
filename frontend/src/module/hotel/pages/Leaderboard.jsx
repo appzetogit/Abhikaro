@@ -64,7 +64,7 @@ function LeaderboardList({ rows, loading }) {
               <div className="truncate text-sm font-semibold text-gray-900">{r.hotelName || "Unknown Hotel"}</div>
             </div>
             <div className="shrink-0">
-              <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+              <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 blur-sm select-none">
                 {Number(r.orders || 0).toLocaleString("en-IN")} orders
               </div>
             </div>
@@ -83,6 +83,7 @@ export default function HotelLeaderboard() {
   const [rewards, setRewards] = useState(null)
 
   const active = tab === "6months" ? sixState : monthState
+  const isWinnerHidden = rewards?.hideWinner?.[tab === "6months" ? "sixMonths" : "month"] === true;
 
   const getRewardForRank = (rank) => {
     const r = Number(rank)
@@ -186,7 +187,7 @@ export default function HotelLeaderboard() {
                       tab === "6months"
                         ? rewards?.winnerProfiles?.sixMonths?.url
                         : rewards?.winnerProfiles?.month?.url
-                    return url ? (
+                    return (url && !isWinnerHidden) ? (
                       <img
                         src={url}
                         alt="Winner profile"
@@ -201,7 +202,7 @@ export default function HotelLeaderboard() {
                   })()}
                 </div>
                 <div className="mt-3 text-lg font-bold text-gray-900">
-                  {active.payload?.top?.[0]?.hotelName ? active.payload.top[0].hotelName : "Hotels Ranking"}
+                  {isWinnerHidden ? "We will announce soon" : (active.payload?.top?.[0]?.hotelName ? active.payload.top[0].hotelName : "Hotels Ranking")}
                 </div>
                 <div className="mt-1 text-xs text-gray-500">{meta.label}</div>
 
@@ -214,8 +215,8 @@ export default function HotelLeaderboard() {
                   </div>
                   <div className="rounded-2xl bg-gray-50 p-3 text-center ring-1 ring-gray-100">
                     <div className="text-[11px] font-semibold text-gray-500">Orders</div>
-                    <div className="mt-1 text-xl font-extrabold text-gray-900">
-                      {Number(active.payload?.top?.[0]?.orders || 0).toLocaleString("en-IN")}
+                    <div className="mt-1 text-xl font-extrabold text-gray-900 blur-sm select-none">
+                      {isWinnerHidden ? "—" : Number(active.payload?.top?.[0]?.orders || 0).toLocaleString("en-IN")}
                     </div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 p-3 text-center ring-1 ring-gray-100">
@@ -230,7 +231,7 @@ export default function HotelLeaderboard() {
                   </div>
                 </div>
 
-                {active.payload?.top?.[0]?.hotelName ? (
+                {active.payload?.top?.[0]?.hotelName && !isWinnerHidden ? (
                   <div className="mt-3 text-xs font-semibold text-gray-500">
                     Winner: {active.payload.top[0].hotelName}
                   </div>
@@ -286,7 +287,7 @@ export default function HotelLeaderboard() {
                       <div className="text-sm font-semibold text-gray-900 leading-snug whitespace-normal break-words">
                         {r.hotelName || "Unknown Hotel"}
                       </div>
-                      <div className="mt-1 text-xs font-semibold text-gray-600">
+                      <div className="mt-1 text-xs font-semibold text-gray-600 blur-sm select-none">
                         {Number(r.orders || 0).toLocaleString("en-IN")} orders
                       </div>
                     </div>
@@ -345,7 +346,7 @@ export default function HotelLeaderboard() {
               </div>
             </div>
             <div className="shrink-0 flex flex-col items-end gap-1">
-              <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">
+              <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800 blur-sm select-none">
                 {Number(active.payload.me.orders || 0).toLocaleString("en-IN")} orders
               </div>
               {(() => {

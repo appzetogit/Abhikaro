@@ -5294,15 +5294,17 @@ export default function DeliveryHome() {
 
   // Show new order popup when order is received from Socket.IO
   useEffect(() => {
-    if (!newOrder) return
+    try {
+      console.log("🔔 [DeliveryHome] newOrder useEffect triggered.", { newOrder, isOnline });
+      if (!newOrder) return
 
-    const orderId = newOrder.orderMongoId || newOrder.orderId;
+      const orderId = newOrder.orderMongoId || newOrder.orderId;
 
-    // Check if this order has already been accepted
-    if (acceptedOrderIdsRef.current.has(orderId)) {
-      clearNewOrder();
-      return;
-    }
+      // Check if this order has already been accepted
+      if (acceptedOrderIdsRef.current.has(orderId)) {
+        clearNewOrder();
+        return;
+      }
 
     // Transform newOrder data to match selectedRestaurant format
     // Extract restaurant address with proper priority
@@ -5494,6 +5496,9 @@ export default function DeliveryHome() {
         setSelectedRestaurant(prev => ({ ...prev, ...finalUpdates }));
       }
     })()
+    } catch (err) {
+      console.error("❌ [DeliveryHome] Error in newOrder useEffect:", err);
+    }
   }, [newOrder, calculateTimeAway, riderLocation])
 
   // If another delivery partner accepts this order, close our popup instantly.

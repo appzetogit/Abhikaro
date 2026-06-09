@@ -1896,11 +1896,11 @@ export const getHotelLeaderboard = asyncHandler(async (req, res) => {
   let periodLabel = "";
 
   if (period === "6months") {
-    // Fixed 6-month window (resets every 6 months): Jan-Jun or Jul-Dec (current window to date)
-    const isFirstHalf = now.getMonth() < 6; // 0-5 => Jan-Jun
-    const startMonth = isFirstHalf ? 0 : 6;
+    // Fixed seasonal window: Jan-May or Jun-Dec (current window to date)
+    const isFirstHalf = now.getMonth() < 5; // 0-4 => Jan-May
+    const startMonth = isFirstHalf ? 0 : 5;
     startDate = new Date(now.getFullYear(), startMonth, 1, 0, 0, 0, 0);
-    periodLabel = isFirstHalf ? `Jan–Jun ${now.getFullYear()}` : `Jul–Dec ${now.getFullYear()}`;
+    periodLabel = isFirstHalf ? `Jan–May ${now.getFullYear()}` : `Jun–Dec ${now.getFullYear()}`;
   } else {
     // Default: current calendar month
     const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
@@ -2068,6 +2068,10 @@ export const getHotelLeaderboardRewards = asyncHandler(async (req, res) => {
   const normalized = {
     banners: normalizeBanners(payload?.banners?.length ? payload.banners : (payload?.banner?.url ? [payload.banner] : [])),
     winnerProfiles: normalizeWinnerProfiles(payload?.winnerProfiles),
+    hideWinner: {
+      month: payload?.hideWinner?.month === true,
+      sixMonths: payload?.hideWinner?.sixMonths === true,
+    },
     monthly: {
       gifts: normalizeGifts(payload?.monthly?.gifts, [1, 2, 3, 4, 5]),
       discounts: normalizeDiscounts(payload?.monthly?.discounts, [6, 7, 8, 9, 10]),
@@ -2098,6 +2102,10 @@ export const updateHotelLeaderboardRewards = asyncHandler(async (req, res) => {
 
   nextDoc.banners = banners;
   nextDoc.winnerProfiles = winnerProfiles;
+  nextDoc.hideWinner = {
+    month: body?.hideWinner?.month === true,
+    sixMonths: body?.hideWinner?.sixMonths === true,
+  };
   nextDoc.monthly = { gifts: monthlyGifts, discounts: monthlyDiscounts };
   nextDoc.sixMonths = { gifts: sixMonthsGifts };
   if (req.admin?._id) {
@@ -2109,6 +2117,7 @@ export const updateHotelLeaderboardRewards = asyncHandler(async (req, res) => {
   return successResponse(res, 200, "Hotel leaderboard rewards updated successfully", {
     banners: nextDoc.banners,
     winnerProfiles: nextDoc.winnerProfiles,
+    hideWinner: nextDoc.hideWinner,
     monthly: nextDoc.monthly,
     sixMonths: nextDoc.sixMonths,
     updatedAt: nextDoc.updatedAt,

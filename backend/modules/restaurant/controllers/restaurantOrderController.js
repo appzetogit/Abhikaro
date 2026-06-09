@@ -757,15 +757,19 @@ export const acceptOrder = asyncHandler(async (req, res) => {
               `✅ Found ${priorityDeliveryBoys.length} priority delivery partners within 20km`,
             );
 
-            freshOrder.assignmentInfo = {
-              ...(freshOrder.assignmentInfo || {}),
-              priorityNotifiedAt: new Date(),
-              priorityDeliveryPartnerIds: priorityDeliveryBoys.map(
-                (db) => db.deliveryPartnerId,
-              ),
-              notificationPhase: "priority",
-            };
-            await freshOrder.save();
+            try {
+              freshOrder.assignmentInfo = {
+                ...(freshOrder.assignmentInfo || {}),
+                priorityNotifiedAt: new Date(),
+                priorityDeliveryPartnerIds: priorityDeliveryBoys.map(
+                  (db) => db.deliveryPartnerId,
+                ),
+                notificationPhase: "priority",
+              };
+              await freshOrder.save();
+            } catch (prioritySaveError) {
+              console.error(`❌ Error saving freshOrder for priority notification on order ${order.orderId}:`, prioritySaveError);
+            }
 
             const populatedOrder = await Order.findById(freshOrder._id)
               .populate("userId", "name phone")
@@ -809,13 +813,17 @@ export const acceptOrder = asyncHandler(async (req, res) => {
                   if (expandedDeliveryBoys && expandedDeliveryBoys.length > 0) {
                     const expandedIds = expandedDeliveryBoys.map((db) => db.deliveryPartnerId);
 
-                    checkOrder.assignmentInfo = {
-                      ...(checkOrder.assignmentInfo || {}),
-                      expandedNotifiedAt: new Date(),
-                      expandedDeliveryPartnerIds: expandedIds,
-                      notificationPhase: "expanded",
-                    };
-                    await checkOrder.save();
+                    try {
+                      checkOrder.assignmentInfo = {
+                        ...(checkOrder.assignmentInfo || {}),
+                        expandedNotifiedAt: new Date(),
+                        expandedDeliveryPartnerIds: expandedIds,
+                        notificationPhase: "expanded",
+                      };
+                      await checkOrder.save();
+                    } catch (expandedSaveError) {
+                      console.error(`❌ Error saving checkOrder for expanded notification on order ${order.orderId}:`, expandedSaveError);
+                    }
 
                     const expandedOrder = await Order.findById(checkOrder._id)
                       .populate("userId", "name phone")

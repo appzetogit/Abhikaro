@@ -120,22 +120,36 @@ export function uploadToLocal(buffer, options = {}) {
  * @param {Object} options - Cloudinary upload options (folder, resource_type, etc.)
  * @returns {Promise<Object>} Cloudinary upload result
  */
-export function uploadToCloudinary(buffer, options = {}) {
+export async function uploadToCloudinary(buffer, options = {}) {
   if (process.env.USE_LOCAL_STORAGE === 'true') {
     return uploadToLocal(buffer, options);
   }
 
+  // Validate buffer
+  if (!buffer || !Buffer.isBuffer(buffer)) {
+    throw new Error('Invalid buffer provided');
+  }
+
+  if (buffer.length === 0) {
+    throw new Error('Empty buffer provided');
+  }
+
+  const folder = options.folder || 'uploads';
+  const isVideo = options.resource_type === 'video';
+
+  // Compress image before uploading to Cloudinary
+  let finalBuffer = buffer;
+  if (!isVideo) {
+    try {
+      const compressed = await compressImage(buffer, { folder, isVideo: false });
+      finalBuffer = compressed.buffer;
+    } catch (compErr) {
+      console.warn('⚠️  Cloudinary compression skipped, using raw buffer:', compErr.message);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     try {
-      // Validate buffer
-      if (!buffer || !Buffer.isBuffer(buffer)) {
-        return reject(new Error('Invalid buffer provided'));
-      }
-
-      if (buffer.length === 0) {
-        return reject(new Error('Empty buffer provided'));
-      }
-
       // Extract upload options
       const uploadOptions = {
         resource_type: options.resource_type || 'auto',
@@ -152,12 +166,12 @@ export function uploadToCloudinary(buffer, options = {}) {
       console.log('📤 Cloudinary upload options:', {
         folder: uploadOptions.folder,
         resource_type: uploadOptions.resource_type,
-        bufferSize: buffer.length
+        bufferSize: finalBuffer.length
       });
 
       // Use upload_stream method which is more efficient for buffers
       // Create a readable stream from buffer
-      const stream = Readable.from(buffer);
+      const stream = Readable.from(finalBuffer);
 
       // Create upload stream
       const uploadStream = cloudinary.uploader.upload_stream(

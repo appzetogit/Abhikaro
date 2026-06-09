@@ -78,18 +78,52 @@ export default function Home() {
   const [popupPosition, setPopupPosition] = useState({ top: 0, right: 0 })
   const vegModeToggleRef = useRef(null)
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
-  const [heroBannerImages, setHeroBannerImages] = useState([])
-  const [heroBannersData, setHeroBannersData] = useState([]) // Store full banner data with linked restaurants
-  const [loadingBanners, setLoadingBanners] = useState(true)
-  const [landingCategories, setLandingCategories] = useState([])
-  const [landingExploreMore, setLandingExploreMore] = useState([])
-  const [exploreMoreHeading, setExploreMoreHeading] = useState("Explore More")
-  const [showRecommendedSection, setShowRecommendedSection] = useState(false)
-  const [loadingLandingConfig, setLoadingLandingConfig] = useState(true)
+  const [heroBannerImages, setHeroBannerImages] = useState(() => {
+    const cached = getCachedResponse("GET:/hero-banners/public", 2 * 60 * 1000)
+    return (cached && Array.isArray(cached)) ? cached.map((b) => b?.imageUrl || b) : []
+  })
+  const [heroBannersData, setHeroBannersData] = useState(() => {
+    const cached = getCachedResponse("GET:/hero-banners/public", 2 * 60 * 1000)
+    return (cached && Array.isArray(cached)) ? cached : []
+  }) // Store full banner data with linked restaurants
+  const [loadingBanners, setLoadingBanners] = useState(() => {
+    const cached = getCachedResponse("GET:/hero-banners/public", 2 * 60 * 1000)
+    return !(cached && Array.isArray(cached))
+  })
+  const [landingCategories, setLandingCategories] = useState(() => {
+    const cached = getCachedResponse("GET:/hero-banners/landing/public", 5 * 60 * 1000)
+    return (cached && typeof cached === "object" && Array.isArray(cached.categories))
+      ? cached.categories.filter((c) => c.isActive !== false).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      : []
+  })
+  const [landingExploreMore, setLandingExploreMore] = useState(() => {
+    const cached = getCachedResponse("GET:/hero-banners/landing/public", 5 * 60 * 1000)
+    return (cached && typeof cached === "object" && Array.isArray(cached.exploreMore))
+      ? cached.exploreMore.filter((e) => e.isActive !== false).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      : []
+  })
+  const [exploreMoreHeading, setExploreMoreHeading] = useState(() => {
+    const cached = getCachedResponse("GET:/hero-banners/landing/public", 5 * 60 * 1000)
+    return (cached && typeof cached === "object") ? (cached.settings?.exploreMoreHeading || "Explore More") : "Explore More"
+  })
+  const [showRecommendedSection, setShowRecommendedSection] = useState(() => {
+    const cached = getCachedResponse("GET:/hero-banners/landing/public", 5 * 60 * 1000)
+    return (cached && typeof cached === "object") ? (cached.settings?.showRecommendedSection === true) : false
+  })
+  const [loadingLandingConfig, setLoadingLandingConfig] = useState(() => {
+    const cached = getCachedResponse("GET:/hero-banners/landing/public", 5 * 60 * 1000)
+    return !(cached && typeof cached === "object")
+  })
   const [restaurantsData, setRestaurantsData] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
-  const [realCategories, setRealCategories] = useState([])
-  const [loadingRealCategories, setLoadingRealCategories] = useState(true)
+  const [realCategories, setRealCategories] = useState(() => {
+    const cached = getCachedResponse("GET:/categories/public?home=true", 5 * 60 * 1000)
+    return (cached && Array.isArray(cached)) ? cached : []
+  })
+  const [loadingRealCategories, setLoadingRealCategories] = useState(() => {
+    const cached = getCachedResponse("GET:/categories/public?home=true", 5 * 60 * 1000)
+    return !(cached && Array.isArray(cached))
+  })
   const [showAllCategoriesModal, setShowAllCategoriesModal] = useState(false)
   const [allCategories, setAllCategories] = useState([])
   const [loadingAllCategories, setLoadingAllCategories] = useState(false)

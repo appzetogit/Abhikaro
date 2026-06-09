@@ -166,7 +166,7 @@ export default function PastWinners() {
                     )}
                   </div>
                   <div className="shrink-0">
-                    <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                    <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 blur-sm select-none">
                       {Number(r.orders || 0).toLocaleString("en-IN")} orders
                     </div>
                   </div>

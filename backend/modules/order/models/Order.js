@@ -437,6 +437,8 @@ const orderSchema = new mongoose.Schema(
           "admin_manual_resend",
           "nearest_available",
           "delivery_accept",
+          "restaurant_accept",
+          "zone_ready_broadcast",
           // Automated resend loop (restaurant/admin retry logic)
           "auto_resend_loop",
           "auto_resend",

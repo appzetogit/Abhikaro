@@ -212,8 +212,18 @@ const OptimizedImage = React.memo(({
       const link = document.createElement('link')
       link.rel = 'preload'
       link.as = 'image'
-      link.href = src
       link.fetchPriority = 'high'
+      
+      if (webPSrcSet) {
+        link.setAttribute('imagesrcset', webPSrcSet)
+        link.setAttribute('imagesizes', sizes)
+      } else if (srcSet) {
+        link.setAttribute('imagesrcset', srcSet)
+        link.setAttribute('imagesizes', sizes)
+      } else {
+        link.href = src
+      }
+
       document.head.appendChild(link)
       preloadedImages.add(src)
 
@@ -223,7 +233,7 @@ const OptimizedImage = React.memo(({
         }
       }
     }
-  }, [priority, src])
+  }, [priority, src, webPSrcSet, srcSet, sizes])
 
   // Ensure placeholder never blocks final image indefinitely if onLoad is delayed.
   useEffect(() => {

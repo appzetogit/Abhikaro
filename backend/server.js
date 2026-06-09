@@ -316,6 +316,33 @@ deliveryNamespace.on('connection', (socket) => {
         room: room,
         socketId: socket.id
       });
+
+      // Fetch any pending unassigned order notifications they are eligible for and send them
+      (async () => {
+        try {
+          const Order = (await import('./modules/order/models/Order.js')).default;
+          const pendingOrders = await Order.find({
+            deliveryPartnerId: { $exists: false },
+            status: { $in: ["confirmed", "preparing", "ready"] },
+            $or: [
+              { "assignmentInfo.priorityDeliveryPartnerIds": normalizedDeliveryId },
+              { "assignmentInfo.expandedDeliveryPartnerIds": normalizedDeliveryId }
+            ]
+          }).populate('userId', 'name phone')
+            .populate('restaurantId', 'name location address phone ownerPhone onboarding')
+            .lean();
+
+          if (pendingOrders && pendingOrders.length > 0) {
+            console.log(`📢 Replaying ${pendingOrders.length} pending order requests for newly joined delivery partner ${normalizedDeliveryId}`);
+            const { notifyMultipleDeliveryBoys } = await import('./modules/order/services/deliveryNotificationService.js');
+            for (const order of pendingOrders) {
+              await notifyMultipleDeliveryBoys(order, [normalizedDeliveryId], 'priority');
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching/notifying pending orders on join-delivery:', err);
+        }
+      })();
     } else {
       console.warn('⚠️ Delivery partner tried to join without deliveryId');
     }

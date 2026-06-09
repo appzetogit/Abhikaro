@@ -30,11 +30,11 @@ function parsePeriodRange(type, key) {
     if (!m) return null;
     const year = Number(m[1]);
     const half = m[2].toUpperCase();
-    const startMonth = half === "H1" ? 0 : 6;
-    const endMonth = half === "H1" ? 5 : 11;
+    const startMonth = half === "H1" ? 0 : 5; // Jan (0) or Jun (5)
+    const endMonth = half === "H1" ? 4 : 11; // May (4) or Dec (11)
     const start = new Date(year, startMonth, 1, 0, 0, 0, 0);
     const end = endOfDay(new Date(year, endMonth + 1, 0));
-    return { start, end, label: `${year}-${half}` };
+    return { start, end, label: half === "H1" ? `Jan–May ${year}` : `Jun–Dec ${year}` };
   }
 
   if (t === "year") {
