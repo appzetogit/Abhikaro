@@ -500,6 +500,7 @@ export default function Under250() {
               objectFit="cover"
               priority={true}
               sizes="100vw"
+              onError={() => setBannerImage(null)}
             />
           </div>
         )}

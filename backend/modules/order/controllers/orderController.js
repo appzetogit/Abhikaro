@@ -532,102 +532,21 @@ export const createOrder = async (req, res) => {
 
     let commissionBreakdown = { hotel: 0, user: 0, admin: 0, restaurant: 0 };
     let commissionPercentages = { hotel: 0, user: 0, admin: 0, restaurant: 0 };
-    let specificCommissionUsed = false;
 
-    // Check for specific restaurant commission first
     try {
-      if (!hotelReference) {
-        // Optional debug logging to file (development and debugging only)
-        const fs = await import("fs");
-        if (isDev) {
-          const debugLog = `[${new Date().toISOString()}] Checking Specific Commission for RestaurantId: ${assignedRestaurantId}\n`;
-          fs.appendFile(
-            "commission_debug.txt",
-            debugLog,
-            (err) => err && logger.error("Failed to write commission debug log:", err),
-          );
-        }
+      // 1. Fetch specific restaurant commission if exists
+      const restaurantCommission = await RestaurantCommission.findOne({
+        restaurant: assignedRestaurantId,
+        status: true,
+      });
 
-        const restaurantCommission = await RestaurantCommission.findOne({
-          restaurant: assignedRestaurantId,
-          status: true,
-        });
+      // 2. Fetch hotel-specific rules if it's a QR order
+      let hotelDoc = null;
+      let hotelPct = 0;
+      let adminPct = 0;
 
-        if (isDev) {
-          fs.appendFile(
-            "commission_debug.txt",
-            `[${new Date().toISOString()}] Found Commission: ${restaurantCommission ? "YES" : "NO"}\n`,
-            () => {},
-          );
-          if (restaurantCommission) {
-            fs.appendFile(
-              "commission_debug.txt",
-              `[${new Date().toISOString()}] Comm Data: ${JSON.stringify(restaurantCommission.defaultCommission)}\n`,
-              () => {},
-            );
-          } else {
-            // Check if any commission exists for this restaurant ignoring status
-            const anyComm = await RestaurantCommission.findOne({
-              restaurant: assignedRestaurantId,
-            });
-            fs.appendFile(
-              "commission_debug.txt",
-              `[${new Date().toISOString()}] Any Commission Exists? ${anyComm ? "YES (Status: " + anyComm.status + ")" : "NO"}\n`,
-              () => {},
-            );
-          }
-        }
-
-        if (restaurantCommission) {
-          logger.info("🎯 Found specific restaurant commission:", {
-            restaurantId: assignedRestaurantId,
-            type: restaurantCommission.defaultCommission.type,
-            value: restaurantCommission.defaultCommission.value,
-          });
-
-          const calculation = restaurantCommission.calculateCommission(
-            pricing.subtotal,
-          );
-
-          // In specific commission model:
-          // Admin gets 'commission' (the calculated amount)
-          // Restaurant gets 'pricing.subtotal - commission'
-
-          commissionBreakdown.admin = calculation.commission;
-          commissionBreakdown.restaurant =
-            pricing.subtotal - calculation.commission;
-
-          // Calculate percentages for reference
-          const adminPct = (calculation.commission / pricing.subtotal) * 100;
-
-          commissionPercentages = {
-            admin: parseFloat(adminPct.toFixed(2)),
-            restaurant: parseFloat((100 - adminPct).toFixed(2)),
-            hotel: 0,
-            user: 0,
-          };
-
-          specificCommissionUsed = true;
-
-          logger.info("💰 Specific Restaurant Commission Applied:", {
-            restaurantId: assignedRestaurantId,
-            breakdown: commissionBreakdown,
-            percentages: commissionPercentages,
-          });
-        }
-      }
-    } catch (commError) {
-      logger.error("❌ Error fetching restaurant commission:", commError);
-      // Fallback to global settings
-    }
-
-    if (!specificCommissionUsed) {
       if (hotelReference) {
-        // QR Order Logic
         const Hotel = (await import("../../hotel/models/Hotel.js")).default;
-
-        // Fetch hotel to get its specific commission rules
-        let hotelDoc = null;
         try {
           if (mongoose.Types.ObjectId.isValid(hotelReference)) {
             hotelDoc = await Hotel.findById(hotelReference).lean();
@@ -641,78 +560,121 @@ export const createOrder = async (req, res) => {
           );
         }
 
-        let hotelPct = 0;
-        let adminPct = 0;
-
         if (hotelDoc) {
           hotelPct = Number(hotelDoc.commission) || 0;
           adminPct = Number(hotelDoc.adminCommission) || 0;
-          logger.info(
-            `🎯 Using hotel-specific commission: Hotel ${hotelPct}%, Admin ${adminPct}%`,
-          );
         } else {
           const { hotel, admin } = commissionSettings.qrCommission;
-          hotelPct = hotel;
-          adminPct = admin;
-          logger.info(
-            `ℹ️ Using global QR commission: Hotel ${hotelPct}%, Admin ${adminPct}%`,
-          );
+          hotelPct = hotel || 10;
+          adminPct = admin || 20;
         }
-
-        // Logic:
-        // Hotel gets Fixed % (e.g. 10%) of total/commissionable amount
-        // Admin gets Fixed % (e.g. 20%) of total/commissionable amount
-        // Restaurant gets the Remainder
-
-        // NOTE: Hotel commission should be on food subtotal, not on final payable total.
-        const commissionableAmount = pricing.subtotal;
-
-        const hotelAmount = (commissionableAmount * hotelPct) / 100;
-        const adminAmount = (commissionableAmount * adminPct) / 100;
-
-        // Restaurant gets whatever is left
-        const restaurantAmount =
-          commissionableAmount - hotelAmount - adminAmount;
-
-        commissionBreakdown = {
-          hotel: Math.round(hotelAmount * 100) / 100,
-          admin: Math.round(adminAmount * 100) / 100,
-          restaurant: Math.round(restaurantAmount * 100) / 100,
-          user: 0,
-        };
-
-        commissionPercentages = {
-          hotel: hotelPct,
-          admin: adminPct,
-          restaurant: Math.round((100 - hotelPct - adminPct) * 100) / 100,
-          user: 0,
-        };
-
-        logger.info("💰 QR Order Commission Calculated:", {
-          percentages: commissionPercentages,
-          breakdown: commissionBreakdown,
-          commissionableAmount,
-        });
-      } else {
-        // Direct Order Logic - Global Fallback
-        const { admin, restaurant } = commissionSettings.directCommission;
-        commissionPercentages = { hotel: 0, user: 0, admin, restaurant };
-
-        const commissionableAmount = pricing.subtotal;
-
-        commissionBreakdown.user = 0;
-        commissionBreakdown.hotel = 0;
-        commissionBreakdown.admin =
-          Math.round(((commissionableAmount * admin) / 100) * 100) / 100;
-        commissionBreakdown.restaurant =
-          Math.round(((commissionableAmount * restaurant) / 100) * 100) / 100;
-
-        logger.info("💰 Direct Order Commission Calculated (Global):", {
-          percentages: commissionPercentages,
-          breakdown: commissionBreakdown,
-          commissionableAmount,
-        });
       }
+
+      const commissionableAmount = pricing.subtotal;
+
+      if (restaurantCommission) {
+        logger.info("🎯 Found specific restaurant commission:", {
+          restaurantId: assignedRestaurantId,
+          type: restaurantCommission.defaultCommission.type,
+          value: restaurantCommission.defaultCommission.value,
+        });
+
+        const calculation = restaurantCommission.calculateCommission(commissionableAmount);
+        const totalCommissionAmount = calculation.commission;
+        const totalCommissionPct = restaurantCommission.defaultCommission.type === 'percentage'
+          ? restaurantCommission.defaultCommission.value
+          : (totalCommissionAmount / commissionableAmount) * 100;
+
+        if (hotelReference) {
+          // QR order with specific restaurant commission
+          const hotelAmount = Math.round(commissionableAmount * (hotelPct / 100) * 100) / 100;
+          // Admin gets the remaining part of the total restaurant commission
+          const adminAmount = Math.round(Math.max(0, totalCommissionAmount - hotelAmount) * 100) / 100;
+          const restaurantAmount = Math.round((commissionableAmount - totalCommissionAmount) * 100) / 100;
+
+          commissionBreakdown = {
+            hotel: hotelAmount,
+            admin: adminAmount,
+            restaurant: restaurantAmount,
+            user: 0,
+          };
+
+          commissionPercentages = {
+            hotel: hotelPct,
+            admin: parseFloat(Math.max(0, totalCommissionPct - hotelPct).toFixed(2)),
+            restaurant: parseFloat((100 - totalCommissionPct).toFixed(2)),
+            user: 0,
+          };
+        } else {
+          // Direct order with specific restaurant commission
+          commissionBreakdown = {
+            hotel: 0,
+            admin: totalCommissionAmount,
+            restaurant: Math.round((commissionableAmount - totalCommissionAmount) * 100) / 100,
+            user: 0,
+          };
+
+          commissionPercentages = {
+            hotel: 0,
+            admin: parseFloat(totalCommissionPct.toFixed(2)),
+            restaurant: parseFloat((100 - totalCommissionPct).toFixed(2)),
+            user: 0,
+          };
+        }
+      } else {
+        // No specific restaurant commission config found
+        if (hotelReference) {
+          // Fallback QR Order Logic using global defaults (or hotel specific commission settings)
+          const hotelAmount = Math.round(commissionableAmount * (hotelPct / 100) * 100) / 100;
+          const adminAmount = Math.round(commissionableAmount * (adminPct / 100) * 100) / 100;
+          const restaurantAmount = Math.round((commissionableAmount - hotelAmount - adminAmount) * 100) / 100;
+
+          commissionBreakdown = {
+            hotel: hotelAmount,
+            admin: adminAmount,
+            restaurant: restaurantAmount,
+            user: 0,
+          };
+
+          commissionPercentages = {
+            hotel: hotelPct,
+            admin: adminPct,
+            restaurant: Math.round((100 - hotelPct - adminPct) * 100) / 100,
+            user: 0,
+          };
+        } else {
+          // Fallback Direct Order Logic using global defaults
+          const { admin, restaurant } = commissionSettings.directCommission;
+          const adminPctValue = admin || 30;
+          const restaurantPctValue = restaurant || 70;
+
+          commissionBreakdown = {
+            hotel: 0,
+            admin: Math.round(((commissionableAmount * adminPctValue) / 100) * 100) / 100,
+            restaurant: Math.round(((commissionableAmount * restaurantPctValue) / 100) * 100) / 100,
+            user: 0,
+          };
+
+          commissionPercentages = {
+            hotel: 0,
+            admin: adminPctValue,
+            restaurant: restaurantPctValue,
+            user: 0,
+          };
+        }
+      }
+    } catch (commError) {
+      logger.error("❌ Error calculating commission split:", commError);
+      // Fallback to global defaults as absolute safety
+      const commissionableAmount = pricing.subtotal;
+      const adminPct = 30;
+      commissionBreakdown = {
+        hotel: 0,
+        admin: Math.round(((commissionableAmount * adminPct) / 100) * 100) / 100,
+        restaurant: Math.round(((commissionableAmount * (100 - adminPct)) / 100) * 100) / 100,
+        user: 0,
+      };
+      commissionPercentages = { hotel: 0, user: 0, admin: adminPct, restaurant: 100 - adminPct };
     }
     // --- Dynamic Commission Calculation End ---
 

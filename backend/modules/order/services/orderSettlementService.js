@@ -219,14 +219,44 @@ export const calculateOrderSettlement = async (orderId) => {
           }
         }
 
-        const hotelShare = Math.round(foodPrice * (hotelPct / 100) * 100) / 100;
-        const adminShare = Math.round(foodPrice * (adminPct / 100) * 100) / 100;
-        const restaurantShare = Math.round((foodPrice - hotelShare - adminShare) * 100) / 100;
+        // Fetch restaurant specific commission if available
+        let restaurantCommission = null;
+        try {
+          restaurantCommission = await RestaurantCommission.findOne({
+            restaurant: restaurant._id,
+            status: true
+          });
+        } catch (rCommError) {
+          console.error("Failed to fetch restaurant commission during settlement calculation:", rCommError);
+        }
+
+        let hotelShare = 0;
+        let adminShare = 0;
+        let restaurantShare = 0;
+        let restaurantCommissionPct = 0;
+        let restaurantCommissionAmount = 0;
+
+        if (restaurantCommission) {
+          const calculation = restaurantCommission.calculateCommission(foodPrice);
+          restaurantCommissionAmount = calculation.commission;
+          restaurantCommissionPct = restaurantCommission.defaultCommission.type === 'percentage'
+            ? restaurantCommission.defaultCommission.value
+            : (restaurantCommissionAmount / foodPrice) * 100;
+
+          hotelShare = Math.round(foodPrice * (hotelPct / 100) * 100) / 100;
+          adminShare = Math.round(Math.max(0, restaurantCommissionAmount - hotelShare) * 100) / 100;
+          restaurantShare = Math.round((foodPrice - restaurantCommissionAmount) * 100) / 100;
+        } else {
+          hotelShare = Math.round(foodPrice * (hotelPct / 100) * 100) / 100;
+          adminShare = Math.round(foodPrice * (adminPct / 100) * 100) / 100;
+          restaurantShare = Math.round((foodPrice - hotelShare - adminShare) * 100) / 100;
+          restaurantCommissionAmount = Math.round((foodPrice - restaurantShare) * 100) / 100;
+          restaurantCommissionPct = Math.round((100 - hotelPct - adminPct) * 100) / 100;
+        }
 
         restaurantEarning.netEarning = restaurantShare;
-        restaurantEarning.commission =
-          Math.round((foodPrice - restaurantShare) * 100) / 100;
-        restaurantEarning.commissionPercentage = Math.round((100 - hotelPct - adminPct) * 100) / 100;
+        restaurantEarning.commission = restaurantCommissionAmount;
+        restaurantEarning.commissionPercentage = restaurantCommissionPct;
 
         hotelEarning = {
           hotelId: hotelDoc?._id || null,

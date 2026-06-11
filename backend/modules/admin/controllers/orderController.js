@@ -233,7 +233,7 @@ export const getOrders = asyncHandler(async (req, res) => {
       const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
       const orderIds = orders.map(o => o._id);
       const settlements = await OrderSettlement.find({ orderId: { $in: orderIds } })
-        .select('orderId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning')
+        .select('orderId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission')
         .lean();
       
       // Create maps for quick lookup
@@ -249,6 +249,7 @@ export const getOrders = asyncHandler(async (req, res) => {
             adminEarning: Number(s.adminEarning?.totalEarning || 0),
             restaurantEarning: Number(s.restaurantEarning?.netEarning || 0),
             deliveryEarning: Number(s.deliveryPartnerEarning?.totalEarning || 0),
+            hotelEarning: Number(s.hotelEarning?.commission || 0)
           });
         }
       });
@@ -467,9 +468,9 @@ export const getOrders = asyncHandler(async (req, res) => {
       const isHotelQrOrder = (order.orderType === 'QR' || !!order.hotelReference || !!order.hotelId);
       // Keep a stable hotel commission amount for UI display (avoid scope issues).
       let hotelCommissionAmount =
-        Number(order.commissionBreakdown?.hotel || 0) ||
-        Number(order.hotelCommission || 0) ||
-        0;
+        settlementEarnings?.hotelEarning !== undefined
+          ? settlementEarnings.hotelEarning
+          : (Number(order.commissionBreakdown?.hotel || 0) || Number(order.hotelCommission || 0) || 0);
 
       // QR / Hotel (Online) earnings (commission + fees):
       // Many QR orders don't have OrderSettlement populated, so we compute from stored breakdown + pricing.

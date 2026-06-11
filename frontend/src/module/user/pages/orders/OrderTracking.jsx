@@ -1868,6 +1868,7 @@ export default function OrderTracking() {
               alt="Offer banner"
               className="w-full rounded-xl shadow-sm object-cover"
               loading="lazy"
+              onError={() => setAdvertiseBanner(null)}
             />
           </motion.div>
         )}

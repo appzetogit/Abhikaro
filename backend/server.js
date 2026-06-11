@@ -77,6 +77,7 @@ import metricsRoutes from './routes/metrics.js';
 import advertiseBannerPublicRoutes from './modules/admin/routes/advertiseBannerPublicRoutes.js';
 
 
+// Trigger nodemon restart comment - database connection check
 // Validate required environment variables
 const requiredEnvVars = ['JWT_SECRET', 'MONGODB_URI'];
 const missingEnvVars = [];

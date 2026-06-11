@@ -120,9 +120,30 @@ export const distributeCommissions = async (orderId) => {
           logger.info(`ℹ️ Using settings/fallback commission for distribution: Hotel ${hotelPct}%, Admin ${adminPct}%`);
         }
 
-        hotelShare = Math.round(totalAmount * (hotelPct / 100) * 100) / 100;
-        adminShare = Math.round(totalAmount * (adminPct / 100) * 100) / 100;
-        restaurantShare = Math.round((totalAmount - hotelShare - adminShare) * 100) / 100;
+        // Fetch restaurant specific commission if available
+        let restaurantCommission = null;
+        try {
+          const RestaurantCommission = (await import("../../admin/models/RestaurantCommission.js")).default;
+          restaurantCommission = await RestaurantCommission.findOne({
+            restaurant: restaurantId,
+            status: true
+          });
+        } catch (rCommError) {
+          logger.warn("⚠️ Failed to fetch restaurant commission for distribution:", rCommError.message);
+        }
+
+        if (restaurantCommission) {
+          const calculation = restaurantCommission.calculateCommission(totalAmount);
+          const totalCommissionAmount = calculation.commission;
+
+          hotelShare = Math.round(totalAmount * (hotelPct / 100) * 100) / 100;
+          adminShare = Math.round(Math.max(0, totalCommissionAmount - hotelShare) * 100) / 100;
+          restaurantShare = Math.round((totalAmount - totalCommissionAmount) * 100) / 100;
+        } else {
+          hotelShare = Math.round(totalAmount * (hotelPct / 100) * 100) / 100;
+          adminShare = Math.round(totalAmount * (adminPct / 100) * 100) / 100;
+          restaurantShare = Math.round((totalAmount - hotelShare - adminShare) * 100) / 100;
+        }
       }
 
     logger.info(`💰 Distributing commission for order ${orderNumber}:`, {

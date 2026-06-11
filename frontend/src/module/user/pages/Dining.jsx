@@ -268,6 +268,7 @@ export default function Dining() {
               objectFit="cover"
               priority={true}
               sizes="100vw"
+              onError={() => setDiningHeroBanner(diningBanner)}
             />
           )}
         </div>

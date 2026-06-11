@@ -7,18 +7,31 @@ import OptimizedImage from "@/components/OptimizedImage"
 export default function HeroBannerCarousel({ banners, loading }) {
   const navigate = useNavigate()
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [failedImages, setFailedImages] = useState(new Set())
+
+  const validBanners = (banners || []).filter(b => {
+    const img = b?.imageUrl || b
+    return img && typeof img === 'string' && img.trim() !== '' && !failedImages.has(img)
+  })
+
+  const bannerImages = validBanners.map(b => b.imageUrl || b)
 
   useEffect(() => {
     setCurrentIndex(0)
-  }, [banners?.length])
+  }, [bannerImages.length])
+
+  useEffect(() => {
+    if (bannerImages.length > 0 && currentIndex >= bannerImages.length) {
+      setCurrentIndex(bannerImages.length - 1)
+    }
+  }, [bannerImages.length, currentIndex])
+
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
   const touchEndX = useRef(0)
   const touchEndY = useRef(0)
   const isSwiping = useRef(false)
   const autoSlideIntervalRef = useRef(null)
-
-  const bannerImages = banners?.map(b => b.imageUrl || b) || []
 
   // Auto-cycle hero banner images
   useEffect(() => {
@@ -177,7 +190,7 @@ export default function HeroBannerCarousel({ banners, loading }) {
         }}
       >
         {bannerImages.map((image, index) => {
-          const bannerData = banners[index]
+          const bannerData = validBanners[index]
           const linkedRestaurants = bannerData?.linkedRestaurants || []
           const hasLinkedRestaurants = linkedRestaurants.length > 0
 
@@ -209,6 +222,13 @@ export default function HeroBannerCarousel({ banners, loading }) {
                   sizes="100vw"
                   objectFit="cover"
                   placeholder="blur"
+                  onError={() => {
+                    setFailedImages(prev => {
+                      const next = new Set(prev)
+                      next.add(image)
+                      return next
+                    })
+                  }}
                 />
                 {/* Mask for old embedded logo text on banner (desktop only) */}
                 <div className="pointer-events-none hidden md:block absolute top-6 left-1/2 -translate-x-1/2 w-28 h-10 bg-gradient-to-b from-[#fec9d3] to-transparent rounded-full" />
