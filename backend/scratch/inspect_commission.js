@@ -1,30 +1,35 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import Order from '../modules/order/models/Order.js';
+import AdminWallet from '../modules/admin/models/AdminWallet.js';
 
 dotenv.config();
 
-async function inspect() {
+async function inspectAdminWallet() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
+    console.log('Connected to MongoDB');
 
-    const orderIdStr = 'ORD-1781156016888-690';
-    const o = await Order.findOne({ orderId: orderIdStr }).lean();
-    if (!o) {
-      console.log('Order not found!');
-      await mongoose.disconnect();
-      return;
+    const orderMongoId = new mongoose.Types.ObjectId('6a2a621b84d35ff1dfcb7b29');
+
+    // Check Admin Wallet
+    const adminWallet = await AdminWallet.findOne({
+      'transactions.orderId': orderMongoId
+    }).lean();
+
+    console.log('\n=== Admin Wallet Transactions ===');
+    if (adminWallet) {
+      console.log('Wallet ID:', adminWallet._id);
+      console.log('Total Balance:', adminWallet.totalBalance);
+      const txs = adminWallet.transactions.filter(t => t.orderId?.toString() === orderMongoId.toString());
+      console.log('Transactions:', JSON.stringify(txs, null, 2));
+    } else {
+      console.log('No transaction found in Admin Wallet.');
     }
-
-    console.log('Order Type:', o.orderType);
-    console.log('hotelReference:', o.hotelReference);
-    console.log('hotelId:', o.hotelId);
-    console.log('hotelName:', o.hotelName);
-    console.log('payment.method:', o.payment?.method);
 
     await mongoose.disconnect();
   } catch (err) {
     console.error('Error:', err);
   }
 }
-inspect();
+
+inspectAdminWallet();

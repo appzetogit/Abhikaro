@@ -10,7 +10,7 @@ async function verify() {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('Connected to MongoDB');
 
-    const orderIdStr = 'ORD-1781156016888-690';
+    const orderIdStr = 'ORD-1781162523268-886';
     const order = await Order.findOne({ orderId: orderIdStr }).lean();
     if (!order) {
       console.log('Order not found!');

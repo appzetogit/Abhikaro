@@ -145,6 +145,56 @@ export const releaseEscrow = async (orderId) => {
     settlement.adminEarning.creditedAt = new Date();
     settlement.adminSettled = true;
 
+    // Create AdminCommission record if not exists (for restaurant reporting/stats)
+    try {
+      const AdminCommission = (await import("../../admin/models/AdminCommission.js")).default;
+      const existingCommission = await AdminCommission.findOne({ orderId: settlement.orderId });
+      
+      if (!existingCommission) {
+        const isQR = order?.orderType === "QR" || !!order?.hotelReference || !!order?.hotelId;
+        const foodPrice = settlement.restaurantEarning.foodPrice;
+        
+        let adminCommissionAmount = settlement.adminEarning.commission;
+        let adminCommissionPct = 0;
+        
+        if (isQR) {
+          adminCommissionPct = order?.commissionPercentages?.admin || 0;
+        } else {
+          adminCommissionPct = order?.commissionPercentages?.admin || (order?.pricing?.subtotal ? (adminCommissionAmount / order.pricing.subtotal) * 100 : 0);
+        }
+
+        let finalRestaurantId = settlement.restaurantId;
+        if (finalRestaurantId && !mongoose.Types.ObjectId.isValid(finalRestaurantId)) {
+          const Restaurant = (await import("../../restaurant/models/Restaurant.js")).default;
+          const restDoc = await Restaurant.findOne({
+            $or: [
+              { restaurantId: finalRestaurantId },
+              { slug: finalRestaurantId },
+            ],
+          }).lean();
+          if (restDoc) {
+            finalRestaurantId = restDoc._id;
+          }
+        }
+
+        await AdminCommission.create({
+          orderId: settlement.orderId,
+          orderAmount: foodPrice,
+          commissionAmount: adminCommissionAmount,
+          commissionPercentage: adminCommissionPct,
+          restaurantId: finalRestaurantId,
+          restaurantName: settlement.restaurantName || order?.restaurantName || "Restaurant",
+          restaurantEarning: settlement.restaurantEarning.netEarning,
+          status: "completed",
+          orderDate: order?.createdAt || new Date(),
+        });
+        
+        console.log(`✅ AdminCommission record created during releaseEscrow for order ${settlement.orderNumber}`);
+      }
+    } catch (adminCommErr) {
+      console.error("❌ Failed to create AdminCommission record in releaseEscrow:", adminCommErr);
+    }
+
     // Update settlement status
     settlement.settlementStatus = "completed";
     await settlement.save();
@@ -428,6 +478,7 @@ export const creditAdminWallet = async (
 
     // Credit commission (from restaurant)
     // This is the commission deducted from restaurant's food price
+    let commissionCredited = false;
     if (adminEarning.commission > 0) {
       const foodPrice = settlement?.restaurantEarning?.foodPrice || 0;
       const commissionPercent =
@@ -442,6 +493,7 @@ export const creditAdminWallet = async (
         orderId: orderId,
         restaurantId: finalRestaurantId,
       });
+      commissionCredited = true;
     }
 
     // Credit platform fee
@@ -478,7 +530,8 @@ export const creditAdminWallet = async (
     }
 
     // Credit hotel commission (admin's share from hotel QR orders)
-    if (adminEarning.hotelCommission > 0) {
+    // ONLY credit if not already credited as commission to avoid double-counting
+    if (adminEarning.hotelCommission > 0 && !commissionCredited) {
       const orderTotal = settlement?.userPayment?.total || 0;
       const commissionPercent =
         orderTotal > 0

@@ -183,6 +183,57 @@ export const distributeCommissions = async (orderId) => {
       adminShare + hotelShare,
     );
 
+    // Create AdminCommission record if not exists (for restaurant reporting/stats)
+    try {
+      const AdminCommission = (await import("../../admin/models/AdminCommission.js")).default;
+      const existingCommission = await AdminCommission.findOne({ orderId: order._id });
+      
+      if (!existingCommission) {
+        const isQR = order.orderType === "QR" || !!order.hotelReference || !!order.hotelId;
+        const foodPrice = totalAmount; // getHotelCommissionableSubtotal(order)
+        
+        let adminCommissionAmount = adminShare;
+        let adminCommissionPct = 0;
+        
+        if (isQR) {
+          adminCommissionPct = order.commissionPercentages?.admin || 0;
+        } else {
+          adminCommissionPct = order.commissionPercentages?.admin || (pricing?.subtotal ? (adminCommissionAmount / pricing.subtotal) * 100 : 0);
+        }
+
+        const mongoose = (await import("mongoose")).default;
+        let finalRestaurantId = restaurantId;
+        if (restaurantId && !mongoose.Types.ObjectId.isValid(restaurantId)) {
+          const Restaurant = (await import("../../restaurant/models/Restaurant.js")).default;
+          const restDoc = await Restaurant.findOne({
+            $or: [
+              { restaurantId: restaurantId },
+              { slug: restaurantId },
+            ],
+          }).lean();
+          if (restDoc) {
+            finalRestaurantId = restDoc._id;
+          }
+        }
+
+        await AdminCommission.create({
+          orderId: order._id,
+          orderAmount: foodPrice,
+          commissionAmount: adminCommissionAmount,
+          commissionPercentage: adminCommissionPct,
+          restaurantId: finalRestaurantId,
+          restaurantName: order.restaurantName || "Restaurant",
+          restaurantEarning: restaurantShare,
+          status: "completed",
+          orderDate: order.createdAt || new Date(),
+        });
+        
+        logger.info(`✅ AdminCommission record created during distributeCommissions for order ${orderNumber}`);
+      }
+    } catch (adminCommErr) {
+      logger.error("❌ Failed to create AdminCommission record in distributeCommissions:", adminCommErr);
+    }
+
     // Update order state
     order.hotelCommission = hotelShare;
     order.adminCommission = adminShare;

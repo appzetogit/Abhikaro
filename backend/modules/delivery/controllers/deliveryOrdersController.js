@@ -2882,15 +2882,63 @@ export const completeDelivery = asyncHandler(async (req, res) => {
             foodPrice,
           );
 
-        const commissionAmount = commissionResult.commission || 0;
-        const restaurantEarning = Math.max(0, foodPrice - commissionAmount);
+        const totalCommissionAmount = commissionResult.commission || 0;
+        const totalCommissionPct = commissionResult.value || 0;
+
+        const isQR = order.orderType === "QR" || !!order.hotelReference || !!order.hotelId;
+
+        let adminCommissionAmount = totalCommissionAmount;
+        let adminCommissionPct = totalCommissionPct;
+        let restaurantEarning = Math.max(0, foodPrice - totalCommissionAmount);
+
+        if (isQR) {
+          // Use stored adminCommission on order if available, otherwise calculate fallback split
+          if (typeof order.adminCommission === "number" && order.adminCommission > 0) {
+            adminCommissionAmount = order.adminCommission;
+          } else {
+            // Fetch hotel commission config
+            let hotelPct = 10;
+            try {
+              const Hotel = (await import("../../hotel/models/Hotel.js")).default;
+              const hotelRef = order.hotelReference || order.hotelId;
+              let hotelDoc = null;
+              if (hotelRef) {
+                if (mongoose.Types.ObjectId.isValid(hotelRef)) {
+                  hotelDoc = await Hotel.findById(hotelRef).lean();
+                } else {
+                  hotelDoc = await Hotel.findOne({ hotelId: hotelRef }).lean();
+                }
+              }
+              if (hotelDoc) {
+                hotelPct = Number(hotelDoc.commission) || 0;
+              }
+            } catch (err) {
+              console.warn("Failed to fetch hotel commission fallback:", err);
+            }
+            const hotelShare = Math.round(foodPrice * (hotelPct / 100) * 100) / 100;
+            adminCommissionAmount = Math.max(0, totalCommissionAmount - hotelShare);
+          }
+
+          if (typeof order.restaurantShare === "number" && order.restaurantShare > 0) {
+            restaurantEarning = order.restaurantShare;
+          }
+
+          if (order.commissionPercentages?.admin !== undefined) {
+            adminCommissionPct = order.commissionPercentages.admin;
+          } else {
+            const hotelPct = order.commissionPercentages?.hotel || 10;
+            adminCommissionPct = Math.max(0, totalCommissionPct - hotelPct);
+          }
+        }
 
         console.log(
           `💰 Restaurant commission calculation for order ${orderIdForLog}:`,
           {
             orderTotal: foodPrice,
-            commissionPercentage: commissionResult.value,
-            commissionAmount: commissionAmount,
+            totalCommissionPct,
+            totalCommissionAmount,
+            adminCommissionPct,
+            adminCommissionAmount,
             restaurantEarning: restaurantEarning,
           },
         );
@@ -2919,7 +2967,7 @@ export const completeDelivery = asyncHandler(async (req, res) => {
               amount: restaurantEarning,
               type: "payment",
               status: "Completed",
-              description: `Order #${orderIdForLog} - Food Price: ₹${foodPrice.toFixed(2)}, Commission: ₹${commissionAmount.toFixed(2)}`,
+              description: `Order #${orderIdForLog} - Food Price: ₹${foodPrice.toFixed(2)}, Commission: ₹${totalCommissionAmount.toFixed(2)}`,
               orderId: orderMongoId || order._id,
             });
 
@@ -2932,7 +2980,7 @@ export const completeDelivery = asyncHandler(async (req, res) => {
                   restaurant.restaurantId || restaurant._id.toString(),
                 orderId: orderIdForLog,
                 orderTotal: foodPrice,
-                commissionAmount: commissionAmount,
+                commissionAmount: totalCommissionAmount,
                 restaurantEarning: restaurantEarning,
                 walletBalance: restaurantWallet.totalBalance,
               },
@@ -2958,8 +3006,8 @@ export const completeDelivery = asyncHandler(async (req, res) => {
             adminCommissionRecord = await AdminCommission.create({
               orderId: orderMongoId || order._id,
               orderAmount: foodPrice,
-              commissionAmount: commissionAmount,
-              commissionPercentage: commissionResult.value,
+              commissionAmount: adminCommissionAmount,
+              commissionPercentage: adminCommissionPct,
               restaurantId: restaurant._id,
               restaurantName: restaurant.name || order.restaurantName,
               restaurantEarning: restaurantEarning,
@@ -2967,14 +3015,14 @@ export const completeDelivery = asyncHandler(async (req, res) => {
               orderDate: order.createdAt || new Date(),
             });
 
-            logger.info(`💰 Admin commission recorded: ${commissionAmount}`, {
+            logger.info(`💰 Admin commission recorded: ${adminCommissionAmount}`, {
               orderId: orderIdForLog,
-              commissionAmount: commissionAmount,
-              orderTotal: orderTotal,
+              commissionAmount: adminCommissionAmount,
+              orderTotal: foodPrice,
             });
 
             console.log(
-              `✅ Admin commission ₹${commissionAmount.toFixed(2)} recorded`,
+              `✅ Admin commission ₹${adminCommissionAmount.toFixed(2)} recorded`,
             );
           } else {
             console.warn(
