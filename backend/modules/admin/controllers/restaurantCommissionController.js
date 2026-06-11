@@ -54,11 +54,17 @@ export const getRestaurantCommissions = asyncHandler(async (req, res) => {
       .limit(limitNum)
       .lean();
 
-    // Add serial numbers
-    const commissionsWithSl = commissions.map((commission, index) => ({
-      ...commission,
-      sl: skip + index + 1,
-    }));
+    // Add serial numbers and normalize restaurant names
+    const commissionsWithSl = commissions.map((commission, index) => {
+      const updatedCommission = {
+        ...commission,
+        sl: skip + index + 1,
+      };
+      if (updatedCommission.restaurant && updatedCommission.restaurant.onboarding?.step1?.restaurantName) {
+        updatedCommission.restaurant.name = updatedCommission.restaurant.onboarding.step1.restaurantName;
+      }
+      return updatedCommission;
+    });
 
     return successResponse(
       res,

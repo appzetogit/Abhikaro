@@ -11,6 +11,7 @@ import { toast } from "sonner"
 
 export default function RestaurantCommission() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("")
   const [commissions, setCommissions] = useState([])
   const [approvedRestaurants, setApprovedRestaurants] = useState([])
   const [stats, setStats] = useState({ totalCommission: 0, totalEarnings: 0 })
@@ -49,16 +50,17 @@ export default function RestaurantCommission() {
     return commissions.filter(commission =>
       commission.restaurantName?.toLowerCase().includes(query) ||
       commission.restaurantId?.toLowerCase().includes(query) ||
-      commission.restaurant?.name?.toLowerCase().includes(query)
+      commission.restaurant?.name?.toLowerCase().includes(query) ||
+      commission.restaurant?.onboarding?.step1?.restaurantName?.toLowerCase().includes(query)
     )
   }, [commissions, searchQuery])
 
   const filteredRestaurants = useMemo(() => {
-    if (!searchQuery.trim()) {
+    if (!restaurantSearchQuery.trim()) {
       return approvedRestaurants
     }
 
-    const query = searchQuery.toLowerCase().trim()
+    const query = restaurantSearchQuery.toLowerCase().trim()
     return approvedRestaurants.filter(restaurant => {
       const restaurantName = restaurant.onboarding?.step1?.restaurantName || restaurant.name || ''
       return restaurantName.toLowerCase().includes(query) ||
@@ -66,7 +68,7 @@ export default function RestaurantCommission() {
         restaurant.ownerName?.toLowerCase().includes(query) ||
         restaurant.onboarding?.step1?.ownerName?.toLowerCase().includes(query)
     })
-  }, [approvedRestaurants, searchQuery])
+  }, [approvedRestaurants, restaurantSearchQuery])
 
   // Fetch data on component mount
   useEffect(() => {
@@ -175,6 +177,7 @@ export default function RestaurantCommission() {
       notes: ""
     })
     setFormErrors({})
+    setRestaurantSearchQuery("")
     setIsRestaurantSelectOpen(true)
   }
 
@@ -520,8 +523,8 @@ export default function RestaurantCommission() {
               <input
                 type="text"
                 placeholder="Search restaurants..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={restaurantSearchQuery}
+                onChange={(e) => setRestaurantSearchQuery(e.target.value)}
                 className="pl-10 pr-4 py-2 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

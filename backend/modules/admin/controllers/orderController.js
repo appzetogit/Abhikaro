@@ -1007,7 +1007,7 @@ export const getOrderById = asyncHandler(async (req, res) => {
     try {
       const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
       const settlement = await OrderSettlement.findOne({ orderId: order._id })
-        .select('adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning')
+        .select('adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission')
         .lean();
 
       const orderAmount = Number(order?.pricing?.total || 0);
@@ -1017,6 +1017,7 @@ export const getOrderById = asyncHandler(async (req, res) => {
 
       // Hotel earning is stored on the order for QR/hotel-origin orders (commission breakdown).
       const hotelEarning =
+        Number(settlement?.hotelEarning?.commission || 0) ||
         Number(order?.commissionBreakdown?.hotel || 0) ||
         Number(order?.hotelCommission || 0) ||
         0;
