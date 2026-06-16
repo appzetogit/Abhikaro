@@ -363,6 +363,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       const totalOrders = await Order.countDocuments({ status: "delivered" });
 
       const activeRestaurants = await Restaurant.countDocuments({
+        approvedAt: { $exists: true, $ne: null },
         isActive: true,
       });
       const User = (await import("../../auth/models/User.js")).default;
@@ -373,7 +374,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       const activePartners = activeRestaurants + activeDeliveryPartners;
 
       const totalRestaurants = await Restaurant.countDocuments({
-        isActive: true,
+        approvedAt: { $exists: true, $ne: null },
       });
 
       const pendingRestaurantRequestsQuery = {
@@ -435,7 +436,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
 
       const Menu = (await import("../../restaurant/models/Menu.js")).default;
       const Hotel = (await import("../../hotel/models/Hotel.js")).default;
-      const activeRestaurantDocs = await Restaurant.find({ isActive: true })
+      const activeRestaurantDocs = await Restaurant.find({
+        approvedAt: { $exists: true, $ne: null },
+        isActive: true,
+      })
         .select("_id")
         .lean();
       const activeRestaurantIds = activeRestaurantDocs.map((r) => r._id);
@@ -523,6 +527,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       });
       const recentRestaurants = await Restaurant.countDocuments({
         createdAt: { $gte: last24Hours },
+        approvedAt: { $exists: true, $ne: null },
         isActive: true,
       });
 
@@ -820,9 +825,126 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         deliveryPartnerIdsSet.add(o.deliveryPartnerId.toString());
     });
 
-    const totalRestaurants = restaurantIdsSet.size;
-    const totalCustomers = customerIdsSet.size;
-    const totalDeliveryBoys = deliveryPartnerIdsSet.size;
+    const pendingRestaurantRequestsQuery = {
+      isActive: false,
+      $and: [
+        {
+          $or: [
+            { "onboarding.completedSteps": 4 },
+            {
+              $and: [
+                { name: { $exists: true, $ne: null, $ne: "" } },
+                {
+                  cuisines: {
+                    $exists: true,
+                    $ne: null,
+                    $not: { $size: 0 },
+                  },
+                },
+                {
+                  openDays: {
+                    $exists: true,
+                    $ne: null,
+                    $not: { $size: 0 },
+                  },
+                },
+                {
+                  estimatedDeliveryTime: {
+                    $exists: true,
+                    $ne: null,
+                    $ne: "",
+                  },
+                },
+                { featuredDish: { $exists: true, $ne: null, $ne: "" } },
+              ],
+            },
+          ],
+        },
+        {
+          $or: [
+            { rejectionReason: { $exists: false } },
+            { rejectionReason: null },
+          ],
+        },
+      ],
+    };
+
+    let totalRestaurants;
+    let activeRestaurants;
+    let pendingRestaurantRequests;
+
+    if (zoneIdFilter) {
+      totalRestaurants = await Restaurant.countDocuments({
+        zoneId: zoneIdFilter,
+        approvedAt: { $exists: true, $ne: null },
+      });
+      activeRestaurants = await Restaurant.countDocuments({
+        zoneId: zoneIdFilter,
+        approvedAt: { $exists: true, $ne: null },
+        isActive: true,
+      });
+      pendingRestaurantRequests = await Restaurant.countDocuments({
+        ...pendingRestaurantRequestsQuery,
+        zoneId: zoneIdFilter,
+      });
+    } else {
+      totalRestaurants = await Restaurant.countDocuments({
+        approvedAt: { $exists: true, $ne: null },
+      });
+      activeRestaurants = await Restaurant.countDocuments({
+        approvedAt: { $exists: true, $ne: null },
+        isActive: true,
+      });
+      pendingRestaurantRequests = await Restaurant.countDocuments(
+        pendingRestaurantRequestsQuery,
+      );
+    }
+
+    const Delivery = (await import("../../delivery/models/Delivery.js")).default;
+    let totalDeliveryBoys;
+    let activeDeliveryPartners;
+    let pendingDeliveryBoyRequests;
+
+    if (zoneIdFilter) {
+      totalDeliveryBoys = await Delivery.countDocuments({
+        "availability.zones": zoneIdFilter,
+        status: { $in: ["approved", "active"] },
+      });
+      activeDeliveryPartners = await Delivery.countDocuments({
+        "availability.zones": zoneIdFilter,
+        status: { $in: ["approved", "active"] },
+        isActive: true,
+      });
+      pendingDeliveryBoyRequests = await Delivery.countDocuments({
+        "availability.zones": zoneIdFilter,
+        status: "pending",
+      });
+    } else {
+      totalDeliveryBoys = await Delivery.countDocuments({
+        status: { $in: ["approved", "active"] },
+      });
+      activeDeliveryPartners = await Delivery.countDocuments({
+        status: { $in: ["approved", "active"] },
+        isActive: true,
+      });
+      pendingDeliveryBoyRequests = await Delivery.countDocuments({
+        status: "pending",
+      });
+    }
+
+    let totalCustomers;
+    if (zoneIdFilter) {
+      totalCustomers = customerIdsSet.size;
+    } else {
+      const User = (await import("../../auth/models/User.js")).default;
+      totalCustomers = await User.countDocuments({
+        $or: [{ role: "user" }, { role: { $exists: false } }, { role: null }],
+      });
+    }
+
+    const Hotel = (await import("../../hotel/models/Hotel.js")).default;
+    const totalHotels = await Hotel.countDocuments({});
+    const activeHotels = await Hotel.countDocuments({ isActive: true });
 
     const pendingOrders = orderStatusMap.pending || 0;
     const completedOrders = orderStatusMap.delivered || 0;
@@ -836,7 +958,11 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       return ts >= last24Hours;
     }).length;
 
-    const recentRestaurants = totalRestaurants;
+    const recentRestaurants = await Restaurant.countDocuments({
+      createdAt: { $gte: last24Hours },
+      approvedAt: { $exists: true, $ne: null },
+      isActive: true,
+    });
 
     const Menu = (await import("../../restaurant/models/Menu.js")).default;
     let totalFoods = 0;
@@ -949,13 +1075,13 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       monthlyData,
       restaurants: {
         total: totalRestaurants,
-        active: totalRestaurants,
-        pendingRequests: 0,
+        active: activeRestaurants,
+        pendingRequests: pendingRestaurantRequests,
       },
       deliveryBoys: {
         total: totalDeliveryBoys,
-        active: totalDeliveryBoys,
-        pendingRequests: 0,
+        active: activeDeliveryPartners,
+        pendingRequests: pendingDeliveryBoyRequests,
       },
       foods: {
         total: totalFoods,

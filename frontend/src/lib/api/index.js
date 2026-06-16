@@ -1942,6 +1942,11 @@ export const adminAPI = {
     );
   },
 
+  // Bulk delete delivery partners
+  bulkDeleteDeliveryPartners: (ids) => {
+    return apiClient.post(API_ENDPOINTS.ADMIN.DELIVERY_PARTNER_BULK_DELETE, { ids });
+  },
+
   // Add bonus to delivery partner
   addDeliveryPartnerBonus: (deliveryPartnerId, amount, reference = "") => {
     return apiClient.post(API_ENDPOINTS.ADMIN.DELIVERY_PARTNER_BONUS, {

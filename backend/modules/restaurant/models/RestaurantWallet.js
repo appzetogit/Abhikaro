@@ -382,10 +382,17 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
     try {
       const orderIds = paymentTxs.map((t) => t.orderId);
       
-      const existingOrders = await Order.find({ _id: { $in: orderIds } }).select('_id');
+      const existingOrders = await Order.find({ 
+        _id: { $in: orderIds },
+        status: 'delivered'
+      }).select('_id');
       const existingOrderIdsSet = new Set(existingOrders.map((o) => o._id.toString()));
       
-      const existingBookings = await TableBooking.find({ _id: { $in: orderIds } }).select('_id');
+      const existingBookings = await TableBooking.find({ 
+        _id: { $in: orderIds },
+        status: { $in: ['completed', 'dining_completed'] },
+        paymentStatus: 'paid'
+      }).select('_id');
       const existingBookingIdsSet = new Set(existingBookings.map((b) => b._id.toString()));
       
       const hasGhostTransactions = paymentTxs.some((t) => 

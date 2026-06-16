@@ -609,6 +609,82 @@ export const deleteDeliveryPartner = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Bulk Delete Delivery Partners
+ * POST /api/admin/delivery-partners/bulk-delete
+ * Deletes multiple delivery partners and their related data
+ */
+export const bulkDeleteDeliveryPartners = asyncHandler(async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return errorResponse(res, 400, 'Please provide an array of delivery partner IDs');
+    }
+
+    // Import related models
+    const DeliveryWallet = (await import('../../delivery/models/DeliveryWallet.js')).default;
+    const Order = (await import('../../order/models/Order.js')).default;
+
+    // Start transaction for atomic operations
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // 1. Delete Delivery Wallets and all transactions for these IDs
+      const walletDeleted = await DeliveryWallet.deleteMany(
+        { deliveryId: { $in: ids } },
+        { session }
+      );
+      logger.info(`Deleted wallets for delivery partners`, { walletDeletedCount: walletDeleted.deletedCount });
+
+      // 2. Update Orders - Remove deliveryPartnerId (set to null)
+      const ordersUpdated = await Order.updateMany(
+        { deliveryPartnerId: { $in: ids } },
+        { $unset: { deliveryPartnerId: 1 } },
+        { session }
+      );
+      logger.info(`Updated orders for delivery partners`, { 
+        ordersUpdated: ordersUpdated.modifiedCount 
+      });
+
+      // 3. Clear refreshToken to force logout
+      await Delivery.updateMany(
+        { _id: { $in: ids } },
+        { $unset: { refreshToken: 1 } },
+        { session }
+      );
+
+      // 4. Delete the Delivery partner records
+      const deliveryDeleted = await Delivery.deleteMany(
+        { _id: { $in: ids } },
+        { session }
+      );
+
+      // Commit transaction
+      await session.commitTransaction();
+      session.endSession();
+
+      logger.info(`Delivery partners bulk deleted successfully`, {
+        deletedBy: req.user?._id,
+        count: deliveryDeleted.deletedCount,
+        walletDeleted: walletDeleted.deletedCount,
+        ordersUpdated: ordersUpdated.modifiedCount
+      });
+
+      return successResponse(res, 200, `${deliveryDeleted.deletedCount} delivery partners and their related data deleted successfully.`);
+    } catch (error) {
+      // Rollback transaction on error
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
+    }
+  } catch (error) {
+    logger.error(`Error bulk deleting delivery partners: ${error.message}`, { error: error.stack });
+    return errorResponse(res, 500, 'Failed to bulk delete delivery partners');
+  }
+});
+
+/**
  * Reverify Delivery Partner (Resubmit for approval)
  * POST /api/admin/delivery-partners/:id/reverify
  */

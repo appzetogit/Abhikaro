@@ -405,6 +405,7 @@ export const API_ENDPOINTS = {
     DELIVERY_PARTNER_STATUS: "/admin/delivery-partners/:id/status",
     DELIVERY_PARTNER_ZONE: "/admin/delivery-partners/:id/zone",
     DELIVERY_PARTNER_DELETE: "/admin/delivery-partners/:id",
+    DELIVERY_PARTNER_BULK_DELETE: "/admin/delivery-partners/bulk-delete",
     DELIVERY_PARTNER_BONUS: "/admin/delivery-partners/bonus",
     DELIVERY_PARTNER_REVIEWS: "/admin/delivery-partners/reviews",
     DELIVERY_PARTNER_BONUS_TRANSACTIONS:

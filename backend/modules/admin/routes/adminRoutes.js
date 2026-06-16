@@ -87,6 +87,7 @@ import {
   updateDeliveryPartnerZone,
   deleteDeliveryPartner,
   reverifyDeliveryPartner,
+  bulkDeleteDeliveryPartners,
 } from "../controllers/deliveryPartnerController.js";
 import { getDeliveryEarnings } from "../controllers/deliveryEarningsController.js";
 import {
@@ -663,6 +664,7 @@ router.get("/delivery-partners/requests", getJoinRequests);
 router.get("/delivery-partners", getDeliveryPartners);
 router.get("/delivery-partners/earnings", getDeliveryEarnings);
 router.get("/delivery-partners/reviews", getDeliverymanReviews); // Must be before /:id route
+router.post("/delivery-partners/bulk-delete", bulkDeleteDeliveryPartners);
 router.get("/delivery-partners/:id", getDeliveryPartnerById);
 router.post("/delivery-partners/:id/approve", approveDeliveryPartner);
 router.post("/delivery-partners/:id/reject", rejectDeliveryPartner);

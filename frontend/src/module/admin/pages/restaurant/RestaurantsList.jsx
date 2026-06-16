@@ -888,15 +888,19 @@ export default function RestaurantsList() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center flex-shrink-0">
-                          <img
+                            <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center flex-shrink-0 border border-slate-200 shadow-sm">
+                              <img
                                 src={restaurant.logo}
                                 alt={restaurant.name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
-                                  e.target.src = "https://via.placeholder.com/40"
+                                  e.target.style.display = "none"
+                                  e.target.nextSibling.style.display = "flex"
                                 }}
                               />
+                              <span style={{ display: "none" }} className="w-full h-full items-center justify-center text-lg font-bold text-slate-500 bg-gradient-to-br from-slate-100 to-slate-200">
+                                {(restaurant.name || "R").charAt(0).toUpperCase()}
+                              </span>
                             </div>
                             <div className="flex flex-col">
                               <span className="text-sm font-medium text-slate-900">{restaurant.name}</span>

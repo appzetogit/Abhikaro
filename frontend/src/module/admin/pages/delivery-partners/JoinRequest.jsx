@@ -24,17 +24,28 @@ export default function JoinRequest() {
     vehicleType: "",
   })
   const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState([])
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [paginationInfo, setPaginationInfo] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    pages: 0
+  })
 
   // Fetch join requests from API
-  const fetchJoinRequests = async () => {
+  const fetchJoinRequests = async (overridePage) => {
     try {
       setLoading(true)
       setError(null)
       
+      const pageToUse = overridePage !== undefined ? overridePage : currentPage
+
       const params = {
         status: activeTab === "pending" ? "pending" : "denied",
-        page: 1,
-        limit: 1000, // Get all for now, can add pagination later
+        page: pageToUse,
+        limit: 10,
       }
 
       // Add search to params if provided
@@ -54,9 +65,23 @@ export default function JoinRequest() {
       
       if (response.data && response.data.success) {
         setRequests(response.data.data.requests || [])
+        setSelectedIds([])
+        setPaginationInfo(response.data.data.pagination || {
+          page: pageToUse,
+          limit: 10,
+          total: 0,
+          pages: 0
+        })
       } else {
         setError("Failed to fetch join requests")
         setRequests([])
+        setSelectedIds([])
+        setPaginationInfo({
+          page: 1,
+          limit: 10,
+          total: 0,
+          pages: 0
+        })
       }
     } catch (err) {
       console.error("Error fetching join requests:", err)
@@ -85,14 +110,16 @@ export default function JoinRequest() {
 
   // Fetch requests when tab changes
   useEffect(() => {
-    fetchJoinRequests()
+    setCurrentPage(1)
+    fetchJoinRequests(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
   // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchJoinRequests()
+      setCurrentPage(1)
+      fetchJoinRequests(1)
     }, 500) // Wait 500ms after user stops typing
 
     return () => clearTimeout(timer)
@@ -103,7 +130,8 @@ export default function JoinRequest() {
   useEffect(() => {
     if (!isFilterOpen) {
       // Only fetch when filter dialog is closed (after applying)
-      fetchJoinRequests()
+      setCurrentPage(1)
+      fetchJoinRequests(1)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, isFilterOpen])
@@ -131,8 +159,12 @@ export default function JoinRequest() {
       setProcessing(true)
       await adminAPI.approveDeliveryPartner(selectedRequest._id)
       
-      // Refresh the list
-      await fetchJoinRequests()
+      // Calculate if we need to adjust the page number down
+      const isLastItemOnPage = requests.length === 1 && currentPage > 1
+      const pageToFetch = isLastItemOnPage ? currentPage - 1 : currentPage
+
+      setCurrentPage(pageToFetch)
+      await fetchJoinRequests(pageToFetch)
       
       setIsApproveOpen(false)
       setSelectedRequest(null)
@@ -171,8 +203,12 @@ export default function JoinRequest() {
       setProcessing(true)
       await adminAPI.rejectDeliveryPartner(selectedRequest._id, rejectionReason.trim())
       
-      // Refresh the list
-      await fetchJoinRequests()
+      // Calculate if we need to adjust the page number down
+      const isLastItemOnPage = requests.length === 1 && currentPage > 1
+      const pageToFetch = isLastItemOnPage ? currentPage - 1 : currentPage
+
+      setCurrentPage(pageToFetch)
+      await fetchJoinRequests(pageToFetch)
       
       setIsDenyOpen(false)
       setSelectedRequest(null)
@@ -195,7 +231,12 @@ export default function JoinRequest() {
       setProcessing(true)
       await adminAPI.deleteDeliveryPartner(selectedRequest._id)
 
-      await fetchJoinRequests()
+      // Calculate if we need to adjust the page number down
+      const isLastItemOnPage = requests.length === 1 && currentPage > 1
+      const pageToFetch = isLastItemOnPage ? currentPage - 1 : currentPage
+
+      setCurrentPage(pageToFetch)
+      await fetchJoinRequests(pageToFetch)
 
       setIsDeleteOpen(false)
       setSelectedRequest(null)
@@ -207,6 +248,56 @@ export default function JoinRequest() {
     } finally {
       setProcessing(false)
     }
+  }
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    )
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredRequests.length) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(filteredRequests.map(r => r._id))
+    }
+  }
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return
+    setIsBulkDeleteOpen(true)
+  }
+
+  const confirmBulkDelete = async () => {
+    if (selectedIds.length === 0) return
+
+    try {
+      setProcessing(true)
+      await adminAPI.bulkDeleteDeliveryPartners(selectedIds)
+
+      // Calculate if all items on the page were deleted and we are on a page > 1
+      const allItemsDeleted = selectedIds.length === requests.length && currentPage > 1
+      const pageToFetch = allItemsDeleted ? currentPage - 1 : currentPage
+
+      setCurrentPage(pageToFetch)
+      await fetchJoinRequests(pageToFetch)
+
+      setIsBulkDeleteOpen(false)
+      setSelectedIds([])
+
+      alert("Selected requests deleted successfully.")
+    } catch (err) {
+      console.error("Error bulk deleting requests:", err)
+      alert(err.response?.data?.message || "Failed to delete requests. Please try again.")
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage)
+    fetchJoinRequests(newPage)
   }
 
   const handleView = async (request) => {
@@ -252,6 +343,7 @@ export default function JoinRequest() {
     setActiveTab(tab)
     setSearchQuery("") // Reset search when changing tabs
     setFilters({ zone: "", jobType: "", vehicleType: "" }) // Reset filters
+    setSelectedIds([])
   }
 
   const activeFiltersCount = Object.values(filters).filter(v => v).length
@@ -309,6 +401,16 @@ export default function JoinRequest() {
             </div>
 
             <div className="flex items-center gap-2">
+              {selectedIds.length > 0 && (
+                <button
+                  onClick={handleBulkDelete}
+                  className="px-4 py-2.5 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white flex items-center gap-2 transition-all shadow-md hover:shadow-lg active:scale-95 mr-2"
+                  title="Delete Selected Requests"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete Selected ({selectedIds.length})</span>
+                </button>
+              )}
               <button 
                 onClick={() => setIsFilterOpen(true)}
                 className={`px-4 py-2.5 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-2 transition-all relative ${
@@ -363,9 +465,18 @@ export default function JoinRequest() {
                 <span className="ml-3 text-sm text-slate-600">Loading requests...</span>
               </div>
             ) : (
-              <table className="w-full">
+              <>
+                <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
+                    <th className="px-4 py-4 text-left">
+                      <input
+                        type="checkbox"
+                        checked={filteredRequests.length > 0 && selectedIds.length === filteredRequests.length}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                      />
+                    </th>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
                         <span>SI</span>
@@ -414,7 +525,7 @@ export default function JoinRequest() {
                 <tbody className="bg-white divide-y divide-slate-100">
                   {filteredRequests.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-20 text-center">
+                      <td colSpan={9} className="px-6 py-20 text-center">
                         <p className="text-sm text-slate-500">
                           {error ? "Error loading requests" : "No requests found"}
                         </p>
@@ -423,6 +534,14 @@ export default function JoinRequest() {
                   ) : (
                     filteredRequests.map((request) => (
                       <tr key={request._id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(request._id)}
+                            onChange={() => toggleSelect(request._id)}
+                            className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm font-medium text-slate-700">{request.sl}</span>
                         </td>
@@ -511,8 +630,32 @@ export default function JoinRequest() {
                   )}
                 </tbody>
               </table>
-            )}
-          </div>
+              {paginationInfo.pages > 1 && (
+                <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
+                  <div className="text-sm text-slate-600 font-semibold">
+                    Page {currentPage} of {paginationInfo.pages} (Total {paginationInfo.total} requests)
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                      disabled={currentPage === 1 || loading}
+                      className="px-4 py-2 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => handlePageChange(Math.min(paginationInfo.pages, currentPage + 1))}
+                      disabled={currentPage === paginationInfo.pages || loading}
+                      className="px-4 py-2 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
         </div>
       </div>
 
@@ -621,6 +764,40 @@ export default function JoinRequest() {
             </button>
             <button
               onClick={confirmDelete}
+              disabled={processing}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+            >
+              {processing && <Loader2 className="w-4 h-4 animate-spin" />}
+              Delete
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+        <DialogContent className="max-w-md bg-white p-0 opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:scale-100 data-[state=closed]:scale-100">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle className="text-red-700">Delete Multiple Requests</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-6 space-y-2">
+            <p className="text-sm text-slate-700">
+              Are you sure you want to permanently delete {selectedIds.length} selected join request(s)?
+            </p>
+            <p className="text-xs text-red-600">
+              This will remove the selected delivery partner records from the database.
+            </p>
+          </div>
+          <DialogFooter className="px-6 pb-6">
+            <button
+              onClick={() => setIsBulkDeleteOpen(false)}
+              disabled={processing}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmBulkDelete}
               disabled={processing}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
             >
