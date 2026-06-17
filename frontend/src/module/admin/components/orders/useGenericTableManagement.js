@@ -27,15 +27,175 @@ export function useGenericTableManagement(data, title, searchFields = []) {
 
     // Apply filters
     Object.entries(filters).forEach(([key, value]) => {
-      if (value && value !== "") {
+      if (value === undefined || value === null || value === "") return
+
+      // Special handling for paymentStatus
+      if (key === 'paymentStatus') {
         result = result.filter(item => {
-          const itemValue = item[key]
-          if (typeof value === 'string') {
-            return itemValue === value || itemValue?.toString().toLowerCase() === value.toLowerCase()
-          }
-          return itemValue === value
+          const order = item.originalOrder || item
+          const orderStatus = order.paymentStatus
+          return orderStatus === value || (value === 'Unpaid' && orderStatus === 'Pending')
         })
+        return
       }
+
+      // Special handling for deliveryType
+      if (key === 'deliveryType') {
+        result = result.filter(item => {
+          const order = item.originalOrder || item
+          return order.deliveryType === value
+        })
+        return
+      }
+
+      // Special handling for minAmount
+      if (key === 'minAmount') {
+        const minVal = parseFloat(value)
+        result = result.filter(item => {
+          const order = item.originalOrder || item
+          const amt = order.pricing?.total ?? order.totalAmount ?? item.totalAmount ?? 0
+          return parseFloat(amt) >= minVal
+        })
+        return
+      }
+
+      // Special handling for maxAmount
+      if (key === 'maxAmount') {
+        const maxVal = parseFloat(value)
+        result = result.filter(item => {
+          const order = item.originalOrder || item
+          const amt = order.pricing?.total ?? order.totalAmount ?? item.totalAmount ?? 0
+          return parseFloat(amt) <= maxVal
+        })
+        return
+      }
+
+      // Special handling for restaurant
+      if (key === 'restaurant') {
+        result = result.filter(item => {
+          const order = item.originalOrder || item
+          const rest = order.restaurant ?? item.restaurantName ?? item.restaurant ?? ''
+          return rest === value
+        })
+        return
+      }
+
+      // Special handling for hotel
+      if (key === 'hotel') {
+        result = result.filter(item => {
+          const order = item.originalOrder || item
+          const h = order.hotelName ?? item.hotelName ?? item.hotel ?? ''
+          return h === value
+        })
+        return
+      }
+
+      // Special handling for paymentType
+      if (key === 'paymentType') {
+        if (Array.isArray(value) && value.length > 0) {
+          // Helper function to get standardized payment type display
+          const getOrderPaymentTypeDisplay = (order) => {
+            let paymentTypeDisplay = order.paymentType
+            const rawMethod = (order.payment?.method || order.paymentMethod || '').toLowerCase()
+            const isPayAtHotelMethod = rawMethod === 'pay_at_hotel'
+            const isPayAtHotelRazorpay =
+              isPayAtHotelMethod &&
+              (order.payment?.razorpayOrderId || order.payment?.razorpayPaymentId)
+
+            if (!paymentTypeDisplay) {
+              if (rawMethod === 'cash' || rawMethod === 'cod') {
+                paymentTypeDisplay = 'Cash on Delivery'
+              } else if (rawMethod === 'wallet') {
+                paymentTypeDisplay = 'Wallet'
+              } else if (isPayAtHotelRazorpay) {
+                paymentTypeDisplay = 'Pay at Hotel (Razorpay)'
+              } else if (isPayAtHotelMethod) {
+                paymentTypeDisplay = 'Pay at Hotel (Cash)'
+              } else {
+                paymentTypeDisplay = 'Online'
+              }
+            }
+            
+            if (rawMethod === 'wallet' && paymentTypeDisplay !== 'Wallet') {
+              paymentTypeDisplay = 'Wallet'
+            } else if (isPayAtHotelRazorpay && paymentTypeDisplay !== 'Pay at Hotel (Razorpay)') {
+              paymentTypeDisplay = 'Pay at Hotel (Razorpay)'
+            } else if (isPayAtHotelMethod && !isPayAtHotelRazorpay && !paymentTypeDisplay?.toLowerCase?.().startsWith('pay at hotel')) {
+              paymentTypeDisplay = 'Pay at Hotel (Cash)'
+            }
+            
+            return paymentTypeDisplay || 'Online'
+          }
+
+          result = result.filter(item => {
+            const order = item.originalOrder || item
+            const type = getOrderPaymentTypeDisplay(order)
+            return value.some(filterType => {
+              if (filterType === 'Pay at Hotel') {
+                return type.toLowerCase().startsWith('pay at hotel')
+              }
+              return type === filterType
+            })
+          })
+        }
+        return
+      }
+
+      // Helper for parsing date formats
+      const parseOrderDate = (dateVal) => {
+        if (!dateVal) return new Date()
+        const dateStr = String(dateVal).trim()
+        const months = {
+          "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04", "MAY": "05", "JUN": "06",
+          "JUL": "07", "AUG": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12"
+        }
+        const parts = dateStr.split(" ")
+        if (parts.length === 3) {
+          const day = parts[0].padStart(2, "0")
+          const month = months[parts[1].toUpperCase()] || "01"
+          const year = parts[2]
+          return new Date(`${year}-${month}-${day}`)
+        }
+        return new Date(dateStr)
+      }
+
+      // Special handling for fromDate
+      if (key === 'fromDate') {
+        const fromDate = new Date(value)
+        fromDate.setHours(0, 0, 0, 0)
+        result = result.filter(item => {
+          const order = item.originalOrder || item
+          const itemDateVal = order.createdAt ?? item.date ?? item.orderDate
+          if (!itemDateVal) return true
+          const orderDate = parseOrderDate(itemDateVal)
+          return orderDate >= fromDate
+        })
+        return
+      }
+
+      // Special handling for toDate
+      if (key === 'toDate') {
+        const toDate = new Date(value)
+        toDate.setHours(23, 59, 59, 999)
+        result = result.filter(item => {
+          const order = item.originalOrder || item
+          const itemDateVal = order.createdAt ?? item.date ?? item.orderDate
+          if (!itemDateVal) return true
+          const orderDate = parseOrderDate(itemDateVal)
+          return orderDate <= toDate
+        })
+        return
+      }
+
+      // Generic fallback for other fields (e.g. status, orderType, zone)
+      result = result.filter(item => {
+        const order = item.originalOrder || item
+        const itemValue = order[key] ?? item[key]
+        if (typeof value === 'string') {
+          return itemValue === value || itemValue?.toString().toLowerCase() === value.toLowerCase()
+        }
+        return itemValue === value
+      })
     })
 
     return result
@@ -45,7 +205,12 @@ export function useGenericTableManagement(data, title, searchFields = []) {
 
   // Count active filters
   const activeFiltersCount = useMemo(() => {
-    return Object.values(filters).filter(value => value !== "" && value !== null && value !== undefined).length
+    return Object.values(filters).filter(value => {
+      if (Array.isArray(value)) {
+        return value.length > 0
+      }
+      return value !== "" && value !== null && value !== undefined
+    }).length
   }, [filters])
 
   const handleApplyFilters = () => {

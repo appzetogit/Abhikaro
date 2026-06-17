@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { adminAPI } from "@/lib/api"
-import { Search, Wallet, Loader2, IndianRupee, Building2, Eye, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Wallet, Loader2, IndianRupee, Building2, Eye, ChevronLeft, ChevronRight, Download } from "lucide-react"
+import { toast } from "sonner"
+import { exportTransactionsToPDF } from "../../components/transactions/transactionsExportUtils"
 
 const formatCurrency = (amount) => {
   if (amount == null) return "₹0"
@@ -16,7 +18,6 @@ export default function HotelWalletAdmin() {
   const [search, setSearch] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [editingHotel, setEditingHotel] = useState(null)
-  const [editCashValue, setEditCashValue] = useState("")
   const [balanceAction, setBalanceAction] = useState("credit")
   const [balanceAmount, setBalanceAmount] = useState("")
   const [balanceNote, setBalanceNote] = useState("")
@@ -117,11 +118,6 @@ export default function HotelWalletAdmin() {
   const openEditModal = (hotel) => {
     setEditingHotel(hotel)
     setEditError("")
-    const rawValue =
-      typeof hotel.totalCashCollected === "number"
-        ? hotel.totalCashCollected
-        : 0
-    setEditCashValue(String(rawValue))
     setBalanceAction("credit")
     setBalanceAmount("")
     setBalanceNote("")
@@ -130,7 +126,6 @@ export default function HotelWalletAdmin() {
   const closeEditModal = () => {
     if (savingEdit) return
     setEditingHotel(null)
-    setEditCashValue("")
     setBalanceAction("credit")
     setBalanceAmount("")
     setBalanceNote("")
@@ -140,11 +135,7 @@ export default function HotelWalletAdmin() {
   const handleSaveCashCollected = async () => {
     if (!editingHotel) return
 
-    const value = Number(editCashValue)
-    if (Number.isNaN(value) || value < 0) {
-      setEditError("Please enter a valid non-negative amount")
-      return
-    }
+    const value = editingHotel.totalCashCollected || 0
 
     let balanceAdjustment = null
     if (String(balanceAmount || "").trim()) {
@@ -158,6 +149,9 @@ export default function HotelWalletAdmin() {
         amount: amt,
         description: String(balanceNote || "").trim() || undefined,
       }
+    } else {
+      setEditError("Please enter a balance adjustment amount.")
+      return
     }
 
     try {
@@ -173,10 +167,42 @@ export default function HotelWalletAdmin() {
 
       closeEditModal()
     } catch (err) {
-      console.error("Failed to update hotel cash collected:", err)
-      setEditError("Failed to update cash collected. Please try again.")
+      console.error("Failed to adjust hotel wallet balance:", err)
+      setEditError("Failed to update wallet balance. Please try again.")
     } finally {
       setSavingEdit(false)
+    }
+  }
+
+  const handleExport = async () => {
+    if (filtered.length === 0) {
+      toast.error("No data to export.")
+      return
+    }
+    const headers = [
+      { key: "sl", label: "SI" },
+      { key: "hotelName", label: "Hotel Name" },
+      { key: "hotelId", label: "Hotel ID" },
+      { key: "totalRequests", label: "Total Requests" },
+      { key: "totalAmount", label: "Total Amount" },
+      { key: "hotelEarnings", label: "Hotel Earnings" },
+      { key: "availableBalance", label: "Available Balance" },
+    ]
+    const exportData = filtered.map((h, index) => ({
+      sl: index + 1,
+      hotelName: h.hotelName || 'N/A',
+      hotelId: h.hotelCode || 'N/A',
+      totalRequests: h.totalRequests || 0,
+      totalAmount: formatCurrency(h.totalAmountCollected),
+      hotelEarnings: formatCurrency(h.hotelEarnings),
+      availableBalance: formatCurrency(h.availableBalance),
+    }))
+
+    try {
+      await exportTransactionsToPDF(exportData, headers, "hotel_finance_overview", "Hotel Finance Overview Report")
+    } catch (err) {
+      console.error("Error exporting to PDF:", err)
+      toast.error("Failed to generate PDF report")
     }
   }
 
@@ -203,15 +229,25 @@ export default function HotelWalletAdmin() {
                 {filtered.length}
               </span>
             </div>
-            <div className="relative flex-1 sm:flex-initial min-w-[220px] max-w-xs">
-              <input
-                type="text"
-                placeholder="Search by hotel name, ID or phone"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 pr-4 py-2.5 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
-              />
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <input
+                  type="text"
+                  placeholder="Search by hotel name, ID or phone"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10 pr-4 py-2.5 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
+                />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              </div>
+              <button
+                type="button"
+                onClick={handleExport}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 flex items-center justify-center gap-2 transition-all shadow-xs"
+              >
+                <Download className="w-4 h-4 text-slate-500" />
+                <span>Download PDF</span>
+              </button>
             </div>
           </div>
 
@@ -238,9 +274,6 @@ export default function HotelWalletAdmin() {
                       Total Amount
                     </th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      Cash Collected
-                    </th>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       Hotel Earnings
                     </th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -254,7 +287,7 @@ export default function HotelWalletAdmin() {
                 <tbody className="bg-white divide-y divide-slate-100">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-16 text-center">
+                      <td colSpan={7} className="px-6 py-16 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <Building2 className="w-12 h-12 text-slate-300 mb-3" />
                           <p className="text-sm font-medium text-slate-600">
@@ -287,9 +320,6 @@ export default function HotelWalletAdmin() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800">
                           {formatCurrency(hotel.totalAmountCollected)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800">
-                          {formatCurrency(hotel.totalCashCollected)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800">
                           <span className="inline-flex items-center gap-1">
@@ -385,26 +415,12 @@ export default function HotelWalletAdmin() {
               Edit Wallet
             </h3>
             <p className="text-sm text-slate-600">
-              Update cash collected and optionally adjust available balance for{" "}
+              Adjust available balance for{" "}
               <span className="font-semibold">
                 {editingHotel.hotelName || "Selected Hotel"}
               </span>
               .
             </p>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-700 uppercase tracking-wide">
-                Cash Collected (₹)
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={editCashValue}
-                onChange={(e) => setEditCashValue(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
-              />
-            </div>
 
             <div className="border-t border-slate-100 pt-4 space-y-3">
               <div className="flex items-center justify-between">

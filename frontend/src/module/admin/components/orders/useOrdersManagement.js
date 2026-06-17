@@ -15,6 +15,8 @@ export function useOrdersManagement(orders, statusKey, title) {
     fromDate: "",
     toDate: "",
     restaurant: "",
+    paymentType: [],
+    hotel: "",
   })
   const [visibleColumns, setVisibleColumns] = useState({
     si: true,
@@ -35,6 +37,11 @@ export function useOrdersManagement(orders, statusKey, title) {
   // Get unique restaurants from orders
   const restaurants = useMemo(() => {
     return [...new Set(orders.map(o => o.restaurant))]
+  }, [orders])
+
+  // Get unique hotels from orders
+  const hotels = useMemo(() => {
+    return [...new Set(orders.map(o => o.hotelName).filter(Boolean))]
   }, [orders])
 
   // Apply search and filters
@@ -78,6 +85,58 @@ export function useOrdersManagement(orders, statusKey, title) {
       result = result.filter(order => order.restaurant === filters.restaurant)
     }
 
+    // Helper function to get standardized payment type display
+    const getOrderPaymentTypeDisplay = (order) => {
+      let paymentTypeDisplay = order.paymentType;
+      
+      const rawMethod = (order.payment?.method || order.paymentMethod || '').toLowerCase();
+      const isPayAtHotelMethod = rawMethod === 'pay_at_hotel';
+      const isPayAtHotelRazorpay =
+        isPayAtHotelMethod &&
+        (order.payment?.razorpayOrderId || order.payment?.razorpayPaymentId);
+
+      if (!paymentTypeDisplay) {
+        if (rawMethod === 'cash' || rawMethod === 'cod') {
+          paymentTypeDisplay = 'Cash on Delivery';
+        } else if (rawMethod === 'wallet') {
+          paymentTypeDisplay = 'Wallet';
+        } else if (isPayAtHotelRazorpay) {
+          paymentTypeDisplay = 'Pay at Hotel (Razorpay)';
+        } else if (isPayAtHotelMethod) {
+          paymentTypeDisplay = 'Pay at Hotel (Cash)';
+        } else {
+          paymentTypeDisplay = 'Online';
+        }
+      }
+      
+      // Override if payment method is wallet / pay_at_hotel but paymentType is not set correctly
+      if (rawMethod === 'wallet' && paymentTypeDisplay !== 'Wallet') {
+        paymentTypeDisplay = 'Wallet';
+      } else if (isPayAtHotelRazorpay && paymentTypeDisplay !== 'Pay at Hotel (Razorpay)') {
+        paymentTypeDisplay = 'Pay at Hotel (Razorpay)';
+      } else if (isPayAtHotelMethod && !isPayAtHotelRazorpay && !paymentTypeDisplay?.toLowerCase?.().startsWith('pay at hotel')) {
+        paymentTypeDisplay = 'Pay at Hotel (Cash)';
+      }
+      
+      return paymentTypeDisplay || 'Online';
+    }
+
+    if (filters.paymentType && filters.paymentType.length > 0) {
+      result = result.filter(order => {
+        const type = getOrderPaymentTypeDisplay(order);
+        return filters.paymentType.some(filterType => {
+          if (filterType === 'Pay at Hotel') {
+            return type.toLowerCase().startsWith('pay at hotel');
+          }
+          return type === filterType;
+        });
+      });
+    }
+
+    if (filters.hotel) {
+      result = result.filter(order => order.hotelName === filters.hotel);
+    }
+
     // Helper function to parse date format "16 JUL 2025"
     const parseOrderDate = (dateStr) => {
       const months = {
@@ -118,7 +177,12 @@ export function useOrdersManagement(orders, statusKey, title) {
 
   // Count active filters
   const activeFiltersCount = useMemo(() => {
-    return Object.values(filters).filter(value => value !== "").length
+    return Object.values(filters).filter(value => {
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+      return value !== "";
+    }).length
   }, [filters])
 
   const handleApplyFilters = () => {
@@ -134,6 +198,8 @@ export function useOrdersManagement(orders, statusKey, title) {
       fromDate: "",
       toDate: "",
       restaurant: "",
+      paymentType: [],
+      hotel: "",
     })
   }
 
@@ -439,6 +505,7 @@ export function useOrdersManagement(orders, statusKey, title) {
     count,
     activeFiltersCount,
     restaurants,
+    hotels,
     handleApplyFilters,
     handleResetFilters,
     handleExport,

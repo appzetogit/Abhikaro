@@ -1,6 +1,6 @@
 import { X } from "lucide-react"
 
-export default function FilterPanel({ isOpen, onClose, filters, setFilters, onApply, onReset, restaurants = [] }) {
+export default function FilterPanel({ isOpen, onClose, filters, setFilters, onApply, onReset, restaurants = [], hotels = [] }) {
   if (!isOpen) return null
 
   return (
@@ -64,6 +64,49 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
             </div>
           </div>
 
+          {/* Payment Type Filter */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Payment Type
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {["All", "Online", "Wallet", "Hotel (Online)", "Pay at Hotel", "Cash on Delivery"].map((type) => {
+                const isAll = type === "All";
+                const isSelected = isAll 
+                  ? !filters.paymentType || filters.paymentType.length === 0 
+                  : Array.isArray(filters.paymentType) && filters.paymentType.includes(type);
+
+                const handleClick = () => {
+                  if (isAll) {
+                    setFilters(prev => ({ ...prev, paymentType: [] }))
+                  } else {
+                    setFilters(prev => {
+                      const current = Array.isArray(prev.paymentType) ? prev.paymentType : [];
+                      const next = current.includes(type)
+                        ? current.filter(t => t !== type)
+                        : [...current, type];
+                      return { ...prev, paymentType: next };
+                    })
+                  }
+                };
+
+                return (
+                  <button
+                    key={type}
+                    onClick={handleClick}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      isSelected
+                        ? "bg-emerald-500 text-white shadow-md"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    {type}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Amount Range */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -118,24 +161,44 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
             </div>
           </div>
 
-          {/* Restaurant Filter */}
-          {restaurants.length > 0 && (
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Restaurant
-              </label>
-              <select
-                value={filters.restaurant || ""}
-                onChange={(e) => setFilters(prev => ({ ...prev, restaurant: e.target.value }))}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="">All Restaurants</option>
-                {restaurants.map((rest) => (
-                  <option key={rest} value={rest}>{rest}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Restaurant & Hotel Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {restaurants.length > 0 && (
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Restaurant
+                </label>
+                <select
+                  value={filters.restaurant || ""}
+                  onChange={(e) => setFilters(prev => ({ ...prev, restaurant: e.target.value }))}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">All Restaurants</option>
+                  {restaurants.map((rest) => (
+                    <option key={rest} value={rest}>{rest}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {hotels && hotels.length > 0 && (
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Hotel
+                </label>
+                <select
+                  value={filters.hotel || ""}
+                  onChange={(e) => setFilters(prev => ({ ...prev, hotel: e.target.value }))}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">All Hotels</option>
+                  {hotels.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-end gap-3">

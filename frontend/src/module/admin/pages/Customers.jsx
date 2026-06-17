@@ -167,7 +167,7 @@ export default function Customers() {
 
   const filteredCustomers = useMemo(() => {
     let result = [...customers]
-    
+
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim()
@@ -236,7 +236,7 @@ export default function Customers() {
   const getPageNumbers = () => {
     const pages = []
     const range = 2 // Number of pages to show before and after current page
-    
+
     for (let i = 1; i <= totalPages; i++) {
       if (
         i === 1 ||
@@ -251,7 +251,7 @@ export default function Customers() {
         pages.push("...")
       }
     }
-    
+
     // Remove duplicate ellipses
     return pages.filter((page, index) => {
       if (page === "...") {
@@ -269,7 +269,7 @@ export default function Customers() {
     try {
       setLoading(true)
       const params = {
-        limit: 1000, // Get all customers
+        limit: 1000000, // Get all customers
         offset: 0,
         ...(searchQuery && { search: searchQuery }),
         ...(filters.status && { status: filters.status }),
@@ -349,7 +349,7 @@ export default function Customers() {
 
       const response = await adminAPI.getUserById(customerId, { ordersLimit: 2000 })
       const data = response?.data?.data || response?.data
-      
+
       if (data?.user) {
         setUserDetails(data.user)
       } else {
@@ -690,7 +690,7 @@ export default function Customers() {
 
           <div className="mt-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 onClick={() => {
                   // Filters are applied automatically via useMemo
                 }}
@@ -837,20 +837,18 @@ export default function Customers() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button
                           onClick={() => handleToggleStatus(customer.id || customer.sl)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                            customer.status ? "bg-blue-600" : "bg-slate-300"
-                          }`}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${customer.status ? "bg-blue-600" : "bg-slate-300"
+                            }`}
                         >
                           <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              customer.status ? "translate-x-6" : "translate-x-1"
-                            }`}
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${customer.status ? "translate-x-6" : "translate-x-1"
+                              }`}
                           />
                         </button>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center min-w-[160px]">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button 
+                          <button
                             onClick={() => handleViewDetails(customer.id || customer.sl)}
                             className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
                             title="View"
@@ -904,7 +902,7 @@ export default function Customers() {
                 </span>{" "}
                 of <span className="font-semibold text-slate-900">{filteredCustomers.length}</span> customers
               </div>
-              
+
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
@@ -914,7 +912,7 @@ export default function Customers() {
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                
+
                 <div className="flex items-center gap-1">
                   {getPageNumbers().map((page, idx) => (
                     page === "..." ? (
@@ -925,18 +923,17 @@ export default function Customers() {
                       <button
                         key={`page-${page}`}
                         onClick={() => setCurrentPage(page)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                          currentPage === page
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${currentPage === page
                             ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100"
                             : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                        }`}
+                          }`}
                       >
                         {page}
                       </button>
                     )
                   ))}
                 </div>
-                
+
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
@@ -960,7 +957,7 @@ export default function Customers() {
               <p className="text-xs md:text-sm text-slate-500 mt-1">Customer profile, spend, and recent orders</p>
             </div>
           </DialogHeader>
-          
+
           {loadingDetails ? (
             <div className="py-8 text-center">
               <div className="text-sm text-slate-500">Loading user details...</div>
@@ -1530,7 +1527,7 @@ export default function Customers() {
                             )}
                           </div>
                           <p className="text-xs font-medium text-slate-700 leading-normal">{t.description || "—"}</p>
-                          
+
                           {t.orderId && (
                             <div className="pt-1">
                               <button
@@ -1552,8 +1549,8 @@ export default function Customers() {
                         </div>
                         <div className="text-right shrink-0">
                           <p className={`text-sm font-bold ${t.isOrderActivity ? "text-slate-800" : isPositive ? "text-emerald-700" : "text-rose-700"}`}>
-                            {t?.amount != null 
-                              ? t.isOrderActivity 
+                            {t?.amount != null
+                              ? t.isOrderActivity
                                 ? formatCurrency(Number(t.amount))
                                 : `${isPositive ? "+" : "−"}${formatCurrency(Math.abs(Number(t.amount)))}`
                               : "—"}

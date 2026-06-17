@@ -39,7 +39,7 @@ export default function RegularOrderReport() {
   const [zones, setZones] = useState([])
   const [restaurants, setRestaurants] = useState([])
   const [customers, setCustomers] = useState([])
-  
+
   const [filters, setFilters] = useState({
     zone: "All Zones",
     restaurant: "All restaurants",
@@ -68,7 +68,7 @@ export default function RegularOrderReport() {
         }
 
         // Fetch customers (users)
-        const usersRes = await adminAPI.getUsers({ limit: 100 })
+        const usersRes = await adminAPI.getUsers({ limit: 1000000 })
         if (usersRes.data?.success) {
           setCustomers(usersRes.data.data.users || [])
         }
@@ -129,7 +129,7 @@ export default function RegularOrderReport() {
         }
 
         const response = await adminAPI.getOrders(params)
-        
+
         if (response.data?.success) {
           // Transform backend orders to match frontend format
           const transformedOrders = (response.data.data.orders || []).map(order => ({
@@ -381,17 +381,16 @@ export default function RegularOrderReport() {
               <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
             </div>
 
-            <button 
+            <button
               onClick={handleResetFilters}
               className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all whitespace-nowrap"
             >
               Reset
             </button>
-            <button 
+            <button
               onClick={handleFilterApply}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all whitespace-nowrap relative ${
-                activeFiltersCount > 0 ? "ring-2 ring-blue-300" : ""
-              }`}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all whitespace-nowrap relative ${activeFiltersCount > 0 ? "ring-2 ring-blue-300" : ""
+                }`}
             >
               Filter
               {activeFiltersCount > 0 && (
@@ -467,7 +466,7 @@ export default function RegularOrderReport() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <button 
+              <button
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-all"
               >
@@ -561,19 +560,19 @@ export default function RegularOrderReport() {
                       <td className="px-1.5 py-1">
                         <span className="text-[10px] text-slate-700">{formatAmount(order.discountedAmount)}</span>
                       </td>
-                    <td className="px-1.5 py-1">
-                      <span className="text-[10px] text-slate-700">{formatAmount(order.couponDiscount)}</span>
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <span className="text-[9px] text-slate-700">
-                        {order.adminOfferDiscount > 0
-                          ? `${formatAmount(order.adminOfferDiscount)}${order.adminOfferName ? ` (${order.adminOfferName})` : ""}`
-                          : "-"}
-                      </span>
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <span className="text-[10px] text-slate-700">{formatAmount(order.referralDiscount)}</span>
-                    </td>
+                      <td className="px-1.5 py-1">
+                        <span className="text-[10px] text-slate-700">{formatAmount(order.couponDiscount)}</span>
+                      </td>
+                      <td className="px-1.5 py-1">
+                        <span className="text-[9px] text-slate-700">
+                          {order.adminOfferDiscount > 0
+                            ? `${formatAmount(order.adminOfferDiscount)}${order.adminOfferName ? ` (${order.adminOfferName})` : ""}`
+                            : "-"}
+                        </span>
+                      </td>
+                      <td className="px-1.5 py-1">
+                        <span className="text-[10px] text-slate-700">{formatAmount(order.referralDiscount)}</span>
+                      </td>
                       <td className="px-1.5 py-1">
                         <span className="text-[10px] text-slate-700">{formatAmount(order.vatTax)}</span>
                       </td>
@@ -618,11 +617,10 @@ export default function RegularOrderReport() {
                 <button
                   key={idx + 1}
                   onClick={() => handlePageChange(idx + 1)}
-                  className={`w-6 h-6 text-[10px] rounded border ${
-                    currentPage === idx + 1
+                  className={`w-6 h-6 text-[10px] rounded border ${currentPage === idx + 1
                       ? "bg-blue-600 border-blue-600 text-white"
                       : "border-slate-300 text-slate-700 hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   {idx + 1}
                 </button>

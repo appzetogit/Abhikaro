@@ -53,10 +53,14 @@ export default function HotelWallet() {
       try {
         const hotel =
           profileRes?.data?.data?.hotel || profileRes?.data?.hotel || null
+        // Must match the 6 docs required by backend hotelWalletController.js
         const required = [
           { key: "aadharCardFront", label: "Aadhar Card Front" },
           { key: "aadharCardBack", label: "Aadhar Card Back" },
           { key: "panCardFront", label: "PAN Card Front" },
+          { key: "panCardBack", label: "PAN Card Back" },
+          { key: "hotelAddressVerifyDocumentFront", label: "Hotel Address Document" },
+          { key: "bankPassbookFront", label: "Bank Passbook / Cheque" },
         ]
         const missing = required
           .filter((r) => !(hotel && hotel[r.key] && hotel[r.key].url))

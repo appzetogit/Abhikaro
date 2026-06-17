@@ -6,6 +6,7 @@ import OrdersTopbar from "../components/orders/OrdersTopbar"
 import OrderDetectDeliveryTable from "../components/orders/OrderDetectDeliveryTable"
 import ViewOrderDetectDeliveryDialog from "../components/orders/ViewOrderDetectDeliveryDialog"
 import SettingsDialog from "../components/orders/SettingsDialog"
+import FilterPanel from "../components/orders/FilterPanel"
 import { useGenericTableManagement } from "../components/orders/useGenericTableManagement"
 
 // Function to map backend order status to frontend display status
@@ -353,6 +354,14 @@ export default function OrderDetectDelivery() {
     })
   }
 
+  const restaurants = useMemo(() => {
+    return [...new Set(orders.map(o => o.restaurantName || o.originalOrder?.restaurant).filter(Boolean))]
+  }, [orders])
+
+  const hotels = useMemo(() => {
+    return [...new Set(orders.map(o => o.originalOrder?.hotelName).filter(Boolean))]
+  }, [orders])
+
   const statCards = [
     { key: "total", label: "Total Orders", value: stats.total, valueClass: "text-slate-900", Icon: Package, iconClass: "text-blue-600", iconBgClass: "bg-blue-50" },
     { key: "ordered", label: "Ordered", value: stats.ordered, valueClass: "text-blue-600", Icon: Clock, iconClass: "text-blue-600", iconBgClass: "bg-blue-50" },
@@ -428,6 +437,16 @@ export default function OrderDetectDelivery() {
         ))}
       </div>
 
+      <FilterPanel
+        isOpen={isFilterOpen}
+        onClose={() => setIsFilterOpen(false)}
+        filters={filters}
+        setFilters={setFilters}
+        onApply={handleApplyFilters}
+        onReset={handleResetFilters}
+        restaurants={restaurants}
+        hotels={hotels}
+      />
       <SettingsDialog
         isOpen={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}

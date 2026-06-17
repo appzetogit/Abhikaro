@@ -31,7 +31,6 @@ export default function OrdersPage({ statusKey = "all" }) {
   const config = statusConfig[statusKey] || statusConfig["all"]
   const [orders, setOrders] = useState([])
   const [isLoading, setIsLoading] = useState(true)
-  const [totalCount, setTotalCount] = useState(0)
   const [selectedOrderIds, setSelectedOrderIds] = useState([])
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [processingRefund, setProcessingRefund] = useState(null)
@@ -55,7 +54,6 @@ export default function OrdersPage({ statusKey = "all" }) {
       
       if (response.data?.success && response.data?.data?.orders) {
         setOrders(response.data.data.orders)
-        setTotalCount(response.data.data.pagination?.total || response.data.data.orders.length)
       } else {
         console.error("Failed to fetch orders:", response.data)
         toast.error("Failed to fetch orders")
@@ -161,7 +159,6 @@ export default function OrdersPage({ statusKey = "all" }) {
         const refreshResponse = await adminAPI.getOrders(params)
         if (refreshResponse.data?.success && refreshResponse.data?.data?.orders) {
           setOrders(refreshResponse.data.data.orders)
-          setTotalCount(refreshResponse.data.data.pagination?.total || refreshResponse.data.data.orders.length)
         }
       } else {
         toast.error(response.data?.message || "Failed to process refund")
@@ -247,6 +244,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     count,
     activeFiltersCount,
     restaurants,
+    hotels,
     handleApplyFilters,
     handleResetFilters,
     handleExport,
@@ -396,6 +394,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         onApply={handleApplyFilters}
         onReset={handleResetFilters}
         restaurants={restaurants}
+        hotels={hotels}
       />
       <SettingsDialog
         isOpen={isSettingsOpen}

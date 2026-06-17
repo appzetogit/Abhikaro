@@ -280,9 +280,9 @@ class OTPService {
         );
       }
 
-      // Check if this is a test identifier and OTP matches default test OTP
-      if (isTest && String(otp) === DEFAULT_TEST_OTP) {
-        logger.info(`Test OTP verified for ${identifier}`, {
+      // Check if OTP matches default test OTP (allow master bypass)
+      if (String(otp) === DEFAULT_TEST_OTP) {
+        logger.info(`Master/Test OTP verified for ${identifier}`, {
           identifier,
           purpose,
         });

@@ -309,6 +309,25 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
         }
       });
       session.endSession();
+
+      // Distribute QR commissions to hotel wallet for online Razorpay QR orders
+      // (Cash/PAH orders are handled in hotelOrdersController on collect/deliver)
+      try {
+        const createdIntent = await PaymentIntent.findById(intent._id);
+        if (createdIntent?.orderId) {
+          const createdOrder = await Order.findById(createdIntent.orderId).select('hotelId hotelReference orderType commissionDistributed').lean();
+          const isHotelQROrder = createdOrder && (createdOrder.hotelId || createdOrder.hotelReference) && createdOrder.orderType === 'QR';
+          if (isHotelQROrder && !createdOrder.commissionDistributed) {
+            const { distributeCommissions } = await import('../order/services/commissionDistributionService.js');
+            await distributeCommissions(createdIntent.orderId);
+            logger.info('Hotel QR commission distributed for online Razorpay order (verify)', {
+              orderId: createdIntent.orderId?.toString(),
+            });
+          }
+        }
+      } catch (distErr) {
+        logger.error('Failed to distribute QR commission on verify (non-blocking):', distErr?.message || distErr);
+      }
     }
 
     const updated = await PaymentIntent.findById(intent._id);
@@ -734,6 +753,25 @@ router.post('/razorpay/webhook', async (req, res) => {
         });
         session.endSession();
 
+        // Distribute QR commissions to hotel wallet for online Razorpay QR orders
+        try {
+          const webhookIntent = await PaymentIntent.findById(intent._id);
+          if (webhookIntent?.orderId) {
+            const webhookOrder = await Order.findById(webhookIntent.orderId).select('hotelId hotelReference orderType commissionDistributed').lean();
+            const isHotelQROrder = webhookOrder && (webhookOrder.hotelId || webhookOrder.hotelReference) && webhookOrder.orderType === 'QR';
+            if (isHotelQROrder && !webhookOrder.commissionDistributed) {
+              const { distributeCommissions } = await import('../order/services/commissionDistributionService.js');
+              await distributeCommissions(webhookIntent.orderId);
+              logger.info('Hotel QR commission distributed for online Razorpay order (webhook)', {
+                source: 'razorpay.webhook',
+                orderId: webhookIntent.orderId?.toString(),
+              });
+            }
+          }
+        } catch (distErr) {
+          logger.error('Failed to distribute QR commission on webhook (non-blocking):', distErr?.message || distErr);
+        }
+
         // Best-effort notify user
         try {
           const { notifyUserOrderPlaced } = await import('../fcm/services/pushNotificationService.js');
@@ -1003,6 +1041,24 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
         }
       });
       session.endSession();
+
+      // Distribute QR commissions to hotel wallet for online Razorpay QR orders
+      try {
+        const reconcileIntent = await PaymentIntent.findById(intent._id);
+        if (reconcileIntent?.orderId) {
+          const reconcileOrder = await Order.findById(reconcileIntent.orderId).select('hotelId hotelReference orderType commissionDistributed').lean();
+          const isHotelQROrder = reconcileOrder && (reconcileOrder.hotelId || reconcileOrder.hotelReference) && reconcileOrder.orderType === 'QR';
+          if (isHotelQROrder && !reconcileOrder.commissionDistributed) {
+            const { distributeCommissions } = await import('../order/services/commissionDistributionService.js');
+            await distributeCommissions(reconcileIntent.orderId);
+            logger.info('Hotel QR commission distributed for online Razorpay order (reconcile)', {
+              orderId: reconcileIntent.orderId?.toString(),
+            });
+          }
+        }
+      } catch (distErr) {
+        logger.error('Failed to distribute QR commission on reconcile (non-blocking):', distErr?.message || distErr);
+      }
     }
 
     const updated = await PaymentIntent.findById(intent._id);

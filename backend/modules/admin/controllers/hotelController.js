@@ -1391,7 +1391,8 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
               ],
             })
               .select(
-                "hotelId hotelReference orderType pricing.total pricing.subtotal pricing.discount pricing.deliveryFee pricing.platformFee pricing.tax pricing.adminOfferDiscount commissionBreakdown.hotel status payment.method cashCollected hotelCashSettled",
+                // Added payment.status so we can filter only completed payments (matches hotel app logic)
+                "hotelId hotelReference orderType pricing.total pricing.subtotal pricing.discount pricing.deliveryFee pricing.platformFee pricing.tax pricing.adminOfferDiscount commissionBreakdown.hotel status payment.method payment.status cashCollected hotelCashSettled",
               )
               .lean();
 
@@ -1445,8 +1446,21 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
           Boolean(order.hotelReference) ||
           paymentMethod === "pay_at_hotel";
 
-        // Increment stats only if the order is valid, non-cancelled, and is a QR/hotel order
-        if (order.status !== "cancelled" && isValidPaymentMethod && isQrOrder) {
+        const isCashMethod =
+          paymentMethod === "pay_at_hotel" || paymentMethod === "cash";
+
+        // Only count orders where payment has actually been completed.
+        // Mirror the exact same filter used by the hotel app (hotelOrdersController financialMatch):
+        //   - Online orders: payment.status === "completed"
+        //   - Cash/PAH orders: status === "delivered" OR cashCollected === true
+        // This prevents pending/processing Razorpay orders from inflating the numbers.
+        const isPaymentCompleted =
+          (order.payment?.status === "completed") ||
+          (isCashMethod && (order.status === "delivered" || order.cashCollected === true));
+
+        // Increment stats only if the order is valid, non-cancelled, QR/hotel order,
+        // AND payment has actually been completed
+        if (order.status !== "cancelled" && isValidPaymentMethod && isQrOrder && isPaymentCompleted) {
           stats.totalRequests += 1;
 
           const totalAmount =
@@ -1459,9 +1473,6 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
           // Always compute from subtotal base so Online and Pay-at-Hotel/Cash match.
           const hotelCommPercent = Number(hotelDoc.commission) || 0;
           stats.hotelEarnings += getHotelCommissionFromOrder(order, hotelCommPercent);
-
-          const isCashMethod =
-            paymentMethod === "pay_at_hotel" || paymentMethod === "cash";
 
           // Cash collected outstanding at hotel (same logic as hotel app):
           // include only cash/pay_at_hotel orders where hotel has collected
@@ -1488,30 +1499,26 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
       const wallet = walletByHotelId.get(hid) || {};
       const stats = orderStatsByHotelId.get(hid) || {};
 
-      // Mirror hotel app logic for withdrawable / available balance:
-      // Prefer stats-based earnings, then fall back to wallet aggregates.
-      const statsTotalEarned =
-        typeof stats.hotelEarnings === "number"
-          ? stats.hotelEarnings
-          : null;
-      const hasStatsEarnings = statsTotalEarned != null;
-      const totalEarned =
-        hasStatsEarnings ? statsTotalEarned : wallet.totalEarned || 0;
+      // Available / earnings source of truth: the database wallet aggregates.
+      // Fall back to order aggregation ONLY if the wallet doesn't exist or has 0 aggregates but has orders.
+      const walletTotalEarned = wallet.totalEarned || 0;
+      const walletAvailable = wallet.totalBalance || 0;
+      const statsTotalEarned = stats.hotelEarnings || 0;
+
+      const useStats = (walletTotalEarned === 0 && statsTotalEarned > 0);
+
+      const hotelEarnings = useStats ? statsTotalEarned : walletTotalEarned;
       const totalWithdrawn = wallet.totalWithdrawn || 0;
-      const totalBalance = wallet.totalBalance || 0;
-      const withdrawableRaw = totalEarned - totalWithdrawn;
-      const baseAvailable = withdrawableRaw >= 0 ? withdrawableRaw : totalBalance;
+      const baseAvailable = useStats ? (statsTotalEarned - totalWithdrawn) : walletAvailable;
 
       const manualAdj =
         typeof wallet.manualAvailableBalanceAdjustment === "number"
           ? wallet.manualAvailableBalanceAdjustment
           : Number(wallet.manualAvailableBalanceAdjustment) || 0;
 
-      // Avoid double counting:
-      // - When we have stats-based earnings, we add `manualAdj` because stats don't include admin adjustments.
-      // - When stats are missing and we fall back to wallet aggregates, adjustments are already reflected
-      //   via wallet transactions (bonus/deduction), so we skip manualAdj.
-      const availableBalance = hasStatsEarnings ? baseAvailable + manualAdj : baseAvailable;
+      // Only add manualAdj if we are using stats-based earnings, because wallet.totalBalance (walletAvailable)
+      // already includes the manual adjustment transactions.
+      const availableBalance = useStats ? baseAvailable + manualAdj : baseAvailable;
 
       const totalWithdrawalCount = Array.isArray(wallet.withdrawalRequests)
         ? wallet.withdrawalRequests.length
@@ -1537,7 +1544,7 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
           Math.round((stats.totalAmountCollected || 0) * 100) / 100,
         totalCashCollected: Math.round(totalCashCollected * 100) / 100,
         hotelEarnings:
-          Math.round((stats.hotelEarnings || 0) * 100) / 100,
+          Math.round((hotelEarnings || 0) * 100) / 100,
         availableBalance: Math.max(0, availableBalance),
         totalWithdrawn,
         totalWithdrawalCount,

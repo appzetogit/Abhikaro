@@ -608,7 +608,7 @@ export default function HotelCommission() {
 
       {/* QR Orders Dialog */}
       <Dialog open={!!qrDialog} onOpenChange={(open) => !open && setQrDialog(null)}>
-        <DialogContent className="max-w-6xl p-0">
+        <DialogContent className="max-w-5xl p-0">
           <div className="flex flex-col max-h-[80vh]">
             <DialogHeader className="px-6 pt-6 pb-4 border-b">
               <DialogTitle className="text-xl font-bold">
@@ -671,7 +671,7 @@ export default function HotelCommission() {
             {/* Table */}
             <div className="px-6 pb-4 flex-1 min-h-0">
               <div className="border rounded-lg overflow-hidden h-full flex flex-col">
-                <div className="overflow-auto">
+                <div className="overflow-y-auto flex-1">
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b sticky top-0 z-10">
                       <tr>
