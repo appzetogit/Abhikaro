@@ -152,8 +152,8 @@ export default function RestaurantFinance() {
       (r) =>
         r.name?.toLowerCase().includes(q) ||
         r.restaurantId?.toLowerCase().includes(q) ||
-        r.phone?.toLowerCase().includes(q) ||
-        r.ownerPhone?.toLowerCase().includes(q),
+        (r.phone && !r.phone.startsWith('9199999999') && r.phone.toLowerCase().includes(q)) ||
+        (r.ownerPhone && !r.ownerPhone.startsWith('9199999999') && r.ownerPhone.toLowerCase().includes(q)),
     )
   }, [restaurants, search])
 
@@ -374,7 +374,13 @@ export default function RestaurantFinance() {
                             <Building2 className="w-4 h-4 text-slate-500" />
                             <div>
                               <p className="text-sm font-semibold text-slate-900">{r.name || "N/A"}</p>
-                              <p className="text-[11px] text-slate-500">{r.phone || r.ownerPhone || "N/A"}</p>
+                              <p className="text-[11px] text-slate-500">
+                                {(() => {
+                                  const phone = r.phone || r.ownerPhone;
+                                  if (!phone || phone.startsWith('9199999999')) return "—";
+                                  return phone;
+                                })()}
+                              </p>
                             </div>
                           </div>
                         </td>

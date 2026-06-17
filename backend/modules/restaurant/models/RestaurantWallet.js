@@ -245,13 +245,28 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
 
   // --- Dynamic Auto-Backfill of Completed/Delivered Orders and Bookings ---
   try {
+    const HISTORICAL_IDS_MAP = {
+      '6a312d8fe277d6a8fc17ffc4': ['69f19e8f870f195b03093cd1'], // Om Restaurant & Sweets
+      '6a312d8fe277d6a8fc17ffc1': ['6a0aef7f6c863eb14688a817'], // Shree shyam restaurant
+      '6a312d90e277d6a8fc17ffc7': ['69d654e7c86eb9b6c8399c62', '69afec1d38ccb6b156fc5640'], // Ravi Cafe New
+      '69f06de39a84943f93d89c8f': ['69f31f4fa8a970ee8e53418b'] // Always24*7
+    };
+
+    const extraIds = HISTORICAL_IDS_MAP[restaurantId.toString()] || [];
+
     const restaurantDoc = await Restaurant.findById(restaurantId).select('restaurantId slug');
     const restaurantPublicId = restaurantDoc?.restaurantId;
     const restaurantSlug = restaurantDoc?.slug;
     const restaurantIdVariations = [
       restaurantId.toString(),
       restaurantPublicId?.toString(),
-      restaurantSlug?.toString()
+      restaurantSlug?.toString(),
+      ...extraIds
+    ].filter(Boolean);
+
+    const targetRestaurantObjectIds = [
+      restaurantId,
+      ...extraIds.map(id => mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id.toString()) : null)
     ].filter(Boolean);
 
 
@@ -263,7 +278,7 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
 
     // 2. Fetch all completed paid dining bookings
     const bookings = await TableBooking.find({
-      restaurant: restaurantId,
+      restaurant: { $in: targetRestaurantObjectIds },
       status: { $in: ['completed', 'dining_completed'] },
       paymentStatus: 'paid'
     }).lean();
@@ -312,13 +327,9 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
     // string-based restaurantIdVariations. OrderSettlement.restaurantId is always an ObjectId ref.
     // This is the PRIMARY fix for the missing balance issue (e.g. Maa Karni Restaurant).
     try {
-      const restaurantObjectId = mongoose.Types.ObjectId.isValid(restaurantId)
-        ? new mongoose.Types.ObjectId(restaurantId.toString())
-        : null;
-
-      if (restaurantObjectId) {
+      if (targetRestaurantObjectIds && targetRestaurantObjectIds.length > 0) {
         const settlements = await OrderSettlement.find({
-          restaurantId: restaurantObjectId,
+          restaurantId: { $in: targetRestaurantObjectIds },
           'restaurantEarning.netEarning': { $gt: 0 },
         })
           .select('orderId orderNumber restaurantEarning createdAt')
@@ -408,7 +419,7 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
     }
 
     // 5. Fetch and backfill all withdrawal requests
-    const withdrawals = await WithdrawalRequest.find({ restaurantId }).lean();
+    const withdrawals = await WithdrawalRequest.find({ restaurantId: { $in: targetRestaurantObjectIds } }).lean();
     for (const w of withdrawals) {
       const wIdStr = w._id.toString();
       const alreadyAdded = wallet.transactions?.some(
@@ -474,19 +485,14 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
 
       // Also check OrderSettlement — orders backfilled via settlement are valid even if
       // their Order.restaurantId doesn't match the string-based idVariations query.
-      const restaurantObjectIdForCleanup = mongoose.Types.ObjectId.isValid(restaurantId)
-        ? new mongoose.Types.ObjectId(restaurantId.toString())
-        : null;
       let settlementOrderIdsSet = new Set();
-      if (restaurantObjectIdForCleanup) {
-        try {
-          const settlementOrders = await OrderSettlement.find({
-            restaurantId: restaurantObjectIdForCleanup,
-            orderId: { $in: orderIds },
-          }).select('orderId').lean();
-          settlementOrders.forEach((s) => settlementOrderIdsSet.add(s.orderId.toString()));
-        } catch (_) {}
-      }
+      try {
+        const settlementOrders = await OrderSettlement.find({
+          restaurantId: { $in: targetRestaurantObjectIds },
+          orderId: { $in: orderIds },
+        }).select('orderId').lean();
+        settlementOrders.forEach((s) => settlementOrderIdsSet.add(s.orderId.toString()));
+      } catch (_) {}
       
       const hasGhostTransactions = paymentTxs.some((t) => 
         !existingOrderIdsSet.has(t.orderId.toString()) && 
