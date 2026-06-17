@@ -286,10 +286,13 @@ export const exportToPDF = async (orders, filename = "orders") => {
       ])
     }
 
+    const cleanedHeaders = headers.map(row => row.map(cell => String(cell || '').replace(/[₹¹]/g, 'Rs. ')))
+    const cleanedTableData = tableData.map(row => row.map(cell => cell === null || cell === undefined ? '' : String(cell).replace(/[₹¹]/g, 'Rs. ')))
+
     // Add table using autoTable
     autoTable(doc, {
-      head: headers,
-      body: tableData,
+      head: cleanedHeaders,
+      body: cleanedTableData,
       startY: 28,
       styles: {
         fontSize: 7,

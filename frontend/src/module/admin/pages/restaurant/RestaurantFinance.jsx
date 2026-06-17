@@ -12,11 +12,13 @@ import {
   ArrowDownCircle,
   Clock3,
   Eye,
+  Download,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import ViewOrderDialog from "../../components/orders/ViewOrderDialog"
+import { exportTransactionsToPDF } from "../../components/transactions/transactionsExportUtils"
 
 const formatCurrency = (amount) => {
   if (amount == null) return "₹0.00"
@@ -243,6 +245,36 @@ export default function RestaurantFinance() {
     }
   }
 
+  const handleExport = async () => {
+    if (filtered.length === 0) {
+      toast.error("No data to export.")
+      return
+    }
+    const headers = [
+      { key: "sl", label: "SI" },
+      { key: "restaurantName", label: "Restaurant Name" },
+      { key: "restaurantId", label: "Restaurant ID" },
+      { key: "totalEarned", label: "Total Earned" },
+      { key: "totalWithdrawn", label: "Total Withdrawn" },
+      { key: "availableBalance", label: "Available Balance" },
+    ]
+    const exportData = filtered.map((r, index) => ({
+      sl: index + 1,
+      restaurantName: r.name || 'N/A',
+      restaurantId: r.restaurantId || 'N/A',
+      totalEarned: formatCurrency(r.totalEarned),
+      totalWithdrawn: formatCurrency(r.totalWithdrawn),
+      availableBalance: formatCurrency(r.totalBalance),
+    }))
+
+    try {
+      await exportTransactionsToPDF(exportData, headers, "restaurant_finance_overview", "Restaurant Finance Overview Report")
+    } catch (err) {
+      console.error("Error exporting to PDF:", err)
+      toast.error("Failed to generate PDF report")
+    }
+  }
+
   useEffect(() => {
     if (!historyOpen || !selectedRestaurant?._id) return
     fetchHistory(selectedRestaurant._id, 1, historyFilter)
@@ -272,15 +304,25 @@ export default function RestaurantFinance() {
                 {total}
               </span>
             </div>
-            <div className="relative flex-1 sm:flex-initial min-w-[240px] max-w-xs">
-              <input
-                type="text"
-                placeholder="Search by name, ID or phone"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 pr-4 py-2.5 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
-              />
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <input
+                  type="text"
+                  placeholder="Search by name, ID or phone"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10 pr-4 py-2.5 w-full text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
+                />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              </div>
+              <button
+                type="button"
+                onClick={handleExport}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 flex items-center justify-center gap-2 transition-all shadow-xs"
+              >
+                <Download className="w-4 h-4 text-slate-500" />
+                <span>Download PDF</span>
+              </button>
             </div>
           </div>
 

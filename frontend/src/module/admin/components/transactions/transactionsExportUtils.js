@@ -98,11 +98,11 @@ export const exportTransactionsToPDF = async (transactions, headers, filename = 
   doc.setFontSize(10)
   doc.text(`Generated: ${reportDate}`, 14, 22)
 
-  const head = [headers.map(h => h.label)]
+  const head = [headers.map(h => String(h.label || '').replace(/[₹¹]/g, 'Rs. '))]
   const body = transactions.map(row =>
     headers.map(h => {
       const v = row[h.key]
-      return v === null || v === undefined ? '' : String(v)
+      return v === null || v === undefined ? '' : String(v).replace(/[₹¹]/g, 'Rs. ')
     })
   )
 

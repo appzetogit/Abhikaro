@@ -152,8 +152,8 @@ export const exportCustomersToPDF = (customers, filename = "customers") => {
 
         // Add table using autoTable
         autoTable(doc, {
-          head: [["SI", "Name", "Email", "Phone", "Total Order", "Total Order Amount", "Wallet Balance", "Joining Date", "Status"]],
-          body: tableData,
+          head: [["SI", "Name", "Email", "Phone", "Total Order", "Total Order Amount", "Wallet Balance", "Joining Date", "Status"]].map(row => row.map(cell => String(cell || '').replace(/[₹¹]/g, 'Rs. '))),
+          body: tableData.map(row => row.map(cell => cell === null || cell === undefined ? '' : String(cell).replace(/[₹¹]/g, 'Rs. '))),
           startY: 28,
           styles: {
             fontSize: 8,

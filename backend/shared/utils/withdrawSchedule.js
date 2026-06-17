@@ -103,14 +103,21 @@ export const isWithdrawAllowedNow = async () => {
 
   const currentDow = tzNow.getDay();
 
-  // Last occurrence of the configured weekday at the configured time
+  if (currentDow !== dowNumber) {
+    const dayName = DAY_NAMES[dowNumber] || "selected day";
+    const msg = `Withdrawals open on ${dayName} after ${startTime}`;
+    return {
+      allowed: false,
+      nextWindowText: msg,
+      message: msg,
+    };
+  }
+
+  // Same day. Check if the current time is after the start time.
   const target = new Date(tzNow);
-  const diff = (currentDow - dowNumber + 7) % 7;
-  target.setDate(target.getDate() - diff);
   target.setHours(hours, minutes, 0, 0);
 
   if (tzNow >= target) {
-    // Window is open from that time onward (no explicit closing time)
     return {
       allowed: true,
       nextWindowText: "",

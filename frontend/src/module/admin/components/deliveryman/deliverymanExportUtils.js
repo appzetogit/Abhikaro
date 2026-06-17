@@ -424,7 +424,7 @@ export const exportBonusToPDF = (transactions, filename = "deliveryman_bonus") =
         // Prepare table data - ensure bonus is properly formatted
         const tableData = transactions.map((transaction) => {
           // ALWAYS use raw amount value - don't rely on formatted bonus string
-          let bonusAmount = '₹0.00'
+          let bonusAmount = 'Rs. 0.00'
           
           // First priority: Use raw numeric amount from transaction.amount
           if (transaction.amount !== undefined && transaction.amount !== null) {
@@ -432,7 +432,7 @@ export const exportBonusToPDF = (transactions, filename = "deliveryman_bonus") =
               ? parseFloat(transaction.amount.replace(/[^\d.-]/g, ''))
               : parseFloat(transaction.amount)
             if (!isNaN(numAmount)) {
-              bonusAmount = `₹${numAmount.toFixed(2)}`
+              bonusAmount = `Rs. ${numAmount.toFixed(2)}`
             }
           } 
           // Second priority: Extract number from bonus string and rebuild
@@ -441,7 +441,7 @@ export const exportBonusToPDF = (transactions, filename = "deliveryman_bonus") =
             const numericPart = String(transaction.bonus).replace(/[^\d.-]/g, '')
             const numAmount = parseFloat(numericPart)
             if (!isNaN(numAmount) && numAmount > 0) {
-              bonusAmount = `₹${numAmount.toFixed(2)}`
+              bonusAmount = `Rs. ${numAmount.toFixed(2)}`
             }
           }
           
@@ -458,8 +458,8 @@ export const exportBonusToPDF = (transactions, filename = "deliveryman_bonus") =
 
         // Add table using autoTable
         autoTable(doc, {
-          head: [["S.No", "Transaction ID", "Delivery Boy ID", "Deliveryman", "Bonus", "Reference", "Created At"]],
-          body: tableData,
+          head: [["S.No", "Transaction ID", "Delivery Boy ID", "Deliveryman", "Bonus", "Reference", "Created At"]].map(row => row.map(cell => String(cell || '').replace(/[₹¹]/g, 'Rs. '))),
+          body: tableData.map(row => row.map(cell => cell === null || cell === undefined ? '' : String(cell).replace(/[₹¹]/g, 'Rs. '))),
           startY: 28,
           styles: {
             fontSize: 7,

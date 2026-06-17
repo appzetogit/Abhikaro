@@ -223,7 +223,7 @@ deliveryWalletSchema.methods.addTransaction = function(transactionData) {
   
   this.lastTransactionAt = new Date();
   
-  return transaction;
+  return this.transactions[this.transactions.length - 1];
 };
 
 // Method to update transaction status
