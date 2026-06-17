@@ -27,6 +27,30 @@ const getPaymentStatusColor = (paymentStatus) => {
   return "text-slate-600"
 }
 
+const isPlaceholder = (str) => {
+  if (!str) return true;
+  const s = String(str).toLowerCase().trim();
+  return s === "select location" || s === "updating location..." || s === "detecting...";
+};
+
+const formatAddress = (address) => {
+  if (!address) return "N/A"
+  
+  const parts = []
+  if (address.label && !isPlaceholder(address.label)) parts.push(address.label)
+  if (address.street && !isPlaceholder(address.street)) parts.push(address.street)
+  if (address.additionalDetails && !isPlaceholder(address.additionalDetails)) parts.push(address.additionalDetails)
+  if (address.formattedAddress && !isPlaceholder(address.formattedAddress)) {
+    parts.push(address.formattedAddress)
+  } else {
+    if (address.city && !isPlaceholder(address.city)) parts.push(address.city)
+    if (address.state && !isPlaceholder(address.state)) parts.push(address.state)
+    if (address.zipCode && !isPlaceholder(address.zipCode)) parts.push(address.zipCode)
+  }
+  
+  return parts.length > 0 ? parts.join(", ") : "Address not available"
+}
+
 export default function OrdersTable({ 
   orders, 
   visibleColumns, 
@@ -134,6 +158,22 @@ export default function OrdersTable({
                   </div>
                 </th>
               )}
+              {visibleColumns.deliveryAddress && (
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  <div className="flex items-center gap-2">
+                    <span>Delivery Address</span>
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                  </div>
+                </th>
+              )}
+              {visibleColumns.deliveryPartner && (
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  <div className="flex items-center gap-2">
+                    <span>Delivery Partner</span>
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                  </div>
+                </th>
+              )}
               {visibleColumns.restaurant && (
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   <div className="flex items-center gap-2">
@@ -225,6 +265,27 @@ export default function OrdersTable({
                       <span className="text-sm font-medium text-slate-700">{order.userName || order.customerName}</span>
                       <span className="text-xs text-slate-500 mt-0.5">{order.userPhone || order.customerPhone}</span>
                     </div>
+                  </td>
+                )}
+                {visibleColumns.deliveryAddress && (
+                  <td className="px-6 py-4 max-w-xs">
+                    <span className="text-sm text-slate-700 block truncate" title={formatAddress(order.address)}>
+                      {formatAddress(order.address)}
+                    </span>
+                  </td>
+                )}
+                {visibleColumns.deliveryPartner && (
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {order.deliveryPartnerName ? (
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-slate-700">{order.deliveryPartnerName}</span>
+                        {order.deliveryPartnerPhone && (
+                          <span className="text-xs text-slate-500 mt-0.5">{order.deliveryPartnerPhone}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-slate-400 italic">Not Assigned</span>
+                    )}
                   </td>
                 )}
                 {visibleColumns.restaurant && (

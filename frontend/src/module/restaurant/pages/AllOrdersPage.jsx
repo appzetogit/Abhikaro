@@ -760,7 +760,7 @@ export default function AllOrdersPage() {
 
             {/* Order Items */}
             <div className="space-y-2">
-              {order.items.slice(0, 1).map((item, idx) => (
+              {order.items.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between">
                   <span className="text-sm text-gray-900">
                     {item.quantity} x {item.name}
@@ -768,9 +768,6 @@ export default function AllOrdersPage() {
                   <span className="text-sm font-medium text-gray-900">₹{item.price}</span>
                 </div>
               ))}
-              {order.items.length > 1 && (
-                <p className="text-sm text-gray-500">+{order.items.length - 1} more items</p>
-              )}
             </div>
 
             {/* Reason/Status Message */}

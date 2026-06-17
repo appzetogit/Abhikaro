@@ -4,6 +4,7 @@ import Restaurant from './Restaurant.js';
 import RestaurantCommission from '../../admin/models/RestaurantCommission.js';
 import TableBooking from '../../dining/models/TableBooking.js';
 import WithdrawalRequest from './WithdrawalRequest.js';
+import OrderSettlement from '../../order/models/OrderSettlement.js';
 
 
 const transactionSchema = new mongoose.Schema({
@@ -306,6 +307,82 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
       }
     }
 
+    // 3b. Supplement with OrderSettlement records — catches orders where the Order document
+    // stores restaurantId as a Mongo ObjectId (e.g. QR/hotel orders) that may not match
+    // string-based restaurantIdVariations. OrderSettlement.restaurantId is always an ObjectId ref.
+    // This is the PRIMARY fix for the missing balance issue (e.g. Maa Karni Restaurant).
+    try {
+      const restaurantObjectId = mongoose.Types.ObjectId.isValid(restaurantId)
+        ? new mongoose.Types.ObjectId(restaurantId.toString())
+        : null;
+
+      if (restaurantObjectId) {
+        const settlements = await OrderSettlement.find({
+          restaurantId: restaurantObjectId,
+          'restaurantEarning.netEarning': { $gt: 0 },
+        })
+          .select('orderId orderNumber restaurantEarning createdAt')
+          .lean();
+
+        // Build set of orderIds already in wallet
+        const walletOrderIdSet = new Set(
+          (wallet.transactions || [])
+            .filter((t) => t.type === 'payment' && t.orderId)
+            .map((t) => t.orderId.toString())
+        );
+
+        for (const settlement of settlements) {
+          const orderIdStr = settlement.orderId?.toString();
+          if (!orderIdStr) continue;
+          if (walletOrderIdSet.has(orderIdStr)) continue; // already backfilled via Order query
+
+          // Skip test/mock orders — identified by ORD-TEST prefix in orderNumber
+          if (settlement.orderNumber && /^ORD-TEST/i.test(settlement.orderNumber)) continue;
+
+          const netEarning = Number(settlement.restaurantEarning?.netEarning || 0);
+          const commission = Number(settlement.restaurantEarning?.commission || 0);
+          const foodPrice = Number(settlement.restaurantEarning?.foodPrice || (netEarning + commission));
+          if (netEarning <= 0) continue;
+
+          // Fetch order for date and status check
+          let orderDate = settlement.createdAt || new Date();
+          try {
+            const orderDoc = await Order.findById(settlement.orderId)
+              .select('deliveredAt createdAt status orderId')
+              .lean();
+
+            // Skip test orders by orderId pattern
+            if (orderDoc?.orderId && /^ORD-TEST/i.test(orderDoc.orderId)) continue;
+
+            // Only credit final-state orders:
+            // - 'delivered'  → normal delivery, restaurant earns
+            // - 'cancelled'  → restaurant may have earned compensation (netEarning > 0 means compensation was set)
+            // - null (no order doc) → settlement exists without order, credit it anyway
+            // Skip: 'pending', 'accepted', 'preparing', 'ready', 'out_for_delivery', etc.
+            const finalStatuses = new Set(['delivered', 'cancelled']);
+            if (orderDoc && !finalStatuses.has(orderDoc.status)) continue;
+
+            orderDate = orderDoc?.deliveredAt || orderDoc?.createdAt || orderDate;
+          } catch (_) {}
+
+          const descType = settlement.restaurantEarning?.status === 'cancelled' ? 'Cancellation Compensation' : 'Food Price';
+          wallet.transactions.push({
+            amount: Math.round(netEarning * 100) / 100,
+            type: 'payment',
+            status: 'Completed',
+            description: `Order #${settlement.orderNumber || orderIdStr} - ${descType}: ₹${foodPrice.toFixed(2)}, Commission: ₹${commission.toFixed(2)}`,
+            orderId: settlement.orderId,
+            createdAt: orderDate,
+          });
+          walletOrderIdSet.add(orderIdStr);
+          needsSave = true;
+          console.log(`[RestaurantWallet] Backfilled via OrderSettlement: ${settlement.orderNumber} → ₹${netEarning}`);
+        }
+      }
+    } catch (settlementBackfillErr) {
+      console.warn('[RestaurantWallet] OrderSettlement backfill error:', settlementBackfillErr.message);
+    }
+
     // 4. Check and add payment transactions for dining bookings
     for (const booking of bookings) {
       const bookingIdStr = booking._id.toString();
@@ -394,10 +471,27 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
         paymentStatus: 'paid'
       }).select('_id');
       const existingBookingIdsSet = new Set(existingBookings.map((b) => b._id.toString()));
+
+      // Also check OrderSettlement — orders backfilled via settlement are valid even if
+      // their Order.restaurantId doesn't match the string-based idVariations query.
+      const restaurantObjectIdForCleanup = mongoose.Types.ObjectId.isValid(restaurantId)
+        ? new mongoose.Types.ObjectId(restaurantId.toString())
+        : null;
+      let settlementOrderIdsSet = new Set();
+      if (restaurantObjectIdForCleanup) {
+        try {
+          const settlementOrders = await OrderSettlement.find({
+            restaurantId: restaurantObjectIdForCleanup,
+            orderId: { $in: orderIds },
+          }).select('orderId').lean();
+          settlementOrders.forEach((s) => settlementOrderIdsSet.add(s.orderId.toString()));
+        } catch (_) {}
+      }
       
       const hasGhostTransactions = paymentTxs.some((t) => 
         !existingOrderIdsSet.has(t.orderId.toString()) && 
-        !existingBookingIdsSet.has(t.orderId.toString())
+        !existingBookingIdsSet.has(t.orderId.toString()) &&
+        !settlementOrderIdsSet.has(t.orderId.toString())
       );
       
       if (hasGhostTransactions) {
@@ -405,7 +499,9 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
         
         wallet.transactions = wallet.transactions.filter((t) => {
           if (t.type === 'payment' && t.orderId) {
-            return existingOrderIdsSet.has(t.orderId.toString()) || existingBookingIdsSet.has(t.orderId.toString());
+            return existingOrderIdsSet.has(t.orderId.toString()) || 
+                   existingBookingIdsSet.has(t.orderId.toString()) ||
+                   settlementOrderIdsSet.has(t.orderId.toString());
           }
           return true;
         });
@@ -416,6 +512,7 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
       console.error('[RestaurantWallet] Error running ghost transaction cleanup:', cleanupErr);
     }
   }
+
 
   // 1.2. Deduplication Cleanup: Ensure no duplicate payment transactions exist for the same order/booking
   const seenOrderIds = new Set();
