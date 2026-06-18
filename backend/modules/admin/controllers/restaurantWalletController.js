@@ -21,8 +21,8 @@ export const getRestaurantWalletOverview = asyncHandler(async (req, res) => {
   const limitNum = Math.max(1, Math.min(200, parseInt(limit, 10) || 50));
   const skip = (pageNum - 1) * limitNum;
 
-  // Include ALL restaurants (both with and without onboarding data)
-  const query = {};
+  // Only show approved restaurants in finance overview (excludes incomplete onboarding drafts)
+  const query = { approvedAt: { $exists: true, $ne: null } };
 
   if (search && String(search).trim()) {
     const q = String(search).trim();

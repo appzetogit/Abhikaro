@@ -283,6 +283,7 @@ export const getRestaurants = async (req, res) => {
         // Method 2: Get restaurants that have this category in their diningConfig.categories array
         const restaurantsWithCategory = await Restaurant.find({
           isActive: true,
+          approvedAt: { $exists: true, $ne: null },
           'diningConfig.categories': categoryId
         }).select('_id').lean();
         
@@ -293,6 +294,7 @@ export const getRestaurants = async (req, res) => {
         // (DiningList category assignment updates this field)
         const restaurantsWithDiningType = await Restaurant.find({
           isActive: true,
+          approvedAt: { $exists: true, $ne: null },
           'diningSettings.diningType': { $exists: true, $ne: null }
         }).select('_id diningSettings.diningType').lean();
 
@@ -350,7 +352,7 @@ export const getRestaurants = async (req, res) => {
     
     // Build base query - Show all active restaurants (including offline ones)
     // Offline restaurants will be displayed with "CURRENTLY CLOSED" tag on frontend
-    const query = { isActive: true };
+    const query = { isActive: true, approvedAt: { $exists: true, $ne: null } };
     
     // Add dining category filter - only show restaurants linked to this category
     if (categoryLinkedRestaurantIds && categoryLinkedRestaurantIds.length > 0) {
@@ -790,6 +792,7 @@ export const getRestaurantById = async (req, res) => {
     // Build query conditions - only include _id if it's a valid ObjectId
     const queryConditions = {
       isActive: true,
+      approvedAt: { $exists: true, $ne: null },
     };
     
     const orConditions = [
@@ -1651,7 +1654,11 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
     };
 
     // Under-250 is an "order now" surface: exclude closed/offline restaurants.
-    let restaurants = await Restaurant.find({ isActive: true, isAcceptingOrders: true })
+    let restaurants = await Restaurant.find({
+      isActive: true,
+      isAcceptingOrders: true,
+      approvedAt: { $exists: true, $ne: null }
+    })
       .select('-owner -createdAt -updatedAt')
       .lean()
       .limit(100); // Limit to first 100 restaurants for performance

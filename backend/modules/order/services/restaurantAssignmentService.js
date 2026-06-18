@@ -113,6 +113,7 @@ export async function findNearestRestaurant(deliveryLat, deliveryLng, orderItems
     const allRestaurants = await Restaurant.find({
       isActive: true,
       isAcceptingOrders: true,
+      approvedAt: { $exists: true, $ne: null },
       'location.latitude': { $exists: true, $ne: null },
       'location.longitude': { $exists: true, $ne: null }
     }).lean();

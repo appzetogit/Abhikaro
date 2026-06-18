@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { exportTransactionsToExcel, exportTransactionsToPDF } from "../../components/transactions/transactionsExportUtils"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
+import { formatRestaurantId } from "@/lib/utils/formatId"
 
 export default function RestaurantWithdraws() {
   const [activeTab, setActiveTab] = useState("All")
@@ -43,7 +44,11 @@ export default function RestaurantWithdraws() {
       const status = activeTab === "All" ? undefined : activeTab
       const response = await adminAPI.getWithdrawalRequests({ status, search: searchQuery || undefined })
       if (response.data?.success) {
-        setWithdraws(response.data.data?.requests || [])
+        const mapped = (response.data.data?.requests || []).map((w) => ({
+          ...w,
+          restaurantIdString: formatRestaurantId(w.restaurantIdString),
+        }))
+        setWithdraws(mapped)
       } else {
         console.error('Failed to fetch withdrawals:', response.data?.message)
         toast.error('Failed to fetch withdrawal requests')

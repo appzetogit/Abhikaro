@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
+import { formatRestaurantId } from "@/lib/utils/formatId"
 
 export default function LandingPageManagement() {
   const [activeTab, setActiveTab] = useState('banners')
@@ -2091,7 +2092,7 @@ export default function LandingPageManagement() {
                                 )
                               })()}
                               <p className="text-sm text-slate-500 truncate">
-                                ID: {restaurant.restaurantId || restaurant._id}
+                                ID: {formatRestaurantId(restaurant.restaurantId) || restaurant._id}
                               </p>
                               {restaurant.rating && (
                                 <div className="flex items-center gap-1 mt-1">

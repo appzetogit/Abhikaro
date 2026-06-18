@@ -2542,11 +2542,10 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
     // Pending = all inactive restaurants without rejection reason (regardless of onboarding completion)
     // Rejected = restaurants that have rejectionReason
     if (status === "pending") {
-      // Show ALL inactive restaurants that don't have a rejection reason
-      // This includes restaurants at any stage of onboarding, not just completed ones
+      // Only show inactive, unapproved restaurants that have completed onboarding
       query.isActive = false;
-      // Only those NOT approved yet should be in join requests
       query.approvedAt = { $in: [null, undefined] };
+      query["onboarding.completedSteps"] = 4;
       query.$or = [
         { rejectionReason: { $exists: false } },
         { rejectionReason: null },

@@ -17,6 +17,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatRestaurantId } from "@/lib/utils/formatId";
 
 export default function RestaurantEdit() {
   const { id } = useParams();
@@ -385,7 +386,7 @@ export default function RestaurantEdit() {
               </h1>
               {restaurant && (
                 <p className="text-sm text-slate-500 mt-1">
-                  ID: {restaurant.restaurantId || restaurant._id}
+                  ID: {formatRestaurantId(restaurant.restaurantId) || restaurant._id}
                 </p>
               )}
             </div>

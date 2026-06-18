@@ -97,6 +97,7 @@ export const getApprovedRestaurants = asyncHandler(async (req, res) => {
     // Build query - only approved restaurants
     const query = {
       isActive: true,
+      approvedAt: { $exists: true, $ne: null },
     };
 
     // Search filter - include onboarding.step1.restaurantName for search

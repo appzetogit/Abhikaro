@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
+import { formatRestaurantId } from "@/lib/utils/formatId"
 import {
   Building2,
   IndianRupee,
@@ -113,7 +114,11 @@ export default function RestaurantFinance() {
 
       if (res?.data?.success) {
         const data = res.data.data || {}
-        setRestaurants(data.restaurants || [])
+        const mapped = (data.restaurants || []).map((r) => ({
+          ...r,
+          restaurantId: formatRestaurantId(r.restaurantId),
+        }))
+        setRestaurants(mapped)
         const pg = data.pagination || {}
         setTotal(pg.total ?? (data.restaurants || []).length ?? 0)
         setPages(pg.pages ?? 1)

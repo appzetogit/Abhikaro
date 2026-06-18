@@ -268,7 +268,10 @@ export const updateDiningOfferBanner = async (req, res) => {
 
 export const getActiveRestaurants = async (req, res) => {
     try {
-        let restaurants = await Restaurant.find()
+        let restaurants = await Restaurant.find({
+            isActive: true,
+            approvedAt: { $exists: true, $ne: null }
+        })
             .select('name _id onboarding')
             .lean();
             
