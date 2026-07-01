@@ -84,6 +84,7 @@ export const getHotelRequestStats = async (req, res) => {
         { hotelReference: hotelIdStr },
         { hotelReference: hotelObjectId.toString() },
       ],
+      status: { $ne: "cancelled" },
     };
 
     // Fetch all non-cancelled orders for the hotel for stats

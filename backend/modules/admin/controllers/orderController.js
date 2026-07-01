@@ -229,11 +229,14 @@ export const getOrders = asyncHandler(async (req, res) => {
     let settlementPlatformFeeMap = new Map();
     let refundStatusMap = new Map();
     let settlementEarningsMap = new Map();
+    let settlementDeliveryPartnerMap = new Map();
+    let settlementHotelNameMap = new Map();
+    let settlementHotelIdMap = new Map();
     try {
       const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
       const orderIds = orders.map(o => o._id);
       const settlements = await OrderSettlement.find({ orderId: { $in: orderIds } })
-        .select('orderId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission')
+        .select('orderId deliveryPartnerId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
         .lean();
       
       // Create maps for quick lookup
@@ -244,6 +247,15 @@ export const getOrders = asyncHandler(async (req, res) => {
           }
           if (s.cancellationDetails?.refundStatus) {
             refundStatusMap.set(s.orderId.toString(), s.cancellationDetails.refundStatus);
+          }
+          if (s.deliveryPartnerId) {
+            settlementDeliveryPartnerMap.set(s.orderId.toString(), s.deliveryPartnerId.toString());
+          }
+          if (s.hotelEarning?.hotelName) {
+            settlementHotelNameMap.set(s.orderId.toString(), s.hotelEarning.hotelName);
+          }
+          if (s.hotelEarning?.hotelId) {
+            settlementHotelIdMap.set(s.orderId.toString(), s.hotelEarning.hotelId.toString());
           }
           settlementEarningsMap.set(s.orderId.toString(), {
             adminEarning: Number(s.adminEarning?.totalEarning || 0),
@@ -256,6 +268,88 @@ export const getOrders = asyncHandler(async (req, res) => {
     } catch (err) {
       console.warn('Could not batch fetch settlements:', err.message);
     }
+
+    // Dynamically resolve genuine restaurant names for generic/fallback ones
+    const restaurantIds = [...new Set(orders.map(o => o.restaurantId?.toString()).filter(Boolean))];
+    let resolvedRestaurantNamesMap = new Map();
+    if (restaurantIds.length > 0) {
+      try {
+        const nameAggregation = await Order.aggregate([
+          { $match: { restaurantId: { $in: restaurantIds } } },
+          { $group: {
+              _id: "$restaurantId",
+              names: { $addToSet: "$restaurantName" }
+            }
+          }
+        ]);
+        
+        let settlementAggregation = [];
+        try {
+          const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
+          settlementAggregation = await OrderSettlement.aggregate([
+            { $match: { restaurantId: { $in: restaurantIds.map(id => mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id) } } },
+            { $group: {
+                _id: "$restaurantId",
+                names: { $addToSet: "$restaurantName" }
+              }
+            }
+          ]);
+        } catch (_) {}
+
+        const mergeMap = new Map();
+        nameAggregation.forEach(item => {
+          if (item._id) mergeMap.set(item._id.toString(), new Set(item.names));
+        });
+        settlementAggregation.forEach(item => {
+          if (item._id) {
+            const idStr = item._id.toString();
+            if (!mergeMap.has(idStr)) {
+              mergeMap.set(idStr, new Set());
+            }
+            item.names.forEach(n => mergeMap.get(idStr).add(n));
+          }
+        });
+
+        mergeMap.forEach((namesSet, idStr) => {
+          const names = Array.from(namesSet).filter(Boolean);
+          const genuineName = names.find(n => !/^Restaurant\s*\d+$/i.test(String(n).trim()) && !/^Unknown Restaurant$/i.test(String(n).trim()));
+          if (genuineName) {
+            resolvedRestaurantNamesMap.set(idStr, genuineName);
+          }
+        });
+      } catch (err) {
+        console.warn('Could not dynamically resolve restaurant names:', err.message);
+      }
+    }
+
+    // Batch fetch delivery partners from both orders and settlements
+    const deliveryPartnerIds = new Set();
+    orders.forEach(o => {
+      if (o.deliveryPartnerId) {
+        deliveryPartnerIds.add(o.deliveryPartnerId.toString());
+      }
+    });
+    settlementDeliveryPartnerMap.forEach(dpId => {
+      if (dpId) {
+        deliveryPartnerIds.add(dpId);
+      }
+    });
+
+    let deliveryPartnersMap = new Map();
+    if (deliveryPartnerIds.size > 0) {
+      try {
+        const Delivery = (await import('../../delivery/models/Delivery.js')).default;
+        const dps = await Delivery.find({ _id: { $in: Array.from(deliveryPartnerIds).map(id => new mongoose.Types.ObjectId(id)) } })
+          .select('name phone')
+          .lean();
+        dps.forEach(dp => {
+          deliveryPartnersMap.set(dp._id.toString(), dp);
+        });
+      } catch (err) {
+        console.warn('Could not batch fetch delivery partners:', err.message);
+      }
+    }
+
 
     // Batch fetch Payment collection for payment status (source of truth - COD/Razorpay)
     let paymentStatusMapById = new Map();
@@ -362,7 +456,13 @@ export const getOrders = asyncHandler(async (req, res) => {
       };
       const paymentRecordStatus = paymentStatusMapById.get(order._id.toString());
       const orderPaymentStatus = order.payment?.status;
-      const effectivePaymentStatus = paymentRecordStatus || orderPaymentStatus;
+      let effectivePaymentStatus = paymentRecordStatus || orderPaymentStatus;
+
+      // If the order is delivered, payment is implicitly completed (Paid/Collected)
+      if (order.status === 'delivered') {
+        effectivePaymentStatus = 'completed';
+      }
+
       const paymentStatusDisplay = paymentStatusMap[effectivePaymentStatus] || 'Pending';
 
       // Map order status for display
@@ -600,16 +700,19 @@ export const getOrders = asyncHandler(async (req, res) => {
       }
       const restaurantAddress = restaurantAddressParts.join(', ');
 
+      const dpId = (order.deliveryPartnerId?._id || order.deliveryPartnerId)?.toString() || settlementDeliveryPartnerMap.get(order._id.toString());
+      const dpDoc = dpId ? deliveryPartnersMap.get(dpId) : null;
+
       return {
         sl: skip + index + 1,
         orderId: order.orderId,
         id: order._id.toString(),
         date: dateStr,
         time: timeStr,
-        customerName: order.userId?.name || 'Unknown',
-        customerPhone: customerPhone,
-        customerEmail: order.userId?.email || '',
-        restaurant: order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
+        customerName: order.userId?.name || order.userName || 'Unknown',
+        customerPhone: order.userId?.phone || order.userPhone || 'N/A',
+        customerEmail: order.userId?.email || order.userEmail || '',
+        restaurant: resolvedRestaurantNamesMap.get(order.restaurantId?.toString()) || order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
         restaurantId: order.restaurantId?.toString?.() || order.restaurantId || '',
         restaurantAddress: restaurantAddress || null,
         // Hotel/QR context (used by admin UI for QR-origin orders)
@@ -621,6 +724,7 @@ export const getOrders = asyncHandler(async (req, res) => {
             : null) ||
           hotelConfigByKey.get(String(order.hotelId || ""))?.hotelName ||
           hotelConfigByKey.get(String(order.hotelReference || ""))?.hotelName ||
+          settlementHotelNameMap.get(order._id.toString()) ||
           null,
         hotelReference:
           order.hotelReference ||
@@ -632,6 +736,7 @@ export const getOrders = asyncHandler(async (req, res) => {
           (order.hotelId && typeof order.hotelId === "object"
             ? (order.hotelId._id?.toString?.() || order.hotelId._id || null)
             : (order.hotelId?.toString?.() || order.hotelId || null)) ||
+          settlementHotelIdMap.get(order._id.toString()) ||
           null,
         // Report-specific fields
         totalItemAmount: totalItemAmount,
@@ -678,7 +783,7 @@ export const getOrders = asyncHandler(async (req, res) => {
         })(),
         paymentCollectionStatus: (() => {
           const method = order.payment?.method;
-          const paymentCompleted = order.payment?.status === 'completed';
+          const paymentCompleted = order.payment?.status === 'completed' || order.status === 'delivered';
           const cashCollected = order.cashCollected === true;
 
           // For cash-like methods, only mark as collected when explicitly completed/collected
@@ -694,8 +799,8 @@ export const getOrders = asyncHandler(async (req, res) => {
         deliveryType: deliveryType,
         items: order.items || [],
         address: order.address || {},
-        deliveryPartnerName: order.deliveryPartnerId?.name || null,
-        deliveryPartnerPhone: order.deliveryPartnerId?.phone || null,
+        deliveryPartnerName: dpDoc?.name || order.deliveryPartnerId?.name || null,
+        deliveryPartnerPhone: dpDoc?.phone || order.deliveryPartnerId?.phone || null,
         estimatedDeliveryTime: order.estimatedDeliveryTime || 30,
         deliveredAt: order.deliveredAt,
         cancellationReason: order.cancellationReason || null,
@@ -1002,13 +1107,133 @@ export const getOrderById = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, 'Order not found');
     }
 
+    // Explicitly set customer details fallbacks
+    order.customerName = order.userId?.name || order.userName || 'Unknown';
+    order.customerPhone = order.userId?.phone || order.userPhone || 'N/A';
+    order.customerEmail = order.userId?.email || order.userEmail || '';
+
+    // Fetch payment record to check status
+    let paymentRecordStatus = null;
+    try {
+      const paymentDoc = await Payment.findOne({ orderId: order._id }).select('status').lean();
+      if (paymentDoc) {
+        paymentRecordStatus = paymentDoc.status;
+      }
+    } catch (err) {
+      console.warn('Could not fetch payment record in getOrderById:', err.message);
+    }
+
+    const paymentStatusMap = {
+      'completed': 'Paid',
+      'pending': 'Pending',
+      'failed': 'Failed',
+      'refunded': 'Refunded',
+      'processing': 'Processing'
+    };
+    const orderPaymentStatus = order.payment?.status;
+    let effectivePaymentStatus = paymentRecordStatus || orderPaymentStatus;
+    
+    // If the order is delivered, payment is implicitly completed (Paid/Collected)
+    if (order.status === 'delivered') {
+      effectivePaymentStatus = 'completed';
+    }
+    
+    order.paymentStatus = paymentStatusMap[effectivePaymentStatus] || 'Pending';
+
+    // Map payment collection status
+    order.paymentCollectionStatus = (() => {
+      const method = order.payment?.method;
+      const paymentCompleted = order.payment?.status === 'completed' || order.status === 'delivered';
+      const cashCollected = order.cashCollected === true;
+
+      if (method === 'cash' || method === 'cod' || method === 'pay_at_hotel') {
+        return (paymentCompleted || cashCollected) ? 'Collected' : 'Not Collected';
+      }
+      return paymentCompleted ? 'Collected' : 'Not Collected';
+    })();
+
+    // Map payment type
+    order.paymentType = (() => {
+      const paymentMethod = order.payment?.method;
+
+      if (paymentMethod === 'cash' || paymentMethod === 'cod') {
+        return 'Cash on Delivery';
+      }
+      if (paymentMethod === 'wallet') {
+        return 'Wallet';
+      }
+      if (paymentMethod === 'pay_at_hotel') {
+        if (order.payment?.razorpayOrderId || order.payment?.razorpayPaymentId) {
+          return 'Pay at Hotel (Razorpay)';
+        }
+        return 'Pay at Hotel (Cash)';
+      }
+      const isHotelOrigin =
+        (typeof order.orderType === 'string' && order.orderType.toUpperCase() === 'QR') ||
+        Boolean(order.hotelReference || order.hotelId || order.qrReferenceId || order.hotelName || order.roomNumber);
+      if (isHotelOrigin) {
+        return 'Hotel (Online)';
+      }
+      return 'Online';
+    })();
+
     // Attach earnings breakdown for admin order details view.
     // This keeps parity with the list endpoint which exposes `earnings`.
     try {
       const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
       const settlement = await OrderSettlement.findOne({ orderId: order._id })
-        .select('adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission')
+        .select('deliveryPartnerId adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
         .lean();
+
+      // Resolve hotel details if missing on the order document but exist in settlement
+      if (!order.hotelName && settlement?.hotelEarning?.hotelName) {
+        order.hotelName = settlement.hotelEarning.hotelName;
+      }
+      if (!order.hotelId && settlement?.hotelEarning?.hotelId) {
+        order.hotelId = settlement.hotelEarning.hotelId.toString();
+      }
+
+      // Resolve delivery partner if missing on the order document but exists in settlement
+      if (!order.deliveryPartnerId && settlement?.deliveryPartnerId) {
+        try {
+          const Delivery = (await import('../../delivery/models/Delivery.js')).default;
+          const dp = await Delivery.findById(settlement.deliveryPartnerId).select('name phone').lean();
+          if (dp) {
+            order.deliveryPartnerId = dp;
+          }
+        } catch (err) {
+          console.warn('Could not populate delivery partner from settlement:', err.message);
+        }
+      }
+
+      // Add delivery partner helper fields to the order for the view dialog
+      order.deliveryPartnerName = order.deliveryPartnerId?.name || null;
+      order.deliveryPartnerPhone = order.deliveryPartnerId?.phone || null;
+
+      // Resolve genuine restaurant name dynamically for this single restaurant
+      if (order.restaurantId && /^Restaurant\s*\d+$/i.test(order.restaurantName || "")) {
+        try {
+          const otherOrder = await Order.findOne({
+            restaurantId: order.restaurantId,
+            restaurantName: { $not: /^Restaurant\s*\d+$/i, $ne: 'Unknown Restaurant' }
+          }).select('restaurantName').lean();
+          
+          let genuineName = otherOrder?.restaurantName;
+          if (!genuineName) {
+            const otherSettlement = await OrderSettlement.findOne({
+              restaurantId: mongoose.Types.ObjectId.isValid(order.restaurantId) ? new mongoose.Types.ObjectId(order.restaurantId) : order.restaurantId,
+              restaurantName: { $not: /^Restaurant\s*\d+$/i, $ne: 'Unknown Restaurant' }
+            }).select('restaurantName').lean();
+            genuineName = otherSettlement?.restaurantName;
+          }
+          
+          if (genuineName) {
+            order.restaurantName = genuineName;
+          }
+        } catch (err) {
+          console.warn('Could not resolve genuine restaurant name in getOrderById:', err.message);
+        }
+      }
 
       const orderAmount = Number(order?.pricing?.total || 0);
       const settlementAdmin = Number(settlement?.adminEarning?.totalEarning || 0);

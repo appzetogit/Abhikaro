@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowDownCircle, ArrowUpCircle, RefreshCw, Wallet as WalletIcon, Lock } from "lucide-react"
+import { ArrowDownCircle, ArrowUpCircle, RefreshCw, Wallet as WalletIcon, Lock, Gift } from "lucide-react"
 import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
@@ -12,7 +12,8 @@ function formatCurrency(amount) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(num)
 }
 
@@ -115,6 +116,16 @@ export default function HotelWallet() {
 
   const transactions = wallet?.transactions || []
 
+  const totalBonus = useMemo(() => {
+    return transactions.reduce((sum, t) => {
+      if (t && t.type === "bonus" && t.status === "Completed") {
+        return sum + (Number(t.amount) || 0)
+      }
+      return sum
+    }, 0)
+  }, [transactions])
+
+
   const manualNetAdjustment = useMemo(() => {
     // Manual credits: completed earnings not linked to a specific order
     const manualCredit = transactions.reduce((sum, t) => {
@@ -166,7 +177,7 @@ export default function HotelWallet() {
     : wallet?.withdrawMessage || ""
 
   const recentTransactions = useMemo(() => {
-    return [...transactions].slice(0, 10)
+    return [...transactions]
   }, [transactions])
 
   if (loading) {
@@ -250,24 +261,35 @@ export default function HotelWallet() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl border shadow-sm p-4">
-            <div className="flex items-center justify-between">
-              <div className="p-2 rounded-lg bg-green-50">
-                <ArrowUpCircle className="h-5 w-5 text-green-600" />
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="bg-white rounded-xl border shadow-sm p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-1.5 rounded-lg bg-green-50">
+                <ArrowUpCircle className="h-4 w-4 text-green-600" />
               </div>
-              <span className="text-xs text-gray-500">Total Earnings</span>
+              <span className="text-[10px] sm:text-xs text-gray-500 font-medium">Earnings</span>
             </div>
-            <p className="mt-3 text-lg font-bold text-gray-900">{formatCurrency(totalEarned)}</p>
+            <p className="text-sm sm:text-lg font-bold text-gray-900">{formatCurrency(totalEarned)}</p>
           </div>
-          <div className="bg-white rounded-xl border shadow-sm p-4">
-            <div className="flex items-center justify-between">
-              <div className="p-2 rounded-lg bg-red-50">
-                <ArrowDownCircle className="h-5 w-5 text-red-600" />
+
+          <div className="bg-white rounded-xl border shadow-sm p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-1.5 rounded-lg bg-yellow-50">
+                <Gift className="h-4 w-4 text-yellow-600" />
               </div>
-              <span className="text-xs text-gray-500">Withdrawn</span>
+              <span className="text-[10px] sm:text-xs text-gray-500 font-medium">Bonus</span>
             </div>
-            <p className="mt-3 text-lg font-bold text-gray-900">{formatCurrency(totalWithdrawn)}</p>
+            <p className="text-sm sm:text-lg font-bold text-gray-900">{formatCurrency(totalBonus)}</p>
+          </div>
+
+          <div className="bg-white rounded-xl border shadow-sm p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-1.5 rounded-lg bg-red-50">
+                <ArrowDownCircle className="h-4 w-4 text-red-600" />
+              </div>
+              <span className="text-[10px] sm:text-xs text-gray-500 font-medium">Withdrawn</span>
+            </div>
+            <p className="text-sm sm:text-lg font-bold text-gray-900">{formatCurrency(totalWithdrawn)}</p>
           </div>
         </div>
 
@@ -275,7 +297,9 @@ export default function HotelWallet() {
         <div className="bg-white rounded-xl border shadow-sm">
           <div className="px-4 py-4 border-b flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-gray-900">Transaction History</h2>
+              <h2 className="text-base font-semibold text-gray-900">
+                Transaction History ({recentTransactions.length})
+              </h2>
               <p className="text-xs text-gray-500 mt-1">
                 Shows commission and cash collection per order
               </p>
@@ -359,7 +383,7 @@ export default function HotelWallet() {
                         {orderTotalLabel
                           ? `${orderIdLabel ? " · " : ""}Total: ${orderTotalLabel}`
                           : ""}
-                        {profitLabel
+                        {t.type === "commission" && profitLabel
                           ? `${orderIdLabel || orderTotalLabel ? " · " : ""}Profit: ${profitLabel}`
                           : ""}
                         {t.createdAt

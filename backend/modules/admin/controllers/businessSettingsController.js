@@ -26,6 +26,9 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
         logo: settings?.logo || { url: "", publicId: "" },
         favicon: settings?.favicon || { url: "", publicId: "" },
         payAtHotelMaxTotal: settings?.payAtHotelMaxTotal ?? 699,
+        maintenanceMode: settings?.maintenanceMode || { isEnabled: false },
+        email: settings?.email || "",
+        phone: settings?.phone || { countryCode: "+91", number: "" },
       },
     );
   } catch (error) {
@@ -40,6 +43,9 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
         logo: { url: "", publicId: "" },
         favicon: { url: "", publicId: "" },
         payAtHotelMaxTotal: 699,
+        maintenanceMode: { isEnabled: false },
+        email: "",
+        phone: { countryCode: "+91", number: "" },
       },
     );
   }
@@ -84,6 +90,7 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       withdrawScheduleDayOfWeek,
       withdrawScheduleStartTime,
       maintenanceMode,
+      maintenanceModeEnabled,
       homeCategoriesLimit,
       payAtHotelMaxTotal,
     } = req.body;
@@ -185,15 +192,39 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
           .padStart(2, "0")}`;
       }
     }
-    if (maintenanceMode !== undefined) {
-      settings.maintenanceMode.isEnabled = maintenanceMode.isEnabled || false;
-      if (maintenanceMode.startDate) {
-        settings.maintenanceMode.startDate = new Date(
-          maintenanceMode.startDate,
-        );
+    if (maintenanceModeEnabled !== undefined) {
+      if (!settings.maintenanceMode) {
+        settings.maintenanceMode = {
+          isEnabled: false,
+          startDate: null,
+          endDate: null,
+        };
       }
-      if (maintenanceMode.endDate) {
-        settings.maintenanceMode.endDate = new Date(maintenanceMode.endDate);
+      const raw = String(maintenanceModeEnabled).toLowerCase();
+      settings.maintenanceMode.isEnabled =
+        raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+    } else if (maintenanceMode !== undefined) {
+      if (!settings.maintenanceMode) {
+        settings.maintenanceMode = {
+          isEnabled: false,
+          startDate: null,
+          endDate: null,
+        };
+      }
+      let maintenanceObj = maintenanceMode;
+      if (typeof maintenanceMode === "string") {
+        try {
+          maintenanceObj = JSON.parse(maintenanceMode);
+        } catch (e) {
+          // fallback
+        }
+      }
+      settings.maintenanceMode.isEnabled = !!maintenanceObj.isEnabled;
+      if (maintenanceObj.startDate) {
+        settings.maintenanceMode.startDate = new Date(maintenanceObj.startDate);
+      }
+      if (maintenanceObj.endDate) {
+        settings.maintenanceMode.endDate = new Date(maintenanceObj.endDate);
       }
     }
     // Force automatic assignment mode.

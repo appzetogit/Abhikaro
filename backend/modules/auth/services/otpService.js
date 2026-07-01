@@ -27,6 +27,7 @@ const TEST_PHONE_NUMBERS = [
 const TEST_EMAILS = [
   "temp.restaurant@abhikaro.com",
   "test.restaurant@gmail.com",
+  "admin@test.com",
 ];
 
 // Default OTP for test identifiers

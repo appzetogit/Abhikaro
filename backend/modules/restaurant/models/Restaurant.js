@@ -373,6 +373,29 @@ restaurantSchema.pre("save", async function (next) {
     this.restaurantId = `REST-${timestamp}-${random}`;
   }
 
+  // Synchronize email and phone with ownerEmail and ownerPhone if modified
+  if (this.isModified("ownerPhone") && this.ownerPhone) {
+    this.phone = this.ownerPhone;
+    this.primaryContactNumber = this.ownerPhone;
+  } else if (this.isModified("phone") && this.phone) {
+    this.ownerPhone = this.phone;
+    this.primaryContactNumber = this.phone;
+  }
+
+  if (this.isModified("ownerEmail")) {
+    if (!this.ownerEmail) {
+      this.email = undefined;
+    } else {
+      this.email = this.ownerEmail;
+    }
+  } else if (this.isModified("email")) {
+    if (!this.email) {
+      this.ownerEmail = "";
+    } else {
+      this.ownerEmail = this.email;
+    }
+  }
+
   // Normalize phone number if it exists and is modified
   if (this.isModified("phone") && this.phone) {
     const normalized = normalizePhoneNumber(this.phone);
@@ -421,12 +444,13 @@ restaurantSchema.pre("save", async function (next) {
   ) {
     // Explicitly ensure email is undefined (not null) to prevent MongoDB from indexing it
     // Mongoose will omit undefined fields but will include null fields
-    if (this.email === null || this.email === undefined) {
+    if (this.email === null || this.email === undefined || this.email === "") {
       // Remove email from the document to prevent it from being saved
       this.$unset = this.$unset || {};
       this.$unset.email = "";
     }
   }
+
 
   // Hash password if it's modified
   if (this.isModified("password") && this.password) {

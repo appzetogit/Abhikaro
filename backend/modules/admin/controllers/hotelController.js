@@ -1059,6 +1059,16 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
     };
   });
 
+  const walletDoc = await HotelWallet.findOne({ hotelId: hotelObjectId })
+    .select("transactions")
+    .lean();
+
+  const totalBonus = Array.isArray(walletDoc?.transactions)
+    ? walletDoc.transactions
+        .filter((t) => t.type === "bonus" && t.status === "Completed")
+        .reduce((sum, t) => sum + (t.amount || 0), 0)
+    : 0;
+
   const summary = {
     totalOrders,
     cashOrders,
@@ -1066,6 +1076,7 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
     totalHotelEarningCash: Math.round(totalHotelEarningCash * 100) / 100,
     totalHotelEarningOnline: Math.round(totalHotelEarningOnline * 100) / 100,
     totalCashCollected: Math.round(totalCashCollected * 100) / 100,
+    totalBonus: Math.round(totalBonus * 100) / 100,
   };
 
   return successResponse(
@@ -1532,6 +1543,12 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
         ? wallet.manualCashCollectedOverride
         : stats.totalCashCollected || 0;
 
+      const totalBonus = Array.isArray(wallet?.transactions)
+        ? wallet.transactions
+            .filter((t) => t.type === "bonus" && t.status === "Completed")
+            .reduce((sum, t) => sum + (t.amount || 0), 0)
+        : 0;
+
       return {
         hotelId: hotel._id,
         hotelName: hotel.hotelName,
@@ -1545,6 +1562,7 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
         totalCashCollected: Math.round(totalCashCollected * 100) / 100,
         hotelEarnings:
           Math.round((hotelEarnings || 0) * 100) / 100,
+        totalBonus: Math.round(totalBonus * 100) / 100,
         availableBalance: Math.max(0, availableBalance),
         totalWithdrawn,
         totalWithdrawalCount,

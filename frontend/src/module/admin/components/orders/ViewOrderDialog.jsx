@@ -102,7 +102,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
   const isOfflinePayment =
     order?.paymentType === "Cash on Delivery" ||
     order?.payment?.method === "cash" ||
-    order?.payment?.method === "cod"
+    order?.payment?.method === "cod" ||
+    order?.payment?.method === "pay_at_hotel"
   const paymentPending =
     order?.paymentStatus === "Pending" ||
     order?.paymentStatus === "Unpaid" ||
@@ -494,11 +495,11 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
                   </p>
                   <div className="flex items-center gap-3">
                     <p className={`text-sm font-medium ${getPaymentStatusColor(
-                      order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
+                      order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod' || order.payment?.method === 'pay_at_hotel'
                         ? (order.paymentCollectionStatus ?? (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
                         : order.paymentStatus
                     )}`}>
-                      {order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
+                      {order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod' || order.payment?.method === 'pay_at_hotel'
                         ? (order.paymentCollectionStatus ?? (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
                         : order.paymentStatus}
                     </p>

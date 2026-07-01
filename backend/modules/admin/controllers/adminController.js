@@ -2265,7 +2265,16 @@ export const updateRestaurant = asyncHandler(async (req, res) => {
     logger.error(`Error updating restaurant from admin: ${error.message}`, {
       error: error.stack,
     });
-    return errorResponse(res, 500, "Failed to update restaurant");
+    try {
+      import('fs').then(fs => {
+        fs.appendFileSync('error_debug.txt', `\n\n--- ERROR AT ${new Date().toISOString()} ---\n${error.stack}\n`);
+      });
+    } catch (e) {}
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0];
+      return errorResponse(res, 400, `Another restaurant already exists with this ${field}`);
+    }
+    return errorResponse(res, 500, error.message || "Failed to update restaurant");
   }
 });
 

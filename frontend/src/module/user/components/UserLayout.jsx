@@ -14,6 +14,8 @@ import { useSharedLocation } from "@/lib/context/LocationContext"
 import io from "socket.io-client"
 import { BACKEND_ORIGIN } from "@/lib/api/config"
 import { toast } from "sonner"
+import { loadBusinessSettings } from "@/lib/utils/businessSettings"
+import MaintenanceScreen from "./MaintenanceScreen"
 
 // Create SearchOverlay context with default value
 const SearchOverlayContext = createContext({
@@ -122,6 +124,51 @@ export default function UserLayout() {
   const navigate = useNavigate()
   const { requestLocation, refreshZone } = useSharedLocation()
   const MANUAL_OVERRIDE_STORAGE_KEY = "userLocation_manualOverride"
+
+  const [settings, setSettings] = useState(null)
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false)
+  const [checkingMaintenance, setCheckingMaintenance] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    const checkMaintenanceMode = async () => {
+      try {
+        const data = await loadBusinessSettings()
+        if (active) {
+          setSettings(data)
+          if (data?.maintenanceMode?.isEnabled) {
+            setMaintenanceEnabled(true)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load business settings in UserLayout:", err)
+      } finally {
+        if (active) {
+          setCheckingMaintenance(false)
+        }
+      }
+    }
+
+    checkMaintenanceMode()
+
+    const handleSettingsUpdate = async () => {
+      try {
+        const data = await loadBusinessSettings()
+        if (active) {
+          setSettings(data)
+          setMaintenanceEnabled(!!data?.maintenanceMode?.isEnabled)
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+    window.addEventListener("businessSettingsUpdated", handleSettingsUpdate)
+
+    return () => {
+      active = false
+      window.removeEventListener("businessSettingsUpdated", handleSettingsUpdate)
+    }
+  }, [])
 
   // Background chat notifications (delivery <-> user)
   useEffect(() => {
@@ -323,6 +370,18 @@ export default function UserLayout() {
     location.pathname.startsWith("/restaurants/"),
     [location.pathname]
   )
+
+  if (checkingMaintenance) {
+    return (
+      <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (maintenanceEnabled) {
+    return <MaintenanceScreen settings={settings} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] transition-colors duration-200">

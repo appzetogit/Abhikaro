@@ -186,6 +186,7 @@ export default function HotelWalletAdmin() {
       { key: "totalRequests", label: "Total Requests" },
       { key: "totalAmount", label: "Total Amount" },
       { key: "hotelEarnings", label: "Hotel Earnings" },
+      { key: "totalBonus", label: "Total Bonus" },
       { key: "availableBalance", label: "Available Balance" },
     ]
     const exportData = filtered.map((h, index) => ({
@@ -195,6 +196,7 @@ export default function HotelWalletAdmin() {
       totalRequests: h.totalRequests || 0,
       totalAmount: formatCurrency(h.totalAmountCollected),
       hotelEarnings: formatCurrency(h.hotelEarnings),
+      totalBonus: formatCurrency(h.totalBonus),
       availableBalance: formatCurrency(h.availableBalance),
     }))
 
@@ -277,6 +279,9 @@ export default function HotelWalletAdmin() {
                       Hotel Earnings
                     </th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      Total Bonus
+                    </th>
+                    <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       Available Balance
                     </th>
                     <th className="px-6 py-3 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -287,7 +292,7 @@ export default function HotelWalletAdmin() {
                 <tbody className="bg-white divide-y divide-slate-100">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-16 text-center">
+                      <td colSpan={8} className="px-6 py-16 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <Building2 className="w-12 h-12 text-slate-300 mb-3" />
                           <p className="text-sm font-medium text-slate-600">
@@ -326,6 +331,9 @@ export default function HotelWalletAdmin() {
                             <IndianRupee className="w-3 h-3 text-slate-700" />
                             <span>{formatCurrency(hotel.hotelEarnings)}</span>
                           </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800">
+                          <span>{formatCurrency(hotel.totalBonus)}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-emerald-700">
                           {formatCurrency(hotel.availableBalance)}
@@ -555,7 +563,7 @@ export default function HotelWalletAdmin() {
             ) : earningsData && earningsData.orders?.length ? (
               <div className="space-y-4">
                 {earningsData.summary && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-xs">
                     <div className="bg-slate-50 rounded-lg p-3">
                       <p className="text-slate-500 font-medium uppercase tracking-wide">
                         Total QR Orders
@@ -582,12 +590,32 @@ export default function HotelWalletAdmin() {
                     </div>
                     <div className="bg-slate-50 rounded-lg p-3">
                       <p className="text-slate-500 font-medium uppercase tracking-wide">
-                        Total Earnings
+                        Order Earnings
                       </p>
                       <p className="text-base font-semibold text-slate-900">
                         {formatCurrency(
                           (earningsData.summary.totalHotelEarningCash || 0) +
                             (earningsData.summary.totalHotelEarningOnline || 0),
+                        )}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-slate-500 font-medium uppercase tracking-wide">
+                        Total Bonus
+                      </p>
+                      <p className="text-base font-semibold text-slate-900">
+                        {formatCurrency(earningsData.summary.totalBonus || 0)}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-3 font-semibold text-indigo-700 bg-indigo-50/50">
+                      <p className="text-indigo-600 font-medium uppercase tracking-wide">
+                        Total Earnings
+                      </p>
+                      <p className="text-base font-bold">
+                        {formatCurrency(
+                          (earningsData.summary.totalHotelEarningCash || 0) +
+                            (earningsData.summary.totalHotelEarningOnline || 0) +
+                            (earningsData.summary.totalBonus || 0),
                         )}
                       </p>
                     </div>

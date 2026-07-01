@@ -361,10 +361,7 @@ export const getOrderStats = async (req, res) => {
         : financial.totalCashCollected || 0;
 
     const finalResult = {
-      totalRequests: (facet.counts || []).reduce(
-        (acc, curr) => acc + curr.count,
-        0,
-      ),
+      totalRequests: counts.delivered || 0,
       pending: counts.pending || 0,
       confirmed: counts.confirmed || 0,
       completed:

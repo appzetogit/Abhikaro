@@ -20,6 +20,8 @@ export default function BusinessSetup() {
     startTime: "10:00",
   });
 
+  const [maintenanceModeEnabled, setMaintenanceModeEnabled] = useState(false);
+
   const [formData, setFormData] = useState({
     companyName: "",
     email: "",
@@ -81,6 +83,13 @@ export default function BusinessSetup() {
         if (settings.favicon?.url) {
           setFaviconPreview(settings.favicon.url);
         }
+
+        // Set maintenance mode
+        if (settings.maintenanceMode) {
+          setMaintenanceModeEnabled(!!settings.maintenanceMode.isEnabled);
+        } else {
+          setMaintenanceModeEnabled(false);
+        }
       }
     } catch (error) {
       console.error("Error fetching business settings:", error);
@@ -130,6 +139,7 @@ export default function BusinessSetup() {
         withdrawScheduleDayOfWeek: withdrawSchedule.dayOfWeek,
         withdrawScheduleStartTime: withdrawSchedule.startTime,
         payAtHotelMaxTotal: Number(formData.payAtHotelMaxTotal),
+        maintenanceModeEnabled: maintenanceModeEnabled,
       };
 
       // Prepare files
@@ -771,6 +781,35 @@ export default function BusinessSetup() {
               <p className="mt-3 text-[11px] text-slate-500">
                 Note: Withdrawals will be allowed after the configured time on the selected weekday.
               </p>
+            </div>
+          </div>
+
+          {/* Maintenance Mode settings */}
+          <div className="px-4 py-4 border-t border-slate-100">
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 mb-1">
+                    Maintenance Mode
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Restricts user side screens and displays the &quot;Abhikaro Under Maintenance&quot; page.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMaintenanceModeEnabled((prev) => !prev)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
+                    maintenanceModeEnabled ? "bg-red-600" : "bg-slate-200"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      maintenanceModeEnabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           </div>
 
