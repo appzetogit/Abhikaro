@@ -365,6 +365,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       const activeRestaurants = await Restaurant.countDocuments({
         approvedAt: { $exists: true, $ne: null },
         isActive: true,
+        isDeleted: { $ne: true },
       });
       const User = (await import("../../auth/models/User.js")).default;
       const activeDeliveryPartners = await User.countDocuments({
@@ -375,10 +376,12 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
 
       const totalRestaurants = await Restaurant.countDocuments({
         approvedAt: { $exists: true, $ne: null },
+        isDeleted: { $ne: true },
       });
 
       const pendingRestaurantRequestsQuery = {
         isActive: false,
+        isDeleted: { $ne: true },
         $and: [
           {
             $or: [
@@ -877,11 +880,13 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       totalRestaurants = await Restaurant.countDocuments({
         zoneId: zoneIdFilter,
         approvedAt: { $exists: true, $ne: null },
+        isDeleted: { $ne: true },
       });
       activeRestaurants = await Restaurant.countDocuments({
         zoneId: zoneIdFilter,
         approvedAt: { $exists: true, $ne: null },
         isActive: true,
+        isDeleted: { $ne: true },
       });
       pendingRestaurantRequests = await Restaurant.countDocuments({
         ...pendingRestaurantRequestsQuery,
@@ -890,10 +895,12 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     } else {
       totalRestaurants = await Restaurant.countDocuments({
         approvedAt: { $exists: true, $ne: null },
+        isDeleted: { $ne: true },
       });
       activeRestaurants = await Restaurant.countDocuments({
         approvedAt: { $exists: true, $ne: null },
         isActive: true,
+        isDeleted: { $ne: true },
       });
       pendingRestaurantRequests = await Restaurant.countDocuments(
         pendingRestaurantRequestsQuery,
@@ -962,6 +969,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       createdAt: { $gte: last24Hours },
       approvedAt: { $exists: true, $ne: null },
       isActive: true,
+      isDeleted: { $ne: true },
     });
 
     const Menu = (await import("../../restaurant/models/Menu.js")).default;
@@ -2026,7 +2034,7 @@ export const getRestaurants = asyncHandler(async (req, res) => {
     const { page = 1, limit = 50, search, status, cuisine, zone } = req.query;
 
     // Build query
-    const query = {};
+    const query = { isDeleted: { $ne: true } };
 
     // Only show approved restaurants in main list (approvedAt set)
     // This keeps "New Joining Requests" separate from approved-but-inactive restaurants.
@@ -2545,7 +2553,7 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
     const { status = "pending", page = 1, limit = 50, search } = req.query;
 
     // Build query
-    let query = {};
+    let query = { isDeleted: { $ne: true } };
 
     // Status filter
     // Pending = all inactive restaurants without rejection reason (regardless of onboarding completion)
@@ -2645,6 +2653,7 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
     if (status === "pending" && restaurants.length === 0) {
       const allInactive = await Restaurant.find({
         isActive: false,
+        isDeleted: { $ne: true },
         $or: [
           { rejectionReason: { $exists: false } },
           { rejectionReason: null },
@@ -2658,6 +2667,7 @@ export const getRestaurantJoinRequests = asyncHandler(async (req, res) => {
 
       const totalInactive = await Restaurant.countDocuments({
         isActive: false,
+        isDeleted: { $ne: true },
         $or: [
           { rejectionReason: { $exists: false } },
           { rejectionReason: null },
@@ -3762,7 +3772,12 @@ export const createRestaurant = asyncHandler(async (req, res) => {
 export const deleteRestaurant = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
+    const { code } = req.query;
     const adminId = req.user._id;
+
+    if (code !== "741474") {
+      return errorResponse(res, 400, "Invalid confirmation code");
+    }
 
     const restaurant = await Restaurant.findById(id);
 
@@ -3770,10 +3785,39 @@ export const deleteRestaurant = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "Restaurant not found");
     }
 
-    // Delete restaurant
-    await Restaurant.findByIdAndDelete(id);
+    // Soft delete restaurant
+    restaurant.isDeleted = true;
+    restaurant.isActive = false;
+    await restaurant.save();
 
-    logger.info(`Restaurant deleted: ${id}`, {
+    // Delete related restaurant data (but preserve hotel and order data)
+    try {
+      const Menu = (await import("../../restaurant/models/Menu.js")).default;
+      const Inventory = (await import("../../restaurant/models/Inventory.js")).default;
+      const MenuItemSchedule = (await import("../../restaurant/models/MenuItemSchedule.js")).default;
+      const Offer = (await import("../../restaurant/models/Offer.js")).default;
+      const OutletTimings = (await import("../../restaurant/models/OutletTimings.js")).default;
+      const RestaurantWallet = (await import("../../restaurant/models/RestaurantWallet.js")).default;
+      const StaffManagement = (await import("../../restaurant/models/StaffManagement.js")).default;
+      const RestaurantDiningOffer = (await import("../../restaurant/models/RestaurantDiningOffer.js")).default;
+
+      await Promise.all([
+        Menu.deleteMany({ restaurant: id }),
+        Inventory.deleteMany({ restaurant: id }),
+        MenuItemSchedule.deleteMany({ restaurant: id }),
+        Offer.deleteMany({ restaurant: id }),
+        OutletTimings.deleteMany({ restaurant: id }),
+        RestaurantWallet.deleteMany({ restaurant: id }),
+        StaffManagement.deleteMany({ restaurant: id }),
+        RestaurantDiningOffer.deleteMany({ restaurantId: id }),
+      ]);
+
+      logger.info(`Related data deleted for restaurant: ${id}`);
+    } catch (err) {
+      logger.error(`Error deleting related data for restaurant ${id}: ${err.message}`);
+    }
+
+    logger.info(`Restaurant soft deleted: ${id}`, {
       deletedBy: adminId,
       restaurantName: restaurant.name,
     });

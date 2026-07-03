@@ -255,7 +255,13 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
   const isPlaceholder = (str) => {
     if (!str) return true;
     const s = String(str).toLowerCase().trim();
-    return s === "select location" || s === "updating location..." || s === "detecting...";
+    return (
+      s === "select location" ||
+      s === "updating location..." ||
+      s === "detecting..." ||
+      s === "live" ||
+      s === "live address"
+    );
   };
 
   // Format address for display

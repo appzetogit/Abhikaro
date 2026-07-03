@@ -77,6 +77,7 @@ export async function suggestUnifiedSearch(req, res, next) {
           isActive: true,
           isAcceptingOrders: true,
           approvedAt: { $exists: true, $ne: null },
+          isDeleted: { $ne: true },
         },
         { _id: 1 }
       ).lean();
@@ -99,9 +100,11 @@ export async function suggestUnifiedSearch(req, res, next) {
       isActive: true,
       isAcceptingOrders: true,
       approvedAt: { $exists: true, $ne: null },
+      isDeleted: { $ne: true },
     } : { 
       isActive: true,
       approvedAt: { $exists: true, $ne: null },
+      isDeleted: { $ne: true },
     };
 
     const restaurants = await Restaurant.find(
@@ -217,6 +220,7 @@ export async function suggestUnifiedSearch(req, res, next) {
         isActive: true,
         isAcceptingOrders: true,
         approvedAt: { $exists: true, $ne: null },
+        isDeleted: { $ne: true },
         ...(allowedRestaurantIds ? { _id: { $in: allowedRestaurantIds.map((id) => new mongoose.Types.ObjectId(id)) } } : {}),
       },
       { name: 1, slug: 1, profileImage: 1, onboarding: 1, isActive: 1, isAcceptingOrders: 1 }
@@ -278,7 +282,7 @@ export async function legacyMenuSearch(req, res, next) {
         zoneId,
       ].filter(Boolean);
       const inZoneRestaurants = await Restaurant.find(
-        { zoneId: { $in: zoneCandidates }, isActive: true, isAcceptingOrders: true, approvedAt: { $exists: true, $ne: null } },
+        { zoneId: { $in: zoneCandidates }, isActive: true, isAcceptingOrders: true, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } },
         { _id: 1 }
       ).lean();
       allowedRestaurantIds = inZoneRestaurants.map((r) => new mongoose.Types.ObjectId(String(r._id)));
@@ -346,6 +350,7 @@ export async function legacyMenuSearch(req, res, next) {
         isActive: true,
         isAcceptingOrders: true,
         approvedAt: { $exists: true, $ne: null },
+        isDeleted: { $ne: true },
       },
       { _id: 1 }
     ).lean();

@@ -98,6 +98,7 @@ export const getApprovedRestaurants = asyncHandler(async (req, res) => {
     const query = {
       isActive: true,
       approvedAt: { $exists: true, $ne: null },
+      isDeleted: { $ne: true },
     };
 
     // Search filter - include onboarding.step1.restaurantName for search

@@ -114,6 +114,7 @@ export async function findNearestRestaurant(deliveryLat, deliveryLng, orderItems
       isActive: true,
       isAcceptingOrders: true,
       approvedAt: { $exists: true, $ne: null },
+      isDeleted: { $ne: true },
       'location.latitude': { $exists: true, $ne: null },
       'location.longitude': { $exists: true, $ne: null }
     }).lean();

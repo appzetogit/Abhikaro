@@ -40,6 +40,7 @@ export const getHotelWallet = asyncHandler(async (req, res) => {
 
   const orders = await Order.find({
     $or: [
+      { _id: { $in: req.settlementOrderIds || [] } },
       { hotelId: hotelObjectId },
       { hotelReference: hotelIdStr },
       { hotelReference: hotelObjectId.toString() },
@@ -288,6 +289,7 @@ export const createHotelWithdrawalRequest = asyncHandler(async (req, res) => {
 
     const orders = await Order.find({
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: hotelObjectId },
         { hotelReference: hotelIdStr },
         { hotelReference: hotelObjectId.toString() },

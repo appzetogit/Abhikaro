@@ -284,6 +284,7 @@ export const getRestaurants = async (req, res) => {
         const restaurantsWithCategory = await Restaurant.find({
           isActive: true,
           approvedAt: { $exists: true, $ne: null },
+          isDeleted: { $ne: true },
           'diningConfig.categories': categoryId
         }).select('_id').lean();
         
@@ -295,6 +296,7 @@ export const getRestaurants = async (req, res) => {
         const restaurantsWithDiningType = await Restaurant.find({
           isActive: true,
           approvedAt: { $exists: true, $ne: null },
+          isDeleted: { $ne: true },
           'diningSettings.diningType': { $exists: true, $ne: null }
         }).select('_id diningSettings.diningType').lean();
 
@@ -352,7 +354,7 @@ export const getRestaurants = async (req, res) => {
     
     // Build base query - Show all active restaurants (including offline ones)
     // Offline restaurants will be displayed with "CURRENTLY CLOSED" tag on frontend
-    const query = { isActive: true, approvedAt: { $exists: true, $ne: null } };
+    const query = { isActive: true, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } };
     
     // Add dining category filter - only show restaurants linked to this category
     if (categoryLinkedRestaurantIds && categoryLinkedRestaurantIds.length > 0) {
@@ -793,6 +795,7 @@ export const getRestaurantById = async (req, res) => {
     const queryConditions = {
       isActive: true,
       approvedAt: { $exists: true, $ne: null },
+      isDeleted: { $ne: true },
     };
     
     const orConditions = [
@@ -1657,7 +1660,8 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
     let restaurants = await Restaurant.find({
       isActive: true,
       isAcceptingOrders: true,
-      approvedAt: { $exists: true, $ne: null }
+      approvedAt: { $exists: true, $ne: null },
+      isDeleted: { $ne: true }
     })
       .select('-owner -createdAt -updatedAt')
       .lean()

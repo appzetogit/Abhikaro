@@ -1553,9 +1553,10 @@ export const adminAPI = {
   },
 
   // Delete restaurant
-  deleteRestaurant: (id) => {
+  deleteRestaurant: (id, code) => {
     return apiClient.delete(
       API_ENDPOINTS.ADMIN.RESTAURANT_DELETE.replace(":id", id),
+      { params: { code } }
     );
   },
 

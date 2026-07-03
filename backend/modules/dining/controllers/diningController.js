@@ -27,6 +27,7 @@ export const getRestaurants = async (req, res) => {
       isActive: true,
       "diningSettings.isEnabled": true,
       approvedAt: { $exists: true, $ne: null },
+      isDeleted: { $ne: true },
     };
 
     if (city) {
@@ -73,7 +74,7 @@ export const getRestaurantBySlug = async (req, res) => {
     let actualRestaurant = null;
 
     // 1. Prefer Restaurant collection (authoritative, has diningConfig + rating/totalRatings)
-    actualRestaurant = await Restaurant.findOne({ slug: slugParam, approvedAt: { $exists: true, $ne: null } }).select(
+    actualRestaurant = await Restaurant.findOne({ slug: slugParam, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } }).select(
       "-password -refreshToken",
     );
 
@@ -84,7 +85,7 @@ export const getRestaurantBySlug = async (req, res) => {
 
     // 3. Try finding by _id (if slugParam looks like a valid ObjectId)
     if (!actualRestaurant && slugParam.match(/^[0-9a-fA-F]{24}$/)) {
-      actualRestaurant = await Restaurant.findOne({ _id: slugParam, approvedAt: { $exists: true, $ne: null } })
+      actualRestaurant = await Restaurant.findOne({ _id: slugParam, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } })
         .select('-password -refreshToken');
       if (!actualRestaurant) {
         actualRestaurant = await DiningRestaurant.findById(slugParam);
@@ -97,7 +98,8 @@ export const getRestaurantBySlug = async (req, res) => {
       const allDiningRestaurants = await Restaurant.find({
         isActive: true,
         'diningSettings.isEnabled': true,
-        approvedAt: { $exists: true, $ne: null }
+        approvedAt: { $exists: true, $ne: null },
+        isDeleted: { $ne: true }
       }).select('-password -refreshToken').lean();
 
       actualRestaurant = allDiningRestaurants.find((r) => {
@@ -547,20 +549,20 @@ export const getDiningReviewsByRestaurantSlug = async (req, res) => {
     const slugParam = req.params.slug;
 
     // Find Restaurant doc (DiningReview references Restaurant)
-    let restaurant = await Restaurant.findOne({ slug: slugParam, approvedAt: { $exists: true, $ne: null } })
+    let restaurant = await Restaurant.findOne({ slug: slugParam, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } })
       .select("_id slug name restaurantId onboarding.step1.restaurantName")
       .lean();
 
     // Try by _id if slugParam is an ObjectId
     if (!restaurant && slugParam && String(slugParam).match(/^[0-9a-fA-F]{24}$/)) {
-      restaurant = await Restaurant.findOne({ _id: slugParam, approvedAt: { $exists: true, $ne: null } })
+      restaurant = await Restaurant.findOne({ _id: slugParam, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } })
         .select("_id slug name restaurantId onboarding.step1.restaurantName")
         .lean();
     }
 
     // Fallback: match by generated slug from name/onboarding name
     if (!restaurant) {
-      const all = await Restaurant.find({ isActive: true, "diningSettings.isEnabled": true, approvedAt: { $exists: true, $ne: null } })
+      const all = await Restaurant.find({ isActive: true, "diningSettings.isEnabled": true, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } })
         .select("_id slug name restaurantId onboarding.step1.restaurantName")
         .lean();
       const normalizedSlug = String(slugParam || "").toLowerCase();

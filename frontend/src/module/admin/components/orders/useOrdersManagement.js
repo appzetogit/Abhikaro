@@ -71,7 +71,11 @@ export function useOrdersManagement(orders, statusKey, title) {
     }
 
     if (filters.deliveryType) {
-      result = result.filter(order => order.deliveryType === filters.deliveryType)
+      if (filters.deliveryType === 'Delivered') {
+        result = result.filter(order => order.orderStatus === 'Delivered' || order.status === 'delivered' || order.status === 'Ordered Delivered')
+      } else {
+        result = result.filter(order => order.deliveryType === filters.deliveryType)
+      }
     }
 
     if (filters.minAmount) {
@@ -298,13 +302,24 @@ export function useOrdersManagement(orders, statusKey, title) {
         startY += 8
         doc.setFontSize(10)
         doc.setTextColor(60, 60, 60)
+        const isPlaceholderVal = (v) => {
+          if (!v) return true
+          const s = String(v).toLowerCase().trim()
+          return (
+            s === "select location" ||
+            s === "updating location..." ||
+            s === "detecting..." ||
+            s === "live" ||
+            s === "live address"
+          )
+        }
         const addrParts = [
-          addr.label,
-          addr.street,
-          addr.additionalDetails,
-          addr.formattedAddress,
-          addr.address,
-          [addr.city, addr.state, addr.zipCode].filter(Boolean).join(', ')
+          isPlaceholderVal(addr.label) ? null : addr.label,
+          isPlaceholderVal(addr.street) ? null : addr.street,
+          isPlaceholderVal(addr.additionalDetails) ? null : addr.additionalDetails,
+          isPlaceholderVal(addr.formattedAddress) ? null : addr.formattedAddress,
+          isPlaceholderVal(addr.address) ? null : addr.address,
+          [addr.city, addr.state, addr.zipCode].filter(v => !isPlaceholderVal(v)).join(', ')
         ].filter(Boolean)
         const addrStr = addrParts.join(', ') || 'N/A'
         const addrLines = doc.splitTextToSize(addrStr, 170)

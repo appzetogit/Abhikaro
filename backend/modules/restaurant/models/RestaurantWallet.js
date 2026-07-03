@@ -5,6 +5,7 @@ import RestaurantCommission from '../../admin/models/RestaurantCommission.js';
 import TableBooking from '../../dining/models/TableBooking.js';
 import WithdrawalRequest from './WithdrawalRequest.js';
 import OrderSettlement from '../../order/models/OrderSettlement.js';
+import AdminCommission from '../../admin/models/AdminCommission.js';
 
 
 const transactionSchema = new mongoose.Schema({
@@ -276,6 +277,62 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
       status: 'delivered'
     }).lean();
 
+    // Fetch settlements and admin commissions in parallel to resolve actual payouts
+    const orderIds = (orders || []).map(o => o._id).filter(Boolean);
+    const [settlements, adminComms] = orderIds.length ? await Promise.all([
+      OrderSettlement.find({ orderId: { $in: orderIds } }).lean(),
+      AdminCommission.find({ orderId: { $in: orderIds }, status: 'completed' }).lean()
+    ]) : [[], []];
+
+    const settlementMap = new Map();
+    (settlements || []).forEach(s => {
+      if (s.orderId) settlementMap.set(s.orderId.toString(), s);
+    });
+
+    const adminCommMap = new Map();
+    (adminComms || []).forEach(ac => {
+      if (ac.orderId) adminCommMap.set(ac.orderId.toString(), ac);
+    });
+
+    // Get hotel configurations
+    let hotelConfigByKey = new Map();
+    try {
+      const hotelObjectIds = [];
+      const hotelIdStrings = [];
+      for (const o of orders) {
+        if (o?.hotelId && mongoose.Types.ObjectId.isValid(o.hotelId)) {
+          hotelObjectIds.push(new mongoose.Types.ObjectId(o.hotelId));
+        }
+        if (o?.hotelReference && typeof o.hotelReference === 'string') {
+          hotelIdStrings.push(o.hotelReference);
+        }
+      }
+      const or = [];
+      if (hotelObjectIds.length) or.push({ _id: { $in: hotelObjectIds } });
+      if (hotelIdStrings.length) or.push({ hotelId: { $in: hotelIdStrings } });
+      if (or.length) {
+        const Hotel = mongoose.model('Hotel');
+        const hotels = await Hotel.find({ $or: or }).lean();
+        for (const h of hotels) {
+          if (h?._id) hotelConfigByKey.set(String(h._id), h);
+          if (h?.hotelId) hotelConfigByKey.set(String(h.hotelId), h);
+        }
+      }
+    } catch (_) {}
+
+    // Get qr global commission
+    let qrGlobalCommission = { hotel: 0, admin: 0 };
+    try {
+      const CommissionSettings = mongoose.model('CommissionSettings');
+      const latest = await CommissionSettings.findOne().sort({ createdAt: -1 }).lean();
+      if (latest?.qrCommission) {
+        qrGlobalCommission = {
+          hotel: Number(latest.qrCommission.hotel || 0),
+          admin: Number(latest.qrCommission.admin || 0)
+        };
+      }
+    } catch (_) {}
+
     // 2. Fetch all completed paid dining bookings
     const bookings = await TableBooking.find({
       restaurant: { $in: targetRestaurantObjectIds },
@@ -293,14 +350,73 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
       const subtotal = Number(order.pricing?.subtotal || 0);
       const discount = Number(order.pricing?.discount || 0);
       const foodPrice = Math.max(0, subtotal - discount);
-      
-      const commissionResult = await RestaurantCommission.calculateCommissionForOrder(
-        restaurantId,
-        foodPrice
-      );
-      const commissionAmount = commissionResult.commission || 0;
-      const payout = Math.max(0, foodPrice - commissionAmount);
-      const roundedPayout = Math.round(payout * 100) / 100;
+      const orderAmount = Number(order.pricing?.total || 0);
+      const platformFee = Number(order.pricing?.platformFee || 0);
+      const deliveryFee = Number(order.pricing?.deliveryFee || 0);
+      const tax = Number(order.pricing?.tax || 0);
+
+      const settlement = settlementMap.get(orderIdStr);
+      const commissionInfo = adminCommMap.get(orderIdStr) || {};
+
+      let restaurantEarning = settlement?.restaurantEarning?.netEarning ?? commissionInfo.restaurantEarning ?? 0;
+      let deliveryEarning = settlement?.deliveryPartnerEarning?.totalEarning ?? order.estimatedEarnings?.totalEarning ?? 0;
+      let adminEarning = settlement?.adminEarning?.totalEarning ?? commissionInfo.commissionAmount ?? 0;
+
+      const isHotelQrOrder = (order.orderType === 'QR' || !!order.hotelReference || !!order.hotelId);
+      let hotelCommissionAmount = settlement?.hotelEarning?.commission ?? (Number(order.commissionBreakdown?.hotel || 0) || Number(order.hotelCommission || 0) || 0);
+
+      if (isHotelQrOrder && !restaurantEarning) {
+        const commissionableFood = Math.max(0, subtotal - discount);
+        const hotelCfg = hotelConfigByKey.get(String(order.hotelId || "")) || hotelConfigByKey.get(String(order.hotelReference || "")) || null;
+
+        const pctHotel = Number(hotelCfg?.commission || 0) || Number(qrGlobalCommission?.hotel || 0) || Number(order.commissionPercentages?.hotel || 0);
+        const pctAdmin = Number(hotelCfg?.adminCommission || 0) || Number(qrGlobalCommission?.admin || 0) || Number(order.commissionPercentages?.admin || 0);
+
+        let hotelCommission = hotelCommissionAmount;
+        let qrAdminCommission = Number(order.commissionBreakdown?.admin || 0) || Number(order.adminCommission || 0) || 0;
+
+        if (!hotelCommission && pctHotel > 0 && commissionableFood > 0) {
+          hotelCommission = Math.round(((commissionableFood * pctHotel) / 100) * 100) / 100;
+        }
+        if (!qrAdminCommission && pctAdmin > 0 && commissionableFood > 0) {
+          qrAdminCommission = Math.round(((commissionableFood * pctAdmin) / 100) * 100) / 100;
+        }
+
+        const qrRestaurantNet = Math.max(0, commissionableFood - hotelCommission - qrAdminCommission);
+        if (qrRestaurantNet > 0) {
+          restaurantEarning = Math.round(qrRestaurantNet * 100) / 100;
+        } else if (!restaurantEarning) {
+          const explicitRestaurant = Number(order.restaurantShare || order.commissionBreakdown?.restaurant || 0);
+          if (explicitRestaurant > 0) {
+            restaurantEarning = explicitRestaurant;
+          }
+        }
+        hotelCommissionAmount = Number(hotelCommission || 0) || hotelCommissionAmount;
+      }
+
+      if (!restaurantEarning) {
+        if (order.restaurantShare !== undefined && order.restaurantShare > 0) {
+          restaurantEarning = order.restaurantShare;
+        } else {
+          const pct = Number(order.commissionPercentages?.restaurant || 0);
+          if (!isHotelQrOrder && pct > 0) {
+            const derivedSubtotal = Math.max(0, orderAmount - platformFee - deliveryFee - tax);
+            const derived = (derivedSubtotal * pct) / 100;
+            if (derived > 0) restaurantEarning = Math.round(derived * 100) / 100;
+          } else if (isHotelQrOrder && Number(orderAmount) > 0) {
+            const hotelCommission = Number(order.hotelCommission || 0) || Number(order.commissionBreakdown?.hotel || 0);
+            const derived = Number(orderAmount) - Number(adminEarning || 0) - Number(hotelCommission || 0) - Number(deliveryEarning || 0);
+            if (derived > 0) restaurantEarning = Math.round(derived * 100) / 100;
+          }
+        }
+      }
+
+      if (!restaurantEarning && !deliveryEarning && !adminEarning) {
+        restaurantEarning = Math.max(0, subtotal - discount);
+      }
+
+      const roundedPayout = Math.round(restaurantEarning * 100) / 100;
+      const commissionAmount = Math.max(0, foodPrice - roundedPayout);
 
       if (!existingTx) {
         // Not yet credited: add it

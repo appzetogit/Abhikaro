@@ -243,13 +243,6 @@ export default function DeliveryManPayments() {
 
         {/* Distribute DM Earning Table */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative">
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="absolute top-6 right-6 p-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"
-          >
-            <Settings className="w-5 h-5 text-slate-600" />
-          </button>
-
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
               <FileText className="w-5 h-5 text-blue-600" />
@@ -295,6 +288,14 @@ export default function DeliveryManPayments() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-all flex items-center justify-center"
+                title="Table Settings"
+              >
+                <Settings className="w-5 h-5 text-slate-600" />
+              </button>
             </div>
           </div>
 

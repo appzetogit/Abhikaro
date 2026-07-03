@@ -43,6 +43,9 @@ export function useGenericTableManagement(data, title, searchFields = []) {
       if (key === 'deliveryType') {
         result = result.filter(item => {
           const order = item.originalOrder || item
+          if (value === 'Delivered') {
+            return order.orderStatus === 'Delivered' || order.status === 'delivered' || order.status === 'Ordered Delivered'
+          }
           return order.deliveryType === value
         })
         return

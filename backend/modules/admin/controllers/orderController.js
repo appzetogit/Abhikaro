@@ -40,7 +40,9 @@ export const getOrders = asyncHandler(async (req, res) => {
     } = req.query;
 
     // Build query
-    const query = {};
+    const query = {
+      orderId: { $not: /^ORD-TEST/i }
+    };
 
     // Delivery partner filter
     // Supports ObjectId and legacy string values
@@ -574,7 +576,7 @@ export const getOrders = asyncHandler(async (req, res) => {
 
       // QR / Hotel (Online) earnings (commission + fees):
       // Many QR orders don't have OrderSettlement populated, so we compute from stored breakdown + pricing.
-      if (isHotelQrOrder) {
+      if (isHotelQrOrder && !restaurantEarning) {
         const commissionableFood = Math.max(0, Number(subtotal || 0) - Number(discount || 0));
         // Prefer explicit stored amounts. If missing/zero, derive from:
         // 1) Hotel-specific commission config (hotel.commission, hotel.adminCommission)
@@ -649,24 +651,28 @@ export const getOrders = asyncHandler(async (req, res) => {
       // - For DIRECT orders: derive from restaurant % on derived subtotal
       // - For QR/Hotel orders: derive as total - admin - hotelCommission - delivery
       if (!restaurantEarning) {
-        const pct = Number(order.commissionPercentages?.restaurant || 0);
-        if (!isHotelQrOrder && pct > 0) {
-          const feePlatform = Number(platformFee || 0);
-          const feeDelivery = Number(deliveryFee || 0);
-          const feeTax = Number(tax || 0);
-          const derivedSubtotal = Math.max(0, orderAmount - feePlatform - feeDelivery - feeTax);
-          const derived = (derivedSubtotal * pct) / 100;
-          if (derived > 0) restaurantEarning = Math.round(derived * 100) / 100;
-        } else if (isHotelQrOrder && Number(orderAmount) > 0) {
-          const hotelCommission =
-            Number(order.hotelCommission || 0) ||
-            Number(order.commissionBreakdown?.hotel || 0);
-          const derived =
-            Number(orderAmount) -
-            Number(adminEarning || 0) -
-            Number(hotelCommission || 0) -
-            Number(deliveryEarning || 0);
-          if (derived > 0) restaurantEarning = Math.round(derived * 100) / 100;
+        if (order.restaurantShare !== undefined && order.restaurantShare > 0) {
+          restaurantEarning = order.restaurantShare;
+        } else {
+          const pct = Number(order.commissionPercentages?.restaurant || 0);
+          if (!isHotelQrOrder && pct > 0) {
+            const feePlatform = Number(platformFee || 0);
+            const feeDelivery = Number(deliveryFee || 0);
+            const feeTax = Number(tax || 0);
+            const derivedSubtotal = Math.max(0, orderAmount - feePlatform - feeDelivery - feeTax);
+            const derived = (derivedSubtotal * pct) / 100;
+            if (derived > 0) restaurantEarning = Math.round(derived * 100) / 100;
+          } else if (isHotelQrOrder && Number(orderAmount) > 0) {
+            const hotelCommission =
+              Number(order.hotelCommission || 0) ||
+              Number(order.commissionBreakdown?.hotel || 0);
+            const derived =
+              Number(orderAmount) -
+              Number(adminEarning || 0) -
+              Number(hotelCommission || 0) -
+              Number(deliveryEarning || 0);
+            if (derived > 0) restaurantEarning = Math.round(derived * 100) / 100;
+          }
         }
       }
 

@@ -270,7 +270,8 @@ export const getActiveRestaurants = async (req, res) => {
     try {
         let restaurants = await Restaurant.find({
             isActive: true,
-            approvedAt: { $exists: true, $ne: null }
+            approvedAt: { $exists: true, $ne: null },
+            isDeleted: { $ne: true }
         })
             .select('name _id onboarding')
             .lean();

@@ -23,6 +23,7 @@ export const getHotelOrders = async (req, res) => {
     // Build query - use both string ID and ObjectId for robust matching
     const query = {
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: _id },
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
@@ -81,6 +82,7 @@ export const getOrderDetails = async (req, res) => {
     const order = await Order.findOne({
       orderId,
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: _id },
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
@@ -122,6 +124,7 @@ export const acceptOrder = async (req, res) => {
     const order = await Order.findOne({
       orderId,
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: _id },
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
@@ -191,6 +194,7 @@ export const rejectOrder = async (req, res) => {
     const order = await Order.findOne({
       orderId,
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: _id },
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
@@ -262,6 +266,7 @@ export const getOrderStats = async (req, res) => {
 
     const hotelOrderMatch = {
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: hotelObjectId },
         { hotelReference: { $in: [hotelIdStr, hotelObjectId.toString()] } },
       ],
@@ -404,6 +409,7 @@ export const collectPayment = async (req, res) => {
     const order = await Order.findOne({
       orderId,
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: _id },
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
@@ -517,6 +523,7 @@ export const getSettlementSummary = async (req, res) => {
       {
         $match: {
           $or: [
+            { _id: { $in: req.settlementOrderIds || [] } },
             { hotelId: hotelObjectId },
             { hotelReference: { $in: [hotelIdStr, hotelObjectId.toString()] } },
           ],
@@ -655,6 +662,7 @@ export const markOrderAsDelivered = async (req, res) => {
     const order = await Order.findOne({
       orderId,
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: _id },
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },

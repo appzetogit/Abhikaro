@@ -232,6 +232,7 @@ export default function OrderDetectDelivery() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [resendLoadingByOrderId, setResendLoadingByOrderId] = useState({})
+  const [activeCardFilter, setActiveCardFilter] = useState("total")
 
   // Fetch orders from backend
   useEffect(() => {
@@ -329,7 +330,7 @@ export default function OrderDetectDelivery() {
 
   // Statistics
   const stats = useMemo(() => {
-    const total = orders.length
+    const total = filteredData.length
     const ordered = filteredData.filter(o => o.status === "Ordered").length
     const restaurantAccepted = filteredData.filter(o => o.status === "Restaurant Accepted" || o.status === "Accepted").length
     const rejected = filteredData.filter(o => o.status === "Rejected").length
@@ -340,7 +341,22 @@ export default function OrderDetectDelivery() {
     const delivered = filteredData.filter(o => o.status === "Ordered Delivered").length
     
     return { total, ordered, restaurantAccepted, rejected, deliveryBoyAssigned, reachedPickup, orderIdAccepted, reachedDrop, delivered }
-  }, [filteredData, orders.length])
+  }, [filteredData])
+
+  const ordersForTable = useMemo(() => {
+    if (activeCardFilter === "total") return filteredData;
+    return filteredData.filter(o => {
+      if (activeCardFilter === "ordered") return o.status === "Ordered";
+      if (activeCardFilter === "restaurantAccepted") return o.status === "Restaurant Accepted" || o.status === "Accepted";
+      if (activeCardFilter === "rejected") return o.status === "Rejected";
+      if (activeCardFilter === "deliveryBoyAssigned") return o.status === "Delivery Boy Assigned";
+      if (activeCardFilter === "reachedPickup") return o.status === "Delivery Boy Reached Pickup" || o.status === "Reached Pickup";
+      if (activeCardFilter === "orderIdAccepted") return o.status === "Order ID Accepted";
+      if (activeCardFilter === "reachedDrop") return o.status === "Reached Drop";
+      if (activeCardFilter === "delivered") return o.status === "Ordered Delivered";
+      return true;
+    });
+  }, [filteredData, activeCardFilter]);
 
   const resetColumns = () => {
     setVisibleColumns({
@@ -411,7 +427,7 @@ export default function OrderDetectDelivery() {
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
       <OrdersTopbar 
         title="Order Detect Delivery" 
-        count={count} 
+        count={ordersForTable.length} 
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onFilterClick={() => setIsFilterOpen(true)}
@@ -422,19 +438,30 @@ export default function OrderDetectDelivery() {
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
-        {statCards.map(({ key, label, value, valueClass, Icon, iconClass, iconBgClass }) => (
-          <div key={key} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-slate-500 mb-0.5">{label}</p>
-                <p className={`text-xl font-bold ${valueClass}`}>{value}</p>
-              </div>
-              <div className={`p-2.5 rounded-lg ${iconBgClass}`}>
-                <Icon className={`w-5 h-5 ${iconClass}`} />
+        {statCards.map(({ key, label, value, valueClass, Icon, iconClass, iconBgClass }) => {
+          const isActive = activeCardFilter === key;
+          return (
+            <div
+              key={key}
+              onClick={() => setActiveCardFilter(isActive ? "total" : key)}
+              className={`rounded-xl shadow-sm border p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.02] ${
+                isActive
+                  ? "bg-slate-50 border-blue-500 ring-2 ring-blue-500/20"
+                  : "bg-white border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 mb-0.5">{label}</p>
+                  <p className={`text-xl font-bold ${valueClass}`}>{value}</p>
+                </div>
+                <div className={`p-2.5 rounded-lg ${iconBgClass}`}>
+                  <Icon className={`w-5 h-5 ${iconClass}`} />
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <FilterPanel
@@ -469,7 +496,7 @@ export default function OrderDetectDelivery() {
         order={selectedOrder}
       />
       <OrderDetectDeliveryTable 
-        orders={filteredData} 
+        orders={ordersForTable} 
         visibleColumns={visibleColumns}
         onViewOrder={handleViewOrder}
         onPrintOrder={handlePrintOrder}

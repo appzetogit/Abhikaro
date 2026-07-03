@@ -1,4 +1,6 @@
 import Order from "../../order/models/Order.js";
+import OrderSettlement from "../../order/models/OrderSettlement.js";
+import User from "../../auth/models/User.js";
 import Restaurant from "../models/Restaurant.js";
 import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
 import WithdrawalRequest from "../models/WithdrawalRequest.js";
@@ -184,6 +186,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     let currentCycleOrders = await Order.find({
       ...restaurantIdQuery,
       status: 'delivered',
+      orderId: { $not: /^ORD-TEST/i },
       $or: [
         { deliveredAt: { $gte: currentCycleStart, $lte: currentCycleEnd } },
         { 'tracking.delivered.timestamp': { $gte: currentCycleStart, $lte: currentCycleEnd } }
@@ -191,6 +194,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     })
     .populate('userId', 'name phone email')
     .select('orderId userId items pricing payment status address createdAt deliveredAt tracking')
+    .sort({ deliveredAt: -1, createdAt: -1 })
     .lean();
 
     // If no orders found with deliveredAt/tracking, check by createdAt as last resort
@@ -198,10 +202,12 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       currentCycleOrders = await Order.find({
         ...restaurantIdQuery,
         status: 'delivered',
+        orderId: { $not: /^ORD-TEST/i },
         createdAt: { $gte: currentCycleStart, $lte: currentCycleEnd }
       })
       .populate('userId', 'name phone email')
       .select('orderId userId items pricing payment status address createdAt deliveredAt tracking')
+      .sort({ createdAt: -1 })
       .lean();
     }
 
@@ -251,6 +257,12 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       }
     }
 
+    // Fetch settlements for current cycle orders in bulk
+    const currentOrderIds = currentCycleOrders.map(o => o._id);
+    const currentSettlements = await OrderSettlement.find({ orderId: { $in: currentOrderIds } }).lean();
+    const currentSettlementsMap = new Map();
+    currentSettlements.forEach(s => currentSettlementsMap.set(s.orderId.toString(), s));
+
     // Calculate current cycle payout
     // IMPORTANT: Commission is calculated on FOOD PRICE (subtotal - discount), NOT on total (which includes platform fee, GST, delivery fee)
     let currentCycleTotal = 0;
@@ -272,8 +284,22 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     const currentCycleOrdersData = await Promise.all(currentCycleOrders.map(async (order) => {
       // Food price = subtotal - discount (this is what commission is calculated on)
       const foodPrice = (order.pricing?.subtotal || 0) - (order.pricing?.discount || 0);
-      const commissionData = calculateCommissionForOrder(foodPrice);
-      const payout = foodPrice - commissionData.commission;
+      
+      const settlement = currentSettlementsMap.get(order._id.toString());
+      let commission = 0;
+      let payout = 0;
+      
+      if (settlement && settlement.restaurantEarning) {
+        commission = settlement.restaurantEarning.commission || 0;
+        payout = settlement.restaurantEarning.netEarning || 0;
+      } else if (order.restaurantShare !== undefined && order.adminCommission !== undefined) {
+        payout = order.restaurantShare || 0;
+        commission = order.adminCommission || 0;
+      } else {
+        const commissionData = calculateCommissionForOrder(foodPrice);
+        commission = commissionData.commission;
+        payout = foodPrice - commission;
+      }
 
       // Wallet backfill: ensure a "payment" transaction exists for this delivered order
       try {
@@ -292,7 +318,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
               metadata: new Map([
                 ['source', 'finance_backfill'],
                 ['foodPrice', Math.round(foodPrice * 100) / 100],
-                ['commission', Math.round(commissionData.commission * 100) / 100],
+                ['commission', Math.round(commission * 100) / 100],
               ]),
             });
             walletBackfillAdded += 1;
@@ -303,7 +329,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       }
       
       currentCycleTotal += foodPrice; // Use food price, not total
-      currentCycleCommission += commissionData.commission;
+      currentCycleCommission += commission;
 
       // Get food names from order items
       const foodNames = (order.items || []).map(item => item.name).join(', ') || 'N/A';
@@ -384,7 +410,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
         orderId: order.orderId || order._id?.toString() || 'N/A',
         orderTotal: foodPrice, // Food price (subtotal - discount) for display
         totalAmount: order.pricing?.total || 0, // Total order amount paid by customer
-        commission: commissionData.commission,
+        commission: commission,
         payout,
         deliveredAt: order.deliveredAt || order.createdAt,
         createdAt: order.createdAt,
@@ -489,7 +515,8 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
     if (isAll || (startDate && endDate)) {
       let query = {
         ...restaurantIdQuery,
-        status: 'delivered'
+        status: 'delivered',
+        orderId: { $not: /^ORD-TEST/i }
       };
 
       let start, end;
@@ -509,13 +536,15 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
       // First try with deliveredAt, if not found, use tracking.delivered.timestamp as fallback
       let pastCycleOrders = await Order.find(query)
       .populate('userId', 'name phone email')
+      .sort({ deliveredAt: -1, createdAt: -1 })
       .lean();
 
       // If no orders found with deliveredAt/tracking, check by createdAt as last resort
       if (pastCycleOrders.length === 0) {
         let fallbackQuery = {
           ...restaurantIdQuery,
-          status: 'delivered'
+          status: 'delivered',
+          orderId: { $not: /^ORD-TEST/i }
         };
         if (!isAll) {
           fallbackQuery.createdAt = { $gte: start, $lte: end };
@@ -523,6 +552,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
         pastCycleOrders = await Order.find(fallbackQuery)
         .populate('userId', 'name phone email')
         .select('orderId userId items pricing payment status address createdAt deliveredAt tracking')
+        .sort({ createdAt: -1 })
         .lean();
       }
 
@@ -561,16 +591,36 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
         }
       }
 
+      // Fetch settlements for past cycle orders in bulk
+      const pastOrderIds = pastCycleOrders.map(o => o._id);
+      const pastSettlements = await OrderSettlement.find({ orderId: { $in: pastOrderIds } }).lean();
+      const pastSettlementsMap = new Map();
+      pastSettlements.forEach(s => pastSettlementsMap.set(s.orderId.toString(), s));
+
       let pastCycleTotal = 0;
       let pastCycleCommission = 0;
       const pastCycleOrdersData = await Promise.all(pastCycleOrders.map(async (order) => {
         // Food price = subtotal - discount (this is what commission is calculated on)
         const foodPrice = (order.pricing?.subtotal || 0) - (order.pricing?.discount || 0);
-        const commissionData = calculateCommissionForOrder(foodPrice);
-        const payout = foodPrice - commissionData.commission;
+        
+        const settlement = pastSettlementsMap.get(order._id.toString());
+        let commission = 0;
+        let payout = 0;
+        
+        if (settlement && settlement.restaurantEarning) {
+          commission = settlement.restaurantEarning.commission || 0;
+          payout = settlement.restaurantEarning.netEarning || 0;
+        } else if (order.restaurantShare !== undefined && order.adminCommission !== undefined) {
+          payout = order.restaurantShare || 0;
+          commission = order.adminCommission || 0;
+        } else {
+          const commissionData = calculateCommissionForOrder(foodPrice);
+          commission = commissionData.commission;
+          payout = foodPrice - commission;
+        }
         
         pastCycleTotal += foodPrice; // Use food price, not total
-        pastCycleCommission += commissionData.commission;
+        pastCycleCommission += commission;
 
         // Get food names from order items
         const foodNames = (order.items || []).map(item => item.name).join(', ') || 'N/A';
@@ -629,7 +679,7 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
           orderId: order.orderId || order._id?.toString() || 'N/A',
           orderTotal: foodPrice, // Food price (subtotal - discount) for display
           totalAmount: order.pricing?.total || 0, // Total order amount paid by customer
-          commission: commissionData.commission,
+          commission: commission,
           payout,
           deliveredAt: order.deliveredAt || order.createdAt,
           createdAt: order.createdAt,

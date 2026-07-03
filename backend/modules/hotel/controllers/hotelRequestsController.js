@@ -18,6 +18,7 @@ export const getHotelRequests = async (req, res) => {
     // Build query - use both string ID and ObjectId for robust matching
     const query = {
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: _id },
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
@@ -80,6 +81,7 @@ export const getHotelRequestStats = async (req, res) => {
 
     const query = {
       $or: [
+        { _id: { $in: req.settlementOrderIds || [] } },
         { hotelId: hotelObjectId },
         { hotelReference: hotelIdStr },
         { hotelReference: hotelObjectId.toString() },

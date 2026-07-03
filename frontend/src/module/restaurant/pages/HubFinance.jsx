@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bell, Menu, ChevronDown, Calendar, Download, ArrowRight, FileText, Wallet, X, Lock } from "lucide-react"
+import { Bell, Menu, ChevronDown, Calendar, Download, ArrowRight, FileText, Wallet, X, Lock, ChevronLeft, ChevronRight } from "lucide-react"
 import BottomNavOrders from "../components/BottomNavOrders"
 import { restaurantAPI } from "@/lib/api"
 import { toast } from "sonner"
@@ -9,10 +9,7 @@ import { toast } from "sonner"
 export default function HubFinance() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState(() => {
-    const tabParam = searchParams.get("tab")
-    return tabParam === "invoices" ? "invoices" : "payouts"
-  })
+  const [activeTab, setActiveTab] = useState("payouts")
   const [selectedDateRange, setSelectedDateRange] = useState(() => {
     const today = new Date()
     today.setHours(23, 59, 59, 999)
@@ -65,6 +62,7 @@ export default function HubFinance() {
     message: "",
   })
   const [walletSummary, setWalletSummary] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const fetchFinanceData = useCallback(async () => {
     try {
@@ -189,7 +187,23 @@ export default function HubFinance() {
   const withdrawMessage = withdrawWindow.message
 
   const cycleEarnings = financeData?.currentCycle?.estimatedPayout ?? 0
-  const withdrawableBalance = financeData?.currentCycle?.withdrawableBalance ?? cycleEarnings
+  const withdrawableBalance = walletSummary?.totalBalance ?? financeData?.currentCycle?.withdrawableBalance ?? cycleEarnings
+
+  // Pagination for Orders History
+  const ITEMS_PER_PAGE = 15;
+  const totalOrdersCount = pastCyclesData?.orders?.length || 0;
+  const totalPages = Math.ceil(totalOrdersCount / ITEMS_PER_PAGE) || 1;
+  const paginatedOrders = useMemo(() => {
+    if (!pastCyclesData?.orders) return [];
+    // Sort by date descending (latest first)
+    const sorted = [...pastCyclesData.orders].sort((a, b) => {
+      const dateA = new Date(a.deliveredAt || a.createdAt);
+      const dateB = new Date(b.deliveredAt || b.createdAt);
+      return dateB - dateA;
+    });
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return sorted.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [pastCyclesData, currentPage]);
   // Compute lifetime earnings as balance + withdrawn (math identity: earned = balance + withdrawn)
   // This avoids race conditions where /finance and /wallet return different snapshots of wallet.totalEarned
   const lifetimeEarnings = walletSummary
@@ -221,6 +235,7 @@ export default function HubFinance() {
       if (response.data?.success && response.data?.data?.pastCycles) {
         const pc = response.data.data.pastCycles
         setPastCyclesData(pc)
+        setCurrentPage(1)
         
         // Dynamically update selectedDateRange for display and reports
         if (pc.dateRange?.start && pc.dateRange?.end) {
@@ -269,28 +284,44 @@ export default function HubFinance() {
     const restaurantId = financeData?.restaurant?.restaurantId || "N/A"
     const currentCycle = financeData?.currentCycle || {}
     
-    // Get all orders (current cycle + past cycles)
+    // Get all orders (current cycle + past cycles) without duplicates
     const allOrders = []
+    const seenOrderIds = new Set()
     
     // Add current cycle orders
     if (financeData?.currentCycle?.orders && financeData.currentCycle.orders.length > 0) {
       financeData.currentCycle.orders.forEach(order => {
-        allOrders.push({
-          ...order,
-          cycle: 'Current Cycle'
-        })
+        const id = order.orderId || order._id?.toString()
+        if (id && !seenOrderIds.has(id)) {
+          seenOrderIds.add(id)
+          allOrders.push({
+            ...order,
+            cycle: 'Current Cycle'
+          })
+        }
       })
     }
     
     // Add past cycles orders
     if (pastCyclesData?.orders && pastCyclesData.orders.length > 0) {
       pastCyclesData.orders.forEach(order => {
-        allOrders.push({
-          ...order,
-          cycle: 'Past Cycle'
-        })
+        const id = order.orderId || order._id?.toString()
+        if (id && !seenOrderIds.has(id)) {
+          seenOrderIds.add(id)
+          allOrders.push({
+            ...order,
+            cycle: 'Past Cycle'
+          })
+        }
       })
     }
+
+    // Sort all orders descending (latest first)
+    allOrders.sort((a, b) => {
+      const dateA = new Date(a.deliveredAt || a.createdAt);
+      const dateB = new Date(b.deliveredAt || b.createdAt);
+      return dateB - dateA;
+    });
     
     return {
       restaurantName,
@@ -320,124 +351,131 @@ export default function HubFinance() {
         <meta charset="UTF-8">
         <style>
           body { 
-            font-family: Arial, sans-serif; 
-            margin: 20px; 
-            color: #333;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px;
+            width: 190mm;
+            box-sizing: border-box;
+            color: #334155;
+            background-color: #ffffff;
+            -webkit-print-color-adjust: exact;
           }
-          .header {
-            text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #000;
+          .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e2e8f0;
             padding-bottom: 20px;
+            margin-bottom: 25px;
           }
-          .header h1 {
+          .restaurant-info h1 {
             margin: 0;
-            font-size: 24px;
-            color: #000;
+            font-size: 22px;
+            color: #0f172a;
+            font-weight: 800;
           }
-          .header p {
-            margin: 5px 0;
-            font-size: 12px;
-            color: #666;
+          .restaurant-info p {
+            margin: 4px 0 0 0;
+            font-size: 13px;
+            color: #64748b;
+            font-weight: 500;
+          }
+          .report-meta {
+            text-align: right;
+          }
+          .report-meta h2 {
+            margin: 0;
+            font-size: 18px;
+            color: #0f172a;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .report-meta p {
+            margin: 4px 0 0 0;
+            font-size: 11px;
+            color: #64748b;
           }
           .section {
             margin-bottom: 25px;
           }
           .section-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #000;
-          }
-          .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px dashed #ccc;
-          }
-          .info-label {
-            font-weight: 600;
-            color: #333;
-          }
-          .info-value {
-            color: #000;
-            font-weight: 600;
-          }
-          .current-cycle {
-            background-color: #f9f9f9;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-          }
-          .payout-amount {
-            font-size: 32px;
-            font-weight: bold;
-            color: #000;
-            margin: 10px 0;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            color: #0f172a;
           }
           .orders-table {
             width: 100%;
+            table-layout: fixed;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 10px;
+          }
+          .orders-table th, .orders-table td {
+            word-wrap: break-word;
+            word-break: break-all;
+            white-space: normal;
           }
           .orders-table th {
-            background-color: #f5f5f5;
-            padding: 10px;
+            background-color: #0f172a;
+            color: #ffffff;
+            padding: 10px 8px;
             text-align: left;
-            border: 1px solid #ddd;
             font-weight: bold;
-            font-size: 11px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 1px solid #1e293b;
+          }
+          .orders-table th.num-col, .orders-table td.num-col {
+            text-align: right;
           }
           .orders-table td {
-            padding: 8px;
-            border: 1px solid #ddd;
-            font-size: 11px;
+            padding: 9px 8px;
+            border: 1px solid #e2e8f0;
+            font-size: 10px;
+            color: #334155;
           }
           .orders-table tr:nth-child(even) {
-            background-color: #f9f9f9;
+            background-color: #f8fafc;
+          }
+          .orders-table tr.total-row {
+            background-color: #f0fdf4 !important;
+            font-weight: bold;
+            color: #166534;
+          }
+          .orders-table tr.total-row td {
+            border: 1px solid #bbf7d0;
+            font-size: 11px;
+            color: #166534;
           }
           .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #ccc;
+            margin-top: 35px;
+            padding-top: 15px;
+            border-top: 1px solid #e2e8f0;
             text-align: center;
-            font-size: 11px;
-            color: #666;
+            font-size: 10px;
+            color: #94a3b8;
           }
           @media print {
             body { margin: 0; }
-            .current-cycle { page-break-inside: avoid; }
             .orders-table { page-break-inside: auto; }
             .orders-table tr { page-break-inside: avoid; }
           }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>Finance Report</h1>
-          <p>${reportData.restaurantName}</p>
-          <p>ID: ${reportData.restaurantId}</p>
-          <p>Generated on: ${new Date().toLocaleString('en-IN')}</p>
-        </div>
-
-        <div class="section">
-          <div class="section-title">Current Cycle</div>
-          <div class="current-cycle">
-            <p style="font-size: 12px; color: #666; margin: 0 0 5px 0;">
-              Est. payout (${reportData.currentCycle.start} - ${reportData.currentCycle.end} ${reportData.currentCycle.month})
-            </p>
-            <div class="payout-amount">${reportData.currentCycle.estimatedPayout}</div>
-            <p style="font-size: 14px; color: #666; margin: 5px 0;">${reportData.currentCycle.orders} orders</p>
-            <div class="info-row">
-              <div>
-                <p class="info-label" style="font-size: 11px; margin: 5px 0;">Payout for</p>
-                <p style="margin: 0; font-weight: 600;">${reportData.currentCycle.start} - ${reportData.currentCycle.end} ${reportData.currentCycle.month}'${reportData.currentCycle.year}</p>
-              </div>
-              <div style="text-align: right;">
-                <p class="info-label" style="font-size: 11px; margin: 5px 0;">Payout date</p>
-                <p style="margin: 0; font-weight: 600;">${reportData.currentCycle.payoutDate}</p>
-              </div>
-            </div>
+        <div class="header-container">
+          <div class="restaurant-info">
+            <h1>${reportData.restaurantName}</h1>
+            <p>ID: ${reportData.restaurantId}</p>
+          </div>
+          <div class="report-meta">
+            <h2>Finance Report</h2>
+            <p>Period: ${reportData.dateRange}</p>
+            <p>Generated: ${new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</p>
           </div>
         </div>
 
@@ -447,40 +485,38 @@ export default function HubFinance() {
             <table class="orders-table">
               <thead>
                 <tr>
-                  <th>Cycle</th>
-                  <th>Order ID</th>
-                  <th>Order Date</th>
-                  <th>Food Items</th>
-                  <th>Item Qty</th>
-                  <th>Order Amount</th>
-                  <th>Restaurant Earning/Profit</th>
+                  <th style="width: 6%;">S.No.</th>
+                  <th style="width: 22%;">Order ID</th>
+                  <th style="width: 14%;">Order Date</th>
+                  <th style="width: 35%;">Food Items</th>
+                  <th class="num-col" style="width: 11%;">Subtotal</th>
+                  <th class="num-col" style="width: 12%;">Earning</th>
                 </tr>
               </thead>
               <tbody>
-                ${reportData.allOrders.map(order => {
+                ${reportData.allOrders.map((order, index) => {
                   const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN') : (order.deliveredAt ? new Date(order.deliveredAt).toLocaleDateString('en-IN') : 'N/A')
                   const foodItems = order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'
-                  const itemQuantities = order.items ? order.items.map(item => (item.quantity || 1).toString()).join(', ') : 'N/A'
-                  const orderAmount = order.totalAmount || order.orderTotal || order.amount || 0
-                  const earning = order.payout || order.restaurantEarning || 0
+                  const subtotal = order.orderTotal || 0
+                  const earning = order.payout || 0
                   
                   return `
                     <tr>
-                      <td>${order.cycle || 'N/A'}</td>
+                      <td>${index + 1}</td>
                       <td>${order.orderId || 'N/A'}</td>
                       <td>${orderDate}</td>
                       <td>${foodItems}</td>
-                      <td>${itemQuantities}</td>
-                      <td>₹${orderAmount.toFixed(2)}</td>
-                      <td>₹${earning.toFixed(2)}</td>
+                      <td class="num-col">₹${subtotal.toFixed(2)}</td>
+                      <td class="num-col" style="font-weight: 600; color: #0f172a;">₹${earning.toFixed(2)}</td>
                     </tr>
                   `
                 }).join('')}
               </tbody>
               <tfoot>
-                <tr style="background-color: #e8f5e9; font-weight: bold;">
-                  <td colspan="5" style="text-align: right;">Total Earnings:</td>
-                  <td colspan="2">₹${reportData.allOrders.reduce((sum, order) => sum + (order.payout || order.restaurantEarning || 0), 0).toFixed(2)}</td>
+                <tr class="total-row">
+                  <td colspan="4" style="text-align: right; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; border-right: none;">Total Summary:</td>
+                  <td class="num-col">₹${reportData.allOrders.reduce((sum, order) => sum + (order.orderTotal || 0), 0).toFixed(2)}</td>
+                  <td class="num-col">₹${reportData.allOrders.reduce((sum, order) => sum + (order.payout || 0), 0).toFixed(2)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -494,7 +530,7 @@ export default function HubFinance() {
 
         <div class="footer">
           <p>This is an auto-generated report. For detailed information, please visit the Finance section.</p>
-          <p>Total Orders: ${reportData.allOrders?.length || 0} | Total Earnings: ₹${reportData.allOrders?.reduce((sum, order) => sum + (order.payout || order.restaurantEarning || 0), 0).toFixed(2) || '0.00'}</p>
+          <p>Total Orders: ${reportData.allOrders?.length || 0} | Total Earnings: ₹${reportData.allOrders?.reduce((sum, order) => sum + (order.payout || 0), 0).toFixed(2) || '0.00'}</p>
         </div>
       </body>
       </html>
@@ -762,34 +798,10 @@ export default function HubFinance() {
         </div>
       </div>
 
-      {/* Primary Navigation Tabs */}
-      <div className="px-4 py-3">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveTab("payouts")}
-            className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${
-              activeTab === "payouts"
-                ? "bg-black text-white"
-                : "bg-white text-gray-600 border border-gray-300"
-            }`}
-          >
-            Payouts
-          </button>
-          <button
-            onClick={() => setActiveTab("invoices")}
-            className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${
-              activeTab === "invoices"
-                ? "bg-black text-white"
-                : "bg-white text-gray-600 border border-gray-300"
-            }`}
-          >
-            Invoices & Taxes
-          </button>
-        </div>
-      </div>
+
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div className="flex-1 overflow-y-auto px-4 pt-6 pb-28">
         {activeTab === "payouts" && (
           <div className="space-y-6">
             {/* Current cycle */}
@@ -978,38 +990,90 @@ export default function HubFinance() {
                 ) : (
                   <>
                     {/* Show past cycles orders if available */}
-                    {pastCyclesData && pastCyclesData.orders && pastCyclesData.orders.length > 0 ? (
-                      <div className="bg-white rounded-lg p-4 space-y-3">
-                        {pastCyclesData.orders.map((order, index) => (
-                          <div key={order.orderId || index} className="border-b border-gray-200 pb-3 last:border-b-0 last:pb-0">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <p className="text-sm font-semibold text-gray-900">
-                                    {order.isDining ? 'Booking ID' : 'Order ID'}: {order.orderId || 'N/A'}
-                                  </p>
-                                  {order.isDining && (
-                                    <span className="px-2 py-0.5 bg-teal-100 text-teal-700 text-xs font-medium rounded">
-                                      Dining
-                                    </span>
-                                  )}
+                    {pastCyclesData && paginatedOrders && paginatedOrders.length > 0 ? (
+                      <>
+                        <div className="bg-white rounded-lg p-4 space-y-3">
+                          {paginatedOrders.map((order, index) => {
+                            const serialNumber = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                            const dateStr = new Date(order.deliveredAt || order.createdAt).toLocaleString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true
+                            });
+                            
+                            return (
+                              <div key={order.orderId || index} className="border-b border-gray-150 pb-3 pt-1 last:border-b-0 last:pb-0">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                      <p className="text-xs font-bold text-gray-900">
+                                        {serialNumber}. {order.isDining ? 'Booking' : 'Order'}: {order.orderId || 'N/A'}
+                                      </p>
+                                      {order.isDining && (
+                                        <span className="px-1.5 py-0.5 bg-teal-50 text-teal-700 text-[10px] font-semibold rounded-full">
+                                          Dining
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 font-medium mb-1">
+                                      {dateStr}
+                                    </p>
+                                    <p className="text-[11px] text-gray-500 leading-relaxed max-w-[180px] sm:max-w-md">
+                                      {order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'}
+                                    </p>
+                                  </div>
+                                  
+                                  <div className="text-right ml-4 shrink-0 flex flex-col items-end justify-center self-center">
+                                    <p className="text-sm font-bold text-gray-900">
+                                      ₹{Math.round(order.orderTotal)} <span className="text-xs font-extrabold text-emerald-600">(+₹{Number(order.payout || 0).toFixed(2)})</span>
+                                    </p>
+                                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">
+                                      Earning
+                                    </p>
+                                  </div>
                                 </div>
-                                <p className="text-xs text-gray-600">
-                                  {order.foodNames || (order.items && order.items.map(item => item.name).join(', ')) || 'N/A'}
-                                </p>
                               </div>
-                              <div className="text-right ml-4">
-                                <p className="text-sm font-bold text-gray-900">
-                                  ₹{(order.payout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Earning
-                                </p>
-                              </div>
-                            </div>
+                            );
+                          })}
+                        </div>
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-gray-200 mt-3">
+                            <button
+                              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                              disabled={currentPage === 1}
+                              className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1 transition-colors ${
+                                currentPage === 1
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : "bg-gray-50 text-gray-700 hover:bg-gray-100 active:bg-gray-200 cursor-pointer"
+                              }`}
+                            >
+                              <ChevronLeft className="w-3.5 h-3.5" />
+                              Prev
+                            </button>
+                            
+                            <span className="text-xs font-bold text-gray-700">
+                              Page {currentPage} of {totalPages}
+                            </span>
+                            
+                            <button
+                              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                              disabled={currentPage === totalPages}
+                              className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1 transition-colors ${
+                                currentPage === totalPages
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : "bg-gray-50 text-gray-700 hover:bg-gray-100 active:bg-gray-200 cursor-pointer"
+                              }`}
+                            >
+                              Next
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                        ))}
-                      </div>
+                        )}
+                      </>
                     ) : (
                       <div className="bg-white rounded-lg p-6 text-center text-gray-500 font-medium">
                         No orders found for the selected period.

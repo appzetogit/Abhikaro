@@ -62,8 +62,19 @@ export const authenticate = async (req, res, next) => {
       return errorResponse(res, 401, 'Hotel account is inactive. Please wait for admin approval.');
     }
 
+    // Fetch settlement order IDs for this hotel
+    const OrderSettlement = (await import("../../order/models/OrderSettlement.js")).default;
+    const settlements = await OrderSettlement.find({
+      $or: [
+        { "hotelEarning.hotelId": hotel._id },
+        { "hotelEarning.hotelId": hotel._id.toString() },
+      ]
+    }).select("orderId").lean();
+    const settlementOrderIds = settlements.map(s => s.orderId).filter(Boolean);
+
     // Attach hotel to request
     req.hotel = hotel;
+    req.settlementOrderIds = settlementOrderIds;
     req.token = decoded;
     
     next();

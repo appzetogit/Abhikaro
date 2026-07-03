@@ -974,8 +974,18 @@ export const getHotelWalletOrderEarnings = asyncHandler(async (req, res) => {
     }
   }
 
+  const OrderSettlement = (await import("../../order/models/OrderSettlement.js")).default;
+  const settlements = await OrderSettlement.find({
+    $or: [
+      { "hotelEarning.hotelId": hotelObjectId },
+      { "hotelEarning.hotelId": hotelObjectId.toString() },
+    ]
+  }).select("orderId").lean();
+  const settlementOrderIds = settlements.map(s => s.orderId).filter(Boolean);
+
   const orders = await Order.find({
     $or: [
+      { _id: { $in: settlementOrderIds } },
       { hotelId: hotelObjectId },
       { hotelReference: hotelIdStr },
       { hotelReference: hotelObjectId.toString() },
@@ -1125,10 +1135,20 @@ export const getHotelQROrders = asyncHandler(async (req, res) => {
   const hotelObjectId = hotel._id;
   const hotelIdStr = hotel.hotelId;
 
+  const OrderSettlement = (await import("../../order/models/OrderSettlement.js")).default;
+  const settlements = await OrderSettlement.find({
+    $or: [
+      { "hotelEarning.hotelId": hotelObjectId },
+      { "hotelEarning.hotelId": hotelObjectId.toString() },
+    ]
+  }).select("orderId").lean();
+  const settlementOrderIds = settlements.map(s => s.orderId).filter(Boolean);
+
   const finalMatch = {
     $and: [
       {
         $or: [
+          { _id: { $in: settlementOrderIds } },
           { hotelId: hotelObjectId },
           { hotelReference: hotelIdStr },
           { hotelReference: hotelObjectId.toString() },
@@ -1152,6 +1172,7 @@ export const getHotelQROrders = asyncHandler(async (req, res) => {
           { hotelReference: { $ne: null } },
           { hotelId: { $ne: null } },
           { roomNumber: { $ne: null } },
+          { _id: { $in: settlementOrderIds } },
         ],
       },
     ],
@@ -1388,11 +1409,28 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
         ...hotelIdStrings,
       ];
 
+      const OrderSettlement = (await import("../../order/models/OrderSettlement.js")).default;
+      const settlements = await OrderSettlement.find({
+        $or: [
+          { "hotelEarning.hotelId": { $in: hotelIds } },
+          { "hotelEarning.hotelId": { $in: hotelIdStrings } },
+        ]
+      }).select("orderId hotelEarning.hotelId").lean();
+      const settlementOrderIds = settlements.map(s => s.orderId).filter(Boolean);
+
+      const settlementHotelIdMap = new Map();
+      settlements.forEach(s => {
+        if (s.orderId && s.hotelEarning?.hotelId) {
+          settlementHotelIdMap.set(s.orderId.toString(), s.hotelEarning.hotelId.toString());
+        }
+      });
+
       const orders =
         hotelIds.length === 0
           ? []
           : await Order.find({
               $or: [
+                { _id: { $in: settlementOrderIds } },
                 { hotelId: { $in: hotelIds } },
                 {
                   hotelReference: {
@@ -1420,10 +1458,17 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
             : null;
 
         // Resolve the hotel document this order belongs to
-        const hotelDoc =
+        let hotelDoc =
           (hotelIdObj && hotelByMongoId.get(hotelIdObj)) ||
           (hotelRef &&
             (hotelByCode.get(hotelRef) || hotelByMongoId.get(hotelRef)));
+
+        if (!hotelDoc) {
+          const settlementHotelId = settlementHotelIdMap.get(order._id.toString());
+          if (settlementHotelId) {
+            hotelDoc = hotelByMongoId.get(settlementHotelId);
+          }
+        }
 
         if (!hotelDoc) return;
 
@@ -1467,7 +1512,8 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
         // This prevents pending/processing Razorpay orders from inflating the numbers.
         const isPaymentCompleted =
           (order.payment?.status === "completed") ||
-          (isCashMethod && (order.status === "delivered" || order.cashCollected === true));
+          (order.status === "delivered") ||
+          (isCashMethod && order.cashCollected === true);
 
         // Increment stats only if the order is valid, non-cancelled, QR/hotel order,
         // AND payment has actually been completed

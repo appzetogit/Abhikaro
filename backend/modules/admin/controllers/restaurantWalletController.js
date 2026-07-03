@@ -22,7 +22,7 @@ export const getRestaurantWalletOverview = asyncHandler(async (req, res) => {
   const skip = (pageNum - 1) * limitNum;
 
   // Only show approved restaurants in finance overview (excludes incomplete onboarding drafts)
-  const query = { approvedAt: { $exists: true, $ne: null } };
+  const query = { approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } };
 
   if (search && String(search).trim()) {
     const q = String(search).trim();
@@ -123,6 +123,10 @@ export const adjustRestaurantWallet = asyncHandler(async (req, res) => {
 
   const wallet = await RestaurantWallet.findOrCreateByRestaurantId(restaurant._id);
 
+  if (type === "deduction" && amt > wallet.totalBalance) {
+    return errorResponse(res, 400, `Insufficient wallet balance. Maximum allowed deduction is ₹${wallet.totalBalance.toFixed(2)}`);
+  }
+
   const descRaw = String(description || "").trim();
   const desc =
     descRaw ||
@@ -183,17 +187,13 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
 
   // Fetch counts of delivered orders and total ordered counts in parallel
   const [deliveredCount, orderedCount] = await Promise.all([
-    Order.countDocuments({ restaurantId: { $in: restaurantIdVariations }, status: "delivered" }),
-    Order.countDocuments({ restaurantId: { $in: restaurantIdVariations } })
+    Order.countDocuments({ restaurantId: { $in: restaurantIdVariations }, status: "delivered", orderId: { $not: /^ORD-TEST/i } }),
+    Order.countDocuments({ restaurantId: { $in: restaurantIdVariations }, orderId: { $not: /^ORD-TEST/i } })
   ]);
 
   const walletDoc = await RestaurantWallet.findOrCreateByRestaurantId(id);
-  if (walletDoc) {
-    await walletDoc.populate("transactions.processedBy", "name email");
-  }
-  const wallet = walletDoc ? walletDoc.toObject() : null;
 
-  if (!wallet) {
+  if (!walletDoc) {
     return successResponse(res, 200, "No history found", {
       restaurantId: id,
       deliveredCount,
@@ -203,7 +203,7 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
     });
   }
 
-  let transactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
+  let transactions = Array.isArray(walletDoc.transactions) ? walletDoc.transactions : [];
 
   // newest first (stable sort using database array index as fallback)
   const indexed = transactions.map((t, idx) => ({ t, idx }));
@@ -251,6 +251,15 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
   const skip = (pageNum - 1) * limitNum;
   const paginated = transactions.slice(skip, skip + limitNum);
 
+  // Perform populate only on the sliced/paginated array!
+  if (paginated.length > 0) {
+    await RestaurantWallet.populate(paginated, {
+      path: "processedBy",
+      select: "name email",
+      model: "Admin"
+    });
+  }
+
   return successResponse(res, 200, "Restaurant wallet history retrieved successfully", {
     restaurantId: id,
     deliveredCount,
@@ -268,7 +277,7 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
         date: t.createdAt,
         processedAt: t.processedAt,
         processedBy: t.processedBy
-          ? { id: t.processedBy._id, name: t.processedBy.name, email: t.processedBy.email }
+          ? { id: t.processedBy._id || t.processedBy.id, name: t.processedBy.name, email: t.processedBy.email }
           : null,
         metadata: md,
       };

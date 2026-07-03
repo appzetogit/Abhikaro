@@ -1,27 +1,25 @@
 import mongoose from 'mongoose';
-import Order from '../modules/order/models/Order.js';
 import dotenv from 'dotenv';
+import OrderSettlement from '../modules/order/models/OrderSettlement.js';
+
 dotenv.config();
 
-const inspect = async () => {
+async function inspect() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    const orderId = 'ORD-1780759475330-790';
-    console.log(`Searching for order: ${orderId}`);
-    
-    const order = await Order.findOne({ orderId: orderId }).lean();
-    if (!order) {
-      console.log('Order not found!');
-      process.exit(0);
-    }
-    
-    console.log('Order from DB:', JSON.stringify(order, null, 2));
+    const mongoUri = process.env.MONGODB_URI;
+    await mongoose.connect(mongoUri);
+    console.log('Connected.\n');
+
+    const orderId = 'ORD-1780292789749-63';
+    console.log(`Searching for Settlement of: ${orderId}...`);
+    const doc = await OrderSettlement.findOne({ orderNumber: orderId }).lean();
+    console.log('=== SETTLEMENT ===');
+    console.log(JSON.stringify(doc, null, 2));
+
     await mongoose.disconnect();
-    process.exit(0);
   } catch (error) {
-    console.error(error);
-    process.exit(1);
+    console.error('Error:', error);
   }
-};
+}
 
 inspect();

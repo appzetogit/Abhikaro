@@ -499,24 +499,30 @@ export const updateSettlementOnStatusChange = async (
         try {
           // Fetch order to check payment method
           const order = await Order.findById(settlement.orderId).lean();
-          const isPayAtHotel = order?.payment?.method === "pay_at_hotel";
+          
+          if (order?.orderType === "QR" || order?.commissionDistributed) {
+            console.log(`Skipping duplicate wallet credit in settlement service for QR order ${order.orderId}`);
+            settlement.hotelEarning.status = "completed";
+          } else {
+            const isPayAtHotel = order?.payment?.method === "pay_at_hotel";
 
-          const hotelWallet = await HotelWallet.findOrCreateByHotelId(
-            settlement.hotelEarning.hotelId,
-          );
-          await hotelWallet.addTransaction({
-            amount: settlement.hotelEarning.commission,
-            type: isPayAtHotel ? "cash_collection" : "commission",
-            status: "Completed",
-            description: `${isPayAtHotel ? "Cash Collection" : "Commission"} for Order #${settlement.orderNumber}`,
-            orderId: settlement.orderId,
-          });
-          await hotelWallet.save();
+            const hotelWallet = await HotelWallet.findOrCreateByHotelId(
+              settlement.hotelEarning.hotelId,
+            );
+            await hotelWallet.addTransaction({
+              amount: settlement.hotelEarning.commission,
+              type: isPayAtHotel ? "cash_collection" : "commission",
+              status: "Completed",
+              description: `${isPayAtHotel ? "Cash Collection" : "Commission"} for Order #${settlement.orderNumber}`,
+              orderId: settlement.orderId,
+            });
+            await hotelWallet.save();
 
-          settlement.hotelEarning.status = "completed";
-          console.log(
-            `Credited ${settlement.hotelEarning.commission} to hotel ${settlement.hotelEarning.hotelId}`,
-          );
+            settlement.hotelEarning.status = "completed";
+            console.log(
+              `Credited ${settlement.hotelEarning.commission} to hotel ${settlement.hotelEarning.hotelId}`,
+            );
+          }
         } catch (walletError) {
           console.error("Error crediting hotel wallet:", walletError);
         }

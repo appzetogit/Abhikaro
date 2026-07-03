@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
@@ -181,7 +181,18 @@ export default function RestaurantFinance() {
     setHistoryOpen(true)
   }
 
-  const fetchHistory = async (restaurantId, p = 1, filterType = historyFilter) => {
+  const scrollContainerRef = useRef(null)
+
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    if (scrollHeight - scrollTop - clientHeight < 25) {
+      if (!historyLoading && historyPage < historyPages && selectedRestaurant?._id) {
+        fetchHistory(selectedRestaurant._id, historyPage + 1, historyFilter, true)
+      }
+    }
+  }
+
+  const fetchHistory = async (restaurantId, p = 1, filterType = historyFilter, append = false) => {
     try {
       setHistoryLoading(true)
       const res = await adminAPI.getRestaurantWalletHistory(restaurantId, {
@@ -192,7 +203,7 @@ export default function RestaurantFinance() {
       })
       if (res?.data?.success) {
         const data = res.data.data || {}
-        setHistoryItems(data.transactions || [])
+        setHistoryItems(prev => append ? [...prev, ...(data.transactions || [])] : (data.transactions || []))
         setDeliveredCount(data.deliveredCount || 0)
         setOrderedCount(data.orderedCount || 0)
         const pg = data.pagination || {}
@@ -393,10 +404,7 @@ export default function RestaurantFinance() {
                           {r.restaurantId || "N/A"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800">
-                          <span className="inline-flex items-center gap-1">
-                            <IndianRupee className="w-3 h-3 text-slate-700" />
-                            <span>{formatCurrency(r.totalEarned)}</span>
-                          </span>
+                          {formatCurrency(r.totalEarned)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800">
                           {formatCurrency(r.totalWithdrawn)}
@@ -582,9 +590,10 @@ export default function RestaurantFinance() {
                     {selectedRestaurant.restaurantId || ""}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2 border-t border-slate-200 pt-1.5 text-xs text-slate-600">
+                <div className="grid grid-cols-3 gap-2 border-t border-slate-200 pt-1.5 text-xs text-slate-600">
                   <span>Delivered: <strong className="text-emerald-700 font-semibold">{deliveredCount}</strong></span>
                   <span>Total Ordered: <strong className="text-indigo-700 font-semibold">{orderedCount}</strong></span>
+                  <span className="text-right">Total Revenue: <strong className="text-slate-900 font-bold">{formatCurrency(selectedRestaurant.totalEarned)}</strong></span>
                 </div>
               </div>
             )}
@@ -616,7 +625,7 @@ export default function RestaurantFinance() {
               ))}
             </div>
 
-            {historyLoading ? (
+            {historyLoading && historyPage === 1 ? (
               <div className="py-10 text-center">
                 <Loader2 className="w-6 h-6 animate-spin text-indigo-600 mx-auto mb-3" />
                 <p className="text-slate-600 text-sm">Loading history…</p>
@@ -627,9 +636,13 @@ export default function RestaurantFinance() {
                 <p className="text-slate-500 text-sm">No transactions found.</p>
               </div>
             ) : (
-              <div className="space-y-2.5 max-h-[380px] overflow-auto pr-1">
+              <div
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                className="space-y-2.5 max-h-[380px] overflow-auto pr-1"
+              >
                 {historyItems.map((t, index) => {
-                  const sNo = (historyPage - 1) * 20 + index + 1
+                  const sNo = index + 1
                   const isCredit = ["payment", "bonus", "refund"].includes(t?.type)
                   const title = t?.type === "payment"
                     ? "Order Payment"
@@ -644,7 +657,7 @@ export default function RestaurantFinance() {
                             : (t?.type || "Transaction")
                   const when = t?.date ? new Date(t.date).toLocaleString("en-IN") : "—"
                   return (
-                    <div key={t.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-xs">
+                    <div key={t.id || index} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-xs">
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
@@ -701,41 +714,17 @@ export default function RestaurantFinance() {
                     </div>
                   )
                 })}
+                {historyLoading && historyPage > 1 && (
+                  <div className="py-4 text-center flex items-center justify-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                    <span className="text-xs text-slate-500">Loading more...</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          <DialogFooter className="px-6 pb-5 pt-3 border-t border-slate-200 flex items-center justify-between gap-3 bg-slate-50/60">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={historyLoading || historyPage <= 1 || !selectedRestaurant?._id}
-                onClick={() => {
-                  const next = Math.max(1, historyPage - 1)
-                  setHistoryPage(next)
-                  fetchHistory(selectedRestaurant._id, next, historyFilter)
-                }}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                disabled={historyLoading || historyPage >= historyPages || !selectedRestaurant?._id}
-                onClick={() => {
-                  const next = Math.min(historyPages, historyPage + 1)
-                  setHistoryPage(next)
-                  fetchHistory(selectedRestaurant._id, next, historyFilter)
-                }}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-              <p className="text-xs text-slate-600 ml-2">
-                Page {historyPage} of {historyPages}
-              </p>
-            </div>
-
+          <DialogFooter className="px-6 pb-5 pt-3 border-t border-slate-200 flex items-center justify-end bg-slate-50/60">
             <Button
               type="button"
               variant="outline"

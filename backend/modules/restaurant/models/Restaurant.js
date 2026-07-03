@@ -155,6 +155,10 @@ const restaurantSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
     isAcceptingOrders: {
       type: Boolean,
       default: true,
