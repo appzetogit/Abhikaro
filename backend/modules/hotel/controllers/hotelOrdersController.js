@@ -28,6 +28,7 @@ export const getHotelOrders = async (req, res) => {
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
       ],
+      isDeleted: { $ne: true },
     };
 
     // Filter by status if provided
@@ -87,6 +88,7 @@ export const getOrderDetails = async (req, res) => {
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
       ],
+      isDeleted: { $ne: true },
     }).populate("userId", "name phone email profileImage");
 
     if (!order) {
@@ -129,6 +131,7 @@ export const acceptOrder = async (req, res) => {
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
       ],
+      isDeleted: { $ne: true },
     });
 
     if (!order) {
@@ -199,6 +202,7 @@ export const rejectOrder = async (req, res) => {
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
       ],
+      isDeleted: { $ne: true },
     });
 
     if (!order) {
@@ -414,6 +418,7 @@ export const collectPayment = async (req, res) => {
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
       ],
+      isDeleted: { $ne: true },
     });
 
     if (!order) {

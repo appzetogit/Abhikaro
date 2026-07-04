@@ -7,6 +7,8 @@ import WithdrawalRequest from './WithdrawalRequest.js';
 import OrderSettlement from '../../order/models/OrderSettlement.js';
 import AdminCommission from '../../admin/models/AdminCommission.js';
 
+const WALLET_HISTORY_CUTOFF_DATE = new Date('2026-07-05T00:40:00+05:30');
+
 
 const transactionSchema = new mongoose.Schema({
   amount: {
@@ -151,6 +153,14 @@ restaurantWalletSchema.index({ 'transactions.status': 1 });
 restaurantWalletSchema.index({ 'transactions.type': 1 });
 restaurantWalletSchema.index({ lastTransactionAt: -1 });
 
+// Pre-save hook to force balances to 0 as requested
+restaurantWalletSchema.pre('save', function(next) {
+  this.totalBalance = 0;
+  this.totalEarned = 0;
+  this.totalWithdrawn = 0;
+  next();
+});
+
 // Virtual for pending balance (earned but not withdrawn)
 restaurantWalletSchema.virtual('pendingBalance').get(function() {
   return this.totalEarned - this.totalWithdrawn;
@@ -271,10 +281,11 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
     ].filter(Boolean);
 
 
-    // 1. Fetch all delivered orders
+    // 1. Fetch all delivered orders since cutoff date
     const orders = await Order.find({
       restaurantId: { $in: restaurantIdVariations },
-      status: 'delivered'
+      status: 'delivered',
+      createdAt: { $gte: WALLET_HISTORY_CUTOFF_DATE }
     }).lean();
 
     // Fetch settlements and admin commissions in parallel to resolve actual payouts
@@ -333,11 +344,12 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
       }
     } catch (_) {}
 
-    // 2. Fetch all completed paid dining bookings
+    // 2. Fetch all completed paid dining bookings since cutoff date
     const bookings = await TableBooking.find({
       restaurant: { $in: targetRestaurantObjectIds },
       status: { $in: ['completed', 'dining_completed'] },
-      paymentStatus: 'paid'
+      paymentStatus: 'paid',
+      createdAt: { $gte: WALLET_HISTORY_CUTOFF_DATE }
     }).lean();
 
     // 3. Check and add payment transactions for orders (also fix wrong amounts)
@@ -447,6 +459,7 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
         const settlements = await OrderSettlement.find({
           restaurantId: { $in: targetRestaurantObjectIds },
           'restaurantEarning.netEarning': { $gt: 0 },
+          createdAt: { $gte: WALLET_HISTORY_CUTOFF_DATE }
         })
           .select('orderId orderNumber restaurantEarning createdAt')
           .lean();
@@ -535,7 +548,10 @@ restaurantWalletSchema.statics.findOrCreateByRestaurantId = async function(resta
     }
 
     // 5. Fetch and backfill all withdrawal requests
-    const withdrawals = await WithdrawalRequest.find({ restaurantId: { $in: targetRestaurantObjectIds } }).lean();
+    const withdrawals = await WithdrawalRequest.find({
+      restaurantId: { $in: targetRestaurantObjectIds },
+      createdAt: { $gte: WALLET_HISTORY_CUTOFF_DATE }
+    }).lean();
     for (const w of withdrawals) {
       const wIdStr = w._id.toString();
       const alreadyAdded = wallet.transactions?.some(

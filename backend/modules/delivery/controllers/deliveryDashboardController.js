@@ -108,7 +108,8 @@ export const getDashboard = asyncHandler(async (req, res) => {
     let recentOrders = [];
     try {
       recentOrders = await Order.find({
-        deliveryPartnerId: delivery._id
+        deliveryPartnerId: delivery._id,
+        isDeleted: { $ne: true }
       })
         .sort({ createdAt: -1 })
         .limit(5)

@@ -26,6 +26,7 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
         logo: settings?.logo || { url: "", publicId: "" },
         favicon: settings?.favicon || { url: "", publicId: "" },
         payAtHotelMaxTotal: settings?.payAtHotelMaxTotal ?? 699,
+        minOrderAmount: settings?.minOrderAmount ?? 0,
         maintenanceMode: settings?.maintenanceMode || { isEnabled: false },
         email: settings?.email || "",
         phone: settings?.phone || { countryCode: "+91", number: "" },
@@ -43,6 +44,7 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
         logo: { url: "", publicId: "" },
         favicon: { url: "", publicId: "" },
         payAtHotelMaxTotal: 699,
+        minOrderAmount: 0,
         maintenanceMode: { isEnabled: false },
         email: "",
         phone: { countryCode: "+91", number: "" },
@@ -93,6 +95,7 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       maintenanceModeEnabled,
       homeCategoriesLimit,
       payAtHotelMaxTotal,
+      minOrderAmount,
     } = req.body;
 
     // Get existing settings
@@ -254,6 +257,18 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
         );
       }
       settings.payAtHotelMaxTotal = parsedTotal;
+    }
+
+    if (minOrderAmount !== undefined) {
+      const parsedMin = Number(minOrderAmount);
+      if (!Number.isFinite(parsedMin) || parsedMin < 0) {
+        return errorResponse(
+          res,
+          400,
+          "Minimum Order Amount must be a positive number",
+        );
+      }
+      settings.minOrderAmount = parsedMin;
     }
 
     // Handle logo upload

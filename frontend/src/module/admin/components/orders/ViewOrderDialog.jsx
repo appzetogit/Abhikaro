@@ -260,7 +260,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
       s === "updating location..." ||
       s === "detecting..." ||
       s === "live" ||
-      s === "live address"
+      s === "live address" ||
+      s === "other"
     );
   };
 

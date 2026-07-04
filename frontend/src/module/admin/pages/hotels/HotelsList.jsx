@@ -77,7 +77,7 @@ export default function HotelsList() {
     email: "",
     address: "",
     phone: "",
-    isActive: false,
+    isActive: true,
   })
   const [newHotelImages, setNewHotelImages] = useState({
     aadharCardImage: null,
@@ -759,7 +759,7 @@ export default function HotelsList() {
           email: "",
           address: "",
           phone: "",
-          isActive: false,
+          isActive: true,
         })
         setNewHotelImages({
           aadharCardImage: null,
@@ -2002,7 +2002,7 @@ export default function HotelsList() {
                     email: "",
                     address: "",
                     phone: "",
-                    isActive: false,
+                    isActive: true,
                   })
                   setNewHotelImages({
                     aadharCardImage: null,

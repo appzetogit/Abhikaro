@@ -86,6 +86,7 @@ export const getTripHistory = asyncHandler(async (req, res) => {
     // Build query
     const query = {
       deliveryPartnerId: delivery._id,
+      isDeleted: { $ne: true },
       createdAt: {
         $gte: startDate,
         $lte: endDate

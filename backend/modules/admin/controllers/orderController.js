@@ -16,6 +16,8 @@ import {
 } from '../../order/services/orderSettlementService.js';
 import { releaseEscrow } from '../../order/services/escrowWalletService.js';
 
+const WALLET_HISTORY_CUTOFF_DATE = new Date('2026-07-05T00:40:00+05:30');
+
 /**
  * Get all orders for admin
  * GET /api/admin/orders
@@ -41,7 +43,8 @@ export const getOrders = asyncHandler(async (req, res) => {
 
     // Build query
     const query = {
-      orderId: { $not: /^ORD-TEST/i }
+      orderId: { $not: /^ORD-TEST/i },
+      isDeleted: { $ne: true }
     };
 
     // Delivery partner filter
@@ -902,18 +905,19 @@ export const getPaymentHistory = asyncHandler(async (req, res) => {
       }
     }
 
-    if (fromDate || toDate) {
-      query.createdAt = {};
-      if (fromDate) {
-        const start = new Date(fromDate);
-        start.setHours(0, 0, 0, 0);
-        query.createdAt.$gte = start;
-      }
-      if (toDate) {
-        const end = new Date(toDate);
-        end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
-      }
+    // Filter out historical payments before cutoff
+    query.createdAt = {};
+    if (fromDate) {
+      const start = new Date(fromDate);
+      start.setHours(0, 0, 0, 0);
+      query.createdAt.$gte = start > WALLET_HISTORY_CUTOFF_DATE ? start : WALLET_HISTORY_CUTOFF_DATE;
+    } else {
+      query.createdAt.$gte = WALLET_HISTORY_CUTOFF_DATE;
+    }
+    if (toDate) {
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      query.createdAt.$lte = end;
     }
 
     // Search on Order (orderId) first; Payment gateway ids and user search are handled via post-filtering.
@@ -1109,7 +1113,7 @@ export const getOrderById = asyncHandler(async (req, res) => {
         .lean();
     }
 
-    if (!order) {
+    if (!order || order.isDeleted) {
       return errorResponse(res, 404, 'Order not found');
     }
 
@@ -1437,15 +1441,22 @@ export const bulkDeleteOrders = asyncHandler(async (req, res) => {
       return !foundOrderIds.has(id);
     });
 
-    // Delete payments first (linked by orderId:ObjectId in Payment collection)
+    // Soft delete payments first (linked by orderId:ObjectId in Payment collection)
     let deletedPayments = 0;
     if (foundMongoIds.length) {
-      const paymentDeleteRes = await Payment.deleteMany({ orderId: { $in: foundMongoIds } });
-      deletedPayments = paymentDeleteRes?.deletedCount || 0;
+      const paymentDeleteRes = await Payment.updateMany(
+        { orderId: { $in: foundMongoIds } },
+        { $set: { isDeleted: true } }
+      );
+      deletedPayments = paymentDeleteRes?.modifiedCount || 0;
     }
 
-    const orderDeleteRes = await Order.deleteMany({ _id: { $in: foundMongoIds } });
-    const deletedOrders = orderDeleteRes?.deletedCount || 0;
+    // Soft delete orders
+    const orderDeleteRes = await Order.updateMany(
+      { _id: { $in: foundMongoIds } },
+      { $set: { isDeleted: true } }
+    );
+    const deletedOrders = orderDeleteRes?.modifiedCount || 0;
 
     return successResponse(res, 200, "Orders deleted successfully", {
       requested: uniqueIds.length,

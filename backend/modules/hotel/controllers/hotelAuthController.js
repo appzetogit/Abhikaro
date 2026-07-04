@@ -170,9 +170,9 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         email: email.toLowerCase().trim(),
         address,
         signupMethod: "phone",
-        // Hotels must be approved by admin before appearing in Hotel List.
-        // New signups should always go to Admin → Hotel Requests.
-        isActive: false,
+        // Automatically approve and activate newly registered hotels
+        isActive: true,
+        approvedAt: new Date(),
       };
 
       // Add document images if provided

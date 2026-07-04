@@ -156,6 +156,7 @@ export default function Cart() {
 
   const [businessSettings, setBusinessSettings] = useState({
     payAtHotelMaxTotal: 699,
+    minOrderAmount: 0,
   })
 
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(-10)
@@ -865,6 +866,7 @@ export default function Cart() {
         if (response.data.success && response.data.data) {
           setBusinessSettings({
             payAtHotelMaxTotal: response.data.data.payAtHotelMaxTotal ?? 699,
+            minOrderAmount: response.data.data.minOrderAmount ?? 0,
           })
         }
       } catch (error) {
@@ -1076,6 +1078,9 @@ export default function Cart() {
     }
   }, [canShowPayAtHotel, selectedPaymentMethod])
 
+  const MIN_ORDER_AMOUNT = businessSettings.minOrderAmount || 0
+  const isBelowMinOrderAmount = total < MIN_ORDER_AMOUNT
+
   const savings =
     (pricing?.savings || (baseDiscount + (subtotal > 500 ? 32 : 0))) +
     categoryOfferDiscount
@@ -1202,6 +1207,12 @@ export default function Cart() {
     // 1. Initial cart and field validation
     if (cart.length === 0) {
       alert("Your cart is empty")
+      return
+    }
+
+    const minAmount = businessSettings.minOrderAmount || 0
+    if (total < minAmount) {
+      toast.error(`Minimum order amount is ₹${minAmount}. Add ₹${(minAmount - total).toFixed(2)} more to place order.`)
       return
     }
 
@@ -2702,13 +2713,19 @@ export default function Cart() {
                 </div>
               </div>
 
+              {isBelowMinOrderAmount && (
+                <div className="mb-3 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-xs text-center font-medium">
+                  ⚠️ Order amount must be at least ₹{MIN_ORDER_AMOUNT} to checkout. Add ₹{(MIN_ORDER_AMOUNT - total).toFixed(2)} more.
+                </div>
+              )}
+
               <Button
                 size="lg"
                 onClick={handlePlaceOrder}
-                disabled={isPlacingOrder || (selectedPaymentMethod === "wallet" && walletBalance < total)}
+                disabled={isPlacingOrder || (selectedPaymentMethod === "wallet" && walletBalance < total) || isBelowMinOrderAmount}
                 className="w-full bg-green-700 hover:bg-green-800 dark:bg-green-600 dark:hover:bg-green-700 text-white px-6 md:px-10 h-14 md:h-16 rounded-lg md:rounded-xl text-base md:text-lg font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet") && (
+                {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet") && !isBelowMinOrderAmount && (
                   <div className="text-left mr-3 md:mr-4">
                     <p className="text-sm md:text-base opacity-90">₹{total.toFixed(2)}</p>
                     <p className="text-xs md:text-sm opacity-75">TOTAL</p>
@@ -2717,15 +2734,17 @@ export default function Cart() {
                 <span className="font-bold text-base md:text-lg">
                   {isPlacingOrder
                     ? "Processing..."
-                    : selectedPaymentMethod === "razorpay"
-                      ? "Place Order"
-                      : selectedPaymentMethod === "wallet"
-                        ? walletBalance >= total
-                          ? "Place Order"
-                          : "Insufficient Balance"
-                        : selectedPaymentMethod === "pay_at_hotel"
-                          ? "Place Order (Pay at Hotel)"
-                          : "Place Order"}
+                    : isBelowMinOrderAmount
+                      ? `Minimum Order ₹${MIN_ORDER_AMOUNT} Required`
+                      : selectedPaymentMethod === "razorpay"
+                        ? "Place Order"
+                        : selectedPaymentMethod === "wallet"
+                          ? walletBalance >= total
+                            ? "Place Order"
+                            : "Insufficient Balance"
+                          : selectedPaymentMethod === "pay_at_hotel"
+                            ? "Place Order (Pay at Hotel)"
+                            : "Place Order"}
                 </span>
                 <ChevronRight className="h-5 w-5 md:h-6 md:w-6 ml-2" />
               </Button>

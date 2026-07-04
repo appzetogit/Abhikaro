@@ -101,6 +101,7 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
         // Direct match fallback
         { restaurantId: restaurantIdString },
       ],
+      isDeleted: { $ne: true },
     };
 
     // If status filter is provided, add it to query

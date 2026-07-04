@@ -1673,7 +1673,7 @@ export const getUserOrders = async (req, res) => {
     // Build query - MongoDB should handle string/ObjectId conversion automatically
     // But we'll try both formats to be safe
     const mongoose = (await import("mongoose")).default;
-    const query = { userId };
+    const query = { userId, isDeleted: { $ne: true } };
 
     // If userId is a string that looks like ObjectId, also try ObjectId format
     if (typeof userId === "string" && mongoose.Types.ObjectId.isValid(userId)) {
@@ -1792,6 +1792,7 @@ export const getOrderDetails = async (req, res) => {
       order = await Order.findOne({
         _id: id,
         userId,
+        isDeleted: { $ne: true },
       })
         .populate("restaurantId", "name slug profileImage address location phone ownerPhone onboarding")
         .populate("deliveryPartnerId", "name email phone availability")
@@ -1804,6 +1805,7 @@ export const getOrderDetails = async (req, res) => {
       order = await Order.findOne({
         orderId: id,
         userId,
+        isDeleted: { $ne: true },
       })
         .populate("restaurantId", "name slug profileImage address location phone ownerPhone onboarding")
         .populate("deliveryPartnerId", "name email phone availability")

@@ -9,6 +9,8 @@ import RestaurantWallet from "../../restaurant/models/RestaurantWallet.js";
 import Order from "../../order/models/Order.js";
 import Admin from "../models/Admin.js";
 
+const WALLET_HISTORY_CUTOFF_DATE = new Date('2026-07-05T00:40:00+05:30');
+
 
 /**
  * GET /api/admin/restaurants/wallets
@@ -53,7 +55,7 @@ export const getRestaurantWalletOverview = asyncHandler(async (req, res) => {
 
   const wallets = ids.length
     ? await RestaurantWallet.find({ restaurantId: { $in: ids } })
-        .select("restaurantId totalBalance totalEarned totalWithdrawn")
+        .select("restaurantId transactions")
         .lean()
     : [];
 
@@ -64,18 +66,35 @@ export const getRestaurantWalletOverview = asyncHandler(async (req, res) => {
 
   const rows = (restaurants || []).map((r) => {
     const w = walletMap.get(String(r._id));
-    const totalEarned = Number(w?.totalEarned) || 0;
-    const totalWithdrawn = Number(w?.totalWithdrawn) || 0;
-    const totalBalance = Number(w?.totalBalance) || 0;
+    
+    let totalEarned = 0;
+    let totalWithdrawn = 0;
+
+    if (w && Array.isArray(w.transactions)) {
+      w.transactions.forEach((t) => {
+        if (t.status === "Completed") {
+          const amt = Number(t.amount) || 0;
+          if (["payment", "bonus", "refund"].includes(t.type)) {
+            totalEarned += amt;
+          } else if (t.type === "withdrawal") {
+            totalWithdrawn += amt;
+          } else if (t.type === "deduction") {
+            totalEarned = Math.max(0, totalEarned - amt);
+          }
+        }
+      });
+    }
+
+    const totalBalance = Math.max(0, totalEarned - totalWithdrawn);
 
     return {
       ...r,
       // Prefer onboarding step name if present (often more accurate than placeholder `name`)
       name: r?.onboarding?.step1?.restaurantName || r?.name,
-      totalEarned,
-      totalWithdrawn,
-      pendingBalance: totalEarned - totalWithdrawn,
-      totalBalance,
+      totalEarned: Math.round(totalEarned * 100) / 100,
+      totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
+      pendingBalance: Math.round((totalEarned - totalWithdrawn) * 100) / 100,
+      totalBalance: Math.round(totalBalance * 100) / 100,
     };
   });
 
@@ -185,10 +204,19 @@ export const getRestaurantWalletHistory = asyncHandler(async (req, res) => {
     restaurantSlug?.toString()
   ].filter(Boolean);
 
-  // Fetch counts of delivered orders and total ordered counts in parallel
+  // Fetch counts of delivered orders and total ordered counts in parallel since cutoff date
   const [deliveredCount, orderedCount] = await Promise.all([
-    Order.countDocuments({ restaurantId: { $in: restaurantIdVariations }, status: "delivered", orderId: { $not: /^ORD-TEST/i } }),
-    Order.countDocuments({ restaurantId: { $in: restaurantIdVariations }, orderId: { $not: /^ORD-TEST/i } })
+    Order.countDocuments({
+      restaurantId: { $in: restaurantIdVariations },
+      status: "delivered",
+      orderId: { $not: /^ORD-TEST/i },
+      createdAt: { $gte: WALLET_HISTORY_CUTOFF_DATE }
+    }),
+    Order.countDocuments({
+      restaurantId: { $in: restaurantIdVariations },
+      orderId: { $not: /^ORD-TEST/i },
+      createdAt: { $gte: WALLET_HISTORY_CUTOFF_DATE }
+    })
   ]);
 
   const walletDoc = await RestaurantWallet.findOrCreateByRestaurantId(id);

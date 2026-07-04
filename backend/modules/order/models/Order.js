@@ -508,6 +508,11 @@ const orderSchema = new mongoose.Schema(
         method: String, // 'osrm', 'dijkstra', 'haversine'
       },
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,

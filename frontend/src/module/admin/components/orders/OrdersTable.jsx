@@ -35,7 +35,8 @@ const isPlaceholder = (str) => {
     s === "updating location..." ||
     s === "detecting..." ||
     s === "live" ||
-    s === "live address"
+    s === "live address" ||
+    s === "other"
   );
 };
 

@@ -128,7 +128,12 @@ const paymentSchema = new mongoose.Schema({
     },
     ipAddress: String,
     userAgent: String
-  }]
+  }],
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
 }, {
   timestamps: true
 });

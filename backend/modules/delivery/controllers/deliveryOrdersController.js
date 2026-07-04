@@ -39,7 +39,7 @@ export const getOrders = asyncHandler(async (req, res) => {
     const { status, page = 1, limit = 20, includeDelivered } = req.query;
 
     // Build query
-    const query = { deliveryPartnerId: delivery._id };
+    const query = { deliveryPartnerId: delivery._id, isDeleted: { $ne: true } };
 
     if (status) {
       query.status = status;
@@ -130,6 +130,7 @@ export const getAvailableOrders = asyncHandler(async (req, res) => {
     const query = {
       deliveryPartnerId: { $exists: false },
       status: { $in: ["confirmed", "preparing", "ready"] },
+      isDeleted: { $ne: true },
     };
 
     // Filter by notified partners
@@ -240,7 +241,7 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
       .populate("userId", "name phone email")
       .lean();
 
-    if (!order) {
+    if (!order || order.isDeleted) {
       return errorResponse(res, 404, "Order not found");
     }
 

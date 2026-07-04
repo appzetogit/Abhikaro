@@ -494,7 +494,7 @@ export const updateSettlementOnStatusChange = async (
         settlement.hotelEarning &&
         settlement.hotelEarning.hotelId &&
         settlement.hotelEarning.commission > 0 &&
-        settlement.hotelEarning.status !== "completed"
+        settlement.hotelEarning.status !== "credited"
       ) {
         try {
           // Fetch order to check payment method
@@ -502,7 +502,7 @@ export const updateSettlementOnStatusChange = async (
           
           if (order?.orderType === "QR" || order?.commissionDistributed) {
             console.log(`Skipping duplicate wallet credit in settlement service for QR order ${order.orderId}`);
-            settlement.hotelEarning.status = "completed";
+            settlement.hotelEarning.status = "credited";
           } else {
             const isPayAtHotel = order?.payment?.method === "pay_at_hotel";
 
@@ -518,7 +518,7 @@ export const updateSettlementOnStatusChange = async (
             });
             await hotelWallet.save();
 
-            settlement.hotelEarning.status = "completed";
+            settlement.hotelEarning.status = "credited";
             console.log(
               `Credited ${settlement.hotelEarning.commission} to hotel ${settlement.hotelEarning.hotelId}`,
             );

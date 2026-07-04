@@ -471,7 +471,7 @@ export const createHotel = asyncHandler(async (req, res) => {
     aadharCardImage,
     hotelRentProofImage,
     cancelledCheckImages,
-    isActive = false, // Default to inactive, admin can activate later
+    isActive = true, // Default to active, admin can activate later
   } = req.body;
 
   // Validate required fields
@@ -511,6 +511,14 @@ export const createHotel = asyncHandler(async (req, res) => {
     signupMethod: "admin", // Mark as created by admin
     isActive: isActive,
   };
+
+  if (isActive) {
+    hotelData.approvedAt = new Date();
+    const approverId = req.admin?._id || req.user?._id || req.user?.userId || null;
+    if (approverId) {
+      hotelData.approvedBy = approverId;
+    }
+  }
 
   // Add document images if provided
   // Ensure images are in correct format: { url: String, publicId: String }
@@ -1378,7 +1386,7 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
     // Load wallets for these hotels
     const wallets = await HotelWallet.find({ hotelId: { $in: hotelIds } })
       .select(
-        "hotelId totalBalance totalEarned totalWithdrawn withdrawalRequests manualCashCollectedOverride manualAvailableBalanceAdjustment",
+        "hotelId totalBalance totalEarned totalWithdrawn withdrawalRequests manualCashCollectedOverride manualAvailableBalanceAdjustment transactions",
       )
       .lean();
 
@@ -1566,14 +1574,19 @@ export const getHotelWalletOverview = asyncHandler(async (req, res) => {
 
       const hotelEarnings = useStats ? statsTotalEarned : walletTotalEarned;
       const totalWithdrawn = wallet.totalWithdrawn || 0;
-      const baseAvailable = useStats ? (statsTotalEarned - totalWithdrawn) : walletAvailable;
+
+      // Mirror same availableBalance calculation logic as hotel app: totalEarned - totalWithdrawn, fallback to totalBalance
+      const logicalAvailable = walletTotalEarned - totalWithdrawn;
+      const baseAvailable = useStats
+        ? (statsTotalEarned - totalWithdrawn)
+        : (logicalAvailable > 0 ? logicalAvailable : walletAvailable);
 
       const manualAdj =
         typeof wallet.manualAvailableBalanceAdjustment === "number"
           ? wallet.manualAvailableBalanceAdjustment
           : Number(wallet.manualAvailableBalanceAdjustment) || 0;
 
-      // Only add manualAdj if we are using stats-based earnings, because wallet.totalBalance (walletAvailable)
+      // Only add manualAdj if we are using stats-based earnings, because wallet.totalBalance/logicalAvailable
       // already includes the manual adjustment transactions.
       const availableBalance = useStats ? baseAvailable + manualAdj : baseAvailable;
 

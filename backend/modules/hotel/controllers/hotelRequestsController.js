@@ -23,6 +23,7 @@ export const getHotelRequests = async (req, res) => {
         { hotelReference: hotelId },
         { hotelReference: _id.toString() },
       ],
+      isDeleted: { $ne: true },
     };
 
     // Filter by status if provided
