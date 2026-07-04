@@ -57,9 +57,11 @@ function normalizeRewardsSnapshot(doc) {
     monthly: {
       gifts: Array.isArray(monthly.gifts) ? monthly.gifts : [],
       discounts: Array.isArray(monthly.discounts) ? monthly.discounts : [],
+      minOrders: Number.isFinite(monthly.minOrders) ? monthly.minOrders : 0,
     },
     sixMonths: {
       gifts: Array.isArray(sixMonths.gifts) ? sixMonths.gifts : [],
+      minOrders: Number.isFinite(sixMonths.minOrders) ? sixMonths.minOrders : 0,
     },
   };
 }

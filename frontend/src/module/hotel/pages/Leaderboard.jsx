@@ -84,6 +84,9 @@ export default function HotelLeaderboard() {
 
   const active = tab === "6months" ? sixState : monthState
   const isWinnerHidden = rewards?.hideWinner?.[tab === "6months" ? "sixMonths" : "month"] === true;
+  const minOrdersRequired = tab === "6months"
+    ? (rewards?.sixMonths?.minOrders ?? 0)
+    : (rewards?.monthly?.minOrders ?? 0);
 
   const getRewardForRank = (rank) => {
     const r = Number(rank)
@@ -236,6 +239,16 @@ export default function HotelLeaderboard() {
                     Winner: {active.payload.top[0].hotelName}
                   </div>
                 ) : null}
+
+                {minOrdersRequired > 0 && (
+                  <div className="mt-4 w-full">
+                    <div className="h-px w-full bg-gray-100" />
+                    <div className="mt-3 text-[11px] font-medium text-gray-500 flex items-center gap-1.5 justify-center">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#ff8100]" />
+                      Minimum {minOrdersRequired} orders required to be eligible for rewards
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

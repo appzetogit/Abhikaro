@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import goldBadge from "@/assets/gold.png"
 import silverBadge from "@/assets/silver.png"
 import brownBadge from "@/assets/brown.png"
-import { Building2, RefreshCw } from "lucide-react"
+import { Building2, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { uploadAPI } from "@/lib/api"
 
@@ -24,8 +24,14 @@ function getBadge(rank) {
   if (rank === 3) return { label: "Bronze", src: brownBadge }
   return null
 }
-
 function LeaderboardTable({ data = [], isLoading, rewards, periodKey, onOpenWinner }) {
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 20
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [data.length, periodKey])
+
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
@@ -69,103 +75,197 @@ function LeaderboardTable({ data = [], isLoading, rewards, periodKey, onOpenWinn
     return null
   }
 
+  const totalPages = Math.ceil(data.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const paginatedData = data.slice(startIndex, startIndex + itemsPerPage)
+
+  const getPageNumbers = () => {
+    const pages = []
+    const range = 2
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || (i >= currentPage - range && i <= currentPage + range)) {
+        pages.push(i)
+      } else if (pages[pages.length - 1] !== "...") {
+        pages.push("...")
+      }
+    }
+    return pages
+  }
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-neutral-200">
-      <div className="grid grid-cols-12 bg-neutral-50 px-4 py-3 text-xs font-semibold text-neutral-600">
-        <div className="col-span-2">Rank</div>
-        <div className="col-span-6">Hotel</div>
-        <div className="col-span-2">Reward</div>
-        <div className="col-span-2 text-right">QR Orders</div>
+    <div className="flex flex-col gap-4">
+      <div className="overflow-hidden rounded-2xl border border-neutral-200">
+        <div className="grid grid-cols-12 bg-neutral-50 px-4 py-3 text-xs font-semibold text-neutral-600">
+          <div className="col-span-2">Rank</div>
+          <div className="col-span-6">Hotel</div>
+          <div className="col-span-2">Reward</div>
+          <div className="col-span-2 text-right">QR Orders</div>
+        </div>
+        <div className="divide-y divide-neutral-200 bg-white">
+          {paginatedData.map((row) => {
+            const badge = getBadge(row.rank)
+            const reward = getRewardForRank(row.rank)
+            const top3Style =
+              row.rank === 1
+                ? "mx-3 my-2 rounded-2xl border border-yellow-200 bg-gradient-to-r from-yellow-100 via-amber-50 to-white shadow-sm ring-1 ring-yellow-100"
+                : row.rank === 2
+                  ? "mx-3 my-2 rounded-2xl border-2 border-slate-300 bg-gradient-to-r from-slate-200 via-gray-50 to-white shadow-md ring-1 ring-slate-200"
+                  : row.rank === 3
+                    ? "mx-3 my-2 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-100 via-amber-50 to-white shadow-sm ring-1 ring-orange-100"
+                    : ""
+            const top3NoDivider = row.rank === 1 || row.rank === 2 || row.rank === 3
+            return (
+              <div
+                key={row.hotelMongoId || row.hotelId || row.hotelName}
+                className={cn("grid grid-cols-12 px-4 py-3", top3Style, top3NoDivider && "border-b-0")}
+              >
+                <div className="col-span-2 flex items-center gap-2">
+                  <span className="w-8 text-sm font-semibold text-neutral-900">{row.rank}</span>
+                  {badge && (
+                    <img
+                      src={badge.src}
+                      alt={`${badge.label} badge`}
+                      title={`${badge.label} badge`}
+                      className={cn("h-12 w-12 shrink-0")}
+                      loading="lazy"
+                    />
+                  )}
+                </div>
+                <div className="col-span-6 min-w-0">
+                  <p className="truncate text-sm font-semibold text-neutral-900">{row.hotelName || "Unknown Hotel"}</p>
+                  <p className="truncate text-xs text-neutral-500">
+                    {row.hotelId ? `ID: ${row.hotelId}` : "ID: —"}
+                  </p>
+                  {row.rank === 1 ? (
+                    <div className="mt-2 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onOpenWinner?.({
+                            periodKey,
+                            rank: row.rank,
+                            hotelName: row.hotelName || "Unknown Hotel",
+                            hotelId: row.hotelId || "",
+                            orders: Number(row.orders || 0),
+                            rewardLabel: reward?.name || "",
+                          })
+                        }
+                        className="rounded-full bg-yellow-400 px-4 py-1 text-[11px] font-extrabold text-neutral-900 shadow-sm ring-1 ring-yellow-300 hover:bg-yellow-300"
+                        title="Upload winner profile photo (shown in hotel app)"
+                      >
+                        WINNER
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="col-span-2 flex items-center">
+                  {reward ? (
+                    <div className="flex min-w-0 items-center gap-2">
+                      {reward.type === "gift" && reward.imageUrl ? (
+                        <img
+                          src={reward.imageUrl}
+                          alt={reward.name}
+                          className="h-8 w-8 rounded-lg object-cover ring-1 ring-neutral-200"
+                          loading="lazy"
+                        />
+                      ) : reward.type === "discount" ? (
+                        <div className="h-8 w-8 rounded-lg bg-emerald-50 ring-1 ring-emerald-200" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-lg bg-neutral-100 ring-1 ring-neutral-200" />
+                      )}
+                      <span className="truncate text-xs font-semibold text-neutral-800" title={reward.name}>
+                        {reward.name}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-neutral-400">—</span>
+                  )}
+                </div>
+                <div className="col-span-2 flex items-center justify-end">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">
+                    {Number(row.orders || 0).toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
-      <div className="divide-y divide-neutral-200 bg-white">
-        {data.map((row) => {
-          const badge = getBadge(row.rank)
-          const reward = getRewardForRank(row.rank)
-          const top3Style =
-            row.rank === 1
-              ? "mx-3 my-2 rounded-2xl border border-yellow-200 bg-gradient-to-r from-yellow-100 via-amber-50 to-white shadow-sm ring-1 ring-yellow-100"
-              : row.rank === 2
-                ? "mx-3 my-2 rounded-2xl border-2 border-slate-300 bg-gradient-to-r from-slate-200 via-gray-50 to-white shadow-md ring-1 ring-slate-200"
-                : row.rank === 3
-                  ? "mx-3 my-2 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-100 via-amber-50 to-white shadow-sm ring-1 ring-orange-100"
-                  : ""
-          const top3NoDivider = row.rank === 1 || row.rank === 2 || row.rank === 3
-          return (
-            <div
-              key={row.hotelMongoId || row.hotelId || row.hotelName}
-              className={cn("grid grid-cols-12 px-4 py-3", top3Style, top3NoDivider && "border-b-0")}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border border-neutral-200 bg-white px-4 py-3 rounded-2xl shadow-xs">
+          <div className="flex flex-1 justify-between sm:hidden">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              <div className="col-span-2 flex items-center gap-2">
-                <span className="w-8 text-sm font-semibold text-neutral-900">{row.rank}</span>
-                {badge && (
-                  <img
-                    src={badge.src}
-                    alt={`${badge.label} badge`}
-                    title={`${badge.label} badge`}
-                    className={cn("h-12 w-12 shrink-0")}
-                    loading="lazy"
-                  />
-                )}
-              </div>
-              <div className="col-span-6 min-w-0">
-                <p className="truncate text-sm font-semibold text-neutral-900">{row.hotelName || "Unknown Hotel"}</p>
-                <p className="truncate text-xs text-neutral-500">
-                  {row.hotelId ? `ID: ${row.hotelId}` : "ID: —"}
-                </p>
-                {row.rank === 1 ? (
-                  <div className="mt-2 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onOpenWinner?.({
-                          periodKey,
-                          rank: row.rank,
-                          hotelName: row.hotelName || "Unknown Hotel",
-                          hotelId: row.hotelId || "",
-                          orders: Number(row.orders || 0),
-                          rewardLabel: reward?.name || "",
-                        })
-                      }
-                      className="rounded-full bg-yellow-400 px-4 py-1 text-[11px] font-extrabold text-neutral-900 shadow-sm ring-1 ring-yellow-300 hover:bg-yellow-300"
-                      title="Upload winner profile photo (shown in hotel app)"
-                    >
-                      WINNER
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              <div className="col-span-2 flex items-center">
-                {reward ? (
-                  <div className="flex min-w-0 items-center gap-2">
-                    {reward.type === "gift" && reward.imageUrl ? (
-                      <img
-                        src={reward.imageUrl}
-                        alt={reward.name}
-                        className="h-8 w-8 rounded-lg object-cover ring-1 ring-neutral-200"
-                        loading="lazy"
-                      />
-                    ) : reward.type === "discount" ? (
-                      <div className="h-8 w-8 rounded-lg bg-emerald-50 ring-1 ring-emerald-200" />
-                    ) : (
-                      <div className="h-8 w-8 rounded-lg bg-neutral-100 ring-1 ring-neutral-200" />
-                    )}
-                    <span className="truncate text-xs font-semibold text-neutral-800" title={reward.name}>
-                      {reward.name}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-xs text-neutral-400">—</span>
-                )}
-              </div>
-              <div className="col-span-2 flex items-center justify-end">
-                <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">
-                  {Number(row.orders || 0).toLocaleString("en-IN")}
-                </span>
-              </div>
+              Previous
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="relative ml-3 inline-flex items-center rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              Next
+            </button>
+          </div>
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="text-sm text-neutral-500">
+                Showing <span className="font-semibold text-neutral-800">{startIndex + 1}</span> to{" "}
+                <span className="font-semibold text-neutral-800">{Math.min(startIndex + itemsPerPage, data.length)}</span> of{" "}
+                <span className="font-semibold text-neutral-800">{data.length}</span> hotels
+              </p>
             </div>
-          )
-        })}
-      </div>
+            <div>
+              <nav className="isolate inline-flex -space-x-px rounded-xl border border-neutral-200 bg-white shadow-xs overflow-hidden" aria-label="Pagination">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-3 py-2 text-neutral-500 hover:bg-neutral-50 focus:z-20 disabled:opacity-50 disabled:cursor-not-allowed transition border-r border-neutral-200"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                {getPageNumbers().map((page, idx) => {
+                  if (page === "...") {
+                    return (
+                      <span
+                        key={`ellipsis-${idx}`}
+                        className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-neutral-400 border-r border-neutral-200 bg-neutral-50/50"
+                      >
+                        ...
+                      </span>
+                    )
+                  }
+                  const isCurrent = page === currentPage
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={cn(
+                        "relative inline-flex items-center px-4 py-2 text-sm font-semibold focus:z-20 transition border-r border-neutral-200 last:border-r-0",
+                        isCurrent
+                          ? "z-10 bg-neutral-900 text-white"
+                          : "text-neutral-700 hover:bg-neutral-50"
+                      )}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-3 py-2 text-neutral-500 hover:bg-neutral-50 focus:z-20 disabled:opacity-50 disabled:cursor-not-allowed transition border-l border-neutral-200"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -544,6 +644,32 @@ export default function HotelLeaderboard() {
                 <TabsContent value="monthly" className="mt-4">
                   <div className="space-y-6">
                     <div className="rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4">
+                      <div>
+                        <p className="text-sm font-semibold text-neutral-900">Eligibility Criteria</p>
+                        <p className="text-xs text-neutral-500">Set the minimum number of QR orders a hotel must have in the month to claim any gifts/rewards.</p>
+                      </div>
+                      <div className="mt-4 flex items-center gap-3">
+                        <label className="text-sm font-semibold text-neutral-700">Min Orders:</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={rewards.monthly.minOrders ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value === "" ? "" : Number(e.target.value)
+                            setRewards((prev) => {
+                              const next = structuredClone(prev)
+                              if (!next.monthly) next.monthly = {}
+                              next.monthly.minOrders = val
+                              return next
+                            })
+                          }}
+                          className="h-10 w-32 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="text-sm font-semibold text-neutral-900">Top 5 gifts</p>
@@ -640,7 +766,34 @@ export default function HotelLeaderboard() {
                 </TabsContent>
 
                 <TabsContent value="sixMonths" className="mt-4">
-                  <div className="rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4">
+                  <div className="space-y-6">
+                    <div className="rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4">
+                      <div>
+                        <p className="text-sm font-semibold text-neutral-900">Eligibility Criteria</p>
+                        <p className="text-xs text-neutral-500">Set the minimum number of QR orders a hotel must have in the 6-month period to claim any gifts/rewards.</p>
+                      </div>
+                      <div className="mt-4 flex items-center gap-3">
+                        <label className="text-sm font-semibold text-neutral-700">Min Orders:</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={rewards.sixMonths.minOrders ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value === "" ? "" : Number(e.target.value)
+                            setRewards((prev) => {
+                              const next = structuredClone(prev)
+                              if (!next.sixMonths) next.sixMonths = {}
+                              next.sixMonths.minOrders = val
+                              return next
+                            })
+                          }}
+                          className="h-10 w-32 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4">
                     <div>
                       <p className="text-sm font-semibold text-neutral-900">Top 3 gifts (6 months)</p>
                       <p className="text-xs text-neutral-500">Gift name + image per position (1–3).</p>
@@ -693,6 +846,7 @@ export default function HotelLeaderboard() {
                       ))}
                     </div>
                   </div>
+                </div>
                 </TabsContent>
               </Tabs>
             </div>

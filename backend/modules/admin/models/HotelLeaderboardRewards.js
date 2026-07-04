@@ -44,9 +44,11 @@ const hotelLeaderboardRewardsSchema = new mongoose.Schema(
     monthly: {
       gifts: { type: [giftSchema], default: [] }, // positions 1-5
       discounts: { type: [discountSchema], default: [] }, // positions 6-10
+      minOrders: { type: Number, default: 0, min: 0 },
     },
     sixMonths: {
       gifts: { type: [giftSchema], default: [] }, // positions 1-3
+      minOrders: { type: Number, default: 0, min: 0 },
     },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,

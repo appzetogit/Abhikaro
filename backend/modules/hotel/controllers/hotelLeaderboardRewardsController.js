@@ -80,9 +80,11 @@ export const getHotelLeaderboardRewards = asyncHandler(async (req, res) => {
     monthly: {
       gifts: normalizeGifts(payload?.monthly?.gifts, [1, 2, 3, 4, 5]),
       discounts: normalizeDiscounts(payload?.monthly?.discounts, [6, 7, 8, 9, 10]),
+      minOrders: Number.isFinite(payload?.monthly?.minOrders) ? payload.monthly.minOrders : 0,
     },
     sixMonths: {
       gifts: normalizeGifts(payload?.sixMonths?.gifts, [1, 2, 3]),
+      minOrders: Number.isFinite(payload?.sixMonths?.minOrders) ? payload.sixMonths.minOrders : 0,
     },
     updatedAt: payload?.updatedAt || null,
   };

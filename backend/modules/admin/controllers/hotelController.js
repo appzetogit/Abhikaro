@@ -2159,9 +2159,11 @@ export const getHotelLeaderboardRewards = asyncHandler(async (req, res) => {
     monthly: {
       gifts: normalizeGifts(payload?.monthly?.gifts, [1, 2, 3, 4, 5]),
       discounts: normalizeDiscounts(payload?.monthly?.discounts, [6, 7, 8, 9, 10]),
+      minOrders: Number.isFinite(payload?.monthly?.minOrders) ? payload.monthly.minOrders : 0,
     },
     sixMonths: {
       gifts: normalizeGifts(payload?.sixMonths?.gifts, [1, 2, 3]),
+      minOrders: Number.isFinite(payload?.sixMonths?.minOrders) ? payload.sixMonths.minOrders : 0,
     },
     updatedAt: payload?.updatedAt || null,
   };
@@ -2190,8 +2192,15 @@ export const updateHotelLeaderboardRewards = asyncHandler(async (req, res) => {
     month: body?.hideWinner?.month === true,
     sixMonths: body?.hideWinner?.sixMonths === true,
   };
-  nextDoc.monthly = { gifts: monthlyGifts, discounts: monthlyDiscounts };
-  nextDoc.sixMonths = { gifts: sixMonthsGifts };
+  nextDoc.monthly = {
+    gifts: monthlyGifts,
+    discounts: monthlyDiscounts,
+    minOrders: Number.isFinite(body?.monthly?.minOrders) ? Math.max(0, Number(body.monthly.minOrders)) : 0,
+  };
+  nextDoc.sixMonths = {
+    gifts: sixMonthsGifts,
+    minOrders: Number.isFinite(body?.sixMonths?.minOrders) ? Math.max(0, Number(body.sixMonths.minOrders)) : 0,
+  };
   if (req.admin?._id) {
     nextDoc.updatedBy = req.admin._id;
   }
