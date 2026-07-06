@@ -1,13 +1,15 @@
 /* eslint-disable no-console */
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import request from 'supertest';
 
 async function run() {
-	console.log('⏳ Starting in-memory MongoDB...');
-	const mongod = await MongoMemoryServer.create();
-	const uri = mongod.getUri();
+	console.log('⏳ Starting in-memory MongoDB replica set...');
+	const replset = await MongoMemoryReplSet.create({
+		replSet: { count: 1, storageEngine: 'wiredTiger' }
+	});
+	const uri = replset.getUri();
 
 	// Minimal required env before importing the server
 	process.env.MONGODB_URI = uri;
@@ -232,7 +234,7 @@ async function run() {
 		// All tests passed
 		console.log('\n🎉 All payment verification integration tests passed.');
 		await mongoose.connection.close();
-		await mongod.stop();
+		await replset.stop();
 		process.exit(0);
 	} catch (err) {
 		console.error('\n❌ Payment verification integration tests failed.');

@@ -155,6 +155,7 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
       intent.status = 'processing';
       await intent.save();
 
+      let orderDoc = null;
       const session = await mongoose.startSession();
       await session.withTransaction(async () => {
         // Double-check after acquiring txn
@@ -253,7 +254,7 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
         }
 
         // Minimal, safe order creation that matches existing schema, with pickup location
-        const orderDoc = new Order({
+        orderDoc = new Order({
           orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           userId: fresh.userId,
           userName: payload.userName || (typeof req?.user === 'object' && (req.user?.name || req.user?.fullName)) || null,
@@ -296,8 +297,11 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
         fresh.razorpaySignature = razorpay_signature;
         fresh.orderId = orderDoc._id;
         await fresh.save({ session });
+      });
+      session.endSession();
 
-        // Notify restaurant in-transaction (non-blocking errors will be caught outside)
+      // Notify restaurant OUTSIDE the transaction block
+      if (orderDoc) {
         try {
           const { notifyRestaurantNewOrder } = await import('../order/services/restaurantNotificationService.js');
           const restaurantId = orderDoc.restaurantId?.toString() || orderDoc.restaurantId;
@@ -307,8 +311,7 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
         } catch (e) {
           logger.error('Failed to notify restaurant about new prepaid order:', e?.message || e);
         }
-      });
-      session.endSession();
+      }
 
       // Distribute QR commissions to hotel wallet for online Razorpay QR orders
       // (Cash/PAH orders are handled in hotelOrdersController on collect/deliver)
@@ -600,6 +603,7 @@ router.post('/razorpay/webhook', async (req, res) => {
         intent.status = 'processing';
         await intent.save();
 
+        let orderDoc = null;
         const session = await mongoose.startSession();
         await session.withTransaction(async () => {
           const fresh = await PaymentIntent.findById(intent._id).session(session);
@@ -691,7 +695,7 @@ router.post('/razorpay/webhook', async (req, res) => {
             }
           }
 
-          const orderDoc = new Order({
+          orderDoc = new Order({
             orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: fresh.userId,
             userName: payload.userName || null,
@@ -733,8 +737,11 @@ router.post('/razorpay/webhook', async (req, res) => {
           if (razorpay_payment_id) fresh.razorpayPaymentId = razorpay_payment_id;
           fresh.orderId = orderDoc._id;
           await fresh.save({ session });
+        });
+        session.endSession();
 
-          // Best-effort notify restaurant
+        // Notify restaurant OUTSIDE the transaction block
+        if (orderDoc) {
           try {
             const { notifyRestaurantNewOrder } = await import('../order/services/restaurantNotificationService.js');
             const restaurantId = orderDoc.restaurantId?.toString() || orderDoc.restaurantId;
@@ -750,8 +757,7 @@ router.post('/razorpay/webhook', async (req, res) => {
           } catch (e) {
             logger.error('Restaurant notify failed on webhook:', e?.message || e);
           }
-        });
-        session.endSession();
+        }
 
         // Distribute QR commissions to hotel wallet for online Razorpay QR orders
         try {
@@ -814,6 +820,19 @@ router.post('/razorpay/webhook', async (req, res) => {
     return res.status(200).json({ success: true });
   } catch (error) {
     logger.error('Webhook handler error:', error);
+    try {
+      const { default: WebhookDeadLetter } = await import('./models/WebhookDeadLetter.js');
+      await WebhookDeadLetter.create({
+        eventType: event?.event || 'unknown',
+        rawEvent: event || req.body || {},
+        reason: `webhook_error: ${error.message}`,
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: razorpay_payment_id || null,
+        notes: `Webhook execution failed: ${error.stack}`
+      });
+    } catch (dlqErr) {
+      logger.warn('Failed to write webhook dead-letter on webhook catch:', { error: dlqErr?.message });
+    }
     // Still acknowledge to avoid retries storm; log for investigation
     return res.status(200).json({ success: true });
   }
@@ -889,6 +908,7 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
       intent.status = 'processing';
       await intent.save();
 
+      let orderDoc = null;
       const session = await mongoose.startSession();
       await session.withTransaction(async () => {
         const fresh = await PaymentIntent.findById(intent._id).session(session);
@@ -980,7 +1000,7 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
           }
         }
 
-        const orderDoc = new Order({
+        orderDoc = new Order({
           orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           userId: fresh.userId,
           restaurantId: payload.restaurantId,
@@ -1020,8 +1040,11 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
         fresh.razorpayPaymentId = razorpay_payment_id;
         fresh.orderId = orderDoc._id;
         await fresh.save({ session });
+      });
+      session.endSession();
 
-        // Notify restaurant
+      // Notify restaurant OUTSIDE the transaction block
+      if (orderDoc) {
         try {
           const { notifyRestaurantNewOrder } = await import('../order/services/restaurantNotificationService.js');
           const restaurantId = orderDoc.restaurantId?.toString() || orderDoc.restaurantId;
@@ -1039,8 +1062,7 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
         } catch (e) {
           logger.error('Failed to notify restaurant during reconcile:', e?.message || e);
         }
-      });
-      session.endSession();
+      }
 
       // Distribute QR commissions to hotel wallet for online Razorpay QR orders
       try {
