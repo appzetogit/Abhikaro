@@ -168,9 +168,8 @@ export const verifyOTP = asyncHandler(async (req, res) => {
         restaurantData.phone = normalizedPhone;
         restaurantData.phoneVerified = true;
         restaurantData.ownerPhone = normalizedPhone;
-        // For phone signup, set ownerEmail to empty string or phone-based email
-        restaurantData.ownerEmail =
-          email || `${normalizedPhone}@restaurant.local`;
+        // For phone-only signups, ownerEmail is left blank (no email provided)
+        restaurantData.ownerEmail = email || "";
         // CRITICAL: Do NOT set email field for phone signups to avoid null duplicate key error
         // Email field should be completely omitted, not set to null or undefined
       }
@@ -406,25 +405,19 @@ export const verifyOTP = asyncHandler(async (req, res) => {
       restaurant = await Restaurant.findOne(findQuery);
 
       if (!restaurant && !effectiveName) {
-        // Phone login with new restaurant: auto-generate a temporary name
-        // so OTP flow can continue without asking on the verify screen.
-        if (normalizedPhone) {
-          const last4 = normalizedPhone.slice(-4);
-          effectiveName = `Restaurant ${last4}`;
-        } else {
-          // Email + new restaurant: verify OTP before showing name step (invalid OTP must fail here).
-          await otpService.verifyOTP(phone || null, otp, purpose, email || null);
-          return successResponse(
-            res,
-            200,
-            "Restaurant not found. Please provide restaurant name for registration.",
-            {
-              needsName: true,
-              identifierType,
-              identifier,
-            },
-          );
-        }
+        // New restaurant not found: verify OTP first (so invalid OTPs still fail),
+        // then ask the user to supply a restaurant name before we can auto-register.
+        await otpService.verifyOTP(phone || null, otp, purpose, email || null);
+        return successResponse(
+          res,
+          200,
+          "Restaurant not found. Please provide restaurant name for registration.",
+          {
+            needsName: true,
+            identifierType,
+            identifier,
+          },
+        );
       }
 
       // Handle reset-password purpose
@@ -472,9 +465,8 @@ export const verifyOTP = asyncHandler(async (req, res) => {
           restaurantData.phone = normalizedPhone;
           restaurantData.phoneVerified = true;
           restaurantData.ownerPhone = normalizedPhone;
-          // For phone signup, set ownerEmail to empty string or phone-based email
-          restaurantData.ownerEmail =
-            email || `${normalizedPhone}@restaurant.local`;
+          // For phone-only signups, ownerEmail is left blank (no email provided)
+          restaurantData.ownerEmail = email || "";
           // Explicitly don't set email field for phone signups to avoid null duplicate key error
         }
         if (email) {

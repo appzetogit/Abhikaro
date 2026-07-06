@@ -396,11 +396,8 @@ export const approveWithdrawalRequest = asyncHandler(async (req, res) => {
       const restaurant = withdrawalRequest.restaurantId;
       const recipientEmail = restaurant.ownerEmail || restaurant.email;
 
-      // Check if it's a valid email (not the dummy one) and send
-      if (
-        recipientEmail &&
-        !recipientEmail.includes("@restaurant.local")
-      ) {
+      // Only send if there is a real email address
+      if (recipientEmail && recipientEmail.includes("@") && !recipientEmail.endsWith(".local")) {
         emailService
           .sendWithdrawalStatusEmail(recipientEmail, {
             status: "Approved",
@@ -542,10 +539,7 @@ export const rejectWithdrawalRequest = asyncHandler(async (req, res) => {
       const restaurant = withdrawalRequest.restaurantId;
       const recipientEmail = restaurant.ownerEmail || restaurant.email;
 
-      if (
-        recipientEmail &&
-        !recipientEmail.includes("@restaurant.local")
-      ) {
+      if (recipientEmail && recipientEmail.includes("@") && !recipientEmail.endsWith(".local")) {
         emailService
           .sendWithdrawalStatusEmail(recipientEmail, {
             status: "Rejected",

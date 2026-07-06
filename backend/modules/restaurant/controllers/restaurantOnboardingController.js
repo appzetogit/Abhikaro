@@ -473,10 +473,11 @@ export const upsertOnboarding = async (req, res) => {
           await import("../../auth/services/emailService.js")
         ).default;
 
-        // 1. Send welcome email to Restaurant Owner
+        // 1. Send welcome email to Restaurant Owner (only if a real email address exists)
         if (
           completeRestaurant.ownerEmail &&
-          !completeRestaurant.ownerEmail.includes("@restaurant.local")
+          completeRestaurant.ownerEmail.includes("@") &&
+          !completeRestaurant.ownerEmail.endsWith(".local")
         ) {
           emailService
             .sendRestaurantWelcome(

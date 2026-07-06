@@ -87,7 +87,7 @@ export default function RestaurantsList() {
     if (!email || typeof email !== "string") return false
     const e = email.trim().toLowerCase()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false
-    if (e.endsWith("@restaurant.local")) return false
+    if (e.endsWith(".local")) return false
     return true
   }
 

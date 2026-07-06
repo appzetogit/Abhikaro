@@ -976,12 +976,22 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     let totalFoods = 0;
     let totalAddons = 0;
     if (restaurantIdsSet.size > 0) {
-      const activeMenus = await Menu.find({
+      const restaurantDocs = await Restaurant.find({
+        restaurantId: { $in: Array.from(restaurantIdsSet) },
+      })
+        .select("_id")
+        .lean();
+      // Filter to valid ObjectIds only to prevent Cast errors
+      const restaurantObjectIds = restaurantDocs
+        .map((r) => r._id)
+        .filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+      const activeMenus = restaurantObjectIds.length > 0 ? await Menu.find({
         isActive: true,
-        restaurant: { $in: Array.from(restaurantIdsSet) },
+        restaurant: { $in: restaurantObjectIds },
       })
         .select("sections addons")
-        .lean();
+        .lean() : [];
 
       activeMenus.forEach((menu) => {
         if (menu.sections && Array.isArray(menu.sections)) {
@@ -2484,7 +2494,7 @@ export const sendRestaurantEmail = asyncHandler(async (req, res) => {
     if (!email || typeof email !== "string") return false;
     const e = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false;
-    if (e.endsWith("@restaurant.local")) return false;
+    if (e.endsWith(".local")) return false;
     return true;
   };
 
