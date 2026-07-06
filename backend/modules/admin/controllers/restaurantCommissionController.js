@@ -94,9 +94,8 @@ export const getApprovedRestaurants = asyncHandler(async (req, res) => {
   try {
     const { search, page = 1, limit = 100 } = req.query;
 
-    // Build query - only approved restaurants
+    // Build query - only approved restaurants (regardless of activation status)
     const query = {
-      isActive: true,
       approvedAt: { $exists: true, $ne: null },
       isDeleted: { $ne: true },
     };
@@ -284,7 +283,7 @@ export const createRestaurantCommission = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "Restaurant not found");
     }
 
-    if (!restaurant.isActive) {
+    if (!restaurant.approvedAt) {
       return errorResponse(
         res,
         400,
