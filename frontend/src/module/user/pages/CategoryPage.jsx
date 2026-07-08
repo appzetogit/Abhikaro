@@ -16,6 +16,7 @@ import { restaurantAPI, adminAPI } from "@/lib/api"
 import { useProfile } from "../context/ProfileContext"
 import { useCart } from "../context/CartContext"
 import { useSharedLocation } from "@/lib/context/LocationContext"
+import { useSearchOverlay } from "../components/UserLayout"
 import { BACKEND_ORIGIN } from "@/lib/api/config"
 import OptimizedImage from "@/components/OptimizedImage"
 
@@ -36,6 +37,7 @@ export default function CategoryPage() {
   const { vegMode } = useProfile()
   const { addToCart, getCartItem, updateQuantity, getCartItemId } = useCart()
   const { location, zoneId, isOutOfService } = useSharedLocation()
+  const { openSearch, setSearchValue } = useSearchOverlay()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || 'all')
   const [activeFilters, setActiveFilters] = useState(new Set())
@@ -848,6 +850,12 @@ export default function CategoryPage() {
                 placeholder="Restaurant name or a dish..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => {
+                  if (searchQuery) {
+                    setSearchValue(searchQuery)
+                  }
+                  openSearch()
+                }}
                 className="pl-10 pr-4 h-11 md:h-12 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-sm md:text-base dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
               />
             </div>
