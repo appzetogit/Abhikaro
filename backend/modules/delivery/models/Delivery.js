@@ -26,7 +26,8 @@ const vehicleSchema = new mongoose.Schema({
 const documentsSchema = new mongoose.Schema({
   aadhar: {
     number: String,
-    document: String, // URL to document
+    document: String, // URL to document (Front)
+    documentBack: String, // URL to back of document
     verified: {
       type: Boolean,
       default: false

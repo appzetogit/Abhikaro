@@ -122,6 +122,10 @@ const signupDocumentsSchema = Joi.object({
     url: Joi.string().uri().required(),
     publicId: Joi.string().trim().required()
   }).required(),
+  aadharBackPhoto: Joi.object({
+    url: Joi.string().uri().required(),
+    publicId: Joi.string().trim().required()
+  }).required(),
   panPhoto: Joi.object({
     url: Joi.string().uri().required(),
     publicId: Joi.string().trim().required()
@@ -138,6 +142,7 @@ export const submitSignupDocuments = asyncHandler(async (req, res) => {
     const {
       profilePhoto,
       aadharPhoto,
+      aadharBackPhoto,
       panPhoto,
       drivingLicensePhoto
     } = req.body;
@@ -149,7 +154,7 @@ export const submitSignupDocuments = asyncHandler(async (req, res) => {
     }
 
     // Validate that all required documents are provided
-    if (!profilePhoto || !aadharPhoto || !panPhoto || !drivingLicensePhoto) {
+    if (!profilePhoto || !aadharPhoto || !aadharBackPhoto || !panPhoto || !drivingLicensePhoto) {
       return errorResponse(res, 400, 'All documents are required');
     }
 
@@ -158,6 +163,7 @@ export const submitSignupDocuments = asyncHandler(async (req, res) => {
       deliveryId: delivery.deliveryId || delivery._id,
       profilePhoto: profilePhoto.url ? 'Uploaded' : 'Missing',
       aadharPhoto: aadharPhoto.url ? 'Uploaded' : 'Missing',
+      aadharBackPhoto: aadharBackPhoto.url ? 'Uploaded' : 'Missing',
       panPhoto: panPhoto.url ? 'Uploaded' : 'Missing',
       drivingLicensePhoto: drivingLicensePhoto.url ? 'Uploaded' : 'Missing'
     });
@@ -178,6 +184,7 @@ export const submitSignupDocuments = asyncHandler(async (req, res) => {
         aadhar: {
           ...delivery.documents?.aadhar,
           document: aadharPhoto.url,
+          documentBack: aadharBackPhoto.url,
           verified: false // Will be verified by admin later
         },
         // PAN card document
@@ -212,6 +219,7 @@ export const submitSignupDocuments = asyncHandler(async (req, res) => {
       deliveryId: updatedDelivery.deliveryId || updatedDelivery._id,
       hasProfileImage: !!updatedDelivery.profileImage?.url,
       hasAadhar: !!updatedDelivery.documents?.aadhar?.document,
+      hasAadharBack: !!updatedDelivery.documents?.aadhar?.documentBack,
       hasPan: !!updatedDelivery.documents?.pan?.document,
       hasDrivingLicense: !!updatedDelivery.documents?.drivingLicense?.document
     });

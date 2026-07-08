@@ -32,6 +32,10 @@ router.post('/signup/documents', authenticate, validate(Joi.object({
     url: Joi.string().uri().required(),
     publicId: Joi.string().trim().required()
   }).required(),
+  aadharBackPhoto: Joi.object({
+    url: Joi.string().uri().required(),
+    publicId: Joi.string().trim().required()
+  }).required(),
   panPhoto: Joi.object({
     url: Joi.string().uri().required(),
     publicId: Joi.string().trim().required()

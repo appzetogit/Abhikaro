@@ -992,22 +992,48 @@ export default function JoinRequest() {
                     <div className="grid grid-cols-2 gap-4">
                       {/* Aadhar */}
                       {viewDetails.documents.aadhar && (
-                        <div>
+                        <div className="col-span-2">
                           <label className="text-xs font-semibold text-slate-500 uppercase">Aadhar Card</label>
-                          <div className="mt-2">
+                          <div className="mt-2 text-xs">
                             {viewDetails.documents.aadhar.number && (
-                              <p className="text-sm text-slate-700 mb-1">Number: {viewDetails.documents.aadhar.number}</p>
+                              <p className="text-sm text-slate-700 mb-2">Number: {viewDetails.documents.aadhar.number}</p>
                             )}
-                            {viewDetails.documents.aadhar.document && (
-                              <a 
-                                href={viewDetails.documents.aadhar.document} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                <ExternalLink className="w-3 h-3" /> View Document
-                              </a>
-                            )}
+                            <div className="flex gap-4 mt-2">
+                              {viewDetails.documents.aadhar.document && (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] text-slate-500 font-medium">Front Side</span>
+                                  <a 
+                                    href={viewDetails.documents.aadhar.document} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="block border border-slate-200 rounded overflow-hidden hover:border-blue-500 transition-colors"
+                                  >
+                                    <img 
+                                      src={viewDetails.documents.aadhar.document} 
+                                      alt="Aadhar Front"
+                                      className="h-24 w-36 object-cover bg-slate-50"
+                                    />
+                                  </a>
+                                </div>
+                              )}
+                              {viewDetails.documents.aadhar.documentBack && (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] text-slate-500 font-medium">Back Side</span>
+                                  <a 
+                                    href={viewDetails.documents.aadhar.documentBack} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="block border border-slate-200 rounded overflow-hidden hover:border-blue-500 transition-colors"
+                                  >
+                                    <img 
+                                      src={viewDetails.documents.aadhar.documentBack} 
+                                      alt="Aadhar Back"
+                                      className="h-24 w-36 object-cover bg-slate-50"
+                                    />
+                                  </a>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}

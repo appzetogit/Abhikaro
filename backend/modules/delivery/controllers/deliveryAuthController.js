@@ -89,6 +89,7 @@ function getRequiredSignupStep(delivery) {
   const needsDocuments =
     !hasNonEmptyString(profileImageUrl) ||
     !hasNonEmptyString(delivery.documents?.aadhar?.document) ||
+    !hasNonEmptyString(delivery.documents?.aadhar?.documentBack) ||
     !hasNonEmptyString(delivery.documents?.pan?.document) ||
     !hasNonEmptyString(delivery.documents?.drivingLicense?.document);
 

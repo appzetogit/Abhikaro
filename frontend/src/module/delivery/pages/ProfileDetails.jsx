@@ -333,10 +333,10 @@ export default function ProfileDetails() {
         <div>
           <h2 className="text-base font-medium text-gray-900 mb-3">Documents</h2>
           <div className="bg-white rounded-lg shadow-sm divide-y divide-gray-200">
-            {/* Aadhar Card */}
+            {/* Aadhar Card Front */}
             <div className="p-4 flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-base font-medium text-gray-900">Aadhar Card</p>
+                <p className="text-base font-medium text-gray-900">Aadhar Card (Front)</p>
                 <p className="text-xs text-gray-500 mt-1">
                   {getDocumentStatus(profile?.documents?.aadhar)}
                 </p>
@@ -345,8 +345,32 @@ export default function ProfileDetails() {
                 <button
                   onClick={() => {
                     setSelectedDocument({
-                      name: "Aadhar Card",
+                      name: "Aadhar Card (Front)",
                       url: profile.documents.aadhar.document
+                    })
+                    setShowDocumentModal(true)
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <Eye className="w-5 h-5 text-gray-600" />
+                </button>
+              )}
+            </div>
+
+            {/* Aadhar Card Back */}
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex-1">
+                <p className="text-base font-medium text-gray-900">Aadhar Card (Back)</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {getDocumentStatus(profile?.documents?.aadhar)}
+                </p>
+              </div>
+              {profile?.documents?.aadhar?.documentBack && (
+                <button
+                  onClick={() => {
+                    setSelectedDocument({
+                      name: "Aadhar Card (Back)",
+                      url: profile.documents.aadhar.documentBack
                     })
                     setShowDocumentModal(true)
                   }}
