@@ -153,11 +153,34 @@ restaurantWalletSchema.index({ 'transactions.status': 1 });
 restaurantWalletSchema.index({ 'transactions.type': 1 });
 restaurantWalletSchema.index({ lastTransactionAt: -1 });
 
-// Pre-save hook to force balances to 0 as requested
+// Pre-save hook to dynamically calculate and sync totals from transactions ledger
 restaurantWalletSchema.pre('save', function(next) {
-  this.totalBalance = 0;
-  this.totalEarned = 0;
-  this.totalWithdrawn = 0;
+  let balance = 0;
+  let earned = 0;
+  let withdrawn = 0;
+
+  for (const tx of this.transactions || []) {
+    if (tx.type === 'payment' || tx.type === 'bonus' || tx.type === 'refund') {
+      if (tx.status === 'Completed') {
+        balance += tx.amount;
+        earned += tx.amount;
+      }
+    } else if (tx.type === 'withdrawal') {
+      // Deduct withdrawals that are Pending, Approved, or Completed (not Failed/Cancelled)
+      if (tx.status !== 'Failed' && tx.status !== 'Cancelled') {
+        balance -= tx.amount;
+        withdrawn += tx.amount;
+      }
+    } else if (tx.type === 'deduction') {
+      if (tx.status === 'Completed') {
+        balance -= tx.amount;
+      }
+    }
+  }
+
+  this.totalBalance = Math.max(0, Math.round(balance * 100) / 100);
+  this.totalEarned = Math.round(earned * 100) / 100;
+  this.totalWithdrawn = Math.round(withdrawn * 100) / 100;
   next();
 });
 

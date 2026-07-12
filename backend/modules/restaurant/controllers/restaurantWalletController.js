@@ -41,6 +41,9 @@ export const getWallet = asyncHandler(async (req, res) => {
         totalWithdrawn: 0,
         totalEarned: 0,
       });
+    } else if (wallet.totalBalance === 0 && (wallet.transactions || []).length > 0) {
+      // Self-healing: if the wallet has transactions but balances are uncalculated (e.g. 0), trigger a save to run the new pre-save hook.
+      await wallet.save();
     }
 
     // Check global withdraw schedule

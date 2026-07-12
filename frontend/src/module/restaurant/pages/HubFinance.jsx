@@ -49,27 +49,71 @@ export default function HubFinance() {
   const [showDateRangePicker, setShowDateRangePicker] = useState(false)
   const downloadMenuRef = useRef(null)
   const dateRangePickerRef = useRef(null)
-  const [financeData, setFinanceData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const getCacheKey = useCallback(() => {
+    try {
+      const stored = localStorage.getItem("restaurant_user")
+      if (stored) {
+        const user = JSON.parse(stored)
+        const restId = user.restaurantId || user._id || 'default'
+        return `hub_finance_summary_${restId}`
+      }
+    } catch (e) {}
+    return `hub_finance_summary_default`
+  }, [])
+
+  const [financeData, setFinanceData] = useState(() => {
+    try {
+      const cached = localStorage.getItem(`${getCacheKey()}_finance`)
+      return cached ? JSON.parse(cached) : null
+    } catch (e) {
+      return null
+    }
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      const cached = localStorage.getItem(`${getCacheKey()}_finance`)
+      return cached ? false : true
+    } catch (e) {
+      return true
+    }
+  })
   const [pastCyclesData, setPastCyclesData] = useState(null)
   const [loadingPastCycles, setLoadingPastCycles] = useState(false)
   const [restaurantData, setRestaurantData] = useState(null)
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
   const [withdrawalAmount, setWithdrawalAmount] = useState('')
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false)
-  const [withdrawWindow, setWithdrawWindow] = useState({
-    allowed: true,
-    message: "",
+  const [withdrawWindow, setWithdrawWindow] = useState(() => {
+    try {
+      const cached = localStorage.getItem(`${getCacheKey()}_withdraw_window`)
+      return cached ? JSON.parse(cached) : { allowed: true, message: "" }
+    } catch (e) {
+      return { allowed: true, message: "" }
+    }
   })
-  const [walletSummary, setWalletSummary] = useState(null)
+  const [walletSummary, setWalletSummary] = useState(() => {
+    try {
+      const cached = localStorage.getItem(`${getCacheKey()}_wallet_summary`)
+      return cached ? JSON.parse(cached) : null
+    } catch (e) {
+      return null
+    }
+  })
   const [currentPage, setCurrentPage] = useState(1)
 
   const fetchFinanceData = useCallback(async () => {
+    const key = getCacheKey()
     try {
-      setLoading(true)
+      const cached = localStorage.getItem(`${key}_finance`)
+      if (!cached) {
+        setLoading(true)
+      }
       const response = await restaurantAPI.getFinance()
       if (response.data?.success && response.data?.data) {
         setFinanceData(response.data.data)
+        try {
+          localStorage.setItem(`${key}_finance`, JSON.stringify(response.data.data))
+        } catch (e) {}
       }
     } catch (error) {
       if (error.response?.status !== 401) {
@@ -78,18 +122,27 @@ export default function HubFinance() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [getCacheKey])
 
   const fetchWithdrawWindow = useCallback(async () => {
+    const key = getCacheKey()
     try {
       const res = await restaurantAPI.getWallet()
       const wallet =
         res?.data?.data?.wallet || res?.data?.wallet || res?.data?.data || null
-      setWithdrawWindow({
+      const nextWindow = {
         allowed: wallet?.withdrawAllowed ?? true,
         message: wallet?.withdrawMessage || "",
-      })
+      }
+      setWithdrawWindow(nextWindow)
       setWalletSummary(wallet || null)
+      
+      try {
+        localStorage.setItem(`${key}_withdraw_window`, JSON.stringify(nextWindow))
+        if (wallet) {
+          localStorage.setItem(`${key}_wallet_summary`, JSON.stringify(wallet))
+        }
+      } catch (e) {}
     } catch (error) {
       // If wallet API fails, don't block page; just fall back to allowing withdraw
       setWithdrawWindow((prev) => ({
@@ -101,7 +154,7 @@ export default function HubFinance() {
         console.error("Error fetching restaurant wallet withdraw window:", error)
       }
     }
-  }, [])
+  }, [getCacheKey])
 
   // Fetch finance data and wallet in parallel on mount
   useEffect(() => {

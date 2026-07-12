@@ -366,44 +366,18 @@ export const getRestaurantFinance = asyncHandler(async (req, res) => {
         console.log(`⚠️ No userId found for order: ${order.orderId}`);
       }
       
-      // Format payment method - fetch full order if payment not available
+      // Format payment method - no need to fetch full order as we already selected payment
       let paymentMethod = 'N/A';
       if (order.payment && order.payment.method) {
         const method = order.payment.method;
         paymentMethod = method.charAt(0).toUpperCase() + method.slice(1);
-      } else {
-        // Fetch full order to get payment method
-        try {
-          const fullOrder = await Order.findOne({ orderId: order.orderId })
-            .select('payment status')
-            .lean();
-          if (fullOrder && fullOrder.payment && fullOrder.payment.method) {
-            const method = fullOrder.payment.method;
-            paymentMethod = method.charAt(0).toUpperCase() + method.slice(1);
-          }
-        } catch (err) {
-          console.log(`⚠️ Could not fetch payment for order ${order.orderId}:`, err.message);
-        }
       }
       
-      // Format order status - use from order or fetch if missing
+      // Format order status - no need to fetch full order as we already selected status
       let orderStatus = 'N/A';
       if (order.status) {
         const status = order.status;
         orderStatus = status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ');
-      } else {
-        // Fetch full order to get status
-        try {
-          const fullOrder = await Order.findOne({ orderId: order.orderId })
-            .select('status')
-            .lean();
-          if (fullOrder && fullOrder.status) {
-            const status = fullOrder.status;
-            orderStatus = status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ');
-          }
-        } catch (err) {
-          console.log(`⚠️ Could not fetch status for order ${order.orderId}:`, err.message);
-        }
       }
       
       return {
