@@ -2,6 +2,7 @@ import FeeSettings from '../models/FeeSettings.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import asyncHandler from '../../../shared/middleware/asyncHandler.js';
 import winston from 'winston';
+import { deleteCache } from '../../../shared/utils/cache.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -142,6 +143,14 @@ export const createOrUpdateFeeSettings = asyncHandler(async (req, res) => {
 
     await feeSettings.save();
 
+    // Invalidate fee settings cache
+    try {
+      await deleteCache('feeSettings:active');
+      logger.info('Cache for feeSettings:active invalidated successfully');
+    } catch (cacheErr) {
+      logger.error(`Failed to invalidate feeSettings cache: ${cacheErr.message}`);
+    }
+
     return successResponse(res, 201, 'Fee settings created successfully', {
       feeSettings,
     });
@@ -254,6 +263,14 @@ export const updateFeeSettings = asyncHandler(async (req, res) => {
 
     await feeSettings.save();
 
+    // Invalidate fee settings cache
+    try {
+      await deleteCache('feeSettings:active');
+      logger.info('Cache for feeSettings:active invalidated successfully');
+    } catch (cacheErr) {
+      logger.error(`Failed to invalidate feeSettings cache: ${cacheErr.message}`);
+    }
+
     return successResponse(res, 200, 'Fee settings updated successfully', {
       feeSettings,
     });
@@ -299,7 +316,7 @@ export const getPublicFeeSettings = asyncHandler(async (req, res) => {
   try {
     const feeSettings = await FeeSettings.findOne({ isActive: true })
       .sort({ createdAt: -1 })
-      .select('deliveryFee deliveryFeeRanges freeDeliveryThreshold platformFee gstRate')
+      .select('deliveryFee deliveryFeeRanges freeDeliveryThreshold platformFee platformFeeRanges gstRate')
       .lean();
 
     // If no active settings, return default values
