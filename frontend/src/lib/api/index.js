@@ -1503,6 +1503,11 @@ export const adminAPI = {
     );
   },
 
+  // Delete a specific menu item's image (Admin)
+  deleteMenuItemImage: (restaurantId, itemId) => {
+    return apiClient.delete(`/admin/restaurants/${restaurantId}/menu/item/${itemId}/image`);
+  },
+
   // Get dining categories
   getDiningCategories: () => {
     return apiClient.get("/admin/dining/categories");

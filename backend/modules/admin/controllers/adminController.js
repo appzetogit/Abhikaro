@@ -3275,6 +3275,58 @@ export const updateRestaurantMenu = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Delete a specific menu item's image (Admin)
+ * DELETE /api/admin/restaurants/:id/menu/item/:itemId/image
+ *
+ * Clears image and images[] for the given item across all sections/subsections.
+ */
+export const deleteMenuItemImage = asyncHandler(async (req, res) => {
+  try {
+    const { id, itemId } = req.params;
+
+    const restaurant = await Restaurant.findById(id);
+    if (!restaurant) {
+      return errorResponse(res, 404, "Restaurant not found");
+    }
+
+    const Menu = (await import("../../restaurant/models/Menu.js")).default;
+    const menu = await Menu.findOne({ restaurant: id });
+    if (!menu) {
+      return errorResponse(res, 404, "Menu not found for this restaurant");
+    }
+
+    let found = false;
+
+    const clearItemImage = (item) => {
+      if (String(item.id) === String(itemId)) {
+        item.image = "";
+        item.images = [];
+        found = true;
+      }
+    };
+
+    for (const section of menu.sections || []) {
+      (section.items || []).forEach(clearItemImage);
+      for (const sub of section.subsections || []) {
+        (sub.items || []).forEach(clearItemImage);
+      }
+    }
+
+    if (!found) {
+      return errorResponse(res, 404, "Menu item not found");
+    }
+
+    menu.markModified("sections");
+    await menu.save();
+
+    return successResponse(res, 200, "Menu item image removed successfully");
+  } catch (error) {
+    logger.error(`Error deleting menu item image: ${error.message}`, { error: error.stack });
+    return errorResponse(res, 500, "Failed to delete menu item image");
+  }
+});
+
+/**
  * Delete Restaurant Add-on (Admin)
  * DELETE /api/admin/restaurants/:id/menu/addon/:addonId
  *

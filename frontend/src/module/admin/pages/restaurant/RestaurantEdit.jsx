@@ -57,8 +57,9 @@ export default function RestaurantEdit() {
     fssai: { existing: null, file: null, remove: false },
   });
 
-  // Menu/banner images — loaded from restaurant.menuImages
+  // Menu/banner images — each entry: { url, itemId, itemName, sectionName }
   const [menuImages, setMenuImages] = useState([]);
+  const [deletingImageId, setDeletingImageId] = useState(null);
 
   const restaurantId = useMemo(() => id, [id]);
 
@@ -150,9 +151,48 @@ export default function RestaurantEdit() {
         },
       });
 
-      // Load menuImages — normalize to plain URL strings
-      const rawMenuImages = Array.isArray(data.menuImages) ? data.menuImages : [];
-      setMenuImages(rawMenuImages.map((img) => (typeof img === "string" ? img : img?.url || "")).filter(Boolean));
+      // Load live menu images from Menu collection (with item name + id)
+      try {
+        const menuRes = await adminAPI.getRestaurantMenu(data._id);
+        const menuData = menuRes?.data?.data?.menu;
+        const sections = menuData?.sections || [];
+        const collected = [];
+        const seenUrls = new Set();
+
+        const extractFromItem = (item, sectionName) => {
+          const urls = [];
+          if (item.images && Array.isArray(item.images) && item.images.length > 0) {
+            urls.push(...item.images.filter(Boolean));
+          } else if (typeof item.image === "string" && item.image) {
+            urls.push(item.image);
+          }
+          for (const url of urls) {
+            if (url && !seenUrls.has(url)) {
+              seenUrls.add(url);
+              collected.push({
+                url,
+                itemId: String(item.id || item._id || ""),
+                itemName: item.name || "Unknown Item",
+                sectionName,
+              });
+            }
+          }
+        };
+
+        for (const section of sections) {
+          const sectionName = section.name || "Menu";
+          (section.items || []).forEach((item) => extractFromItem(item, sectionName));
+          for (const sub of section.subsections || []) {
+            const subName = sub.name ? `${sectionName} › ${sub.name}` : sectionName;
+            (sub.items || []).forEach((item) => extractFromItem(item, subName));
+          }
+        }
+
+        setMenuImages(collected);
+      } catch (_) {
+        // menu fetch failed — show empty
+        setMenuImages([]);
+      }
 
     } catch (err) {
       console.error("Error loading restaurant for edit:", err);
@@ -938,37 +978,65 @@ export default function RestaurantEdit() {
                   <ImageIcon className="w-4 h-4 text-slate-500" />
                   Menu / Banner Photos
                 </h2>
+                <p className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
+                  ℹ️ ये photos menu items की हैं। Delete करने से वो photo home page पर नहीं दिखेगी।
+                </p>
                 {menuImages.length === 0 ? (
                   <p className="text-sm text-slate-400 italic">No menu images found for this restaurant.</p>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {menuImages.map((url, idx) => (
-                      <div key={idx} className="relative group rounded-lg overflow-hidden border border-slate-200 aspect-square bg-slate-100">
-                        <img
-                          src={url}
-                          alt={`Menu photo ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => { e.target.style.display = 'none'; }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setMenuImages((prev) => prev.filter((_, i) => i !== idx))}
-                          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Delete this photo"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                        <span className="absolute bottom-0 left-0 right-0 bg-black/40 text-white text-[10px] text-center py-0.5">
-                          Photo {idx + 1}
-                        </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {menuImages.map((entry) => (
+                      <div key={entry.itemId + entry.url} className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex flex-col">
+                        <div className="relative aspect-square overflow-hidden">
+                          <img
+                            src={entry.url}
+                            alt={entry.itemName}
+                            className="w-full h-full object-cover"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                          {/* Delete overlay */}
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-200 flex items-center justify-center">
+                            <button
+                              type="button"
+                              disabled={deletingImageId === entry.itemId}
+                              onClick={async () => {
+                                if (!entry.itemId) {
+                                  toast.error("Cannot delete: item ID not found");
+                                  return;
+                                }
+                                if (!window.confirm(`"${entry.itemName}" की photo delete करें?`)) return;
+                                setDeletingImageId(entry.itemId);
+                                try {
+                                  await adminAPI.deleteMenuItemImage(restaurant._id, entry.itemId);
+                                  setMenuImages((prev) => prev.filter((e) => e.itemId !== entry.itemId));
+                                  toast.success(`"${entry.itemName}" की photo delete हो गई`);
+                                } catch (err) {
+                                  toast.error(err?.response?.data?.message || "Delete failed");
+                                } finally {
+                                  setDeletingImageId(null);
+                                }
+                              }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity bg-red-600 hover:bg-red-700 text-white rounded-full p-2 shadow-lg disabled:bg-gray-400"
+                              title="Delete this photo"
+                            >
+                              {deletingImageId === entry.itemId
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <X className="w-4 h-4" />
+                              }
+                            </button>
+                          </div>
+                        </div>
+                        {/* Item info */}
+                        <div className="px-2 py-1.5 bg-white border-t border-slate-100">
+                          <p className="text-xs font-semibold text-slate-800 truncate" title={entry.itemName}>{entry.itemName}</p>
+                          <p className="text-[10px] text-slate-400 truncate">{entry.sectionName}</p>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
-                {menuImages.length > 0 && (
-                  <p className="text-xs text-slate-400 mt-2">Hover over a photo and click ✕ to remove it. Changes save when you click "Save Changes".</p>
-                )}
               </section>
+
 
               <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
                 <button

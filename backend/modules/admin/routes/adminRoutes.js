@@ -35,6 +35,7 @@ import {
   getRestaurantMenu,
   updateRestaurantMenu,
   deleteRestaurantAddon,
+  deleteMenuItemImage,
   getAllOffers,
   getRestaurantAnalytics,
   getCustomerWalletReport,
@@ -529,6 +530,11 @@ router.delete(
   "/restaurants/:id/menu/addon/:addonId",
   requirePermissions("menu.restaurants"),
   deleteRestaurantAddon,
+);
+router.delete(
+  "/restaurants/:id/menu/item/:itemId/image",
+  requirePermissions("menu.restaurants"),
+  deleteMenuItemImage,
 );
 router.delete(
   "/restaurants/:id",
