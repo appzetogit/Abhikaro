@@ -56,6 +56,10 @@ export default function RestaurantEdit() {
     gst: { existing: null, file: null, remove: false },
     fssai: { existing: null, file: null, remove: false },
   });
+
+  // Menu/banner images — loaded from restaurant.menuImages
+  const [menuImages, setMenuImages] = useState([]);
+
   const restaurantId = useMemo(() => id, [id]);
 
   const loadRestaurant = async () => {
@@ -145,6 +149,11 @@ export default function RestaurantEdit() {
           remove: false,
         },
       });
+
+      // Load menuImages — normalize to plain URL strings
+      const rawMenuImages = Array.isArray(data.menuImages) ? data.menuImages : [];
+      setMenuImages(rawMenuImages.map((img) => (typeof img === "string" ? img : img?.url || "")).filter(Boolean));
+
     } catch (err) {
       console.error("Error loading restaurant for edit:", err);
       setError(err.message || "Failed to load restaurant details");
@@ -346,6 +355,8 @@ export default function RestaurantEdit() {
           },
         },
       },
+      // Send current menuImages array so admin deletions are persisted
+      menuImages: menuImages,
     };
 
     try {
@@ -919,6 +930,44 @@ export default function RestaurantEdit() {
                     />
                   </div>
                 </div>
+              </section>
+
+              {/* ── Menu / Banner Photos ── */}
+              <section>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-slate-500" />
+                  Menu / Banner Photos
+                </h2>
+                {menuImages.length === 0 ? (
+                  <p className="text-sm text-slate-400 italic">No menu images found for this restaurant.</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {menuImages.map((url, idx) => (
+                      <div key={idx} className="relative group rounded-lg overflow-hidden border border-slate-200 aspect-square bg-slate-100">
+                        <img
+                          src={url}
+                          alt={`Menu photo ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setMenuImages((prev) => prev.filter((_, i) => i !== idx))}
+                          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete this photo"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                        <span className="absolute bottom-0 left-0 right-0 bg-black/40 text-white text-[10px] text-center py-0.5">
+                          Photo {idx + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {menuImages.length > 0 && (
+                  <p className="text-xs text-slate-400 mt-2">Hover over a photo and click ✕ to remove it. Changes save when you click "Save Changes".</p>
+                )}
               </section>
 
               <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">

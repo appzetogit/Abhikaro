@@ -156,6 +156,17 @@ console.error = (...args) => {
     return
   }
 
+  // Suppress stale Google Place ID warnings — these are benign cache misses, handled gracefully
+  // by the geocoder fallback in LocationSelectorOverlay (INVALID_REQUEST triggers a toast + abort).
+  if (
+    errorStr.includes('Place ID is no longer valid') ||
+    errorStr.includes('Please refresh cached Place IDs') ||
+    errorStr.includes('save-id') ||
+    (errorStr.includes('INVALID_REQUEST') && errorStr.includes('place'))
+  ) {
+    return
+  }
+
   originalError.apply(console, args)
 }
 

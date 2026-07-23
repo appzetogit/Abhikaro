@@ -2188,6 +2188,7 @@ export const updateRestaurant = asyncHandler(async (req, res) => {
       location,
       deliveryTimings,
       onboarding,
+      menuImages,
     } = req.body || {};
 
     if (name !== undefined) {
@@ -2204,6 +2205,12 @@ export const updateRestaurant = asyncHandler(async (req, res) => {
 
     if (Array.isArray(cuisines)) {
       restaurant.cuisines = cuisines;
+    }
+
+    // Allow admin to update/clear menu images
+    if (menuImages !== undefined) {
+      restaurant.menuImages = Array.isArray(menuImages) ? menuImages : [];
+      restaurant.markModified("menuImages");
     }
 
     if (location && typeof location === "object") {

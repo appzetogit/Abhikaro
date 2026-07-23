@@ -1001,19 +1001,52 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       setSearchLoading(true)
       try {
         const geocoder = new window.google.maps.Geocoder()
-        const geocodeResult = await new Promise((resolve, reject) => {
+
+        // Attempt 1: geocode by Place ID (fast, accurate)
+        const geocodeResult = await new Promise((resolve) => {
           geocoder.geocode({ placeId: result.id }, (results, status) => {
             if (status === "OK" && results && results[0]) {
               resolve(results[0])
             } else {
-              reject(new Error("Geocoding failed: " + status))
+              // INVALID_REQUEST here means the Place ID is stale — log and resolve null
+              // to trigger the text-based fallback below
+              resolve(null)
             }
           })
         })
 
-        if (geocodeResult && geocodeResult.geometry && geocodeResult.geometry.location) {
+        if (geocodeResult?.geometry?.location) {
           lat = geocodeResult.geometry.location.lat()
           lng = geocodeResult.geometry.location.lng()
+        } else {
+          // Attempt 2: fall back to geocoding by address text (handles stale Place IDs)
+          const fallbackAddress = result.address || result.name
+          if (fallbackAddress) {
+            const fallbackResult = await new Promise((resolve) => {
+              geocoder.geocode(
+                { address: fallbackAddress, region: "in" },
+                (results, status) => {
+                  if (status === "OK" && results && results[0]) {
+                    resolve(results[0])
+                  } else {
+                    resolve(null)
+                  }
+                }
+              )
+            })
+            if (fallbackResult?.geometry?.location) {
+              lat = fallbackResult.geometry.location.lat()
+              lng = fallbackResult.geometry.location.lng()
+            } else {
+              toast.error("Could not find exact location for this place. Try searching again.")
+              setSearchLoading(false)
+              return
+            }
+          } else {
+            toast.error("Could not find exact location for this place.")
+            setSearchLoading(false)
+            return
+          }
         }
       } catch (err) {
         toast.error("Could not find exact location for this place.")

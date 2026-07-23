@@ -1,6 +1,18 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 
+// Only track in production (not on localhost or LAN IPs used during mobile dev testing)
+const isProduction = () => {
+  if (typeof window === "undefined") return false;
+  const hostname = window.location.hostname;
+  return (
+    hostname !== "localhost" &&
+    hostname !== "127.0.0.1" &&
+    !hostname.startsWith("192.168.") &&
+    !hostname.startsWith("10.")
+  );
+};
+
 const MetaPixel = () => {
   const { pathname, search } = useLocation();
   const isFirstRun = useRef(true);
@@ -12,13 +24,15 @@ const MetaPixel = () => {
       return;
     }
 
+    if (!isProduction()) return;
+
     // Standard Pixel tracking
-    if (typeof window !== "undefined" && window.fbq) {
+    if (window.fbq) {
       window.fbq("track", "PageView");
     }
-    
+
     // Facebook SDK App Events Tracking
-    if (typeof window !== "undefined" && window.FB && window.FB.AppEvents) {
+    if (window.FB && window.FB.AppEvents) {
       window.FB.AppEvents.logPageView();
     }
   }, [pathname, search]);
