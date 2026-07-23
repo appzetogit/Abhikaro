@@ -114,7 +114,22 @@ const environmentVariableSchema = new mongoose.Schema(
     },
     SMSINDIAHUB_SENDER_ID: {
       type: String,
-      default: '',
+      default: 'BGADEC',
+      trim: true
+    },
+    SMSINDIAHUB_PE_ID: {
+      type: String,
+      default: '1001164203633432409',
+      trim: true
+    },
+    SMSINDIAHUB_TEMPLATE_ID: {
+      type: String,
+      default: '1007282516644508833',
+      trim: true
+    },
+    SMSINDIAHUB_MESSAGE_TEMPLATE: {
+      type: String,
+      default: 'Welcome to the ##var## powered by Appzeto.Your OTP for registration is ##var##.BGADEC',
       trim: true
     },
     

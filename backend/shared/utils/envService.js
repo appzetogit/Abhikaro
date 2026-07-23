@@ -45,6 +45,9 @@ export const ENV_ONLY_KEYS = [
   "SMTP_PASS",
   "SMSINDIAHUB_API_KEY",
   "SMSINDIAHUB_SENDER_ID",
+  "SMSINDIAHUB_PE_ID",
+  "SMSINDIAHUB_TEMPLATE_ID",
+  "SMSINDIAHUB_MESSAGE_TEMPLATE",
   "VITE_GOOGLE_MAPS_API_KEY",
 ];
 
@@ -255,6 +258,9 @@ export async function getSMSHubIndiaCredentials() {
   return {
     apiKey: await getEnvVar("SMSINDIAHUB_API_KEY"),
     senderId: await getEnvVar("SMSINDIAHUB_SENDER_ID"),
+    peId: await getEnvVar("SMSINDIAHUB_PE_ID"),
+    templateId: await getEnvVar("SMSINDIAHUB_TEMPLATE_ID"),
+    messageTemplate: await getEnvVar("SMSINDIAHUB_MESSAGE_TEMPLATE"),
   };
 }
 

@@ -425,8 +425,76 @@ connectRedis().then(async (redisClient) => {
   console.log('⚠️ Redis not available - Socket.IO will work in single-server mode');
 });
 
-// Serve static files from 'public' directory (e.g., audio, images)
-app.use(express.static(path.join(__dirname, 'public')));
+// CORS configuration - allow multiple origins
+const allowedOrigins = [
+  process.env.CORS_ORIGIN,
+  'https://foods.abhikaro.in',
+  'https://www.foods.abhikaro.in',
+  'https://api.foods.abhikaro.in',
+  'http://foods.abhikaro.in',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174'
+].filter(Boolean); // Remove undefined values
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    // In development, allow localhost origins and all origins for easier debugging
+    if (process.env.NODE_ENV === 'development') {
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        return callback(null, true);
+      }
+      // Allow all origins in development for easier debugging
+      return callback(null, true);
+    }
+
+    // In production, strictly enforce allowed origins
+    const isTrustedAkhOrigin =
+      typeof origin === "string" &&
+      (origin.endsWith(".abhikaro.in") || origin.includes("localhost") || origin.includes("127.0.0.1"))
+
+    if (allowedOrigins.indexOf(origin) !== -1 || isTrustedAkhOrigin) {
+      callback(null, true);
+    } else {
+      console.error(`❌ CORS blocked origin in production: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'x-refresh-token',
+  ]
+};
+
+app.use(cors(corsOptions));
+
+// Serve static files from 'public' directory with CORS & CORP headers
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'public', 'uploads'), {
+  setHeaders: (res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+}));
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+}));
 
 // Secure headers with Helmet
 app.use(helmet({
@@ -486,55 +554,7 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false, // Allow Firebase to work
-}));
-// CORS configuration - allow multiple origins
-const allowedOrigins = [
-  process.env.CORS_ORIGIN,
-  'https://foods.abhikaro.in',
-  'https://www.foods.abhikaro.in',
-  'https://api.foods.abhikaro.in',
-  'http://foods.abhikaro.in',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174'
-].filter(Boolean); // Remove undefined values
-
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    // In development, allow localhost origins and all origins for easier debugging
-    if (process.env.NODE_ENV === 'development') {
-      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        return callback(null, true);
-      }
-      // Allow all origins in development for easier debugging
-      return callback(null, true);
-    }
-
-    // In production, strictly enforce allowed origins
-    const isTrustedAkhOrigin =
-      typeof origin === "string" &&
-      (origin.endsWith(".abhikaro.in") || origin.includes("localhost") || origin.includes("127.0.0.1"))
-
-    if (allowedOrigins.indexOf(origin) !== -1 || isTrustedAkhOrigin) {
-      callback(null, true);
-    } else {
-      console.error(`❌ CORS blocked origin in production: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'X-Requested-With',
-    'x-refresh-token',
-  ]
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 // Response compression - Reduces bandwidth by 50%

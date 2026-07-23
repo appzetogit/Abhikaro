@@ -13,7 +13,9 @@ class SMSIndiaHubService {
   constructor() {
     // Credentials will be loaded from database dynamically
     this.apiKey = null;
-    this.senderId = null;
+    this.senderId = 'BGADEC';
+    this.peId = '1001164203633432409';
+    this.templateId = '1007282516644508833';
     this.baseUrl = "http://cloud.smsindiahub.in/vendorsms/pushsms.aspx";
     this.initializeCredentials();
   }
@@ -22,7 +24,10 @@ class SMSIndiaHubService {
     const { getSMSHubIndiaCredentials } = await import('../../../shared/utils/envService.js');
     const creds = await getSMSHubIndiaCredentials();
     this.apiKey = creds.apiKey?.trim() || process.env.SMSINDIAHUB_API_KEY?.trim();
-    this.senderId = creds.senderId?.trim() || process.env.SMSINDIAHUB_SENDER_ID?.trim();
+    this.senderId = creds.senderId?.trim() || process.env.SMSINDIAHUB_SENDER_ID?.trim() || 'BGADEC';
+    this.peId = creds.peId?.trim() || process.env.SMSINDIAHUB_PE_ID?.trim() || '1001164203633432409';
+    this.templateId = creds.templateId?.trim() || process.env.SMSINDIAHUB_TEMPLATE_ID?.trim() || '1007282516644508833';
+    this.messageTemplate = creds.messageTemplate?.trim() || process.env.SMSINDIAHUB_MESSAGE_TEMPLATE?.trim();
 
     // Log configuration status (only in development)
     if (process.env.NODE_ENV === "development") {
@@ -46,9 +51,9 @@ class SMSIndiaHubService {
     try {
       const BusinessSettings = (await import('../../admin/models/BusinessSettings.js')).default;
       const settings = await BusinessSettings.getSettings();
-      return settings?.companyName || 'Food Delivery';
+      return settings?.companyName || 'Abhikaro';
     } catch (error) {
-      return 'Food Delivery';
+      return 'Abhikaro';
     }
   }
 
@@ -95,6 +100,32 @@ class SMSIndiaHubService {
   }
 
   /**
+   * Format template string by replacing placeholders (supports ##var## and {otp}/{appName})
+   * @param {string} templateStr 
+   * @param {string} brandName 
+   * @param {string} otp 
+   * @returns {string} Formatted message
+   */
+  formatTemplateMessage(templateStr, brandName, otp) {
+    if (!templateStr) {
+      return `Welcome to the ${brandName} powered by Appzeto.Your OTP for registration is ${otp}.BGADEC`;
+    }
+
+    if (templateStr.includes('##var##')) {
+      let varCount = 0;
+      return templateStr.replace(/##var##/g, () => {
+        varCount++;
+        return varCount === 1 ? brandName : otp;
+      });
+    }
+
+    return templateStr
+      .replace(/\{appName\}/g, brandName)
+      .replace(/\{brandName\}/g, brandName)
+      .replace(/\{otp\}/g, otp);
+  }
+
+  /**
    * Send OTP via SMS using SMSIndia Hub
    * @param {string} phone - Phone number to send SMS to
    * @param {string} otp - OTP code to send
@@ -107,7 +138,9 @@ class SMSIndiaHubService {
       const { getSMSHubIndiaCredentials } = await import('../../../shared/utils/envService.js');
       const creds = await getSMSHubIndiaCredentials();
       const apiKey = (this.apiKey || creds.apiKey || process.env.SMSINDIAHUB_API_KEY)?.trim();
-      const senderId = (this.senderId || creds.senderId || process.env.SMSINDIAHUB_SENDER_ID)?.trim();
+      const senderId = (this.senderId || creds.senderId || process.env.SMSINDIAHUB_SENDER_ID)?.trim() || 'BGADEC';
+      const peId = (this.peId || creds.peId || process.env.SMSINDIAHUB_PE_ID)?.trim() || '1001164203633432409';
+      const templateId = (this.templateId || creds.templateId || process.env.SMSINDIAHUB_TEMPLATE_ID)?.trim() || '1007282516644508833';
 
       if (!apiKey || !senderId) {
         console.error("❌ SMSIndia Hub Configuration Error:");
@@ -133,49 +166,20 @@ class SMSIndiaHubService {
         );
       }
 
-      // SMSIndia Hub requires DLT registered templates for transactional SMS
-      // The message text MUST match the registered DLT template EXACTLY
-      // Check if custom message template is provided (must match registered DLT template exactly)
-      const customTemplate = process.env.SMSINDIAHUB_MESSAGE_TEMPLATE?.trim();
+      const rawTemplate = (creds.messageTemplate || process.env.SMSINDIAHUB_MESSAGE_TEMPLATE)?.trim() || 
+        'Welcome to the ##var## powered by Appzeto.Your OTP for registration is ##var##.BGADEC';
       
-      // Check if template ID is provided (for DLT registered templates)
-      const templateId = process.env.SMSINDIAHUB_TEMPLATE_ID?.trim();
-      
-      // Check if promotional SMS is enabled (temporary workaround for template issues)
-      // ⚠️ WARNING: Promotional SMS is not recommended for OTP - use only for testing
       const usePromotional = process.env.SMSINDIAHUB_USE_PROMOTIONAL === 'true';
-      // Always use transactional SMS (gwid=2) like RentYatra, unless promotional is explicitly enabled
       const gatewayId = usePromotional ? "1" : "2"; // 1 = promotional, 2 = transactional
       
       if (usePromotional) {
         console.warn("⚠️ Using promotional SMS mode - not recommended for production OTP!");
       }
       
-      // For transactional SMS (DLT), message must match registered template EXACTLY
-      // Use fixed template text that matches DLT registration, regardless of purpose
-      // Based on working template: "Welcome to the DriveOn powered by SMSINDIAHUB. Your OTP for registration is {otp}"
-      let message;
-      if (customTemplate) {
-        // Use custom template with OTP replacement only (don't change purpose text for DLT)
-        message = customTemplate.replace('{otp}', otp);
-      } else if (usePromotional) {
-        // For promotional SMS, we can use dynamic purpose text
-        let purposeText = 'registration';
-        if (purpose === 'login') {
-          purposeText = 'login';
-        } else if (purpose === 'reset_password') {
-          purposeText = 'password reset';
-        }
-        const companyName = await this.getCompanyName();
-        message = `Welcome to the ${companyName} powered by SMSINDIAHUB. Your OTP for ${purposeText} is ${otp}`;
-      } else {
-        // For transactional SMS, use fixed template text that matches DLT registration
-        // IMPORTANT: This must match the registered DLT template exactly
-        const companyName = await this.getCompanyName();
-        message = `Welcome to the ${companyName} powered by SMSINDIAHUB. Your OTP for registration is ${otp}`;
-      }
+      const companyName = await this.getCompanyName();
+      const message = this.formatTemplateMessage(rawTemplate, companyName, otp);
       
-      // Build the API URL with query parameters (same format as RentYatra)
+      // Build the API URL with query parameters
       const params = new URLSearchParams({
         APIKey: apiKey,
         msisdn: normalizedPhone,
@@ -183,12 +187,17 @@ class SMSIndiaHubService {
         msg: message,
         fl: "0", // Flash message flag (0 = normal SMS)
         dc: "0", // Delivery confirmation (0 = no confirmation)
-        gwid: gatewayId, // Gateway ID (2 = transactional, same as RentYatra)
+        gwid: gatewayId, // Gateway ID (2 = transactional)
       });
       
-      // Add template ID if provided (required for some DLT templates)
+      // Add template ID if provided (required for DLT templates)
       if (templateId) {
         params.append('templateid', templateId);
+      }
+
+      // Add PE ID if provided (required for DLT templates)
+      if (peId) {
+        params.append('peid', peId);
       }
 
       const apiUrl = `${this.baseUrl}?${params.toString()}`;
@@ -354,6 +363,9 @@ class SMSIndiaHubService {
         );
       }
 
+      const peId = (this.peId || creds.peId || process.env.SMSINDIAHUB_PE_ID)?.trim() || '1001164203633432409';
+      const templateId = (this.templateId || creds.templateId || process.env.SMSINDIAHUB_TEMPLATE_ID)?.trim() || '1007282516644508833';
+
       // Build the API URL with query parameters
       const params = new URLSearchParams({
         APIKey: apiKey,
@@ -364,6 +376,14 @@ class SMSIndiaHubService {
         dc: "0", // Delivery confirmation (0 = no confirmation)
         gwid: "2", // Gateway ID (2 = transactional)
       });
+
+      if (templateId) {
+        params.append('templateid', templateId);
+      }
+
+      if (peId) {
+        params.append('peid', peId);
+      }
 
       const apiUrl = `${this.baseUrl}?${params.toString()}`;
 
@@ -443,10 +463,13 @@ class SMSIndiaHubService {
         );
       }
 
+      const peId = (this.peId || creds.peId || process.env.SMSINDIAHUB_PE_ID)?.trim() || '1001164203633432409';
+      const templateId = (this.templateId || creds.templateId || process.env.SMSINDIAHUB_TEMPLATE_ID)?.trim() || '1007282516644508833';
+
       // Test with a simple SMS to verify connection
       const testPhone = "919109992290"; // Use a test phone number
       const testMessage =
-        "Test message from DriveOn. SMS service is working correctly.";
+        "Test message from Abhikaro. SMS service is working correctly.";
 
       const params = new URLSearchParams({
         APIKey: apiKey,
@@ -457,6 +480,14 @@ class SMSIndiaHubService {
         dc: "0",
         gwid: "2",
       });
+
+      if (templateId) {
+        params.append('templateid', templateId);
+      }
+
+      if (peId) {
+        params.append('peid', peId);
+      }
 
       const testUrl = `${this.baseUrl}?${params.toString()}`;
 
