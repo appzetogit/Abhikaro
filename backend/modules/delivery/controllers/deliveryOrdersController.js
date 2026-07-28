@@ -2448,10 +2448,20 @@ export const completeDelivery = asyncHandler(async (req, res) => {
         } else {
           // Calculate earnings even if order is already delivered (for consistency)
           let deliveryDistance = 0;
-          if (order.deliveryState?.routeToDelivery?.distance) {
-            deliveryDistance = order.deliveryState.routeToDelivery.distance;
-          } else if (order.assignmentInfo?.distance) {
-            deliveryDistance = order.assignmentInfo.distance;
+          const restCoords =
+            order.restaurantId?.location?.coordinates ||
+            order.restaurantLocation?.coordinates;
+          const custCoords = order.address?.location?.coordinates;
+          if (restCoords && custCoords) {
+            const [rlng, rlat] = restCoords;
+            const [clng, clat] = custCoords;
+            deliveryDistance = calculateHaversineDistance(rlat, rlng, clat, clng);
+          }
+          if (deliveryDistance <= 0 && order.assignmentInfo?.distance) {
+            deliveryDistance = Number(order.assignmentInfo.distance) || 0;
+          }
+          if (deliveryDistance <= 0 && order.deliveryState?.routeToDelivery?.distance) {
+            deliveryDistance = Number(order.deliveryState.routeToDelivery.distance) || 0;
           }
 
           if (deliveryDistance > 0) {
@@ -2606,28 +2616,23 @@ export const completeDelivery = asyncHandler(async (req, res) => {
     // Get delivery distance (in km) from order
     let deliveryDistance = 0;
 
-    // Priority 1: Get distance from routeToDelivery (most accurate)
-    if (order.deliveryState?.routeToDelivery?.distance) {
-      deliveryDistance = order.deliveryState.routeToDelivery.distance;
-    }
-    // Priority 2: Get distance from assignmentInfo
-    else if (order.assignmentInfo?.distance) {
-      deliveryDistance = order.assignmentInfo.distance;
-    }
-    // Priority 3: Calculate distance from restaurant to customer if coordinates available
-    else if (
-      order.restaurantId?.location?.coordinates &&
-      order.address?.location?.coordinates
-    ) {
-      const [restaurantLng, restaurantLat] =
-        order.restaurantId.location.coordinates;
-      const [customerLng, customerLat] = order.address.location.coordinates;
+    // Priority 1: Calculate distance from restaurant to customer if coordinates available
+    const restCoords =
+      order.restaurantId?.location?.coordinates ||
+      order.restaurantLocation?.coordinates;
+    const custCoords = order.address?.location?.coordinates;
+
+    if (restCoords && custCoords) {
+      const [restaurantLng, restaurantLat] = restCoords;
+      const [customerLng, customerLat] = custCoords;
 
       // Safety guard: if coordinates are invalid, empty, or default [0, 0] (Null Island)
-      if (restaurantLat && restaurantLng && customerLat && customerLng &&
-          Number(restaurantLat) !== 0 && Number(restaurantLng) !== 0 && Number(customerLat) !== 0 && Number(customerLng) !== 0 &&
-          !(Math.abs(Number(restaurantLat)) < 0.0001 && Math.abs(Number(restaurantLng)) < 0.0001) &&
-          !(Math.abs(Number(customerLat)) < 0.0001 && Math.abs(Number(customerLng)) < 0.0001)) {
+      if (
+        restaurantLat && restaurantLng && customerLat && customerLng &&
+        Number(restaurantLat) !== 0 && Number(restaurantLng) !== 0 && Number(customerLat) !== 0 && Number(customerLat) !== 0 &&
+        !(Math.abs(Number(restaurantLat)) < 0.0001 && Math.abs(Number(restaurantLng)) < 0.0001) &&
+        !(Math.abs(Number(customerLat)) < 0.0001 && Math.abs(Number(customerLng)) < 0.0001)
+      ) {
         // Calculate distance using Haversine formula
         const R = 6371; // Earth radius in km
         const dLat = ((customerLat - restaurantLat) * Math.PI) / 180;
@@ -2641,6 +2646,16 @@ export const completeDelivery = asyncHandler(async (req, res) => {
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         deliveryDistance = R * c;
       }
+    }
+
+    // Priority 2: Get distance from assignmentInfo if coordinate calculation yielded 0
+    if (deliveryDistance <= 0 && order.assignmentInfo?.distance) {
+      deliveryDistance = Number(order.assignmentInfo.distance) || 0;
+    }
+
+    // Priority 3: Fallback to routeToDelivery distance only if no other distance available
+    if (deliveryDistance <= 0 && order.deliveryState?.routeToDelivery?.distance) {
+      deliveryDistance = Number(order.deliveryState.routeToDelivery.distance) || 0;
     }
 
     // Safety cap: if calculated distance is physically impossible for local delivery, reset to 0
