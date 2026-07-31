@@ -1613,12 +1613,21 @@ export default function Home() {
         return bPrice - aPrice
       })
     } else if (sortBy === 'rating-high') {
-      filtered.sort((a, b) => b.rating - a.rating)
+      filtered.sort((a, b) => {
+        const aAvailable = a.isActive && (a.isAcceptingOrders !== false && a.isAcceptingOrders !== 0)
+        const bAvailable = b.isActive && (b.isAcceptingOrders !== false && b.isAcceptingOrders !== 0)
+        if (aAvailable !== bAvailable) return aAvailable ? -1 : 1
+        return (b.rating || 0) - (a.rating || 0)
+      })
     } else if (sortBy === 'rating-low') {
-      filtered.sort((a, b) => a.rating - b.rating)
+      filtered.sort((a, b) => {
+        const aAvailable = a.isActive && (a.isAcceptingOrders !== false && a.isAcceptingOrders !== 0)
+        const bAvailable = b.isActive && (b.isAcceptingOrders !== false && b.isAcceptingOrders !== 0)
+        if (aAvailable !== bAvailable) return aAvailable ? -1 : 1
+        return (a.rating || 0) - (b.rating || 0)
+      })
     } else {
-      // Default sorting: Available restaurants first, then by distance (nearby first)
-      // This ensures all restaurants in zone are shown, but nearby ones appear first
+      // Default sorting: Available restaurants first, then by rating high to low, then by distance
       filtered.sort((a, b) => {
         // Available restaurants first, then unavailable
         const aAvailable = a.isActive && (a.isAcceptingOrders !== false && a.isAcceptingOrders !== 0)
@@ -1628,7 +1637,13 @@ export default function Home() {
           return aAvailable ? -1 : 1 // Available restaurants come first
         }
 
-        // If both have same availability, sort by distance
+        // Higher rating first (5.0, 4.8, 4.5...)
+        const ratingDiff = (b.rating || 0) - (a.rating || 0)
+        if (Math.abs(ratingDiff) > 0.01) {
+          return ratingDiff
+        }
+
+        // If ratings are equal, sort by distance
         const aDistance = a.distanceInKm !== null && a.distanceInKm !== undefined ? a.distanceInKm : Infinity
         const bDistance = b.distanceInKm !== null && b.distanceInKm !== undefined ? b.distanceInKm : Infinity
         return aDistance - bDistance
@@ -2335,12 +2350,19 @@ export default function Home() {
                 }
 
                 return (
-                  <div
-                    key={restaurant.id}
+                  <motion.div
+                    layout
+                    key={restaurant.id || restaurant._id || index}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{
+                      layout: { duration: 0.45, ease: [0.25, 1, 0.5, 1] },
+                      opacity: { duration: 0.3 }
+                    }}
                     className="h-full transform transition-all duration-300 hover:-translate-y-3 hover:scale-[1.02]"
                     style={{
                       perspective: 1000,
-                      animation: index < 10 ? `fade-in-up 0.5s ease-out ${index * 0.05}s backwards` : 'none'
                     }}
                   >
                     <div className="h-full group">
@@ -2524,7 +2546,7 @@ export default function Home() {
                         </Link>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 )
               })}
             </div>

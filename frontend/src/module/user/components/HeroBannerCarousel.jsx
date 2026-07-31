@@ -4,6 +4,12 @@ import { motion } from "framer-motion"
 import { Loader2 } from "lucide-react"
 import OptimizedImage from "@/components/OptimizedImage"
 
+const isVideoUrl = (url) => {
+  if (!url || typeof url !== 'string') return false
+  const clean = url.split('?')[0].toLowerCase()
+  return clean.endsWith('.mp4') || clean.endsWith('.webm') || clean.endsWith('.mov') || clean.endsWith('.mkv') || clean.endsWith('.avi')
+}
+
 export default function HeroBannerCarousel({ banners, loading }) {
   const navigate = useNavigate()
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -193,6 +199,7 @@ export default function HeroBannerCarousel({ banners, loading }) {
           const bannerData = validBanners[index]
           const linkedRestaurants = bannerData?.linkedRestaurants || []
           const hasLinkedRestaurants = linkedRestaurants.length > 0
+          const isVideo = bannerData?.mediaType === 'video' || isVideoUrl(image)
 
           const slideKey =
             (bannerData?.imageUrl && String(bannerData.imageUrl)) ||
@@ -214,22 +221,41 @@ export default function HeroBannerCarousel({ banners, loading }) {
               }}
             >
               <div className="relative h-full">
-                <OptimizedImage
-                  src={image}
-                  alt={`Hero Banner ${index + 1}`}
-                  className="w-full h-full sm:rounded-2xl lg:rounded-3xl shadow-md"
-                  priority={index === 0}
-                  sizes="100vw"
-                  objectFit="cover"
-                  placeholder="blur"
-                  onError={() => {
-                    setFailedImages(prev => {
-                      const next = new Set(prev)
-                      next.add(image)
-                      return next
-                    })
-                  }}
-                />
+                {isVideo ? (
+                  <video
+                    src={image}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    preload={index === 0 ? "auto" : "metadata"}
+                    className="w-full h-full object-cover sm:rounded-2xl lg:rounded-3xl shadow-md"
+                    onError={() => {
+                      setFailedImages(prev => {
+                        const next = new Set(prev)
+                        next.add(image)
+                        return next
+                      })
+                    }}
+                  />
+                ) : (
+                  <OptimizedImage
+                    src={image}
+                    alt={`Hero Banner ${index + 1}`}
+                    className="w-full h-full sm:rounded-2xl lg:rounded-3xl shadow-md"
+                    priority={index === 0}
+                    sizes="100vw"
+                    objectFit="cover"
+                    placeholder="blur"
+                    onError={() => {
+                      setFailedImages(prev => {
+                        const next = new Set(prev)
+                        next.add(image)
+                        return next
+                      })
+                    }}
+                  />
+                )}
                 {/* Mask for old embedded logo text on banner (desktop only) */}
                 <div className="pointer-events-none hidden md:block absolute top-6 left-1/2 -translate-x-1/2 w-28 h-10 bg-gradient-to-b from-[#fec9d3] to-transparent rounded-full" />
               </div>

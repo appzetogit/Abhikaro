@@ -79,6 +79,17 @@ export async function compressImage(inputBuffer, opts = {}) {
     };
   }
 
+  // Preserve animated GIFs as raw buffer
+  if (mimeType === 'image/gif') {
+    return {
+      buffer: inputBuffer,
+      originalSize,
+      compressedSize: originalSize,
+      mimeType: 'image/gif',
+      extension: 'gif',
+    };
+  }
+
   // Pick compression profile
   const folderKey = opts.folder || 'default';
   const profile = FOLDER_PROFILES[folderKey] || FOLDER_PROFILES.default;

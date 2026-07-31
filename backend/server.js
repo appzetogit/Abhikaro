@@ -477,15 +477,19 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Serve static files from 'public' directory with CORS & CORP headers
+// Serve static files from 'public' directory with CORS & CORP headers and aggressive caching
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   next();
 }, express.static(path.join(__dirname, 'public', 'uploads'), {
+  maxAge: '1y',
+  immutable: true,
   setHeaders: (res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
 }));
 
@@ -522,6 +526,13 @@ app.use(helmet({
         "https://fonts.gstatic.com",
       ],
       imgSrc: [
+        "'self'",
+        "data:",
+        "blob:",
+        "https:",
+        "http:",
+      ],
+      mediaSrc: [
         "'self'",
         "data:",
         "blob:",

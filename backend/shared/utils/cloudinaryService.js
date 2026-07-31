@@ -40,7 +40,7 @@ export const uploadMiddleware = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 20 * 1024 * 1024 // 20MB
+    fileSize: 50 * 1024 * 1024 // 50MB for video/GIF/images
   }
 });
 
@@ -61,13 +61,14 @@ export function uploadToLocal(buffer, options = {}) {
       }
 
       const folder = options.folder || 'uploads';
-      const isVideo = options.resource_type === 'video';
+      const isVideo = options.resource_type === 'video' || options.isVideo === true;
+      const isGif = options.format === 'gif' || options.mimeType === 'image/gif';
 
-      // ── Image compression step ──────────────────────────────────────────────
+      // ── Image/Media compression step ─────────────────────────────────────────
       let finalBuffer = buffer;
-      let fileExtension = isVideo ? (options.format || 'mp4') : (options.format || 'jpg');
+      let fileExtension = isVideo ? (options.format || 'mp4') : (isGif ? 'gif' : (options.format || 'jpg'));
 
-      if (!isVideo) {
+      if (!isVideo && !isGif) {
         try {
           const compressed = await compressImage(buffer, { folder, isVideo: false });
           finalBuffer = compressed.buffer;
@@ -102,7 +103,7 @@ export function uploadToLocal(buffer, options = {}) {
           secure_url: relativeUrl,
           url: relativeUrl,
           public_id: `${folder}/${filename.replace('.' + fileExtension, '')}`,
-          resource_type: options.resource_type || 'image',
+          resource_type: isVideo ? 'video' : 'image',
           bytes: finalBuffer.length,
           format: fileExtension
         });
@@ -215,14 +216,17 @@ export async function uploadToCloudinary(buffer, options = {}) {
 
 /**
  * Delete a file from Cloudinary by public ID
- * @param {string} publicId - Cloudinary public ID
+ * @param {string} publicId - Cloudinary public ID or local path
  * @returns {Promise<Object>} Cloudinary deletion result
  */
 export function deleteFromCloudinary(publicId) {
   return new Promise((resolve, reject) => {
-    if (process.env.USE_LOCAL_STORAGE === 'true' || (publicId && publicId.includes('/'))) {
+    if (!publicId) return resolve({ result: 'ok' });
+
+    if (process.env.USE_LOCAL_STORAGE === 'true' || publicId.startsWith('/uploads') || publicId.startsWith('uploads/') || publicId.includes('/')) {
       try {
-        const localPath = path.join(backendDir, 'public', 'uploads', publicId);
+        const cleanPath = publicId.replace(/^\/uploads\//, '').replace(/^uploads\//, '');
+        const localPath = path.join(backendDir, 'public', 'uploads', cleanPath);
         const dir = path.dirname(localPath);
         const base = path.basename(localPath);
         if (fs.existsSync(dir)) {
@@ -236,7 +240,7 @@ export function deleteFromCloudinary(publicId) {
         return resolve({ result: 'ok' });
       } catch (err) {
         console.error('❌ Error deleting local file:', err);
-        return reject(err);
+        return resolve({ result: 'error', error: err.message });
       }
     }
 

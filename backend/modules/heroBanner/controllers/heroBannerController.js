@@ -1,3 +1,4 @@
+import path from 'path';
 import HeroBanner from '../models/HeroBanner.js';
 import LandingPageCategory from '../models/LandingPageCategory.js';
 import LandingPageExploreMore from '../models/LandingPageExploreMore.js';
@@ -8,9 +9,32 @@ import Top10Restaurant from '../models/Top10Restaurant.js';
 import GourmetRestaurant from '../models/GourmetRestaurant.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
-import { uploadToCloudinary } from '../../../shared/utils/cloudinaryService.js';
+import { uploadToCloudinary, uploadToLocal, deleteFromCloudinary } from '../../../shared/utils/cloudinaryService.js';
 import { cloudinary } from '../../../config/cloudinary.js';
 import mongoose from 'mongoose';
+
+/**
+ * Helper to determine mediaType and extension for uploaded banner files
+ */
+const getMediaInfo = (file) => {
+  const mimetype = file.mimetype || '';
+  const originalName = file.originalname || '';
+  const ext = path.extname(originalName).toLowerCase().replace('.', '');
+
+  let mediaType = 'image';
+  let isVideo = false;
+
+  if (mimetype.startsWith('video/') || ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) {
+    mediaType = 'video';
+    isVideo = true;
+  } else if (mimetype === 'image/gif' || ext === 'gif') {
+    mediaType = 'gif';
+  }
+
+  const format = ext || (isVideo ? 'mp4' : (mediaType === 'gif' ? 'gif' : 'jpg'));
+
+  return { mediaType, isVideo, format };
+};
 
 /**
  * Get all active hero banners (public endpoint)
@@ -20,14 +44,26 @@ export const getHeroBanners = async (req, res) => {
     const banners = await HeroBanner.find({ isActive: true })
       .populate('linkedRestaurants', 'name slug restaurantId profileImage')
       .sort({ order: 1, createdAt: -1 })
-      .select('imageUrl order linkedRestaurants')
+      .select('imageUrl mediaType order linkedRestaurants')
       .lean();
 
     return successResponse(res, 200, 'Hero banners retrieved successfully', {
-      banners: banners.map(b => ({
-        imageUrl: b.imageUrl,
-        linkedRestaurants: b.linkedRestaurants || []
-      }))
+      banners: banners.map(b => {
+        const url = b.imageUrl || '';
+        const cleanUrl = url.split('?')[0].toLowerCase();
+        let derivedMediaType = b.mediaType;
+        if (!derivedMediaType) {
+          if (/\.(mp4|webm|mov|mkv|avi)$/i.test(cleanUrl)) derivedMediaType = 'video';
+          else if (/\.gif$/i.test(cleanUrl)) derivedMediaType = 'gif';
+          else derivedMediaType = 'image';
+        }
+        return {
+          _id: b._id,
+          imageUrl: url,
+          mediaType: derivedMediaType,
+          linkedRestaurants: b.linkedRestaurants || []
+        };
+      })
     });
   } catch (error) {
     console.error('Error fetching hero banners:', error);
@@ -46,7 +82,20 @@ export const getAllHeroBanners = async (req, res) => {
       .lean();
 
     return successResponse(res, 200, 'Hero banners retrieved successfully', {
-      banners
+      banners: banners.map(b => {
+        const url = b.imageUrl || '';
+        const cleanUrl = url.split('?')[0].toLowerCase();
+        let derivedMediaType = b.mediaType;
+        if (!derivedMediaType) {
+          if (/\.(mp4|webm|mov|mkv|avi)$/i.test(cleanUrl)) derivedMediaType = 'video';
+          else if (/\.gif$/i.test(cleanUrl)) derivedMediaType = 'gif';
+          else derivedMediaType = 'image';
+        }
+        return {
+          ...b,
+          mediaType: derivedMediaType
+        };
+      })
     });
   } catch (error) {
     console.error('Error fetching hero banners:', error);
@@ -55,19 +104,24 @@ export const getAllHeroBanners = async (req, res) => {
 };
 
 /**
- * Upload a new hero banner
+ * Upload a new hero banner (Saved directly to VPS storage for max speed & GIF/video support)
  */
 export const createHeroBanner = async (req, res) => {
   try {
     if (!req.file) {
-      return errorResponse(res, 400, 'No image file provided');
+      return errorResponse(res, 400, 'No file provided');
     }
 
-    // Upload to Cloudinary
+    const { mediaType, isVideo, format } = getMediaInfo(req.file);
+
+    // Save directly to VPS local storage
     const folder = 'hero-banners';
-    const result = await uploadToCloudinary(req.file.buffer, {
+    const result = await uploadToLocal(req.file.buffer, {
       folder,
-      resource_type: 'image'
+      resource_type: isVideo ? 'video' : 'image',
+      format,
+      mimeType: req.file.mimetype,
+      isVideo
     });
 
     // Get the highest order number
@@ -81,7 +135,8 @@ export const createHeroBanner = async (req, res) => {
     // Create banner record
     const banner = new HeroBanner({
       imageUrl: result.secure_url,
-      cloudinaryPublicId: result.public_id,
+      cloudinaryPublicId: result.public_id || result.secure_url,
+      mediaType,
       order: newOrder,
       isActive: true
     });
@@ -92,6 +147,7 @@ export const createHeroBanner = async (req, res) => {
       banner: {
         _id: banner._id,
         imageUrl: banner.imageUrl,
+        mediaType: banner.mediaType,
         order: banner.order,
         isActive: banner.isActive,
         createdAt: banner.createdAt
@@ -104,20 +160,18 @@ export const createHeroBanner = async (req, res) => {
 };
 
 /**
- * Upload multiple hero banners (up to 5)
+ * Upload multiple hero banners (up to 5, saved to VPS storage)
  */
 export const createMultipleHeroBanners = async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
-      return errorResponse(res, 400, 'No image files provided');
+      return errorResponse(res, 400, 'No files provided');
     }
 
-    // Validate number of files (max 5)
     if (req.files.length > 5) {
-      return errorResponse(res, 400, 'Maximum 5 images can be uploaded at once');
+      return errorResponse(res, 400, 'Maximum 5 files can be uploaded at once');
     }
 
-    // Get the highest order number
     const lastBanner = await HeroBanner.findOne()
       .sort({ order: -1 })
       .select('order')
@@ -129,20 +183,24 @@ export const createMultipleHeroBanners = async (req, res) => {
     const uploadedBanners = [];
     const errors = [];
 
-    // Upload all files
     for (let i = 0; i < req.files.length; i++) {
       const file = req.files[i];
       try {
-        // Upload to Cloudinary
-        const result = await uploadToCloudinary(file.buffer, {
+        const { mediaType, isVideo, format } = getMediaInfo(file);
+
+        // Save directly to VPS storage for ultra-fast local loading
+        const result = await uploadToLocal(file.buffer, {
           folder,
-          resource_type: 'image'
+          resource_type: isVideo ? 'video' : 'image',
+          format,
+          mimeType: file.mimetype,
+          isVideo
         });
 
-        // Create banner record
         const banner = new HeroBanner({
           imageUrl: result.secure_url,
-          cloudinaryPublicId: result.public_id,
+          cloudinaryPublicId: result.public_id || result.secure_url,
+          mediaType,
           order: currentOrder++,
           isActive: true
         });
@@ -151,6 +209,7 @@ export const createMultipleHeroBanners = async (req, res) => {
         uploadedBanners.push({
           _id: banner._id,
           imageUrl: banner.imageUrl,
+          mediaType: banner.mediaType,
           order: banner.order,
           isActive: banner.isActive,
           createdAt: banner.createdAt
@@ -161,7 +220,6 @@ export const createMultipleHeroBanners = async (req, res) => {
       }
     }
 
-    // If some files failed but others succeeded
     if (errors.length > 0 && uploadedBanners.length > 0) {
       return successResponse(res, 201, `Uploaded ${uploadedBanners.length} banner(s) with some errors`, {
         banners: uploadedBanners,
@@ -169,12 +227,10 @@ export const createMultipleHeroBanners = async (req, res) => {
       });
     }
 
-    // If all files failed
     if (uploadedBanners.length === 0) {
       return errorResponse(res, 500, 'Failed to upload banners. ' + errors.join(', '));
     }
 
-    // All successful
     return successResponse(res, 201, `${uploadedBanners.length} hero banner(s) uploaded successfully`, {
       banners: uploadedBanners
     });
@@ -196,12 +252,11 @@ export const deleteHeroBanner = async (req, res) => {
       return errorResponse(res, 404, 'Hero banner not found');
     }
 
-    // Delete from Cloudinary
+    // Delete asset file (local or Cloudinary)
     try {
-      await cloudinary.uploader.destroy(banner.cloudinaryPublicId);
+      await deleteFromCloudinary(banner.cloudinaryPublicId || banner.imageUrl);
     } catch (cloudinaryError) {
-      console.error('Error deleting from Cloudinary:', cloudinaryError);
-      // Continue with database deletion even if Cloudinary deletion fails
+      console.error('Error deleting banner file asset:', cloudinaryError);
     }
 
     // Delete from database

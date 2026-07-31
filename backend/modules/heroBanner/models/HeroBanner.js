@@ -8,8 +8,14 @@ const heroBannerSchema = new mongoose.Schema({
   },
   cloudinaryPublicId: {
     type: String,
-    required: true,
+    required: false,
+    default: '',
     trim: true
+  },
+  mediaType: {
+    type: String,
+    enum: ['image', 'video', 'gif'],
+    default: 'image'
   },
   order: {
     type: Number,

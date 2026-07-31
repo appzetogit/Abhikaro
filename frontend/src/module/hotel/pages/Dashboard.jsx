@@ -1,11 +1,40 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { FileText, Clock, CheckCircle, XCircle, TrendingUp, CreditCard } from "lucide-react"
+import { FileText, Clock, CheckCircle, XCircle, TrendingUp, CreditCard, QrCode, Download, Loader2 } from "lucide-react"
+import { QRCodeSVG } from "qrcode.react"
 import BottomNavigation from "../components/BottomNavigation"
 import { hotelAPI } from "@/lib/api"
 import { isModuleAuthenticated } from "@/lib/utils/auth"
 import { loadBusinessSettings } from "@/lib/utils/businessSettings"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
+import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
+import qrPosterTemplate from "@/assets/qrcode.png"
+
+// Normalize hotel QR code value
+const normalizeHotelQrValue = (rawValue, hotelId) => {
+  const origin = window.location.origin
+  const fallback = hotelId ? `${origin}/hotel-menu?ref=${encodeURIComponent(hotelId)}` : `${origin}/hotel-menu`
+
+  if (!rawValue || typeof rawValue !== "string") return fallback
+  if (rawValue.startsWith("data:image/")) return fallback
+  if (rawValue.includes("/hotel-menu") && rawValue.includes("ref=")) return rawValue
+
+  try {
+    const url = new URL(rawValue, origin)
+    const ref =
+      url.searchParams.get("ref") ||
+      url.searchParams.get("hotelRef") ||
+      url.pathname.match(/\/hotel\/view\/([^/?]+)/)?.[1] ||
+      hotelId ||
+      null
+    if (ref) return `${origin}/hotel-menu?ref=${encodeURIComponent(ref)}`
+  } catch {
+    // ignore
+  }
+
+  return fallback
+}
 
 export default function HotelDashboard() {
   const navigate = useNavigate()
@@ -13,6 +42,9 @@ export default function HotelDashboard() {
   const [leaderboardBanners, setLeaderboardBanners] = useState([])
   const [leaderboardBannerIndex, setLeaderboardBannerIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState(null)
+  const [qrCodeData, setQrCodeData] = useState(null)
+  const [loadingQR, setLoadingQR] = useState(false)
+  const [downloadingQR, setDownloadingQR] = useState(false)
   const [stats, setStats] = useState({
     totalRequests: 0,
     pendingRequests: 0,
@@ -70,6 +102,17 @@ export default function HotelDashboard() {
         const hotelPayload = hotelResponse.data?.data?.hotel || null
         if (hotelResponse.data?.success && hotelPayload) {
           setHotel(hotelPayload)
+          if (hotelPayload.qrCode) {
+            setQrCodeData(hotelPayload.qrCode)
+          } else {
+            // Fetch/Generate QR code automatically
+            hotelAPI.getQRCode().then(res => {
+              if (res.data?.success) {
+                const qrData = res.data.data?.qrData || res.data.data?.qrCode
+                setQrCodeData(qrData)
+              }
+            }).catch(() => {})
+          }
         }
 
         // Fetch request stats
@@ -87,16 +130,13 @@ export default function HotelDashboard() {
           }
         } catch (statsError) {
           console.error("Error fetching request stats:", statsError)
-          // If stats endpoint fails (401, 404, etc.), try to calculate from requests
           if (statsError.response?.status === 401 || statsError.response?.status === 403) {
-            // If unauthorized, just set default stats to 0
             setStats({
               totalRequests: 0,
               pendingRequests: 0,
               completedRequests: 0,
             })
           } else {
-            // For other errors, try to calculate from requests
             try {
               const requestsResponse = await hotelAPI.getRequests()
               const requests = requestsResponse.data?.data?.requests || requestsResponse.data?.data || []
@@ -113,7 +153,6 @@ export default function HotelDashboard() {
                   .reduce((sum, r) => sum + (r.pricing?.total || 0), 0),
               })
             } catch (err) {
-              // If both fail, just set defaults
               console.warn("Could not fetch request stats, using defaults:", err)
               setStats({
                 totalRequests: 0,
@@ -124,8 +163,6 @@ export default function HotelDashboard() {
           }
         }
 
-        // Fetch settlement summary (only for active hotels).
-        // Inactive hotels (awaiting admin approval) are blocked from /hotel/orders/* endpoints.
         if (hotelPayload?.isActive) {
           try {
             const settlementResponse = await hotelAPI.getSettlementSummary()
@@ -133,7 +170,6 @@ export default function HotelDashboard() {
               setSettlementSummary(settlementResponse.data.data)
             }
           } catch (settlementError) {
-            // Don't spam console for expected 401 while session refresh happens.
             if (settlementError?.response?.status !== 401) {
               console.error("Error fetching settlement summary:", settlementError)
             }
@@ -147,7 +183,6 @@ export default function HotelDashboard() {
           })
         }
 
-        // Fetch leaderboard banner (optional)
         try {
           const res = await hotelAPI.getLeaderboardRewards()
           const banners = res?.data?.data?.banners
@@ -162,7 +197,6 @@ export default function HotelDashboard() {
         }
       } catch (error) {
         console.error("Error fetching hotel data:", error)
-        // If unauthorized or forbidden, redirect to login
         if (error.response?.status === 401 || error.response?.status === 403) {
           navigate("/hotel", { replace: true })
         }
@@ -173,6 +207,124 @@ export default function HotelDashboard() {
 
     fetchData()
   }, [navigate])
+
+  const handleGenerateQR = async () => {
+    setLoadingQR(true)
+    try {
+      const response = await hotelAPI.getQRCode()
+      if (response.data?.success) {
+        const qrData = response.data.data?.qrData || response.data.data?.qrCode
+        setQrCodeData(qrData)
+        if (hotel) {
+          setHotel({ ...hotel, qrCode: qrData })
+        }
+      }
+    } catch (error) {
+      console.error("Error generating QR code:", error)
+      toast.error("Failed to generate QR code. Please try again.")
+    } finally {
+      setLoadingQR(false)
+    }
+  }
+
+  const handleDownloadQR = async () => {
+    if (!qrCodeData || !hotel) return
+
+    setDownloadingQR(true)
+    try {
+      const qrElement = document.getElementById("dashboard-hotel-qr-code")
+      if (!qrElement) throw new Error("QR code element not found")
+
+      const svg = qrElement.querySelector("svg")
+      if (!svg) throw new Error("QR code SVG not found")
+
+      const svgData = new XMLSerializer().serializeToString(svg)
+      const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" })
+      const svgUrl = URL.createObjectURL(svgBlob)
+
+      const qrImage = new Image()
+      await new Promise((resolve, reject) => {
+        qrImage.onload = resolve
+        qrImage.onerror = reject
+        qrImage.src = svgUrl
+      })
+
+      const templateImage = new Image()
+      templateImage.src = qrPosterTemplate
+      await new Promise((resolve, reject) => {
+        templateImage.onload = resolve
+        templateImage.onerror = reject
+      })
+
+      const canvas = document.createElement("canvas")
+      const posterWidth = templateImage.width
+      const posterHeight = templateImage.height
+      canvas.width = posterWidth
+      canvas.height = posterHeight
+      const ctx = canvas.getContext("2d")
+
+      ctx.drawImage(templateImage, 0, 0, posterWidth, posterHeight)
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
+      ctx.fillStyle = "#DC2626"
+
+      const getFittedFontSize = ({ lines, maxWidth, fontFamily = "Arial, sans-serif", fontWeight = "bold", maxFontSize, minFontSize }) => {
+        const safeLines = Array.isArray(lines) ? lines.filter(Boolean) : []
+        const finalLines = safeLines.length ? safeLines : ["Hotel"]
+
+        for (let size = maxFontSize; size >= minFontSize; size -= 1) {
+          ctx.font = `${fontWeight} ${size}px ${fontFamily}`
+          const fits = finalLines.every((line) => ctx.measureText(String(line)).width <= maxWidth)
+          if (fits) return size
+        }
+        return minFontSize
+      }
+
+      ctx.font = "bold " + Math.round(posterHeight * 0.032) + "px Arial, sans-serif"
+      const welcomeY = posterHeight * 0.09
+      ctx.fillText("Welcome To", posterWidth / 2, welcomeY)
+
+      const hotelNameSingleLine = String(hotel?.hotelName || "Hotel").trim()
+      const nameMaxWidth = posterWidth * 0.86
+      const hotelNameFontSize = getFittedFontSize({
+        lines: [hotelNameSingleLine],
+        maxWidth: nameMaxWidth,
+        maxFontSize: Math.round(posterHeight * 0.05),
+        minFontSize: Math.round(posterHeight * 0.02),
+      })
+      ctx.font = "bold " + hotelNameFontSize + "px Arial, sans-serif"
+
+      const hotelNameY = welcomeY + posterHeight * 0.048
+      ctx.fillText(hotelNameSingleLine, posterWidth / 2, hotelNameY)
+
+      const qrSize = posterWidth * 0.45
+      const qrX = posterWidth * 0.1
+      const qrY = posterHeight * 0.45
+
+      ctx.fillStyle = "#FFFFFF"
+      ctx.fillRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40)
+      ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
+
+      canvas.toBlob((blob) => {
+        if (!blob) throw new Error("Failed to create image blob")
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = `${hotel.hotelName || "hotel"}-qr-code-poster-${hotel.hotelId || hotel._id}.png`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        URL.revokeObjectURL(svgUrl)
+        toast.success("QR code poster downloaded successfully!")
+      }, "image/png")
+    } catch (error) {
+      console.error("Error downloading QR code poster:", error)
+      toast.error("Failed to download QR code poster. Please try again.")
+    } finally {
+      setDownloadingQR(false)
+    }
+  }
 
   // Auto-slide leaderboard banner every 15 seconds
   useEffect(() => {
@@ -248,10 +400,8 @@ export default function HotelDashboard() {
               const dx = endX - touchStartX
               const threshold = 40
               if (dx > threshold) {
-                // swipe right -> previous
                 goPrevBanner()
               } else if (dx < -threshold) {
-                // swipe left -> next
                 goNextBanner()
               }
               setTouchStartX(null)
@@ -270,7 +420,52 @@ export default function HotelDashboard() {
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">Overview</h2>
 
-          {/* Stats Cards */}
+          {/* Hotel QR Code Card (Scan to order food) */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-5">
+            <p className="text-sm font-bold text-gray-800 text-center uppercase tracking-wide mb-4">
+              Scan to order food
+            </p>
+
+            {!qrCodeData ? (
+              <div className="text-center py-6">
+                <QrCode className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-xs text-gray-500 mb-4">
+                  Generate a QR code for guests to scan and order food
+                </p>
+                <Button
+                  onClick={handleGenerateQR}
+                  disabled={loadingQR}
+                  className="bg-[#ff8100] hover:bg-[#ff8100]/90 text-white text-xs px-4 py-2"
+                >
+                  {loadingQR ? "Generating..." : "Generate QR Code"}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center space-y-3">
+                <div
+                  id="dashboard-hotel-qr-code"
+                  className="bg-white p-1"
+                >
+                  <QRCodeSVG
+                    value={normalizeHotelQrValue(qrCodeData, hotel?.hotelId || hotel?._id)}
+                    size={210}
+                    level="H"
+                    includeMargin={false}
+                  />
+                </div>
+                <div className="text-center">
+                  <p className="text-base font-bold text-gray-900 mb-0.5">
+                    {hotel.hotelName}
+                  </p>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Hotel ID: {hotel.hotelId || hotel._id}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Stats Cards (Pushed down below QR Code) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 mb-4">
             {/* Total Requests */}
             <div

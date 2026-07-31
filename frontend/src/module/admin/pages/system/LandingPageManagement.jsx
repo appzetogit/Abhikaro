@@ -193,7 +193,12 @@ export default function LandingPageManagement() {
     const files = Array.from(e.target?.files || e.files || [])
     if (files.length === 0) return
     if (files.length > 5) {
-      setError('You can upload a maximum of 5 images at once')
+      setError('You can upload a maximum of 5 files at once')
+      return
+    }
+    const invalidFile = files.find(f => f.size > 50 * 1024 * 1024)
+    if (invalidFile) {
+      setError('Each file must be smaller than 50MB')
       return
     }
     uploadBanners(files)
@@ -1360,7 +1365,7 @@ export default function LandingPageManagement() {
                 <input
                   ref={bannersFileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/*,.gif,.mp4,.webm,.mov,.mkv,.avi"
                   multiple
                   onChange={handleBannerFileSelect}
                   className="hidden"
@@ -1370,7 +1375,7 @@ export default function LandingPageManagement() {
                   <div className="flex flex-col items-center gap-3">
                     <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
                     <p className="text-blue-600 font-medium">
-                      Uploading image {bannersUploadProgress.current} of {bannersUploadProgress.total}...
+                      Uploading file {bannersUploadProgress.current} of {bannersUploadProgress.total}...
                     </p>
                     {bannersUploadProgress.total > 0 && (
                       <div className="w-full max-w-xs">
@@ -1396,7 +1401,7 @@ export default function LandingPageManagement() {
                       </button>
                       <span className="text-slate-600"> or drag and drop</span>
                     </div>
-                    <p className="text-xs text-slate-500">PNG, JPG, WEBP up to 5MB each (Max 5 images at once)</p>
+                    <p className="text-xs text-slate-500">PNG, JPG, WEBP, GIF, MP4, WEBM up to 50MB each (Max 5 files at once)</p>
                   </div>
                 )}
               </div>
@@ -1416,11 +1421,37 @@ export default function LandingPageManagement() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {banners.map((banner, index) => (
+                  {banners.map((banner, index) => {
+                    const cleanUrl = (banner.imageUrl || '').split('?')[0].toLowerCase();
+                    const isVideo = banner.mediaType === 'video' || /\.(mp4|webm|mov|mkv|avi)$/i.test(cleanUrl);
+                    const isGif = banner.mediaType === 'gif' || /\.gif$/i.test(cleanUrl);
+
+                    return (
                     <div key={banner._id} className="border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
                       <div className="relative aspect-video bg-slate-100">
-                        <img src={banner.imageUrl} alt={`Hero Banner ${index + 1}`} className="w-full h-full object-cover" />
-                        <div className="absolute top-2 right-2">
+                        {isVideo ? (
+                          <video
+                            src={banner.imageUrl}
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <img src={banner.imageUrl} alt={`Hero Banner ${index + 1}`} className="w-full h-full object-cover" />
+                        )}
+                        <div className="absolute top-2 right-2 flex items-center gap-1">
+                          {isVideo && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-600 text-white uppercase shadow">
+                              VIDEO
+                            </span>
+                          )}
+                          {isGif && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-600 text-white uppercase shadow">
+                              GIF
+                            </span>
+                          )}
                           <span className={`px-2 py-1 rounded text-xs font-medium ${banner.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                             {banner.isActive ? 'Active' : 'Inactive'}
                           </span>
@@ -1481,7 +1512,8 @@ export default function LandingPageManagement() {
                         )}
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               )}
             </div>
