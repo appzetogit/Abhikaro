@@ -127,10 +127,6 @@ export default function AdminRouter() {
             }
           />
 
-
-
-
-
           {/* Profile */}
           <Route path="/profile" element={<AdminProfile />} />
 
@@ -138,169 +134,126 @@ export default function AdminRouter() {
           <Route
             path="/settings"
             element={
-              <ProtectedRoute requiredPermission="menu.settings">
+              <ProtectedRoute requiredPermission="page.business_setup">
                 <AdminSettings />
               </ProtectedRoute>
             }
           />
 
           {/* ORDER MANAGEMENT */}
-          {/* Orders */}
-          <Route
-            path="orders/all"
-            element={
-              <ProtectedRoute requiredPermission="orders.view">
-                <OrdersPage statusKey="all" />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="orders/scheduled" element={<OrdersPage statusKey="scheduled" />} />
-          <Route path="orders/pending" element={<OrdersPage statusKey="pending" />} />
-          <Route path="orders/accepted" element={<OrdersPage statusKey="accepted" />} />
-          <Route path="orders/processing" element={<OrdersPage statusKey="processing" />} />
-          <Route path="orders/food-on-the-way" element={<OrdersPage statusKey="food-on-the-way" />} />
-          <Route path="orders/delivered" element={<OrdersPage statusKey="delivered" />} />
-          <Route path="orders/canceled" element={<OrdersPage statusKey="canceled" />} />
-          <Route path="orders/restaurant-cancelled" element={<OrdersPage statusKey="restaurant-cancelled" />} />
-          <Route path="orders/payment-failed" element={<OrdersPage statusKey="payment-failed" />} />
-          <Route path="orders/refunded" element={<OrdersPage statusKey="refunded" />} />
-          <Route path="orders/offline-payments" element={<OrdersPage statusKey="offline-payments" />} />
-          <Route path="order-detect-delivery" element={<OrderDetectDelivery />} />
-          <Route
-            path="payment-history"
-            element={
-              <ProtectedRoute requiredPermission="orders.view">
-                <PaymentHistory />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="orders/all" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="all" /></ProtectedRoute>} />
+          <Route path="orders/scheduled" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="scheduled" /></ProtectedRoute>} />
+          <Route path="orders/pending" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="pending" /></ProtectedRoute>} />
+          <Route path="orders/accepted" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="accepted" /></ProtectedRoute>} />
+          <Route path="orders/processing" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="processing" /></ProtectedRoute>} />
+          <Route path="orders/food-on-the-way" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="food-on-the-way" /></ProtectedRoute>} />
+          <Route path="orders/delivered" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="delivered" /></ProtectedRoute>} />
+          <Route path="orders/canceled" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="canceled" /></ProtectedRoute>} />
+          <Route path="orders/restaurant-cancelled" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="restaurant-cancelled" /></ProtectedRoute>} />
+          <Route path="orders/payment-failed" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="payment-failed" /></ProtectedRoute>} />
+          <Route path="orders/refunded" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="refunded" /></ProtectedRoute>} />
+          <Route path="orders/offline-payments" element={<ProtectedRoute requiredPermission="page.orders_list"><OrdersPage statusKey="offline-payments" /></ProtectedRoute>} />
+          <Route path="order-detect-delivery" element={<ProtectedRoute requiredPermission="page.order_detect_delivery"><OrderDetectDelivery /></ProtectedRoute>} />
+          <Route path="payment-history" element={<ProtectedRoute requiredPermission="page.payment_history"><PaymentHistory /></ProtectedRoute>} />
 
           {/* RESTAURANT MANAGEMENT */}
-          <Route path="zone-setup" element={<ZoneSetup />} />
-          <Route path="zone-setup/map" element={<AllZonesMap />} />
-          <Route path="zone-setup/delivery-boy-view" element={<DeliveryBoyViewMap />} />
-          <Route path="zone-setup/add" element={<AddZone />} />
-          <Route path="zone-setup/edit/:id" element={<AddZone />} />
-          <Route path="zone-setup/view/:id" element={<ViewZone />} />
-          <Route path="food-approval" element={<FoodApproval />} />
-          {/* Restaurants */}
-          <Route path="restaurants" element={<RestaurantsList />} />
-          <Route path="restaurants/add" element={<AddRestaurant />} />
-          <Route path="restaurants/:id/edit" element={<RestaurantEdit />} />
-          <Route path="restaurants/joining-request" element={<JoiningRequest />} />
-          <Route path="restaurants/commission" element={<RestaurantCommission />} />
-          <Route path="restaurants/complaints" element={<RestaurantComplaints />} />
-          <Route path="restaurants/finance" element={<RestaurantFinance />} />
-          <Route path="restaurants/history" element={<RestaurantHistory />} />
-          <Route path="restaurants/menu-add" element={<MenuAdd />} />
+          <Route path="zone-setup" element={<ProtectedRoute requiredPermission="page.zone_setup"><ZoneSetup /></ProtectedRoute>} />
+          <Route path="zone-setup/map" element={<ProtectedRoute requiredPermission="page.zone_setup"><AllZonesMap /></ProtectedRoute>} />
+          <Route path="zone-setup/delivery-boy-view" element={<ProtectedRoute requiredPermission="page.zone_setup"><DeliveryBoyViewMap /></ProtectedRoute>} />
+          <Route path="zone-setup/add" element={<ProtectedRoute requiredPermission="page.zone_setup"><AddZone /></ProtectedRoute>} />
+          <Route path="zone-setup/edit/:id" element={<ProtectedRoute requiredPermission="page.zone_setup"><AddZone /></ProtectedRoute>} />
+          <Route path="zone-setup/view/:id" element={<ProtectedRoute requiredPermission="page.zone_setup"><ViewZone /></ProtectedRoute>} />
+          <Route path="food-approval" element={<ProtectedRoute requiredPermission="page.food_approval"><FoodApproval /></ProtectedRoute>} />
+          <Route path="restaurants" element={<ProtectedRoute requiredPermission="page.restaurants_list"><RestaurantsList /></ProtectedRoute>} />
+          <Route path="restaurants/add" element={<ProtectedRoute requiredPermission="page.restaurants_list"><AddRestaurant /></ProtectedRoute>} />
+          <Route path="restaurants/:id/edit" element={<ProtectedRoute requiredPermission="page.restaurants_list"><RestaurantEdit /></ProtectedRoute>} />
+          <Route path="restaurants/joining-request" element={<ProtectedRoute requiredPermission="page.restaurant_joining_request"><JoiningRequest /></ProtectedRoute>} />
+          <Route path="restaurants/commission" element={<ProtectedRoute requiredPermission="page.restaurant_commission"><RestaurantCommission /></ProtectedRoute>} />
+          <Route path="restaurants/complaints" element={<ProtectedRoute requiredPermission="page.restaurant_complaints"><RestaurantComplaints /></ProtectedRoute>} />
+          <Route path="restaurants/finance" element={<ProtectedRoute requiredPermission="page.restaurant_finance"><RestaurantFinance /></ProtectedRoute>} />
+          <Route path="restaurants/history" element={<ProtectedRoute requiredPermission="page.restaurant_history"><RestaurantHistory /></ProtectedRoute>} />
+          <Route path="restaurants/menu-add" element={<ProtectedRoute requiredPermission="page.restaurant_menu_add"><MenuAdd /></ProtectedRoute>} />
 
           {/* HOTEL MANAGEMENT */}
-          <Route
-            path="hotels"
-            element={
-              <ProtectedRoute requiredPermission="menu.hotels">
-                <HotelsList />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="hotel-requests" element={<HotelRequests />} />
-          <Route path="hotel-stand-requests" element={<HotelStandRequests />} />
-          <Route path="hotels/commission" element={<HotelCommission />} />
-          <Route path="hotel-wallet" element={<HotelWalletAdmin />} />
-          <Route path="hotel-withdrawal" element={<HotelWithdrawal />} />
-          <Route path="hotel-terms" element={<HotelTermsAndCondition />} />
-          <Route path="hotel-privacy" element={<HotelPrivacyPolicy />} />
-          <Route
-            path="hotel-leaderboard"
-            element={
-              <ProtectedRoute requiredPermission="hotels.view">
-                <HotelLeaderboard />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="hotels" element={<ProtectedRoute requiredPermission="page.hotels_list"><HotelsList /></ProtectedRoute>} />
+          <Route path="hotel-requests" element={<ProtectedRoute requiredPermission="page.hotel_requests"><HotelRequests /></ProtectedRoute>} />
+          <Route path="hotel-stand-requests" element={<ProtectedRoute requiredPermission="page.hotel_stand_requests"><HotelStandRequests /></ProtectedRoute>} />
+          <Route path="hotels/commission" element={<ProtectedRoute requiredPermission="page.hotel_commission"><HotelCommission /></ProtectedRoute>} />
+          <Route path="hotel-wallet" element={<ProtectedRoute requiredPermission="page.hotel_wallet"><HotelWalletAdmin /></ProtectedRoute>} />
+          <Route path="hotel-withdrawal" element={<ProtectedRoute requiredPermission="page.hotel_withdrawal"><HotelWithdrawal /></ProtectedRoute>} />
+          <Route path="hotel-terms" element={<ProtectedRoute requiredPermission="page.hotel_terms"><HotelTermsAndCondition /></ProtectedRoute>} />
+          <Route path="hotel-privacy" element={<ProtectedRoute requiredPermission="page.hotel_privacy"><HotelPrivacyPolicy /></ProtectedRoute>} />
+          <Route path="hotel-leaderboard" element={<ProtectedRoute requiredPermission="page.hotel_leaderboard"><HotelLeaderboard /></ProtectedRoute>} />
 
           {/* FOOD MANAGEMENT */}
-          {/* Categories */}
-          <Route path="categories" element={<Category />} />
-          {/* Fee Settings */}
-          <Route path="fee-settings" element={<FeeSettings />} />
-          {/* Foods */}
-          <Route path="foods" element={<FoodsList />} />
-          {/* Addons */}
-          <Route path="addons" element={<AddonsList />} />
+          <Route path="categories" element={<ProtectedRoute requiredPermission="page.categories"><Category /></ProtectedRoute>} />
+          <Route path="fee-settings" element={<ProtectedRoute requiredPermission="page.fee_settings"><FeeSettings /></ProtectedRoute>} />
+          <Route path="foods" element={<ProtectedRoute requiredPermission="page.foods_list"><FoodsList /></ProtectedRoute>} />
+          <Route path="addons" element={<ProtectedRoute requiredPermission="page.addons_list"><AddonsList /></ProtectedRoute>} />
 
           {/* PROMOTIONS MANAGEMENT */}
-          <Route path="coupons" element={<Coupons />} />
-          {/* Advertisement */}
-          <Route path="advertisement/new" element={<NewAdvertisement />} />
-          <Route path="push-notification" element={<PushNotification />} />
-          <Route path="advertise-banner" element={<AdvertiseBanner />} />
+          <Route path="coupons" element={<ProtectedRoute requiredPermission="page.coupons"><Coupons /></ProtectedRoute>} />
+          <Route path="advertisement/new" element={<ProtectedRoute requiredPermission="page.advertise_banner"><NewAdvertisement /></ProtectedRoute>} />
+          <Route path="push-notification" element={<ProtectedRoute requiredPermission="page.push_notification"><PushNotification /></ProtectedRoute>} />
+          <Route path="advertise-banner" element={<ProtectedRoute requiredPermission="page.advertise_banner"><AdvertiseBanner /></ProtectedRoute>} />
 
           {/* HELP & SUPPORT */}
-          <Route path="customer-contact-us" element={<CustomerContactUs />} />
-          <Route path="contact-messages" element={<ContactMessages />} />
-          <Route path="safety-emergency-reports" element={<SafetyEmergencyReports />} />
-          <Route path="improve-feedback" element={<ImproveFeedback />} />
-          <Route path="restaurant-terms" element={<RestaurantTermsAndCondition />} />
-          <Route path="restaurant-privacy" element={<RestaurantPrivacyPolicy />} />
+          <Route path="customer-contact-us" element={<ProtectedRoute requiredPermission="page.customer_contact_us"><CustomerContactUs /></ProtectedRoute>} />
+          <Route path="contact-messages" element={<ProtectedRoute requiredPermission="page.contact_messages"><ContactMessages /></ProtectedRoute>} />
+          <Route path="safety-emergency-reports" element={<ProtectedRoute requiredPermission="page.safety_emergency_reports"><SafetyEmergencyReports /></ProtectedRoute>} />
+          <Route path="improve-feedback" element={<ProtectedRoute requiredPermission="page.improve_feedback"><ImproveFeedback /></ProtectedRoute>} />
+          <Route path="restaurant-terms" element={<ProtectedRoute requiredPermission="page.restaurant_terms"><RestaurantTermsAndCondition /></ProtectedRoute>} />
+          <Route path="restaurant-privacy" element={<ProtectedRoute requiredPermission="page.restaurant_privacy"><RestaurantPrivacyPolicy /></ProtectedRoute>} />
 
           {/* CUSTOMER MANAGEMENT */}
-          <Route path="customers" element={<Customers />} />
+          <Route path="customers" element={<ProtectedRoute requiredPermission="page.customers_list"><Customers /></ProtectedRoute>} />
 
           {/* DELIVERYMAN MANAGEMENT */}
-          <Route path="delivery-boy-commission" element={<DeliveryBoyCommission />} />
-          <Route path="delivery-cash-limit" element={<DeliveryCashLimit />} />
-          <Route path="cash-limit-settlement" element={<CashLimitSettlement />} />
-          <Route path="delivery-withdrawal" element={<DeliveryWithdrawal />} />
-          <Route path="delivery-boy-wallet" element={<DeliveryBoyWallet />} />
-          <Route path="delivery-emergency-help" element={<DeliveryEmergencyHelp />} />
-          <Route path="delivery-support-tickets" element={<DeliverySupportTickets />} />
-          {/* Delivery Partners */}
-          <Route path="delivery-partners/join-request" element={<JoinRequest />} />
-          <Route path="delivery-partners/add" element={<AddDeliveryman />} />
-          <Route path="delivery-partners" element={<DeliverymanList />} />
-          <Route path="delivery-partners/reviews" element={<DeliverymanReviews />} />
-          <Route path="delivery-partners/bonus" element={<DeliverymanBonus />} />
-          <Route path="delivery-partners/earning-addon" element={<EarningAddon />} />
-          <Route path="delivery-partners/earning-addon-history" element={<EarningAddonHistory />} />
-          <Route path="delivery-partners/earnings" element={<DeliveryEarnings />} />
-          <Route path="delivery-partners/history" element={<DeliveryHistory />} />
-          <Route path="delivery-partners/terms" element={<DeliveryTermsAndCondition />} />
-          <Route path="delivery-partners/privacy" element={<DeliveryPrivacyPolicy />} />
-
+          <Route path="delivery-boy-commission" element={<ProtectedRoute requiredPermission="page.delivery_boy_commission"><DeliveryBoyCommission /></ProtectedRoute>} />
+          <Route path="delivery-cash-limit" element={<ProtectedRoute requiredPermission="page.delivery_cash_limit"><DeliveryCashLimit /></ProtectedRoute>} />
+          <Route path="cash-limit-settlement" element={<ProtectedRoute requiredPermission="page.cash_limit_settlement"><CashLimitSettlement /></ProtectedRoute>} />
+          <Route path="delivery-withdrawal" element={<ProtectedRoute requiredPermission="page.delivery_withdrawal"><DeliveryWithdrawal /></ProtectedRoute>} />
+          <Route path="delivery-boy-wallet" element={<ProtectedRoute requiredPermission="page.delivery_boy_wallet"><DeliveryBoyWallet /></ProtectedRoute>} />
+          <Route path="delivery-emergency-help" element={<ProtectedRoute requiredPermission="page.delivery_emergency_help"><DeliveryEmergencyHelp /></ProtectedRoute>} />
+          <Route path="delivery-support-tickets" element={<ProtectedRoute requiredPermission="page.delivery_support_tickets"><DeliverySupportTickets /></ProtectedRoute>} />
+          <Route path="delivery-partners/join-request" element={<ProtectedRoute requiredPermission="page.delivery_join_request"><JoinRequest /></ProtectedRoute>} />
+          <Route path="delivery-partners/add" element={<ProtectedRoute requiredPermission="page.deliveryman_list"><AddDeliveryman /></ProtectedRoute>} />
+          <Route path="delivery-partners" element={<ProtectedRoute requiredPermission="page.deliveryman_list"><DeliverymanList /></ProtectedRoute>} />
+          <Route path="delivery-partners/reviews" element={<ProtectedRoute requiredPermission="page.deliveryman_reviews"><DeliverymanReviews /></ProtectedRoute>} />
+          <Route path="delivery-partners/bonus" element={<ProtectedRoute requiredPermission="page.deliveryman_bonus"><DeliverymanBonus /></ProtectedRoute>} />
+          <Route path="delivery-partners/earning-addon" element={<ProtectedRoute requiredPermission="page.delivery_earning_addon"><EarningAddon /></ProtectedRoute>} />
+          <Route path="delivery-partners/earning-addon-history" element={<ProtectedRoute requiredPermission="page.delivery_earning_addon_history"><EarningAddonHistory /></ProtectedRoute>} />
+          <Route path="delivery-partners/earnings" element={<ProtectedRoute requiredPermission="page.delivery_earnings"><DeliveryEarnings /></ProtectedRoute>} />
+          <Route path="delivery-partners/history" element={<ProtectedRoute requiredPermission="page.delivery_history"><DeliveryHistory /></ProtectedRoute>} />
+          <Route path="delivery-partners/terms" element={<ProtectedRoute requiredPermission="page.delivery_terms"><DeliveryTermsAndCondition /></ProtectedRoute>} />
+          <Route path="delivery-partners/privacy" element={<ProtectedRoute requiredPermission="page.delivery_privacy"><DeliveryPrivacyPolicy /></ProtectedRoute>} />
 
           {/* REPORT MANAGEMENT */}
-          <Route path="transaction-report" element={<TransactionReport />} />
-          {/* Order Report */}
-          <Route path="order-report/regular" element={<RegularOrderReport />} />
-          {/* Restaurant Report */}
-          <Route path="restaurant-report" element={<RestaurantReport />} />
-          {/* Customer Report */}
-          <Route path="customer-report/feedback-experience" element={<FeedbackExperienceReport />} />
+          <Route path="transaction-report" element={<ProtectedRoute requiredPermission="page.transaction_report"><TransactionReport /></ProtectedRoute>} />
+          <Route path="order-report/regular" element={<ProtectedRoute requiredPermission="page.order_report"><RegularOrderReport /></ProtectedRoute>} />
+          <Route path="restaurant-report" element={<ProtectedRoute requiredPermission="page.restaurant_report"><RestaurantReport /></ProtectedRoute>} />
+          <Route path="customer-report/feedback-experience" element={<ProtectedRoute requiredPermission="page.customer_report"><FeedbackExperienceReport /></ProtectedRoute>} />
 
           {/* TRANSACTION MANAGEMENT */}
-          <Route path="restaurant-withdraws" element={<RestaurantWithdraws />} />
-
+          <Route path="restaurant-withdraws" element={<ProtectedRoute requiredPermission="page.restaurant_withdraws"><RestaurantWithdraws /></ProtectedRoute>} />
 
           {/* BUSINESS SETTINGS */}
-          <Route path="business-setup" element={<BusinessSetup />} />
-          {/* Pages & Social Media */}
-          <Route path="pages-social-media/terms" element={<TermsAndCondition />} />
-          <Route path="pages-social-media/privacy" element={<PrivacyPolicy />} />
-          <Route path="pages-social-media/about" element={<AboutUs />} />
-          <Route path="pages-social-media/refund" element={<RefundPolicy />} />
-          <Route path="pages-social-media/shipping" element={<ShippingPolicy />} />
-          <Route path="pages-social-media/cancellation" element={<CancellationPolicy />} />
-
-          {/* SYSTEM SETTINGS */}
+          <Route path="business-setup" element={<ProtectedRoute requiredPermission="page.business_setup"><BusinessSetup /></ProtectedRoute>} />
+          <Route path="pages-social-media/terms" element={<ProtectedRoute requiredPermission="page.pages_social_media"><TermsAndCondition /></ProtectedRoute>} />
+          <Route path="pages-social-media/privacy" element={<ProtectedRoute requiredPermission="page.pages_social_media"><PrivacyPolicy /></ProtectedRoute>} />
+          <Route path="pages-social-media/about" element={<ProtectedRoute requiredPermission="page.pages_social_media"><AboutUs /></ProtectedRoute>} />
+          <Route path="pages-social-media/refund" element={<ProtectedRoute requiredPermission="page.pages_social_media"><RefundPolicy /></ProtectedRoute>} />
+          <Route path="pages-social-media/shipping" element={<ProtectedRoute requiredPermission="page.pages_social_media"><ShippingPolicy /></ProtectedRoute>} />
+          <Route path="pages-social-media/cancellation" element={<ProtectedRoute requiredPermission="page.pages_social_media"><CancellationPolicy /></ProtectedRoute>} />
 
           {/* HERO BANNER MANAGEMENT */}
-          <Route path="hero-banner-management" element={<LandingPageManagement />} />
+          <Route path="hero-banner-management" element={<ProtectedRoute requiredPermission="page.hero_banner_management"><LandingPageManagement /></ProtectedRoute>} />
+
           {/* DINING MANAGEMENT */}
-          <Route path="dining-management" element={<DiningManagement />} />
-          <Route path="dining-list" element={<DiningList />} />
-          <Route path="dining/coupons" element={<DiningCoupons />} />
-          <Route path="dining/earnings" element={<DiningEarnings />} />
+          <Route path="dining-management" element={<ProtectedRoute requiredPermission="page.dining_banners"><DiningManagement /></ProtectedRoute>} />
+          <Route path="dining-list" element={<ProtectedRoute requiredPermission="page.dining_list"><DiningList /></ProtectedRoute>} />
+          <Route path="dining/coupons" element={<ProtectedRoute requiredPermission="page.dining_coupons"><DiningCoupons /></ProtectedRoute>} />
+          <Route path="dining/earnings" element={<ProtectedRoute requiredPermission="page.dining_earnings"><DiningEarnings /></ProtectedRoute>} />
         </Route>
 
         {/* Redirect /admin to /admin/ */}

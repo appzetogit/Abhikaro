@@ -159,6 +159,24 @@ export default function AdminSettings() {
     });
   };
 
+  const toggleGroupPermissions = (groupPerms) => {
+    const groupIds = groupPerms.map((p) => p.id);
+    setAdminForm((prev) => {
+      const current = new Set(prev.permissions || []);
+      const allSelected = groupIds.every((id) => current.has(id));
+      if (allSelected) {
+        groupIds.forEach((id) => current.delete(id));
+      } else {
+        groupIds.forEach((id) => current.add(id));
+      }
+      return {
+        ...prev,
+        permissions: Array.from(current),
+      };
+    });
+  };
+
+
   const handleAdminFormSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -675,46 +693,67 @@ export default function AdminSettings() {
                 <div className="space-y-2">
                   <Label>Permissions</Label>
                   <p className="text-xs text-neutral-500">
-                    Select which modules and actions this sub admin can access.
+                    Select which pages and modules this sub admin can access. Only selected pages will be visible in their sidebar and accessible.
                   </p>
-                  <div className="border rounded-md h-64 bg-neutral-50/60">
+                  <div className="border rounded-md h-80 bg-neutral-50/60">
                     {permissionsLoading ? (
                       <div className="flex h-full items-center justify-center gap-2 text-neutral-600 text-sm">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Loading permissions...
                       </div>
                     ) : (
-                      <div className="h-64 overflow-y-auto p-3">
-                        <div className="space-y-4">
+                      <div className="h-80 overflow-y-auto p-4">
+                        <div className="space-y-5">
                           {Object.entries(groupedPermissions).map(
-                            ([groupName, perms]) => (
-                              <div key={groupName} className="space-y-2">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                  {groupName}
-                                </p>
-                                <div className="grid gap-2 md:grid-cols-2">
-                                  {perms.map((perm) => (
-                                    <label
-                                      key={perm.id}
-                                      className="flex items-center gap-2 text-sm text-neutral-700"
+                            ([groupName, perms]) => {
+                              const allGroupSelected = perms.every((p) =>
+                                adminForm.permissions.includes(p.id),
+                              );
+                              return (
+                                <div
+                                  key={groupName}
+                                  className="space-y-2 border-b border-neutral-200/70 pb-4 last:border-b-0"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs font-bold uppercase tracking-wide text-neutral-900">
+                                      {groupName}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        toggleGroupPermissions(perms)
+                                      }
+                                      className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
                                     >
-                                      <Checkbox
-                                        checked={adminForm.permissions.includes(
-                                          perm.id,
-                                        )}
-                                        onCheckedChange={() =>
-                                          togglePermission(perm.id)
-                                        }
-                                        className="w-4 h-4 border-2 border-neutral-300 rounded data-[state=checked]:bg-black data-[state=checked]:border-black flex items-center justify-center"
-                                      />
-                                      <span className="font-medium">
-                                        {perm.label}
-                                      </span>
-                                    </label>
-                                  ))}
+                                      {allGroupSelected
+                                        ? "Deselect All"
+                                        : "Select All"}
+                                    </button>
+                                  </div>
+                                  <div className="grid gap-2.5 md:grid-cols-2">
+                                    {perms.map((perm) => (
+                                      <label
+                                        key={perm.id}
+                                        className="flex items-center gap-2.5 text-sm text-neutral-700 cursor-pointer select-none hover:text-neutral-900"
+                                      >
+                                        <Checkbox
+                                          checked={adminForm.permissions.includes(
+                                            perm.id,
+                                          )}
+                                          onCheckedChange={() =>
+                                            togglePermission(perm.id)
+                                          }
+                                          className="w-4 h-4 border-2 border-neutral-300 rounded data-[state=checked]:bg-black data-[state=checked]:border-black flex items-center justify-center"
+                                        />
+                                        <span className="font-medium">
+                                          {perm.label}
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-                            ),
+                              );
+                            },
                           )}
                         </div>
                       </div>

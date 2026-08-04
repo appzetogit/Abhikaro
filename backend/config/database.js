@@ -23,9 +23,9 @@ export const connectDB = async () => {
       maxPoolSize: maxPoolSize,
       minPoolSize: minPoolSize,
       maxIdleTimeMS: 30000, // Close idle connections after 30 seconds
-      serverSelectionTimeoutMS: 10000, // Increased timeout for better reliability
+      serverSelectionTimeoutMS: 30000, // Increased timeout for MongoDB Atlas connection stability
       socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-      connectTimeoutMS: 10000, // Connection timeout
+      connectTimeoutMS: 30000, // Connection timeout
       // Read Preference - Support for read replicas
       readPreference: process.env.MONGODB_READ_PREFERENCE || 'primary', // 'primary', 'primaryPreferred', 'secondary', 'secondaryPreferred', 'nearest'
       // Write concern for better reliability

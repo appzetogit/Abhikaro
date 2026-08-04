@@ -51,8 +51,8 @@ const diningCouponSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-diningCouponSchema.index({ code: 1 });
 diningCouponSchema.index({ isActive: 1, expiryDate: 1 });
 
 const DiningCoupon = mongoose.model("DiningCoupon", diningCouponSchema);
 export default DiningCoupon;
+

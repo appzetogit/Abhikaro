@@ -1,4 +1,5 @@
 import { errorResponse } from '../../../shared/utils/response.js';
+import { userHasAdminPermission } from '../../../shared/constants/adminPermissions.js';
 
 /**
  * Require that the authenticated admin has ALL of the given permissions.
@@ -20,7 +21,7 @@ export const requirePermissions = (...requiredPermissions) => {
       : [];
 
     const missing = requiredPermissions.filter(
-      (perm) => !userPerms.includes(perm),
+      (perm) => !userHasAdminPermission(userPerms, perm),
     );
 
     if (missing.length > 0) {
@@ -55,7 +56,9 @@ export const requireAnyPermission = (permissions = []) => {
       ? req.user.permissions
       : [];
 
-    const hasAny = permissions.some((perm) => userPerms.includes(perm));
+    const hasAny = permissions.some((perm) =>
+      userHasAdminPermission(userPerms, perm),
+    );
 
     if (!hasAny) {
       return errorResponse(
@@ -71,4 +74,5 @@ export const requireAnyPermission = (permissions = []) => {
 };
 
 export default { requirePermissions, requireAnyPermission };
+
 
