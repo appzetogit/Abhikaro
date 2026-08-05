@@ -550,7 +550,7 @@ export const sidebarMenuData = [
       },
       {
         type: "expandable",
-        label: "Pages & Social Media",
+        label: "Extra Curriculum",
         icon: "Link",
         subItems: [
           {

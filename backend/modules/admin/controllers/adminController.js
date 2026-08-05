@@ -382,45 +382,11 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       const pendingRestaurantRequestsQuery = {
         isActive: false,
         isDeleted: { $ne: true },
-        $and: [
-          {
-            $or: [
-              { "onboarding.completedSteps": 4 },
-              {
-                $and: [
-                  { name: { $exists: true, $ne: null, $ne: "" } },
-                  {
-                    cuisines: {
-                      $exists: true,
-                      $ne: null,
-                      $not: { $size: 0 },
-                    },
-                  },
-                  {
-                    openDays: {
-                      $exists: true,
-                      $ne: null,
-                      $not: { $size: 0 },
-                    },
-                  },
-                  {
-                    estimatedDeliveryTime: {
-                      $exists: true,
-                      $ne: null,
-                      $ne: "",
-                    },
-                  },
-                  { featuredDish: { $exists: true, $ne: null, $ne: "" } },
-                ],
-              },
-            ],
-          },
-          {
-            $or: [
-              { rejectionReason: { $exists: false } },
-              { rejectionReason: null },
-            ],
-          },
+        approvedAt: { $in: [null, undefined] },
+        "onboarding.completedSteps": 4,
+        $or: [
+          { rejectionReason: { $exists: false } },
+          { rejectionReason: null },
         ],
       };
       const pendingRestaurantRequests = await Restaurant.countDocuments(
@@ -830,45 +796,12 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
 
     const pendingRestaurantRequestsQuery = {
       isActive: false,
-      $and: [
-        {
-          $or: [
-            { "onboarding.completedSteps": 4 },
-            {
-              $and: [
-                { name: { $exists: true, $ne: null, $ne: "" } },
-                {
-                  cuisines: {
-                    $exists: true,
-                    $ne: null,
-                    $not: { $size: 0 },
-                  },
-                },
-                {
-                  openDays: {
-                    $exists: true,
-                    $ne: null,
-                    $not: { $size: 0 },
-                  },
-                },
-                {
-                  estimatedDeliveryTime: {
-                    $exists: true,
-                    $ne: null,
-                    $ne: "",
-                  },
-                },
-                { featuredDish: { $exists: true, $ne: null, $ne: "" } },
-              ],
-            },
-          ],
-        },
-        {
-          $or: [
-            { rejectionReason: { $exists: false } },
-            { rejectionReason: null },
-          ],
-        },
+      isDeleted: { $ne: true },
+      approvedAt: { $in: [null, undefined] },
+      "onboarding.completedSteps": 4,
+      $or: [
+        { rejectionReason: { $exists: false } },
+        { rejectionReason: null },
       ],
     };
 
@@ -2214,8 +2147,11 @@ export const updateRestaurant = asyncHandler(async (req, res) => {
     }
 
     if (location && typeof location === "object") {
+      const existingLoc = restaurant.location?.toObject
+        ? restaurant.location.toObject()
+        : (restaurant.location || {});
       restaurant.location = {
-        ...(restaurant.location || {}),
+        ...existingLoc,
         ...location,
       };
 
@@ -2234,18 +2170,48 @@ export const updateRestaurant = asyncHandler(async (req, res) => {
     }
 
     if (deliveryTimings && typeof deliveryTimings === "object") {
+      const existingTimings = restaurant.deliveryTimings?.toObject
+        ? restaurant.deliveryTimings.toObject()
+        : (restaurant.deliveryTimings || {});
       restaurant.deliveryTimings = {
-        ...(restaurant.deliveryTimings || {}),
+        ...existingTimings,
         ...deliveryTimings,
       };
       restaurant.markModified("deliveryTimings");
     }
 
     if (onboarding && typeof onboarding === "object") {
-      restaurant.onboarding = {
-        ...(restaurant.onboarding || {}),
-        ...onboarding,
-      };
+      const existingOnboarding = restaurant.onboarding?.toObject
+        ? restaurant.onboarding.toObject()
+        : (restaurant.onboarding || {});
+
+      const updatedOnboarding = { ...existingOnboarding };
+
+      Object.keys(onboarding).forEach((key) => {
+        const value = onboarding[key];
+        if (value !== undefined) {
+          if (
+            typeof value === "object" &&
+            value !== null &&
+            !Array.isArray(value)
+          ) {
+            const cleanSubObj = {};
+            Object.keys(value).forEach((subKey) => {
+              if (value[subKey] !== undefined) {
+                cleanSubObj[subKey] = value[subKey];
+              }
+            });
+            updatedOnboarding[key] = {
+              ...(existingOnboarding[key] || {}),
+              ...cleanSubObj,
+            };
+          } else {
+            updatedOnboarding[key] = value;
+          }
+        }
+      });
+
+      restaurant.onboarding = updatedOnboarding;
       restaurant.markModified("onboarding");
     }
 

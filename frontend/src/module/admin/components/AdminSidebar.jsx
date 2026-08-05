@@ -195,25 +195,28 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
   // Generate initial expanded state from menu data
   const getInitialExpandedState = () => {
-    try {
-      const saved = localStorage.getItem('adminSidebarExpanded')
-      if (saved) {
-        return JSON.parse(saved)
-      }
-    } catch (e) {
-      console.error('Error loading sidebar state:', e)
-    }
-    const state = {}
+    const defaultState = {}
     sidebarMenuData.forEach((item) => {
       if (item.type === "section") {
         item.items.forEach((subItem) => {
           if (subItem.type === "expandable") {
-            state[subItem.label.toLowerCase().replace(/\s+/g, "")] = false
+            const sectionKey = subItem.label.toLowerCase().replace(/\s+/g, "")
+            defaultState[sectionKey] = false
           }
         })
       }
     })
-    return state
+
+    try {
+      const saved = localStorage.getItem('adminSidebarExpanded')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        return { ...defaultState, ...parsed }
+      }
+    } catch (e) {
+      console.error('Error loading sidebar state:', e)
+    }
+    return defaultState
   }
 
   const [expandedSections, setExpandedSections] = useState(getInitialExpandedState)
@@ -366,12 +369,12 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
   const toggleSection = (sectionKey) => {
     setExpandedSections(prev => {
-      const isCurrentlyOpen = prev[sectionKey]
+      const isCurrentlyOpen = !!prev[sectionKey]
       if (isCurrentlyOpen) {
         return { ...prev, [sectionKey]: false }
       }
       // Opening new module: close all other expandable sections, open only this one
-      const next = { ...prev }
+      const next = { ...prev, [sectionKey]: true }
       Object.keys(next).forEach(k => { next[k] = k === sectionKey })
       return next
     })

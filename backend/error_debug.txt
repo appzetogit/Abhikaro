@@ -1,0 +1,20 @@
+
+
+--- ERROR AT 2026-08-05T17:03:07.613Z ---
+ValidationError: Restaurant validation failed: onboarding.step4: Cast to Object failed for value "undefined" (type undefined) at path "onboarding.step4"
+    at Document.invalidate (D:\CurrentlyRunningProject\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:3371:32)
+    at model.$set (D:\CurrentlyRunningProject\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:1209:14)
+    at model.$set (D:\CurrentlyRunningProject\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:1235:14)
+    at model.set [as onboarding] (D:\CurrentlyRunningProject\Abhikaro-main\backend\node_modules\mongoose\lib\helpers\document\compile.js:189:13)
+    at file:///D:/CurrentlyRunningProject/Abhikaro-main/backend/modules/admin/controllers/adminController.js:2178:29
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+
+--- ERROR AT 2026-08-05T17:04:34.279Z ---
+ValidationError: Restaurant validation failed: onboarding.step4: Cast to Object failed for value "undefined" (type undefined) at path "onboarding.step4"
+    at Document.invalidate (D:\CurrentlyRunningProject\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:3371:32)
+    at model.$set (D:\CurrentlyRunningProject\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:1209:14)
+    at model.$set (D:\CurrentlyRunningProject\Abhikaro-main\backend\node_modules\mongoose\lib\document.js:1235:14)
+    at model.set [as onboarding] (D:\CurrentlyRunningProject\Abhikaro-main\backend\node_modules\mongoose\lib\helpers\document\compile.js:189:13)
+    at file:///D:/CurrentlyRunningProject/Abhikaro-main/backend/modules/admin/controllers/adminController.js:2178:29
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)

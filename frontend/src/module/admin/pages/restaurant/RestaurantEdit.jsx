@@ -394,6 +394,7 @@ export default function RestaurantEdit() {
             ifscCode: form.bankIfscCode.trim() || null,
           },
         },
+        step4: restaurant?.onboarding?.step4 || {},
       },
       // Send current menuImages array so admin deletions are persisted
       menuImages: menuImages,
