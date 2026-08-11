@@ -9,6 +9,7 @@ import TableBooking from "../models/TableBooking.js";
 import DiningReview from "../models/DiningReview.js";
 import DiningCoupon from "../models/DiningCoupon.js";
 import Restaurant from "../../restaurant/models/Restaurant.js";
+import Order from "../../order/models/Order.js";
 import RestaurantDiningOffer from "../../restaurant/models/RestaurantDiningOffer.js";
 import RestaurantWallet from "../../restaurant/models/RestaurantWallet.js";
 import emailService from "../../auth/services/emailService.js";
@@ -124,6 +125,59 @@ export const getRestaurantBySlug = async (req, res) => {
         success: false,
         message: "Restaurant not found",
       });
+    }
+
+    if (actualRestaurant) {
+      const restObj = actualRestaurant.toObject ? actualRestaurant.toObject() : { ...actualRestaurant };
+
+      const ratingKeys = [
+        restObj.restaurantId,
+        restObj._id?.toString?.(),
+        restObj.id,
+      ].filter(Boolean);
+
+      if (ratingKeys.length > 0) {
+        const ratingStats = await Order.aggregate([
+          {
+            $match: {
+              restaurantId: { $in: ratingKeys },
+              isDeleted: { $ne: true },
+              status: "delivered"
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              averageRating: {
+                $avg: {
+                  $cond: [
+                    { $gt: ["$review.rating", 0] },
+                    "$review.rating",
+                    null
+                  ]
+                }
+              },
+              totalRatings: { $sum: 1 },
+            },
+          },
+        ]);
+
+        const liveAverageRating = Number(ratingStats?.[0]?.averageRating || 0);
+        const liveTotalRatings = Number(ratingStats?.[0]?.totalRatings || 0);
+        const storedRating = Number(restObj.rating || 0);
+        const storedTotalRatings = Number(restObj.totalRatings || 0);
+
+        const resolvedRating = liveAverageRating > 0 ? Number(liveAverageRating.toFixed(1)) : (storedRating || 3.5);
+        const resolvedTotalRatings = liveTotalRatings > 0 ? liveTotalRatings : storedTotalRatings;
+
+        restObj.rating = Number.isFinite(resolvedRating) ? resolvedRating : 0;
+        restObj.totalRatings = Number.isFinite(resolvedTotalRatings) ? resolvedTotalRatings : 0;
+        restObj.userRatings = restObj.totalRatings;
+        restObj.reviews = restObj.totalRatings;
+        restObj.reviewCount = restObj.totalRatings;
+        restObj.averageRating = restObj.rating;
+        actualRestaurant = restObj;
+      }
     }
 
     // Prevent caching so Dining Management updates show immediately on the public page

@@ -237,7 +237,7 @@ export default function RestaurantDetails() {
             name: actualRestaurant?.onboarding?.step1?.restaurantName || apiRestaurant?.onboarding?.step1?.restaurantName || actualRestaurant?.name || apiRestaurant?.name || "Unknown Restaurant",
             cuisine: (actualRestaurant?.cuisines?.[0]) || actualRestaurant?.cuisine || "Multi-cuisine",
             rating: Number(actualRestaurant?.averageRating || actualRestaurant?.rating || 0),
-            reviews: Number(actualRestaurant?.totalRatings || actualRestaurant?.reviewCount || 0),
+            reviews: Number(actualRestaurant?.userRatings || actualRestaurant?.totalRatings || actualRestaurant?.reviewCount || actualRestaurant?.reviews || actualRestaurant?.totalReviews || 0),
             deliveryTime: actualRestaurant?.estimatedDeliveryTime || "25-30 mins",
             distance: actualRestaurant?.distance || "1.2 km",
             location: formattedAddress,
@@ -294,9 +294,11 @@ export default function RestaurantDetails() {
                     0,
                 ),
                 reviews: Number(
-                  snapshotRestaurant.totalRatings ??
+                  snapshotRestaurant.userRatings ??
+                    snapshotRestaurant.totalRatings ??
                     snapshotRestaurant.reviewCount ??
                     snapshotRestaurant.totalReviews ??
+                    snapshotRestaurant.reviews ??
                     prev.reviews ??
                     0,
                 ),

@@ -607,19 +607,29 @@ export const getRestaurants = async (req, res) => {
           {
             $match: {
               restaurantId: { $in: Array.from(allRatingKeys) },
-              "review.rating": { $exists: true, $ne: null, $gt: 0 },
+              isDeleted: { $ne: true },
+              status: "delivered"
             },
           },
           {
             $group: {
               _id: "$restaurantId",
               totalRatings: { $sum: 1 },
-              ratingSum: { $sum: "$review.rating" },
+              ratingSum: {
+                $sum: {
+                  $cond: [{ $gt: ["$review.rating", 0] }, "$review.rating", 0]
+                }
+              },
+              ratingCount: {
+                $sum: {
+                  $cond: [{ $gt: ["$review.rating", 0] }, 1, 0]
+                }
+              }
             },
           },
         ]);
 
-        const mergedStatsByRestaurantIndex = new Map(); // idx -> {sum,count}
+        const mergedStatsByRestaurantIndex = new Map(); // idx -> {totalRatings, ratingSum, ratingCount}
         for (const row of ratingRows) {
           const key = String(row?._id || "");
           const indexes = restaurantKeyMap.get(key) || [];
@@ -627,10 +637,12 @@ export const getRestaurants = async (req, res) => {
             const prev = mergedStatsByRestaurantIndex.get(idx) || {
               totalRatings: 0,
               ratingSum: 0,
+              ratingCount: 0,
             };
             mergedStatsByRestaurantIndex.set(idx, {
               totalRatings: prev.totalRatings + Number(row.totalRatings || 0),
               ratingSum: prev.ratingSum + Number(row.ratingSum || 0),
+              ratingCount: prev.ratingCount + Number(row.ratingCount || 0),
             });
           });
         }
@@ -638,10 +650,14 @@ export const getRestaurants = async (req, res) => {
         mergedStatsByRestaurantIndex.forEach((stats, idx) => {
           if (!restaurants[idx]) return;
           if (stats.totalRatings <= 0) return;
-          const avg = stats.ratingSum / stats.totalRatings;
-          restaurants[idx].rating = Number(avg.toFixed(1));
-          restaurants[idx].averageRating = restaurants[idx].rating;
+          if (stats.ratingCount > 0) {
+            const avg = stats.ratingSum / stats.ratingCount;
+            restaurants[idx].rating = Number(avg.toFixed(1));
+            restaurants[idx].averageRating = restaurants[idx].rating;
+          }
           restaurants[idx].totalRatings = stats.totalRatings;
+          restaurants[idx].userRatings = stats.totalRatings;
+          restaurants[idx].reviews = stats.totalRatings;
           restaurants[idx].reviewCount = stats.totalRatings;
         });
       }
@@ -807,13 +823,22 @@ export const getRestaurantById = async (req, res) => {
       {
         $match: {
           restaurantId: { $in: ratingKeys },
-          "review.rating": { $exists: true, $ne: null, $gt: 0 },
+          isDeleted: { $ne: true },
+          status: "delivered"
         },
       },
       {
         $group: {
           _id: null,
-          averageRating: { $avg: "$review.rating" },
+          averageRating: {
+            $avg: {
+              $cond: [
+                { $gt: ["$review.rating", 0] },
+                "$review.rating",
+                null
+              ]
+            }
+          },
           totalRatings: { $sum: 1 },
         },
       },
@@ -824,7 +849,7 @@ export const getRestaurantById = async (req, res) => {
     const storedRating = Number(restaurant.rating || 0);
     const storedTotalRatings = Number(restaurant.totalRatings || 0);
 
-    const resolvedRating = liveTotalRatings > 0 ? Number(liveAverageRating.toFixed(1)) : storedRating;
+    const resolvedRating = liveAverageRating > 0 ? Number(liveAverageRating.toFixed(1)) : storedRating;
     const resolvedTotalRatings = liveTotalRatings > 0 ? liveTotalRatings : storedTotalRatings;
 
     restaurant.rating = Number.isFinite(resolvedRating) ? resolvedRating : 0;
@@ -832,6 +857,8 @@ export const getRestaurantById = async (req, res) => {
     // Include compatible aliases used by different frontend screens.
     restaurant.averageRating = restaurant.rating;
     restaurant.reviewCount = restaurant.totalRatings;
+    restaurant.userRatings = restaurant.totalRatings;
+    restaurant.reviews = restaurant.totalRatings;
 
     const responseData = {
       restaurant,
@@ -1688,19 +1715,29 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
           {
             $match: {
               restaurantId: { $in: Array.from(allRatingKeys) },
-              "review.rating": { $exists: true, $ne: null, $gt: 0 },
+              isDeleted: { $ne: true },
+              status: "delivered"
             },
           },
           {
             $group: {
               _id: "$restaurantId",
               totalRatings: { $sum: 1 },
-              ratingSum: { $sum: "$review.rating" },
+              ratingSum: {
+                $sum: {
+                  $cond: [{ $gt: ["$review.rating", 0] }, "$review.rating", 0]
+                }
+              },
+              ratingCount: {
+                $sum: {
+                  $cond: [{ $gt: ["$review.rating", 0] }, 1, 0]
+                }
+              }
             },
           },
         ]);
 
-        const mergedStatsByRestaurantIndex = new Map(); // idx -> {sum,count}
+        const mergedStatsByRestaurantIndex = new Map(); // idx -> {totalRatings, ratingSum, ratingCount}
         for (const row of ratingRows) {
           const key = String(row?._id || "");
           const indexes = restaurantKeyMap.get(key) || [];
@@ -1708,10 +1745,12 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
             const prev = mergedStatsByRestaurantIndex.get(idx) || {
               totalRatings: 0,
               ratingSum: 0,
+              ratingCount: 0,
             };
             mergedStatsByRestaurantIndex.set(idx, {
               totalRatings: prev.totalRatings + Number(row.totalRatings || 0),
               ratingSum: prev.ratingSum + Number(row.ratingSum || 0),
+              ratingCount: prev.ratingCount + Number(row.ratingCount || 0),
             });
           });
         }
@@ -1719,10 +1758,14 @@ export const getRestaurantsWithDishesUnder250 = async (req, res) => {
         mergedStatsByRestaurantIndex.forEach((stats, idx) => {
           if (!restaurants[idx]) return;
           if (stats.totalRatings <= 0) return;
-          const avg = stats.ratingSum / stats.totalRatings;
-          restaurants[idx].rating = Number(avg.toFixed(1));
-          restaurants[idx].averageRating = restaurants[idx].rating;
+          if (stats.ratingCount > 0) {
+            const avg = stats.ratingSum / stats.ratingCount;
+            restaurants[idx].rating = Number(avg.toFixed(1));
+            restaurants[idx].averageRating = restaurants[idx].rating;
+          }
           restaurants[idx].totalRatings = stats.totalRatings;
+          restaurants[idx].userRatings = stats.totalRatings;
+          restaurants[idx].reviews = stats.totalRatings;
           restaurants[idx].reviewCount = stats.totalRatings;
         });
       }
