@@ -3,6 +3,7 @@ import Menu from '../restaurant/models/Menu.js';
 import Restaurant from '../restaurant/models/Restaurant.js';
 import RestaurantCategory from '../restaurant/models/RestaurantCategory.js';
 import Zone from '../admin/models/Zone.js';
+import { isPointInZone } from '../../shared/utils/zoneUtils.js';
 
 /**
  * Normalize and validate the query string
@@ -48,40 +49,36 @@ export async function suggestUnifiedSearch(req, res, next) {
     let allowedRestaurantIds = null;
     if (zoneIdRaw) {
       const zoneId = String(zoneIdRaw).trim();
-      if (mongoose.Types.ObjectId.isValid(zoneId)) {
-        try {
-          const z = await Zone.findById(zoneId).select('_id isActive').lean();
-          if (!z || z.isActive === false) {
-            return res.status(200).json({
-              success: true,
-              data: { foods: [], restaurants: [], categories: [] },
-            });
-          }
-        } catch {
-          return res.status(200).json({
-            success: true,
-            data: { foods: [], restaurants: [], categories: [] },
-          });
-        }
+      if (!mongoose.Types.ObjectId.isValid(zoneId)) {
+        return res.status(200).json({
+          success: true,
+          data: { foods: [], restaurants: [], categories: [] },
+        });
       }
 
-      // Restaurant.zoneId might be stored as ObjectId or string (legacy).
-      const zoneCandidates = [
-        mongoose.Types.ObjectId.isValid(zoneId) ? new mongoose.Types.ObjectId(zoneId) : null,
-        zoneId,
-      ].filter(Boolean);
+      const zone = await Zone.findById(zoneId).select('_id isActive coordinates').lean();
+      if (!zone || zone.isActive === false || !Array.isArray(zone.coordinates) || zone.coordinates.length < 3) {
+        return res.status(200).json({
+          success: true,
+          data: { foods: [], restaurants: [], categories: [] },
+        });
+      }
 
-      const inZoneRestaurants = await Restaurant.find(
+      // A restaurant's zone membership is determined live by checking whether its
+      // pin falls inside the zone polygon (Restaurant.zoneId is never populated).
+      const candidateRestaurants = await Restaurant.find(
         {
-          zoneId: { $in: zoneCandidates },
           isActive: true,
           isAcceptingOrders: true,
           approvedAt: { $exists: true, $ne: null },
           isDeleted: { $ne: true },
         },
-        { _id: 1 }
+        { _id: 1, 'location.latitude': 1, 'location.longitude': 1 }
       ).lean();
-      allowedRestaurantIds = inZoneRestaurants.map((r) => String(r._id));
+      allowedRestaurantIds = candidateRestaurants
+        .filter(r => r.location?.latitude != null && r.location?.longitude != null &&
+          isPointInZone(r.location.latitude, r.location.longitude, zone.coordinates))
+        .map((r) => String(r._id));
 
       if (!allowedRestaurantIds.length) {
         return res.status(200).json({
@@ -277,15 +274,25 @@ export async function legacyMenuSearch(req, res, next) {
     let allowedRestaurantIds = null;
     if (zoneIdRaw) {
       const zoneId = String(zoneIdRaw).trim();
-      const zoneCandidates = [
-        mongoose.Types.ObjectId.isValid(zoneId) ? new mongoose.Types.ObjectId(zoneId) : null,
-        zoneId,
-      ].filter(Boolean);
-      const inZoneRestaurants = await Restaurant.find(
-        { zoneId: { $in: zoneCandidates }, isActive: true, isAcceptingOrders: true, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } },
-        { _id: 1 }
+      if (!mongoose.Types.ObjectId.isValid(zoneId)) {
+        return res.status(200).json({ success: true, items: [] });
+      }
+
+      const zone = await Zone.findById(zoneId).select('_id isActive coordinates').lean();
+      if (!zone || zone.isActive === false || !Array.isArray(zone.coordinates) || zone.coordinates.length < 3) {
+        return res.status(200).json({ success: true, items: [] });
+      }
+
+      // A restaurant's zone membership is determined live by checking whether its
+      // pin falls inside the zone polygon (Restaurant.zoneId is never populated).
+      const candidateRestaurants = await Restaurant.find(
+        { isActive: true, isAcceptingOrders: true, approvedAt: { $exists: true, $ne: null }, isDeleted: { $ne: true } },
+        { _id: 1, 'location.latitude': 1, 'location.longitude': 1 }
       ).lean();
-      allowedRestaurantIds = inZoneRestaurants.map((r) => new mongoose.Types.ObjectId(String(r._id)));
+      allowedRestaurantIds = candidateRestaurants
+        .filter(r => r.location?.latitude != null && r.location?.longitude != null &&
+          isPointInZone(r.location.latitude, r.location.longitude, zone.coordinates))
+        .map((r) => new mongoose.Types.ObjectId(String(r._id)));
       if (!allowedRestaurantIds.length) {
         return res.status(200).json({ success: true, items: [] });
       }
