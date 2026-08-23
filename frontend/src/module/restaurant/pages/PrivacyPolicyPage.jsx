@@ -65,7 +65,7 @@ export default function PrivacyPolicyPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-[#f6e9dc] overflow-x-hidden pb-24 md:pb-6">
+    <div className="min-h-screen bg-white overflow-x-hidden pb-24 md:pb-6">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50 flex items-center gap-3">
         <button 
@@ -78,14 +78,14 @@ export default function PrivacyPolicyPage() {
       </div>
 
       {/* Content */}
-      <div className="px-4 py-6">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6"
+          className="space-y-6"
         >
-          <div className="space-y-3">
+          <div className="space-y-2 border-b border-gray-100 pb-4">
             <h2 className="text-2xl font-bold text-gray-900">
               {privacy.title || "Privacy Policy"}
             </h2>
@@ -93,12 +93,12 @@ export default function PrivacyPolicyPage() {
           </div>
 
           {loading ? (
-            <div className="text-sm text-gray-600">Loading...</div>
+            <div className="text-sm text-gray-600 py-6 text-center">Loading...</div>
           ) : loadError ? (
-            <div className="text-sm text-red-600">{loadError}</div>
+            <div className="text-sm text-red-600 py-6 text-center">{loadError}</div>
           ) : (
             <div
-              className="prose prose-sm max-w-none prose-p:leading-relaxed prose-li:leading-relaxed"
+              className="prose prose-sm max-w-none prose-p:leading-relaxed prose-li:leading-relaxed prose-headings:text-gray-900 prose-p:text-gray-700"
               dangerouslySetInnerHTML={{ __html: privacy.content || "" }}
             />
           )}

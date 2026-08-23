@@ -617,19 +617,14 @@ export const getRestaurants = async (req, res) => {
               totalRatings: { $sum: 1 },
               ratingSum: {
                 $sum: {
-                  $cond: [{ $gt: ["$review.rating", 0] }, "$review.rating", 0]
+                  $cond: [{ $gt: ["$review.rating", 0] }, "$review.rating", 5]
                 }
               },
-              ratingCount: {
-                $sum: {
-                  $cond: [{ $gt: ["$review.rating", 0] }, 1, 0]
-                }
-              }
             },
           },
         ]);
 
-        const mergedStatsByRestaurantIndex = new Map(); // idx -> {totalRatings, ratingSum, ratingCount}
+        const mergedStatsByRestaurantIndex = new Map(); // idx -> {totalRatings, ratingSum}
         for (const row of ratingRows) {
           const key = String(row?._id || "");
           const indexes = restaurantKeyMap.get(key) || [];
@@ -637,12 +632,10 @@ export const getRestaurants = async (req, res) => {
             const prev = mergedStatsByRestaurantIndex.get(idx) || {
               totalRatings: 0,
               ratingSum: 0,
-              ratingCount: 0,
             };
             mergedStatsByRestaurantIndex.set(idx, {
               totalRatings: prev.totalRatings + Number(row.totalRatings || 0),
               ratingSum: prev.ratingSum + Number(row.ratingSum || 0),
-              ratingCount: prev.ratingCount + Number(row.ratingCount || 0),
             });
           });
         }
@@ -650,11 +643,9 @@ export const getRestaurants = async (req, res) => {
         mergedStatsByRestaurantIndex.forEach((stats, idx) => {
           if (!restaurants[idx]) return;
           if (stats.totalRatings <= 0) return;
-          if (stats.ratingCount > 0) {
-            const avg = stats.ratingSum / stats.ratingCount;
-            restaurants[idx].rating = Number(avg.toFixed(1));
-            restaurants[idx].averageRating = restaurants[idx].rating;
-          }
+          const avg = stats.ratingSum / stats.totalRatings;
+          restaurants[idx].rating = Number(avg.toFixed(1));
+          restaurants[idx].averageRating = restaurants[idx].rating;
           restaurants[idx].totalRatings = stats.totalRatings;
           restaurants[idx].userRatings = stats.totalRatings;
           restaurants[idx].reviews = stats.totalRatings;
@@ -835,7 +826,7 @@ export const getRestaurantById = async (req, res) => {
               $cond: [
                 { $gt: ["$review.rating", 0] },
                 "$review.rating",
-                null
+                5
               ]
             }
           },

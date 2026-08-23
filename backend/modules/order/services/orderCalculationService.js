@@ -1,6 +1,7 @@
 import Restaurant from '../../restaurant/models/Restaurant.js';
 import Offer from '../../restaurant/models/Offer.js';
 import FeeSettings from '../../admin/models/FeeSettings.js';
+import AdminPromoCode from '../../admin/models/AdminPromoCode.js';
 import mongoose from 'mongoose';
 import { getCache, setCache, generateCacheKey, CACHE_TTL } from '../../../shared/utils/cache.js';
 
@@ -320,80 +321,105 @@ export const calculateOrderPricing = async ({
       }
     }
     
-    // Calculate coupon discount
-    let discount = 0;
+    // Calculate coupon / promo discount
+    let discount = 0; // Restaurant-funded dish discount
+    let adminOfferDiscount = 0; // Admin-funded promo code discount (does not reduce restaurant profit)
+    let adminOfferName = null;
+    let adminOfferPercent = 0;
     let appliedCoupon = null;
     
-    if (couponCode && restaurant) {
+    if (couponCode) {
       try {
-        // Get restaurant ObjectId
-        let restaurantObjectId = restaurant._id;
-        if (!restaurantObjectId && mongoose.Types.ObjectId.isValid(restaurantId) && restaurantId.length === 24) {
-          restaurantObjectId = new mongoose.Types.ObjectId(restaurantId);
+        const normalizedCouponCode = String(couponCode).trim().toUpperCase();
+
+        // 1. Check Restaurant Dish Offers first if restaurant is present
+        if (restaurant) {
+          let restaurantObjectId = restaurant._id;
+          if (!restaurantObjectId && mongoose.Types.ObjectId.isValid(restaurantId) && restaurantId.length === 24) {
+            restaurantObjectId = new mongoose.Types.ObjectId(restaurantId);
+          }
+
+          if (restaurantObjectId) {
+            const now = new Date();
+            const offer = await Offer.findOne({
+              restaurant: restaurantObjectId,
+              status: 'active',
+              'items.couponCode': normalizedCouponCode,
+              startDate: { $lte: now },
+              $or: [
+                { endDate: { $gte: now } },
+                { endDate: null }
+              ]
+            }).lean();
+
+            if (offer) {
+              const couponItem = offer.items.find(item => item.couponCode.toUpperCase() === normalizedCouponCode);
+              if (couponItem) {
+                const cartItemIds = items.map(item => item.itemId);
+                const isValidForCart = couponItem.itemId && cartItemIds.includes(couponItem.itemId);
+                const minOrderMet = !offer.minOrderValue || subtotal >= offer.minOrderValue;
+                
+                if (isValidForCart && minOrderMet) {
+                  const itemInCart = items.find(item => item.itemId === couponItem.itemId);
+                  if (itemInCart) {
+                    const itemQuantity = itemInCart.quantity || 1;
+                    const discountPerItem = couponItem.originalPrice - couponItem.discountedPrice;
+                    discount = Math.round(discountPerItem * itemQuantity);
+                    const itemSubtotal = (itemInCart.price || 0) * itemQuantity;
+                    discount = Math.min(discount, itemSubtotal);
+                  }
+                  
+                  appliedCoupon = {
+                    code: normalizedCouponCode,
+                    discount: discount,
+                    discountPercentage: couponItem.discountPercentage,
+                    minOrder: offer.minOrderValue || 0,
+                    type: offer.discountType === 'percentage' ? 'percentage' : 'flat',
+                    itemId: couponItem.itemId,
+                    itemName: couponItem.itemName,
+                    originalPrice: couponItem.originalPrice,
+                    discountedPrice: couponItem.discountedPrice,
+                    isAdminPromo: false,
+                  };
+                }
+              }
+            }
+          }
         }
 
-        if (restaurantObjectId) {
-          const now = new Date();
-          
-          // Find active offer with this coupon code for this restaurant
-          const offer = await Offer.findOne({
-            restaurant: restaurantObjectId,
-            status: 'active',
-            'items.couponCode': couponCode,
-            startDate: { $lte: now },
-            $or: [
-              { endDate: { $gte: now } },
-              { endDate: null }
-            ]
-          }).lean();
+        // 2. If no restaurant dish offer matched, check Admin Promo Codes
+        if (!appliedCoupon) {
+          const promo = await AdminPromoCode.findOne({
+            code: normalizedCouponCode,
+          });
 
-          if (offer) {
-            // Find the specific item coupon
-            const couponItem = offer.items.find(item => item.couponCode === couponCode);
-            
-            if (couponItem) {
-              // Check if coupon is valid for items in cart
-              const cartItemIds = items.map(item => item.itemId);
-              const isValidForCart = couponItem.itemId && cartItemIds.includes(couponItem.itemId);
-              
-              // Check minimum order value
-              const minOrderMet = !offer.minOrderValue || subtotal >= offer.minOrderValue;
-              
-              if (isValidForCart && minOrderMet) {
-                // Calculate discount based on offer type
-                const itemInCart = items.find(item => item.itemId === couponItem.itemId);
-                if (itemInCart) {
-                  const itemQuantity = itemInCart.quantity || 1;
-                  
-                  // Calculate discount per item
-                  const discountPerItem = couponItem.originalPrice - couponItem.discountedPrice;
-                  
-                  // Apply discount to all quantities of this item
-                  discount = Math.round(discountPerItem * itemQuantity);
-                  
-                  // Ensure discount doesn't exceed item subtotal
-                  const itemSubtotal = (itemInCart.price || 0) * itemQuantity;
-                  discount = Math.min(discount, itemSubtotal);
-                }
-                
-                appliedCoupon = {
-                  code: couponCode,
-                  discount: discount,
-                  discountPercentage: couponItem.discountPercentage,
-                  minOrder: offer.minOrderValue || 0,
-                  type: offer.discountType === 'percentage' ? 'percentage' : 'flat',
-                  itemId: couponItem.itemId,
-                  itemName: couponItem.itemName,
-                  originalPrice: couponItem.originalPrice,
-                  discountedPrice: couponItem.discountedPrice,
-                };
-              }
+          if (promo) {
+            const rId = restaurant?._id || restaurantId || null;
+            const evalResult = promo.evaluateValidity({
+              orderAmount: subtotal,
+              currentDate: new Date(),
+              restaurantId: rId ? rId.toString() : null,
+            });
+
+            if (evalResult.isValid && evalResult.discountAmount > 0) {
+              adminOfferDiscount = evalResult.discountAmount;
+              adminOfferName = promo.code;
+              adminOfferPercent = promo.discountType === "percentage" ? promo.discountValue : 0;
+
+              appliedCoupon = {
+                code: promo.code,
+                discount: adminOfferDiscount,
+                discountPercentage: promo.discountType === "percentage" ? promo.discountValue : 0,
+                minOrder: promo.minOrderAmount || 0,
+                type: promo.discountType,
+                title: promo.title,
+                isAdminPromo: true,
+              };
             }
           }
         }
       } catch (error) {
         console.error(`Error fetching coupon from database: ${error.message}`);
-        // Continue without coupon if there's an error
       }
     }
     
@@ -410,14 +436,12 @@ export const calculateOrderPricing = async ({
     // Calculate distance for platform fee (use effective delivery address)
     let distanceInKm = null;
     if (effectiveDeliveryAddress?.location?.coordinates && restaurant?.location?.coordinates) {
-      // Calculate distance from restaurant to delivery address (user location)
       distanceInKm = calculateDistance(
         restaurant.location.coordinates,
         effectiveDeliveryAddress.location.coordinates
       );
     } else if (effectiveDeliveryAddress?.latitude && effectiveDeliveryAddress?.longitude && 
                restaurant?.location?.latitude && restaurant?.location?.longitude) {
-      // Alternative: if coordinates are in latitude/longitude format
       const restaurantCoords = [
         restaurant.location.longitude || restaurant.location.coordinates?.[0],
         restaurant.location.latitude || restaurant.location.coordinates?.[1]
@@ -434,31 +458,36 @@ export const calculateOrderPricing = async ({
     // Calculate platform fee based on distance
     const platformFee = await calculatePlatformFee(distanceInKm);
     
-    // Calculate GST on subtotal after discount
+    // Calculate GST on subtotal after restaurant discount
     const gst = await calculateGST(subtotal, discount);
     
-    // Calculate total
-    const total = subtotal - discount + finalDeliveryFee + platformFee + gst;
+    // Calculate total: User pays subtotal - restaurant discount - admin promo discount + fees
+    const total = Math.max(0, subtotal - discount - adminOfferDiscount + finalDeliveryFee + platformFee + gst);
     
-    // Calculate savings (discount + any delivery savings)
-    const savings = discount + (deliveryFee > finalDeliveryFee ? deliveryFee - finalDeliveryFee : 0);
+    // Calculate savings
+    const savings = discount + adminOfferDiscount + (deliveryFee > finalDeliveryFee ? deliveryFee - finalDeliveryFee : 0);
     
     return {
       subtotal: Math.round(subtotal),
-      discount: Math.round(discount),
+      discount: Math.round(discount), // Restaurant dish discount
+      adminOfferDiscount: Math.round(adminOfferDiscount), // Admin promo discount (absorbed by platform)
+      adminOfferName: adminOfferName,
+      adminOfferPercent: adminOfferPercent,
       deliveryFee: Math.round(finalDeliveryFee),
       platformFee: Math.round(platformFee),
-      tax: gst, // Already rounded in calculateGST
+      tax: gst,
       total: Math.round(total),
       savings: Math.round(savings),
       appliedCoupon: appliedCoupon ? {
         code: appliedCoupon.code,
-        discount: discount,
+        discount: appliedCoupon.discount,
+        isAdminPromo: appliedCoupon.isAdminPromo || false,
         freeDelivery: appliedCoupon.freeDelivery || false
       } : null,
       breakdown: {
         itemTotal: Math.round(subtotal),
         discountAmount: Math.round(discount),
+        adminPromoDiscount: Math.round(adminOfferDiscount),
         deliveryFee: Math.round(finalDeliveryFee),
         platformFee: Math.round(platformFee),
         gst: gst,

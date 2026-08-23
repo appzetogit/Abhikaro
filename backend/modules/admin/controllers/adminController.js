@@ -2044,6 +2044,81 @@ export const getRestaurants = asyncHandler(async (req, res) => {
       }
     });
 
+    // Aggregate live rating and review counts from delivered orders
+    if (restaurants.length > 0) {
+      const allRatingKeys = new Set();
+      const restaurantKeyMap = new Map(); // key -> array of restaurant array indices
+
+      restaurants.forEach((restaurant, index) => {
+        const keys = [
+          restaurant._id ? String(restaurant._id) : null,
+          restaurant.restaurantId ? String(restaurant.restaurantId) : null,
+        ].filter(Boolean);
+
+        keys.forEach((key) => {
+          allRatingKeys.add(key);
+          if (!restaurantKeyMap.has(key)) {
+            restaurantKeyMap.set(key, []);
+          }
+          restaurantKeyMap.get(key).push(index);
+        });
+      });
+
+      if (allRatingKeys.size > 0) {
+        const ratingRows = await Order.aggregate([
+          {
+            $match: {
+              restaurantId: { $in: Array.from(allRatingKeys) },
+              isDeleted: { $ne: true },
+              status: "delivered",
+            },
+          },
+          {
+            $group: {
+              _id: "$restaurantId",
+              totalRatings: { $sum: 1 },
+              ratingSum: {
+                $sum: {
+                  $cond: [{ $gt: ["$review.rating", 0] }, "$review.rating", 5],
+                },
+              },
+            },
+          },
+        ]);
+
+        const mergedStatsByIndex = new Map();
+        for (const row of ratingRows) {
+          const key = String(row?._id || "");
+          const indices = restaurantKeyMap.get(key) || [];
+          indices.forEach((idx) => {
+            const prev = mergedStatsByIndex.get(idx) || { totalRatings: 0, ratingSum: 0 };
+            mergedStatsByIndex.set(idx, {
+              totalRatings: prev.totalRatings + Number(row.totalRatings || 0),
+              ratingSum: prev.ratingSum + Number(row.ratingSum || 0),
+            });
+          });
+        }
+
+        mergedStatsByIndex.forEach((stats, idx) => {
+          if (!restaurants[idx]) return;
+          if (stats.totalRatings > 0) {
+            const avg = stats.ratingSum / stats.totalRatings;
+            restaurants[idx].rating = Number(avg.toFixed(1));
+            restaurants[idx].averageRating = restaurants[idx].rating;
+            restaurants[idx].totalRatings = stats.totalRatings;
+            restaurants[idx].userRatings = stats.totalRatings;
+            restaurants[idx].reviews = stats.totalRatings;
+            restaurants[idx].reviewCount = stats.totalRatings;
+            if (!restaurants[idx].ratings) {
+              restaurants[idx].ratings = {};
+            }
+            restaurants[idx].ratings.average = restaurants[idx].rating;
+            restaurants[idx].ratings.count = stats.totalRatings;
+          }
+        });
+      }
+    }
+
     // Get total count
     const total = await Restaurant.countDocuments(query);
 

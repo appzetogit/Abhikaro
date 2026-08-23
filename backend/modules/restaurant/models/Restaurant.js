@@ -343,7 +343,25 @@ const restaurantSchema = new mongoose.Schema(
     activeSessionId: {
       type: String,
       default: null
-    }
+    },
+    termsAcceptance: {
+      isAccepted: {
+        type: Boolean,
+        default: false,
+      },
+      acceptedAt: {
+        type: Date,
+        default: null,
+      },
+      version: {
+        type: Number,
+        default: 0,
+      },
+      termsUpdatedAt: {
+        type: Date,
+        default: null,
+      },
+    },
   },
   {
     timestamps: true,

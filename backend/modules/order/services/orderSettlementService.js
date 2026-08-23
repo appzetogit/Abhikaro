@@ -356,19 +356,19 @@ export const calculateOrderSettlement = async (orderId) => {
       userPayment.deliveryFee - deliveryPartnerEarning.totalEarning;
 
     // adminCommission is already determined above (Net for Admin)
+    const adminPromoDiscount = Number(order.pricing?.adminOfferDiscount || 0);
+    const netAdminCommission = Math.max(
+      0,
+      Math.round((adminCommission - adminPromoDiscount) * 100) / 100
+    );
+
     const adminPlatformFee = Math.round(userPayment.platformFee * 100) / 100;
     const adminDeliveryFee = Math.round(userPayment.deliveryFee * 100) / 100;
     const adminGST = Math.round(userPayment.gst * 100) / 100;
 
-    // adminCommissionFromHotel is used if we want to track it separately,
-    // but we already set adminCommission to the Net Share.
-    // So distinct 'hotelCommission' field in AdminEarning might be redundant or valid for legacy.
-    // We'll set it to 0 per new logic to avoid double count, or keep it if it means "Extra from Hotel".
-    // For now, let's treat adminCommission as the main source.
-
     const adminTotal =
       Math.round(
-        (adminCommission + adminPlatformFee + adminDeliveryFee + adminGST) *
+        (netAdminCommission + adminPlatformFee + adminDeliveryFee + adminGST) *
           100,
       ) / 100;
 
@@ -376,12 +376,13 @@ export const calculateOrderSettlement = async (orderId) => {
     const isQR = !!(hotelEarning && hotelEarning.hotelId);
 
     const adminEarning = {
-      commission: adminCommission,
+      commission: netAdminCommission,
+      adminOfferDiscount: adminPromoDiscount,
       platformFee: adminPlatformFee,
       deliveryFee: adminDeliveryFee,
       gst: adminGST,
       deliveryMargin: Math.max(0, Math.round(deliveryMargin * 100) / 100),
-      hotelCommission: isQR ? adminCommission : 0, // Admin's commission from QR order
+      hotelCommission: isQR ? netAdminCommission : 0, // Admin's commission from QR order
       orderType: isQR ? "QR" : "DIRECT",
       totalEarning: adminTotal,
       status: "pending",

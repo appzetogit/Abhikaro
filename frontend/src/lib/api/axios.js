@@ -88,9 +88,30 @@ const apiClient = axios.create({
  * Get the appropriate module token based on the current route
  * @returns {string|null} - Access token for the current module or null
  */
-function getTokenForCurrentRoute() {
+function getTokenForCurrentRoute(config = null) {
+  const requestUrl = config?.url || "";
   const path = window.location.pathname;
 
+  // 1. Check request URL first if available
+  if (requestUrl.startsWith("/admin") || requestUrl.includes("/admin/")) {
+    const adminToken = getModuleToken("admin");
+    if (adminToken) return adminToken;
+  } else if (
+    (requestUrl.startsWith("/restaurant") || requestUrl.includes("/restaurant/")) &&
+    !requestUrl.includes("/restaurant/list") &&
+    !requestUrl.includes("/restaurant/under-250")
+  ) {
+    const restaurantToken = getModuleToken("restaurant");
+    if (restaurantToken) return restaurantToken;
+  } else if (requestUrl.startsWith("/delivery") || requestUrl.includes("/delivery/")) {
+    const deliveryToken = getModuleToken("delivery");
+    if (deliveryToken) return deliveryToken;
+  } else if (requestUrl.startsWith("/hotel") || requestUrl.includes("/hotel/")) {
+    const hotelToken = getModuleToken("hotel");
+    if (hotelToken) return hotelToken;
+  }
+
+  // 2. Fallback to current browser path
   if (path.startsWith("/admin")) {
     return getModuleToken("admin");
   } else if (
@@ -128,8 +149,8 @@ function getTokenForCurrentRoute() {
  */
 apiClient.interceptors.request.use(
   (config) => {
-    // Get access token for the current module based on route
-    let accessToken = getTokenForCurrentRoute();
+    // Get access token for the current module based on request URL or route
+    let accessToken = getTokenForCurrentRoute(config);
 
     // Fallback to legacy token if module-specific token not found
     if (!accessToken || accessToken.trim() === "") {

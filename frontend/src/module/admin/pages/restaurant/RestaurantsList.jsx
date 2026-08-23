@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, RefreshCw, Edit, Check, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, RefreshCw, Edit, Check, ChevronLeft, ChevronRight, MessageSquare, Filter, Utensils } from "lucide-react"
 import { adminAPI, restaurantAPI } from "../../../../lib/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -41,6 +41,22 @@ export default function RestaurantsList() {
   const [mailSubject, setMailSubject] = useState("")
   const [mailMessage, setMailMessage] = useState("")
   const [sendingMail, setSendingMail] = useState(false)
+
+  // Reviews Modal states
+  const [reviewsModalOpen, setReviewsModalOpen] = useState(false)
+  const [reviewsRestaurant, setReviewsRestaurant] = useState(null)
+  const [reviewsList, setReviewsList] = useState([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [reviewsError, setReviewsError] = useState(null)
+  const [reviewsStats, setReviewsStats] = useState({
+    averageRating: 0,
+    totalReviews: 0,
+    ratingDistribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+  })
+  const [reviewStarFilter, setReviewStarFilter] = useState(null) // null = all, 1..5
+  const [reviewSortOrder, setReviewSortOrder] = useState("newest") // "newest", "oldest", "highest", "lowest"
+  const [reviewPage, setReviewPage] = useState(1)
+  const [reviewTotalPages, setReviewTotalPages] = useState(1)
 
   // Format Restaurant ID to REST format (e.g., REST422829)
   const formatRestaurantId = (id) => {
@@ -175,7 +191,8 @@ export default function RestaurantsList() {
                 ? restaurant.cuisines[0]
                 : restaurant.cuisine || "N/A",
             status: restaurant.isActive !== false, // Default to true if not set
-            rating: restaurant.ratings?.average || restaurant.rating || 0,
+            rating: Number(restaurant.ratings?.average || restaurant.rating || restaurant.averageRating || 0),
+            reviewCount: Number(restaurant.ratings?.count || restaurant.reviewCount || restaurant.totalRatings || restaurant.reviews || restaurant.userRatings || 0),
             logo:
               // Prefer top-level profileImage (object with url or direct string)
               restaurant.profileImage?.url ||
@@ -501,6 +518,123 @@ export default function RestaurantsList() {
   const closeDetailsModal = () => {
     setSelectedRestaurant(null)
     setRestaurantDetails(null)
+  }
+
+  // Fetch restaurant customer reviews
+  const fetchRestaurantReviews = async (restaurant, { page = 1, rating = null, sortOrder = "newest" } = {}) => {
+    if (!restaurant) return
+    const restaurantId = restaurant._id || restaurant.id || restaurant.originalData?.restaurantId || restaurant.originalData?._id
+    if (!restaurantId) return
+
+    try {
+      setReviewsLoading(true)
+      setReviewsError(null)
+
+      let sortBy = "submittedAt"
+      let order = "desc"
+      if (sortOrder === "newest") {
+        sortBy = "submittedAt"
+        order = "desc"
+      } else if (sortOrder === "oldest") {
+        sortBy = "submittedAt"
+        order = "asc"
+      } else if (sortOrder === "highest") {
+        sortBy = "rating"
+        order = "desc"
+      } else if (sortOrder === "lowest") {
+        sortBy = "rating"
+        order = "asc"
+      }
+
+      const params = {
+        page,
+        limit: 10,
+        sortBy,
+        sortOrder: order,
+      }
+      if (rating) {
+        params.rating = rating
+      }
+
+      let response
+      try {
+        response = await adminAPI.getRestaurantReviews(restaurantId, params)
+      } catch (adminErr) {
+        // Fallback to public/restaurant reviews endpoint
+        console.log("Admin reviews endpoint failed, falling back to general review endpoint", adminErr)
+        response = await restaurantAPI.getRestaurantReviews(restaurantId, params)
+      }
+
+      if (response.data?.success && response.data?.data) {
+        const data = response.data.data
+        setReviewsList(data.reviews || [])
+        if (data.statistics) {
+          setReviewsStats(data.statistics)
+        }
+        setReviewTotalPages(data.pagination?.totalPages || 1)
+        setReviewPage(data.pagination?.currentPage || page)
+      } else {
+        setReviewsList([])
+      }
+    } catch (err) {
+      console.error("Error fetching restaurant reviews:", err)
+      setReviewsError(err.response?.data?.message || "Failed to load reviews")
+      setReviewsList([])
+    } finally {
+      setReviewsLoading(false)
+    }
+  }
+
+  const handleOpenReviewsModal = (restaurant) => {
+    setReviewsRestaurant(restaurant)
+    setReviewStarFilter(null)
+    setReviewSortOrder("newest")
+    setReviewPage(1)
+    setReviewsModalOpen(true)
+    fetchRestaurantReviews(restaurant, { page: 1, rating: null, sortOrder: "newest" })
+  }
+
+  const closeReviewsModal = () => {
+    setReviewsModalOpen(false)
+    setReviewsRestaurant(null)
+    setReviewsList([])
+    setReviewsError(null)
+  }
+
+  const handleFilterStar = (star) => {
+    const nextFilter = reviewStarFilter === star ? null : star
+    setReviewStarFilter(nextFilter)
+    setReviewPage(1)
+    fetchRestaurantReviews(reviewsRestaurant, { page: 1, rating: nextFilter, sortOrder: reviewSortOrder })
+  }
+
+  const handleSortChange = (newSort) => {
+    setReviewSortOrder(newSort)
+    setReviewPage(1)
+    fetchRestaurantReviews(reviewsRestaurant, { page: 1, rating: reviewStarFilter, sortOrder: newSort })
+  }
+
+  const handleReviewPageChange = (newPage) => {
+    setReviewPage(newPage)
+    fetchRestaurantReviews(reviewsRestaurant, { page: newPage, rating: reviewStarFilter, sortOrder: reviewSortOrder })
+  }
+
+  const formatReviewDate = (dateStr) => {
+    if (!dateStr) return "N/A"
+    try {
+      const d = new Date(dateStr)
+      if (isNaN(d.getTime())) return String(dateStr)
+      return d.toLocaleString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })
+    } catch {
+      return String(dateStr)
+    }
   }
 
   // Handle ban/unban restaurant
@@ -913,7 +1047,27 @@ export default function RestaurantsList() {
                             <div className="flex flex-col">
                               <span className="text-sm font-medium text-slate-900">{restaurant.name}</span>
                               <span className="text-xs text-slate-500">ID #{formatRestaurantId(restaurant.originalData?.restaurantId || restaurant.originalData?._id || restaurant._id || restaurant.id)}</span>
-                              <span className="text-xs text-slate-500">{renderStars(restaurant.rating)}</span>
+                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                <div className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200/90 px-2 py-0.5 rounded-md text-xs font-semibold text-amber-900 shadow-2xs">
+                                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500 flex-shrink-0" />
+                                  <span>{(restaurant.rating || 0) > 0 ? Number(restaurant.rating).toFixed(1) : "0.0"}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleOpenReviewsModal(restaurant)
+                                  }}
+                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium cursor-pointer transition-colors bg-blue-50/80 hover:bg-blue-100/80 px-2 py-0.5 rounded-md border border-blue-100"
+                                  title="Click to view customer reviews & ratings"
+                                >
+                                  <MessageSquare className="w-3 h-3 text-blue-500" />
+                                  <span>
+                                    {restaurant.reviewCount || 0}{" "}
+                                    {(restaurant.reviewCount || 0) === 1 ? "review" : "reviews"}
+                                  </span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -966,6 +1120,13 @@ export default function RestaurantsList() {
                               title="View Details"
                             >
                               <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenReviewsModal(restaurant)}
+                              className="p-1.5 rounded text-amber-600 hover:bg-amber-50 transition-colors"
+                              title="View Customer Reviews & Ratings"
+                            >
+                              <Star className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() =>
@@ -2031,6 +2192,383 @@ export default function RestaurantsList() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Restaurant Customer Reviews Modal */}
+      {reviewsModalOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4"
+          onClick={closeReviewsModal}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200"
+            style={{ backgroundColor: "#ffffff" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-5 sm:px-6 py-4 flex items-center justify-between z-10">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-11 h-11 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200 shadow-2xs flex items-center justify-center">
+                  <img
+                    src={reviewsRestaurant?.logo || "https://via.placeholder.com/44"}
+                    alt={reviewsRestaurant?.name || "Restaurant"}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = "none"
+                      e.target.nextSibling.style.display = "flex"
+                    }}
+                  />
+                  <span
+                    style={{ display: "none" }}
+                    className="w-full h-full items-center justify-center text-base font-bold text-slate-500 bg-slate-100"
+                  >
+                    {(reviewsRestaurant?.name || "R").charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg sm:text-xl font-bold text-slate-900 truncate">
+                      {reviewsRestaurant?.name || "Restaurant Reviews"}
+                    </h2>
+                    <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md border border-slate-200">
+                      ID #{formatRestaurantId(reviewsRestaurant?.originalData?.restaurantId || reviewsRestaurant?.originalData?._id || reviewsRestaurant?._id || reviewsRestaurant?.id)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
+                    <span>{reviewsRestaurant?.zone && reviewsRestaurant.zone !== "N/A" ? reviewsRestaurant.zone : "Zone: N/A"}</span>
+                    <span>•</span>
+                    <span>{reviewsRestaurant?.cuisine || "Cuisine"}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => fetchRestaurantReviews(reviewsRestaurant, { page: reviewPage, rating: reviewStarFilter, sortOrder: reviewSortOrder })}
+                  disabled={reviewsLoading}
+                  className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+                  title="Refresh reviews"
+                >
+                  <RefreshCw className={`w-4 h-4 ${reviewsLoading ? "animate-spin text-blue-600" : ""}`} />
+                </button>
+                <button
+                  onClick={closeReviewsModal}
+                  className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors"
+                  title="Close modal"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+              {/* Rating Overview Summary Banner */}
+              <div className="bg-gradient-to-br from-amber-50/70 via-slate-50 to-orange-50/40 rounded-xl p-5 border border-amber-200/70 shadow-2xs">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center">
+                  {/* Left: Big Score & Stars */}
+                  <div className="sm:col-span-5 flex flex-col items-center sm:items-start text-center sm:text-left sm:border-r sm:border-slate-200 sm:pr-4">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-900 mb-1">
+                      Overall Rating
+                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight">
+                        {reviewsStats.averageRating > 0 ? Number(reviewsStats.averageRating).toFixed(1) : "0.0"}
+                      </span>
+                      <span className="text-base font-semibold text-slate-400">/ 5.0</span>
+                    </div>
+                    <div className="flex items-center gap-1 my-1.5">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={`w-5 h-5 ${
+                            star <= Math.round(reviewsStats.averageRating || 0)
+                              ? "fill-amber-400 text-amber-400"
+                              : "fill-slate-200 text-slate-200"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium">
+                      Based on <strong className="text-slate-900">{reviewsStats.totalReviews || 0}</strong> verified customer {(reviewsStats.totalReviews || 0) === 1 ? "review" : "reviews"}
+                    </p>
+                  </div>
+
+                  {/* Right: Star Distribution Bars */}
+                  <div className="sm:col-span-7 space-y-1.5">
+                    {[5, 4, 3, 2, 1].map((star) => {
+                      const count = reviewsStats.ratingDistribution?.[star] || 0
+                      const total = reviewsStats.totalReviews || 1
+                      const pct = Math.round((count / (reviewsStats.totalReviews || 1)) * 100)
+                      const isSelected = reviewStarFilter === star
+
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => handleFilterStar(star)}
+                          className={`w-full flex items-center gap-2 text-xs py-1 px-2 rounded-md transition-colors ${
+                            isSelected ? "bg-amber-100/80 font-bold" : "hover:bg-amber-100/40"
+                          }`}
+                          title={`Filter by ${star} star reviews (${count})`}
+                        >
+                          <span className="w-8 flex items-center gap-1 font-medium text-slate-700 flex-shrink-0">
+                            {star} <Star className="w-3 h-3 fill-amber-400 text-amber-400 inline" />
+                          </span>
+                          <div className="flex-1 h-2 bg-slate-200/80 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-300"
+                              style={{ width: `${reviewsStats.totalReviews ? pct : 0}%` }}
+                            />
+                          </div>
+                          <span className="w-12 text-right font-medium text-slate-600 flex-shrink-0">
+                            {count} ({reviewsStats.totalReviews ? pct : 0}%)
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter & Sort Bar */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-2 border-b border-slate-200">
+                {/* Star Filter Pills */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-semibold text-slate-500 mr-1 flex items-center gap-1">
+                    <Filter className="w-3 h-3" /> Filter:
+                  </span>
+                  <button
+                    onClick={() => handleFilterStar(null)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                      reviewStarFilter === null
+                        ? "bg-slate-900 text-white shadow-2xs"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                    }`}
+                  >
+                    All ({reviewsStats.totalReviews || 0})
+                  </button>
+                  {[5, 4, 3, 2, 1].map((s) => {
+                    const count = reviewsStats.ratingDistribution?.[s] || 0
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => handleFilterStar(s)}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1 ${
+                          reviewStarFilter === s
+                            ? "bg-amber-500 text-white shadow-2xs font-semibold"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        <span>{s}</span>
+                        <Star className={`w-3 h-3 ${reviewStarFilter === s ? "fill-white text-white" : "fill-amber-400 text-amber-400"}`} />
+                        <span className="text-[11px] opacity-80">({count})</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Sort Selector */}
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <span className="text-xs font-medium text-slate-500">Sort:</span>
+                  <select
+                    value={reviewSortOrder}
+                    onChange={(e) => handleSortChange(e.target.value)}
+                    className="text-xs border border-slate-300 rounded-lg px-2.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 font-medium cursor-pointer"
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="highest">Highest Rating</option>
+                    <option value="lowest">Lowest Rating</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Reviews List / Loading / Error / Empty States */}
+              {reviewsLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                  <Loader2 className="w-8 h-8 animate-spin text-amber-500 mb-3" />
+                  <p className="text-sm font-medium">Loading customer reviews...</p>
+                </div>
+              ) : reviewsError ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center p-4 bg-red-50 rounded-xl border border-red-200">
+                  <AlertTriangle className="w-8 h-8 text-red-500 mb-2" />
+                  <p className="text-sm font-semibold text-red-700">{reviewsError}</p>
+                  <button
+                    onClick={() => fetchRestaurantReviews(reviewsRestaurant, { page: reviewPage, rating: reviewStarFilter, sortOrder: reviewSortOrder })}
+                    className="mt-3 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              ) : reviewsList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200/60 flex items-center justify-center mb-3">
+                    <MessageSquare className="w-8 h-8 text-amber-400" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-800 mb-1">
+                    {reviewStarFilter ? `No ${reviewStarFilter}-Star Reviews Found` : "No Customer Reviews Yet"}
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-sm">
+                    {reviewStarFilter
+                      ? `No customers have left a ${reviewStarFilter}-star review for this restaurant yet.`
+                      : "This restaurant hasn't received any order reviews or feedback from users yet."}
+                  </p>
+                  {reviewStarFilter !== null && (
+                    <button
+                      onClick={() => handleFilterStar(null)}
+                      className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      Clear star filter & view all
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reviewsList.map((review, rIdx) => {
+                    const customerName = review.customer?.name || "Verified Customer"
+                    const customerPhone = review.customer?.phone
+                    const customerEmail = review.customer?.email
+                    const ratingScore = Number(review.rating || 0)
+                    const commentText = review.comment?.trim()
+
+                    return (
+                      <div
+                        key={review.orderMongoId || review.orderId || rIdx}
+                        className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 p-4 sm:p-5 transition-all shadow-2xs"
+                      >
+                        {/* Customer Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-2xs flex-shrink-0">
+                              {customerName.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-bold text-slate-900">
+                                  {customerName}
+                                </span>
+                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
+                                  Verified Order
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5 flex-wrap">
+                                {customerPhone && (
+                                  <span className="flex items-center gap-1">
+                                    <Phone className="w-3 h-3 text-slate-400" />
+                                    {customerPhone}
+                                  </span>
+                                )}
+                                {customerEmail && (
+                                  <span className="flex items-center gap-1">
+                                    <Mail className="w-3 h-3 text-slate-400" />
+                                    {customerEmail}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Rating & Date */}
+                          <div className="flex flex-col items-end flex-shrink-0">
+                            <div className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-900 shadow-2xs">
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                              <span>{ratingScore.toFixed(1)}</span>
+                            </div>
+                            <span className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              {formatReviewDate(review.submittedAt || review.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Order ID reference badge */}
+                        {review.orderId && (
+                          <div className="mt-2.5 flex items-center gap-2">
+                            <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              Order ID: <span className="font-semibold text-slate-800">#{review.orderId}</span>
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Review Comment Bubble */}
+                        {commentText ? (
+                          <div className="mt-3 bg-slate-50/90 rounded-lg p-3 border border-slate-200/80 text-sm text-slate-800 leading-relaxed font-normal">
+                            <p className="italic">"{commentText}"</p>
+                          </div>
+                        ) : (
+                          <p className="mt-2.5 text-xs italic text-slate-400">
+                            Customer rated {ratingScore} {ratingScore === 1 ? "star" : "stars"} without a written review.
+                          </p>
+                        )}
+
+                        {/* Ordered Items List (if available) */}
+                        {Array.isArray(review.items) && review.items.length > 0 && (
+                          <div className="mt-3 pt-2.5 border-t border-slate-100">
+                            <p className="text-[11px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+                              <Utensils className="w-3 h-3 text-slate-400" /> Ordered Items:
+                            </p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {review.items.map((item, iIdx) => (
+                                <span
+                                  key={iIdx}
+                                  className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-md border border-slate-200"
+                                >
+                                  <span className="font-medium">{item.name}</span>
+                                  {item.quantity > 1 && (
+                                    <span className="text-slate-500 font-semibold">x{item.quantity}</span>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer / Pagination */}
+            <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-5 sm:px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-slate-600">
+                Total <span className="font-bold text-slate-900">{reviewsStats.totalReviews || 0}</span> reviews for this restaurant
+              </div>
+
+              {reviewTotalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleReviewPageChange(reviewPage - 1)}
+                    disabled={reviewPage <= 1 || reviewsLoading}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs font-medium text-slate-700 px-2">
+                    Page {reviewPage} of {reviewTotalPages}
+                  </span>
+                  <button
+                    onClick={() => handleReviewPageChange(reviewPage + 1)}
+                    disabled={reviewPage >= reviewTotalPages || reviewsLoading}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                type="button"
+                onClick={closeReviewsModal}
+                className="text-xs h-8 px-4"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

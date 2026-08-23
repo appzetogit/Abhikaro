@@ -50,9 +50,13 @@ export const authenticate = async (req, res, next) => {
 
     const isWalletRoute = requestPath.includes('/wallet') ||
                           reqPath.includes('/wallet');
+
+    const isLegalRoute = requestPath.includes('/legal') ||
+                         reqPath.includes('/legal') ||
+                         reqPath.startsWith('/legal');
     
-    // Allow access to profile, requests, and wallet routes even if inactive
-    if (!hotel.isActive && !isProfileRoute && !isRequestsRoute && !isWalletRoute) {
+    // Allow access to profile, requests, wallet, and legal routes even if inactive
+    if (!hotel.isActive && !isProfileRoute && !isRequestsRoute && !isWalletRoute && !isLegalRoute) {
       console.error('❌ Hotel account is inactive - access denied:', {
         hotelId: hotel._id,
         hotelName: hotel.hotelName,

@@ -196,10 +196,25 @@ export default function UserOrderDetails() {
       .filter(Boolean)
       .join(", ")
 
+  const promoDiscount = Number(
+    pricing.adminOfferDiscount ??
+    order.adminOfferDiscount ??
+    pricing.adminPromoDiscount ??
+    0
+  )
+  const promoCodeName =
+    pricing.adminOfferName ||
+    order.adminOfferName ||
+    order.couponCode ||
+    null
+  const couponDiscount = Number(pricing.discount || order.discount || 0)
+
   const savings =
-    (pricing.discount || 0) +
-    (pricing.originalItemTotal || 0) -
-    (pricing.subtotal || 0)
+    pricing.savings !== undefined && Number(pricing.savings) > 0
+      ? Number(pricing.savings)
+      : couponDiscount +
+        promoDiscount +
+        Math.max(0, (pricing.originalItemTotal || 0) - (pricing.subtotal || 0))
 
   // Restaurant phone (multiple fallbacks) - use fetched restaurant data first
   const restaurantPhone =
@@ -350,14 +365,109 @@ export default function UserOrderDetails() {
         }
       })
       
-      // Get final Y position after table (autoTable adds lastAutoTable property)
-      const finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY : yPos + (tableData.length * 8) + 20
-      
-      // Total
+      // Get final Y position after table
+      let currentY =
+        doc.lastAutoTable && doc.lastAutoTable.finalY
+          ? doc.lastAutoTable.finalY + 8
+          : yPos + tableData.length * 8 + 20
+
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "normal")
+
+      // Item Total
+      doc.text("Item Total:", 145, currentY, { align: "right" })
+      doc.text(
+        `Rs. ${Number(pricing.subtotal || pricing.total || 0).toFixed(2)}`,
+        195,
+        currentY,
+        { align: "right" }
+      )
+      currentY += 6
+
+      // Restaurant Discount
+      if (couponDiscount > 0) {
+        doc.setTextColor(34, 139, 34)
+        doc.text("Restaurant Discount:", 145, currentY, { align: "right" })
+        doc.text(`-Rs. ${couponDiscount.toFixed(2)}`, 195, currentY, {
+          align: "right",
+        })
+        doc.setTextColor(0, 0, 0)
+        currentY += 6
+      }
+
+      // Promo Code Discount
+      if (promoDiscount > 0) {
+        doc.setTextColor(34, 139, 34)
+        const promoLabel = promoCodeName
+          ? `Promo (${promoCodeName}):`
+          : "Promo Discount:"
+        doc.text(promoLabel, 145, currentY, { align: "right" })
+        doc.text(`-Rs. ${promoDiscount.toFixed(2)}`, 195, currentY, {
+          align: "right",
+        })
+        doc.setTextColor(0, 0, 0)
+        currentY += 6
+      }
+
+      // Taxes / GST
+      if (Number(pricing.tax || 0) > 0) {
+        doc.text("GST (govt. taxes):", 145, currentY, { align: "right" })
+        doc.text(`Rs. ${Number(pricing.tax || 0).toFixed(2)}`, 195, currentY, {
+          align: "right",
+        })
+        currentY += 6
+      }
+
+      // Delivery Fee
+      doc.text("Delivery Partner Fee:", 145, currentY, { align: "right" })
+      doc.text(
+        pricing.deliveryFee
+          ? `Rs. ${Number(pricing.deliveryFee).toFixed(2)}`
+          : "FREE",
+        195,
+        currentY,
+        { align: "right" }
+      )
+      currentY += 6
+
+      // Platform Fee
+      if (Number(pricing.platformFee || 0) > 0) {
+        doc.text("Platform Fee:", 145, currentY, { align: "right" })
+        doc.text(
+          `Rs. ${Number(pricing.platformFee || 0).toFixed(2)}`,
+          195,
+          currentY,
+          { align: "right" }
+        )
+        currentY += 6
+      }
+
+      // Separator Line
+      doc.setDrawColor(200, 200, 200)
+      doc.line(110, currentY, 195, currentY)
+      currentY += 6
+
+      // Paid / Total
       doc.setFontSize(12)
-      doc.setFont('helvetica', 'bold')
-      doc.text('Total:', 145, finalY + 10, { align: 'right' })
-      doc.text(`Rs. ${Number(pricing.total || 0).toFixed(2)}`, 195, finalY + 10, { align: 'right' })
+      doc.setFont("helvetica", "bold")
+      doc.text("Total Paid:", 145, currentY, { align: "right" })
+      doc.text(`Rs. ${Number(pricing.total || 0).toFixed(2)}`, 195, currentY, {
+        align: "right",
+      })
+
+      // Total Savings Note
+      if (savings > 0) {
+        currentY += 8
+        doc.setFontSize(10)
+        doc.setTextColor(0, 102, 204)
+        doc.text(
+          `Total Savings on this order: Rs. ${Number(savings).toFixed(2)}`,
+          195,
+          currentY,
+          { align: "right" }
+        )
+        doc.setTextColor(0, 0, 0)
+      }
       
       // Save PDF instantly
       const fileName = `Order_Summary_${orderIdDisplay}_${Date.now()}.pdf`
@@ -535,6 +645,28 @@ export default function UserOrderDetails() {
                 </span>
               </div>
             </div>
+
+            {/* Restaurant Dish / Coupon Discount */}
+            {couponDiscount > 0 && (
+              <div className="flex justify-between items-center text-emerald-600 font-medium">
+                <span>Restaurant Discount</span>
+                <span>-₹{couponDiscount.toFixed(2)}</span>
+              </div>
+            )}
+
+            {/* Platform Promo Code Discount */}
+            {promoDiscount > 0 && (
+              <div className="flex justify-between items-center text-emerald-600 font-medium">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-xs uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                    PROMO
+                  </span>
+                  <span>{promoCodeName ? `'${promoCodeName}'` : "Discount"}</span>
+                </span>
+                <span>-₹{promoDiscount.toFixed(2)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between">
               <span className="text-gray-500">GST (govt. taxes)</span>
               <span className="text-gray-800">

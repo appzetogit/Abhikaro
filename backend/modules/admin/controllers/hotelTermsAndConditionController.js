@@ -2,6 +2,15 @@ import HotelTermsAndCondition from "../models/HotelTermsAndCondition.js";
 import { successResponse, errorResponse } from "../../../shared/utils/response.js";
 import asyncHandler from "../../../shared/middleware/asyncHandler.js";
 
+let getIO = null;
+async function getIOInstance() {
+  if (!getIO) {
+    const serverModule = await import("../../../server.js");
+    getIO = serverModule.getIO;
+  }
+  return getIO ? getIO() : null;
+}
+
 /**
  * Get Hotel Terms and Condition (Public)
  * GET /api/hotel-terms/public
@@ -9,7 +18,7 @@ import asyncHandler from "../../../shared/middleware/asyncHandler.js";
 export const getHotelTermsPublic = asyncHandler(async (req, res) => {
   try {
     const terms = await HotelTermsAndCondition.findOne({ isActive: true })
-      .select("-updatedBy -createdAt -updatedAt -__v")
+      .select("-updatedBy -createdAt -__v")
       .lean();
 
     if (!terms) {
@@ -20,6 +29,8 @@ export const getHotelTermsPublic = asyncHandler(async (req, res) => {
         {
           title: "Hotel Terms and Conditions",
           content: "",
+          version: 1,
+          updatedAt: new Date(),
         },
       );
     }
@@ -52,6 +63,8 @@ export const getHotelTerms = asyncHandler(async (req, res) => {
         {
           title: "Hotel Terms and Conditions",
           content: "",
+          version: 1,
+          updatedAt: new Date(),
         },
       );
     }
@@ -87,14 +100,30 @@ export const updateHotelTerms = asyncHandler(async (req, res) => {
         title: title || "Hotel Terms and Conditions",
         content,
         updatedBy: req.admin?._id || null,
+        version: 1,
       });
     } else {
       if (title !== undefined) terms.title = title;
       terms.content = content;
       terms.updatedBy = req.admin?._id || null;
+      terms.version = (terms.version || 1) + 1;
     }
 
     await terms.save();
+
+    // Broadcast real-time update to connected hotel clients
+    try {
+      const io = await getIOInstance();
+      if (io) {
+        io.emit("hotel_terms_updated", {
+          version: terms.version,
+          updatedAt: terms.updatedAt,
+          title: terms.title,
+        });
+      }
+    } catch (socketErr) {
+      console.warn("Could not emit hotel_terms_updated socket event:", socketErr?.message);
+    }
 
     return successResponse(
       res,

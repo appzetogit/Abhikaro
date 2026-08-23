@@ -2,6 +2,15 @@ import RestaurantTermsAndCondition from "../models/RestaurantTermsAndCondition.j
 import { successResponse, errorResponse } from "../../../shared/utils/response.js";
 import asyncHandler from "../../../shared/middleware/asyncHandler.js";
 
+let getIO = null;
+async function getIOInstance() {
+  if (!getIO) {
+    const serverModule = await import("../../../server.js");
+    getIO = serverModule.getIO;
+  }
+  return getIO ? getIO() : null;
+}
+
 /**
  * Get Restaurant Terms and Condition (Public)
  * GET /api/restaurant/public/terms
@@ -9,7 +18,7 @@ import asyncHandler from "../../../shared/middleware/asyncHandler.js";
 export const getRestaurantTermsPublic = asyncHandler(async (req, res) => {
   try {
     const terms = await RestaurantTermsAndCondition.findOne({ isActive: true })
-      .select("-updatedBy -createdAt -updatedAt -__v")
+      .select("-updatedBy -createdAt -__v")
       .lean();
 
     if (!terms) {
@@ -20,6 +29,8 @@ export const getRestaurantTermsPublic = asyncHandler(async (req, res) => {
         {
           title: "Restaurant Terms and Conditions",
           content: "<p>No terms and conditions available at the moment.</p>",
+          version: 1,
+          updatedAt: new Date(),
         },
       );
     }
@@ -50,6 +61,7 @@ export const getRestaurantTerms = asyncHandler(async (req, res) => {
         content:
           '<p>Enter your restaurant Terms &amp; Conditions here.</p><p><br></p><p><strong>Note:</strong> This content will be shown inside the restaurant app.</p>',
         updatedBy: req.admin?._id || null,
+        version: 1,
       });
     }
 
@@ -84,14 +96,30 @@ export const updateRestaurantTerms = asyncHandler(async (req, res) => {
         title: title || "Restaurant Terms and Conditions",
         content,
         updatedBy: req.admin?._id || null,
+        version: 1,
       });
     } else {
       if (title !== undefined) terms.title = title;
       terms.content = content;
       terms.updatedBy = req.admin?._id || null;
+      terms.version = (terms.version || 1) + 1;
     }
 
     await terms.save();
+
+    // Broadcast real-time update to all connected restaurant clients
+    try {
+      const io = await getIOInstance();
+      if (io) {
+        io.emit("restaurant_terms_updated", {
+          version: terms.version,
+          updatedAt: terms.updatedAt,
+          title: terms.title,
+        });
+      }
+    } catch (socketErr) {
+      console.warn("Could not emit restaurant_terms_updated socket event:", socketErr?.message);
+    }
 
     return successResponse(
       res,

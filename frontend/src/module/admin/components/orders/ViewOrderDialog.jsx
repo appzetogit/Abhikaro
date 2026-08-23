@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, X, Receipt, CheckCircle, Loader2 } from "lucide-react"
+import { Eye, MapPin, Package, User, Phone, Mail, Calendar, Clock, Truck, CreditCard, X, Receipt, CheckCircle, Loader2, Ticket } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
 import {
@@ -366,6 +366,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
   const subtotal = viewOrder?.totalItemAmount ?? viewOrder?.pricing?.subtotal ?? 0
   const discount = viewOrder?.itemDiscount ?? viewOrder?.pricing?.discount ?? 0
   const couponDiscount = viewOrder?.couponDiscount ?? viewOrder?.pricing?.couponDiscount ?? 0
+  const adminOfferDiscount = viewOrder?.adminOfferDiscount ?? viewOrder?.pricing?.adminOfferDiscount ?? 0
+  const adminOfferName = viewOrder?.adminOfferName ?? viewOrder?.pricing?.adminOfferName ?? null
   const deliveryCharge = viewOrder?.deliveryCharge ?? viewOrder?.pricing?.deliveryFee ?? 0
   const platformFee = viewOrder?.platformFee ?? viewOrder?.pricing?.platformFee ?? 0
   const tax = viewOrder?.vatTax ?? viewOrder?.pricing?.tax ?? 0
@@ -808,7 +810,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
               )}
               {discount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Discount</span>
+                  <span className="text-slate-600">Restaurant Discount</span>
                   <span className="font-medium text-emerald-600">-₹{discount.toFixed(2)}</span>
                 </div>
               )}
@@ -816,6 +818,18 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Coupon Discount</span>
                   <span className="font-medium text-emerald-600">-₹{couponDiscount.toFixed(2)}</span>
+                </div>
+              )}
+              {adminOfferDiscount > 0 && (
+                <div className="flex justify-between text-sm bg-orange-50 p-2.5 rounded-lg border border-orange-200">
+                  <span className="text-orange-900 font-medium flex items-center gap-1.5">
+                    <Ticket className="w-4 h-4 text-orange-600" />
+                    Admin Promo {adminOfferName ? `(${adminOfferName})` : ""}
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-200 text-orange-800">
+                      Platform Subsidized
+                    </span>
+                  </span>
+                  <span className="font-bold text-orange-600">-₹{Number(adminOfferDiscount).toFixed(2)}</span>
                 </div>
               )}
               {(deliveryCharge !== undefined || viewOrder?.pricing?.deliveryFee !== undefined) && (

@@ -248,6 +248,13 @@ export const sidebarMenuData = [
         icon: "Megaphone",
         permissionId: "page.advertise_banner",
       },
+      {
+        type: "link",
+        label: "Promo Codes",
+        path: "/admin/promo-codes",
+        icon: "Ticket",
+        permissionId: "page.promo_codes",
+      },
     ],
   },
 

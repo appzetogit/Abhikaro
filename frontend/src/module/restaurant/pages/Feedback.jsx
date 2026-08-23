@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bell, HelpCircle, Menu, Search, Calendar, ChevronLeft, X, Loader2, ChevronRight } from "lucide-react"
+import { Bell, HelpCircle, Menu, Search, Calendar, ChevronLeft, X, Loader2, ChevronRight, Star } from "lucide-react"
 import { DateRangeCalendar } from "@/components/ui/date-range-calendar"
 import BottomNavOrders from "../components/BottomNavOrders"
 import { restaurantAPI } from "@/lib/api"
@@ -9,76 +9,6 @@ import { restaurantAPI } from "@/lib/api"
 const tabs = [
   { id: "complaints", label: "Complaints" },
   { id: "reviews", label: "Reviews" },
-]
-
-// Dummy review data
-const dummyReviews = [
-  {
-    id: 1,
-    orderNumber: "0",
-    outlet: "Kadhai Chammach Restaur.. By Pass Road (South)",
-    userName: "Pradeep Rajput",
-    userImage: "https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=80",
-    ordersCount: 0,
-    rating: 5,
-    date: "30 Dec, 2023 2:05 PM",
-    reviewText: "very good nice food"
-  },
-  {
-    id: 2,
-    orderNumber: "1234",
-    outlet: "Kadhai Chammach Restaur.. By Pass Road (North)",
-    userName: "Rahul Sharma",
-    userImage: "https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=80",
-    ordersCount: 3,
-    rating: 4,
-    date: "29 Dec, 2023 8:30 AM",
-    reviewText: "Great food quality and fast delivery. Will order again!"
-  },
-  {
-    id: 3,
-    orderNumber: "1235",
-    outlet: "Kadhai Chammach Restaur.. By Pass Road (South)",
-    userName: "Priya Patel",
-    userImage: "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=80",
-    ordersCount: 1,
-    rating: 5,
-    date: "28 Dec, 2023 6:15 PM",
-    reviewText: "Amazing taste! The biryani was perfect."
-  },
-  {
-    id: 4,
-    orderNumber: "1236",
-    outlet: "Kadhai Chammach Restaur.. By Pass Road (Central)",
-    userName: "Amit Kumar",
-    userImage: "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=80",
-    ordersCount: 5,
-    rating: 3,
-    date: "27 Dec, 2023 1:20 PM",
-    reviewText: "Food was okay, but delivery took longer than expected."
-  },
-  {
-    id: 5,
-    orderNumber: "1237",
-    outlet: "Kadhai Chammach Restaur.. By Pass Road (South)",
-    userName: "Sneha Reddy",
-    userImage: "https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=80",
-    ordersCount: 2,
-    rating: 5,
-    date: "26 Dec, 2023 9:45 AM",
-    reviewText: "Excellent service and delicious food. Highly recommended!"
-  },
-  {
-    id: 6,
-    orderNumber: "1238",
-    outlet: "Kadhai Chammach Restaur.. By Pass Road (North)",
-    userName: "Vikram Singh",
-    userImage: "https://images.pexels.com/photos/91227/pexels-photo-91227.jpeg?auto=compress&cs=tinysrgb&w=80",
-    ordersCount: 7,
-    rating: 4,
-    date: "25 Dec, 2023 4:10 PM",
-    reviewText: "Good quality food. Packaging was neat and clean."
-  }
 ]
 
 export default function Feedback() {
@@ -341,6 +271,7 @@ export default function Feedback() {
               ordersCount: userOrdersCount,
               rating: rating || 5, // Default to 5 if no rating
               date: formattedDate,
+              timestamp: orderDate.getTime(),
               reviewText: reviewText,
               reply: order.review?.reply || order.feedback?.reply || null,
               orderData: order // Keep original order data
@@ -350,6 +281,7 @@ export default function Feedback() {
             // Include reviews that have a rating or have review text (not the default "No review text")
             return review.rating !== null || (review.reviewText && review.reviewText !== 'No review text')
           })
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
 
         // Calculate rating summary
         const ratings = transformedReviews.map(r => r.rating).filter(r => r !== null)
@@ -404,26 +336,23 @@ export default function Feedback() {
       // This can be extended when review type is added to the review data structure
     }
 
-    // Sort reviews
-    if (filterValues.sortBy) {
-      filtered.sort((a, b) => {
-        const dateA = new Date(a.date)
-        const dateB = new Date(b.date)
-        
-        switch (filterValues.sortBy) {
-          case "newest":
-            return dateB - dateA
-          case "oldest":
-            return dateA - dateB
-          case "bestRated":
-            return b.rating - a.rating
-          case "worstRated":
-            return a.rating - b.rating
-          default:
-            return 0
-        }
-      })
-    }
+    // Sort reviews (default to newest first)
+    filtered.sort((a, b) => {
+      const timeA = a.timestamp || new Date(a.date).getTime() || 0
+      const timeB = b.timestamp || new Date(b.date).getTime() || 0
+
+      switch (filterValues.sortBy) {
+        case "oldest":
+          return timeA - timeB
+        case "bestRated":
+          return (b.rating || 0) - (a.rating || 0) || timeB - timeA
+        case "worstRated":
+          return (a.rating || 0) - (b.rating || 0) || timeB - timeA
+        case "newest":
+        default:
+          return timeB - timeA
+      }
+    })
 
     setDisplayedReviews(filtered)
   }, [reviews, filterValues])
@@ -825,15 +754,35 @@ export default function Feedback() {
                 </div>
 
                 {/* Reviews heading + info */}
-                <div className="space-y-1 mt-8">
-                  <h2 className="text-sm font-semibold text-gray-900">
-                    Reviews ({displayedReviews.length})
-                  </h2>
-                  <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                    <span>ⓘ</span>
-                    <span>Delivery reviews are only visible to you</span>
-                  </div>
-                </div>
+                {(() => {
+                  const avgRating = (() => {
+                    if (ratingSummary.averageRating > 0) return Number(ratingSummary.averageRating).toFixed(1)
+                    if (restaurantData?.ratings?.average > 0) return Number(restaurantData.ratings.average).toFixed(1)
+                    if (restaurantData?.rating > 0) return Number(restaurantData.rating).toFixed(1)
+                    if (displayedReviews.length > 0) {
+                      const validRatings = displayedReviews.map(r => Number(r.rating)).filter(r => r > 0)
+                      if (validRatings.length > 0) {
+                        return (validRatings.reduce((a, b) => a + b, 0) / validRatings.length).toFixed(1)
+                      }
+                    }
+                    return "0.0"
+                  })()
+
+                  return (
+                    <div className="space-y-1 mt-8">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-sm font-semibold text-gray-900">
+                          Reviews ({displayedReviews.length})
+                        </h2>
+                        <div className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200/90 px-2 py-0.5 rounded-md text-xs font-bold text-amber-900 shadow-2xs">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500 flex-shrink-0" />
+                          <span>{avgRating}</span>
+                        </div>
+                      </div>
+                      
+                    </div>
+                  )
+                })()}
 
                 {/* Review cards */}
                 <div className="space-y-2 relative">

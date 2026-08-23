@@ -292,6 +292,10 @@ export const API_ENDPOINTS = {
     UNDER_250: "/restaurant/under-250",
     BY_ID: "/restaurant/:id",
     BY_OWNER: "/restaurant/owner/me",
+    LEGAL: {
+      TERMS_STATUS: "/restaurant/legal/terms-status",
+      ACCEPT_TERMS: "/restaurant/legal/accept-terms",
+    },
   },
   // Hotel endpoints
   HOTEL: {
@@ -312,6 +316,10 @@ export const API_ENDPOINTS = {
     ORDER_COLLECT_PAYMENT: "/hotel/orders/:orderId/collect-payment",
     ORDER_DELIVER: "/hotel/orders/:orderId/deliver",
     PUBLIC: "/hotel/public/:hotelId", // Public endpoint for QR code scanning
+    LEGAL: {
+      TERMS_STATUS: "/hotel/legal/terms-status",
+      ACCEPT_TERMS: "/hotel/legal/accept-terms",
+    },
   },
   // Delivery endpoints
   DELIVERY: {
@@ -444,6 +452,7 @@ export const API_ENDPOINTS = {
     CUSTOMER_CONTACT_US_BY_ID: "/admin/customer-contact-us/:id",
     CUSTOMER_CONTACT_US_STATUS: "/admin/customer-contact-us/:id/status",
     REVIEWS: "/admin/reviews",
+    REVIEWS_BY_RESTAURANT: "/reviews/restaurant/:restaurantId",
     FEEDBACK_EXPERIENCE: "/admin/feedback-experience",
     FEEDBACK_EXPERIENCE_CREATE: "/feedback-experience",
     FEEDBACK_EXPERIENCE_BY_ID: "/admin/feedback-experience/:id",

@@ -136,6 +136,9 @@ export default function Cart() {
   // Coupons state - fetched from backend
   const [availableCoupons, setAvailableCoupons] = useState([])
   const [loadingCoupons, setLoadingCoupons] = useState(false)
+  const [adminPromoCodes, setAdminPromoCodes] = useState([])
+  const [promoInput, setPromoInput] = useState("")
+  const [isValidatingPromo, setIsValidatingPromo] = useState(false)
 
   // Category offer (admin category offerPercentage) state
   const [categoryOffers, setCategoryOffers] = useState([])
@@ -916,6 +919,21 @@ export default function Cart() {
     fetchCategoryOffers()
   }, [])
 
+  // Fetch active admin promo codes on mount
+  useEffect(() => {
+    const fetchAdminPromoCodes = async () => {
+      try {
+        const res = await adminAPI.getPublicActivePromoCodes();
+        if (res?.data?.success && res.data.data?.promoCodes) {
+          setAdminPromoCodes(res.data.data.promoCodes);
+        }
+      } catch (err) {
+        // silent fail
+      }
+    };
+    fetchAdminPromoCodes();
+  }, [])
+
   // Helper: get best matching category offer for a given cart item
   const getCategoryOfferForCartItem = (item) => {
     if (!item || categoryOffers.length === 0) return null
@@ -1050,7 +1068,14 @@ export default function Cart() {
   const gstCharges = pricing?.tax || Math.round(subtotal * (feeSettings.gstRate / 100))
 
   // Base discount from backend pricing or applied coupon (restaurant‑impacting discount)
-  const baseDiscount = pricing?.discount || (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
+  const baseDiscount = appliedCoupon?.isAdminPromo
+    ? 0
+    : (pricing?.discount || (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0))
+
+  // Extra discount funded by admin promo code – subsidized from admin commission, does NOT reduce restaurant share
+  const adminPromoDiscount = appliedCoupon?.isAdminPromo
+    ? Number(appliedCoupon.discount || 0)
+    : Number(pricing?.adminOfferDiscount || 0)
 
   // Total bill before any discounts (items + delivery + platform + GST)
   const totalBeforeAnyDiscount = subtotal + deliveryFee + platformFee + gstCharges
@@ -1064,8 +1089,8 @@ export default function Cart() {
   // Total that restaurant sees (used for commission) still based on baseDiscount only
   const totalAfterBaseDiscount = totalBeforeAnyDiscount - baseDiscount
 
-  // User actually pays after admin offer as well
-  const total = Math.max(0, totalAfterBaseDiscount - categoryOfferDiscount)
+  // User actually pays after admin offer and admin promo as well
+  const total = Math.max(0, totalAfterBaseDiscount - categoryOfferDiscount - adminPromoDiscount)
 
   // Pay at Hotel rule: allow only up to the configured limit
   const PAY_AT_HOTEL_MAX_TOTAL = businessSettings.payAtHotelMaxTotal
@@ -1083,7 +1108,8 @@ export default function Cart() {
 
   const savings =
     (pricing?.savings || (baseDiscount + (subtotal > 500 ? 32 : 0))) +
-    categoryOfferDiscount
+    categoryOfferDiscount +
+    adminPromoDiscount
 
   // Restaurant name and slug from data or cart (slug for Edit navigation)
   const restaurantName = restaurantData?.name || cart[0]?.restaurant || "Restaurant"
@@ -1167,10 +1193,52 @@ export default function Cart() {
     }
   }
 
+  const handleApplyCustomPromo = async (codeToApply = null) => {
+    const code = (codeToApply || promoInput || "").trim().toUpperCase();
+    if (!code) {
+      toast.error("Please enter a promo code");
+      return;
+    }
+    try {
+      setIsValidatingPromo(true);
+      const res = await adminAPI.validatePromoCode({
+        code,
+        subtotal,
+        restaurantId: restaurantData?.restaurantId || restaurantData?._id || restaurantId || null,
+        userId: userProfile?.id || userProfile?._id || null,
+      });
+
+      if (res?.data?.success && res.data.data) {
+        const promo = res.data.data;
+        const newAppliedCoupon = {
+          code: promo.code,
+          discount: promo.discountAmount,
+          discountPercentage: promo.discountType === "percentage" ? promo.discountValue : 0,
+          minOrder: promo.minOrderAmount || 0,
+          type: promo.discountType,
+          title: promo.title,
+          isAdminPromo: true,
+        };
+        setAppliedCoupon(newAppliedCoupon);
+        setCouponCode(promo.code);
+        setPromoInput("");
+        setShowCoupons(false);
+        triggerOfferConfetti();
+        toast.success(res.data.message || `Promo code '${promo.code}' applied!`);
+      } else {
+        toast.error(res?.data?.message || "Invalid or inapplicable promo code");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Invalid or inapplicable promo code");
+    } finally {
+      setIsValidatingPromo(false);
+    }
+  };
 
   const handleRemoveCoupon = async () => {
     setAppliedCoupon(null)
     setCouponCode("")
+    setPromoInput("")
 
     // Recalculate pricing without coupon
     if (cart.length > 0 && checkoutDeliveryAddress) {
@@ -1348,8 +1416,12 @@ export default function Cart() {
         orderPricing.couponCode = appliedCoupon.code;
       }
 
-      // Attach admin-funded offer info (category offer) so admin reports & backend know it's platform-funded
-      if (isCategoryOfferApplied && bestCategoryOffer && categoryOfferDiscount > 0) {
+      // Attach admin-funded offer info (admin promo code or category offer) so admin reports & backend know it's platform-funded
+      if (appliedCoupon?.isAdminPromo && adminPromoDiscount > 0) {
+        orderPricing.adminOfferDiscount = adminPromoDiscount;
+        orderPricing.adminOfferName = appliedCoupon.code;
+        orderPricing.adminOfferPercent = appliedCoupon.discountPercentage || 0;
+      } else if (isCategoryOfferApplied && bestCategoryOffer && categoryOfferDiscount > 0) {
         orderPricing.adminOfferDiscount = categoryOfferDiscount;
         orderPricing.adminOfferName = bestCategoryOffer.name;
         orderPricing.adminOfferPercent = bestCategoryOffer.percent;
@@ -2265,78 +2337,241 @@ export default function Cart() {
                 </div>
               )}
 
-              {/* Coupon Section */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
+              {/* Coupon & Promo Code Section */}
+              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-4 md:py-5 rounded-lg md:rounded-xl border border-gray-100 dark:border-gray-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                    <h3 className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">
+                      Offers & Promo Codes
+                    </h3>
+                  </div>
+                  {!appliedCoupon && (adminPromoCodes.length > 0 || availableCoupons.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCoupons(!showCoupons)}
+                      className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                    >
+                      {showCoupons ? "Hide Offers" : "View All Offers →"}
+                    </button>
+                  )}
+                </div>
+
                 {appliedCoupon ? (
-                  <div className="flex items-center justify-between bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg md:rounded-xl p-3 md:p-4">
+                  <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg md:rounded-xl p-3 md:p-4">
                     <div className="flex items-center gap-2 md:gap-3">
-                      <Tag className="h-4 w-4 md:h-5 md:w-5 text-red-600 dark:text-red-400" />
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-800/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                        <Tag className="h-4 w-4" />
+                      </div>
                       <div>
-                        <p className="text-sm md:text-base font-medium text-red-700 dark:text-red-300">'{appliedCoupon.code}' applied</p>
-                        <p className="text-xs md:text-sm text-red-600 dark:text-red-400">You saved ₹{baseDiscount}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-sm md:text-base text-emerald-700 dark:text-emerald-300">
+                            '{appliedCoupon.code}'
+                          </span>
+                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200">
+                            {appliedCoupon.isAdminPromo ? "Platform Promo" : "Coupon"} Applied
+                          </span>
+                        </div>
+                        <p className="text-xs md:text-sm text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          You save ₹{(appliedCoupon.isAdminPromo ? adminPromoDiscount : baseDiscount).toFixed(0)} on this order
+                        </p>
                       </div>
                     </div>
-                    <button onClick={handleRemoveCoupon} className="text-gray-500 dark:text-gray-400 text-xs md:text-sm font-medium">Remove</button>
+                    <button
+                      onClick={handleRemoveCoupon}
+                      className="text-red-500 hover:text-red-700 dark:text-red-400 text-xs md:text-sm font-semibold px-2 py-1"
+                    >
+                      Remove
+                    </button>
                   </div>
-                ) : loadingCoupons ? (
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <Percent className="h-4 w-4 md:h-5 md:w-5 text-gray-600 dark:text-gray-400" />
-                    <p className="text-sm md:text-base text-gray-500 dark:text-gray-400">Loading coupons...</p>
-                  </div>
-                ) : availableCoupons.length > 0 ? (
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 md:gap-3">
-                        <Percent className="h-4 w-4 md:h-5 md:w-5 text-gray-600 dark:text-gray-400" />
-                        <div>
-                          <p className="text-sm md:text-base font-medium text-gray-800 dark:text-gray-200">
-                            Save ₹{availableCoupons[0].discount} with '{availableCoupons[0].code}'
-                          </p>
-                          {availableCoupons.length > 1 && (
-                            <button onClick={() => setShowCoupons(!showCoupons)} className="text-xs md:text-sm text-blue-600 dark:text-blue-400 font-medium">
-                              View all coupons →
-                            </button>
-                          )}
-                        </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Promo Code Input Box */}
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          placeholder="Enter Promo or Coupon Code"
+                          value={promoInput}
+                          onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleApplyCustomPromo();
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-xs md:text-sm uppercase font-mono font-bold rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all placeholder:font-sans placeholder:font-normal placeholder:normal-case"
+                        />
                       </div>
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="h-7 md:h-8 text-xs md:text-sm border-red-600 dark:border-red-500 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        onClick={() => handleApplyCoupon(availableCoupons[0])}
-                        disabled={subtotal < availableCoupons[0].minOrder}
+                        onClick={() => handleApplyCustomPromo()}
+                        disabled={!promoInput.trim() || isValidatingPromo}
+                        className="bg-orange-600 hover:bg-orange-700 text-white text-xs md:text-sm font-semibold px-4 h-9 min-w-[75px]"
                       >
-                        {subtotal < availableCoupons[0].minOrder ? `Min ₹${availableCoupons[0].minOrder}` : 'APPLY'}
+                        {isValidatingPromo ? "..." : "APPLY"}
                       </Button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <Percent className="h-4 w-4 md:h-5 md:w-5 text-gray-600 dark:text-gray-400" />
-                    <p className="text-sm md:text-base text-gray-500 dark:text-gray-400">No coupons available</p>
+
+                    {/* Featured / Available Promo Badges */}
+                    {!showCoupons && adminPromoCodes.length > 0 && (
+                      <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+                        {adminPromoCodes.slice(0, 2).map((promo) => {
+                          const isEligible = subtotal >= (promo.minOrderAmount || 0);
+                          return (
+                            <div
+                              key={promo._id}
+                              className={`flex-shrink-0 flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-xs transition-all ${
+                                isEligible
+                                  ? "bg-orange-50/70 dark:bg-orange-900/10 border border-orange-200/80 dark:border-orange-800/50"
+                                  : "bg-gray-50/80 dark:bg-gray-800/30 border border-gray-200 dark:border-gray-700/60 opacity-60"
+                              }`}
+                            >
+                              <div>
+                                <p
+                                  className={`font-mono font-bold ${
+                                    isEligible
+                                      ? "text-orange-700 dark:text-orange-400"
+                                      : "text-gray-500 dark:text-gray-400"
+                                  }`}
+                                >
+                                  {promo.code}
+                                </p>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                  {promo.discountType === "percentage"
+                                    ? `${promo.discountValue}% OFF`
+                                    : `₹${promo.discountValue} FLAT OFF`}
+                                  {promo.minOrderAmount > 0 ? ` on min ₹${promo.minOrderAmount}` : ""}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!isEligible}
+                                className={`h-7 text-xs font-semibold ${
+                                  isEligible
+                                    ? "border-orange-600 text-orange-600 hover:bg-orange-600 hover:text-white"
+                                    : "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:border-gray-700 dark:text-gray-500"
+                                }`}
+                                onClick={() => handleApplyCustomPromo(promo.code)}
+                              >
+                                {isEligible ? "Apply" : `Min ₹${promo.minOrderAmount}`}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Coupons List */}
-                {showCoupons && !appliedCoupon && availableCoupons.length > 0 && (
-                  <div className="mt-3 md:mt-4 space-y-2 md:space-y-3 border-t dark:border-gray-700 pt-3 md:pt-4">
-                    {availableCoupons.map((coupon) => (
-                      <div key={coupon.code} className="flex items-center justify-between py-2 md:py-3 border-b border-dashed dark:border-gray-700 last:border-0">
-                        <div>
-                          <p className="text-sm md:text-base font-medium text-gray-800 dark:text-gray-200">{coupon.code}</p>
-                          <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">{coupon.description}</p>
+                {/* Expanded Promo & Coupon List */}
+                {showCoupons && !appliedCoupon && (
+                  <div className="mt-3 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
+                    {/* Admin Platform Promo Codes */}
+                    {adminPromoCodes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          Platform Promo Codes
+                        </p>
+                        <div className="space-y-2">
+                          {adminPromoCodes.map((promo) => {
+                            const isEligible = subtotal >= (promo.minOrderAmount || 0);
+                            return (
+                              <div
+                                key={promo._id}
+                                className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
+                                  isEligible
+                                    ? "bg-slate-50 dark:bg-gray-800/40 border-slate-200 dark:border-gray-700"
+                                    : "bg-gray-50/60 dark:bg-gray-800/20 border-gray-200 dark:border-gray-800 opacity-60"
+                                }`}
+                              >
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`font-mono font-bold text-sm ${
+                                        isEligible
+                                          ? "text-slate-900 dark:text-white"
+                                          : "text-gray-500 dark:text-gray-400"
+                                      }`}
+                                    >
+                                      {promo.code}
+                                    </span>
+                                    <span
+                                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                        isEligible
+                                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                                          : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+                                      }`}
+                                    >
+                                      {promo.discountType === "percentage"
+                                        ? `${promo.discountValue}% OFF`
+                                        : `₹${promo.discountValue} OFF`}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 font-medium">
+                                    {promo.title}
+                                  </p>
+                                  {promo.minOrderAmount > 0 && (
+                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                      Minimum order amount: ₹{promo.minOrderAmount}
+                                    </p>
+                                  )}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={`h-8 text-xs font-semibold ${
+                                    isEligible
+                                      ? "border-orange-600 text-orange-600 hover:bg-orange-600 hover:text-white"
+                                      : "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:border-gray-700 dark:text-gray-500"
+                                  }`}
+                                  onClick={() => handleApplyCustomPromo(promo.code)}
+                                  disabled={!isEligible}
+                                >
+                                  {isEligible ? "APPLY" : `Min ₹${promo.minOrderAmount}`}
+                                </Button>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 md:h-7 text-xs md:text-sm border-red-600 dark:border-red-500 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-                          onClick={() => handleApplyCoupon(coupon)}
-                          disabled={subtotal < coupon.minOrder}
-                        >
-                          {subtotal < coupon.minOrder ? `Min ₹${coupon.minOrder}` : 'APPLY'}
-                        </Button>
                       </div>
-                    ))}
+                    )}
+
+                    {/* Restaurant Dish Coupons */}
+                    {availableCoupons.length > 0 && (
+                      <div className="space-y-2 pt-2">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          Restaurant Offers
+                        </p>
+                        <div className="space-y-2">
+                          {availableCoupons.map((coupon) => (
+                            <div
+                              key={coupon.code}
+                              className="flex items-center justify-between p-3 bg-slate-50 dark:bg-gray-800/40 border border-slate-200 dark:border-gray-700 rounded-lg"
+                            >
+                              <div>
+                                <p className="font-mono font-bold text-sm text-slate-900 dark:text-white">
+                                  {coupon.code}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                  {coupon.description}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs border-orange-600 text-orange-600 hover:bg-orange-600 hover:text-white"
+                                onClick={() => handleApplyCoupon(coupon)}
+                                disabled={subtotal < coupon.minOrder}
+                              >
+                                {subtotal < coupon.minOrder ? `Min ₹${coupon.minOrder}` : "APPLY"}
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2569,8 +2804,14 @@ export default function Cart() {
                     </div>
                     {baseDiscount > 0 && (
                       <div className="flex justify-between text-sm md:text-base text-red-600 dark:text-red-400">
-                        <span>Discount</span>
-                      <span>-₹{baseDiscount}</span>
+                        <span>Dish Discount</span>
+                        <span>-₹{baseDiscount}</span>
+                      </div>
+                    )}
+                    {adminPromoDiscount > 0 && appliedCoupon?.isAdminPromo && (
+                      <div className="flex justify-between text-sm md:text-base text-emerald-600 dark:text-emerald-400 font-medium">
+                        <span>Promo ({appliedCoupon.code})</span>
+                        <span>-₹{adminPromoDiscount}</span>
                       </div>
                     )}
                     {categoryOfferDiscount > 0 && bestCategoryOffer && (

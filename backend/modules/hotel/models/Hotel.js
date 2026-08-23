@@ -181,7 +181,25 @@ const hotelSchema = new mongoose.Schema(
     fcmtokenMobile: {
       type: String,
       default: null
-    }
+    },
+    termsAcceptance: {
+      isAccepted: {
+        type: Boolean,
+        default: false,
+      },
+      acceptedAt: {
+        type: Date,
+        default: null,
+      },
+      version: {
+        type: Number,
+        default: 0,
+      },
+      termsUpdatedAt: {
+        type: Date,
+        default: null,
+      },
+    },
   },
   {
     timestamps: true,

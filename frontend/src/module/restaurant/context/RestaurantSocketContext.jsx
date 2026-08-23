@@ -499,6 +499,12 @@ export const RestaurantSocketProvider = ({ children }) => {
       }
     });
 
+    // Listen for restaurant terms updates
+    socketRef.current.on('restaurant_terms_updated', (data) => {
+      console.log('📜 Restaurant terms updated via Socket.IO:', data);
+      window.dispatchEvent(new CustomEvent('restaurant_terms_updated', { detail: data }));
+    });
+
     // Listen for order status updates
     socketRef.current.on('order_status_update', (data) => {
       // Always forward status updates to the UI (e.g., cancelled) so popups/sounds can be dismissed in realtime

@@ -22,6 +22,7 @@ import outletTimingsRoutes from './routes/outletTimingsRoutes.js';
 import complaintRoutes from './routes/complaintRoutes.js';
 import { getOutletTimingsByRestaurantId } from './controllers/outletTimingsController.js';
 import restaurantLegalPublicRoutes from "./routes/restaurantLegalPublicRoutes.js";
+import restaurantLegalRoutes from "./routes/restaurantLegalRoutes.js";
 import {
   getDiningConfig,
   updateDiningConfig,
@@ -41,6 +42,9 @@ router.use('/auth', restaurantAuthRoutes);
 
 // Public routes (no auth)
 router.use("/public", restaurantLegalPublicRoutes);
+
+// Legal routes (authenticated)
+router.use("/legal", authenticate, restaurantLegalRoutes);
 
 // Onboarding routes for restaurant (authenticated)
 router.get('/onboarding', authenticate, getOnboarding);

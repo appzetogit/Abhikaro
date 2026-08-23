@@ -336,6 +336,14 @@ import {
   deleteAdminAdvertiseBanner,
   toggleAdminAdvertiseBannerStatus,
 } from "../controllers/advertiseBannersController.js";
+import {
+  getPromoCodes,
+  getPromoCodeById,
+  createPromoCode,
+  updatePromoCode,
+  togglePromoCodeStatus,
+  deletePromoCode,
+} from "../controllers/promoCodeController.js";
 import { authenticateAdmin, authorizeAdmin } from "../middleware/adminAuth.js";
 import { uploadMiddleware } from "../../../shared/utils/cloudinaryService.js";
 import { requirePermissions } from "../middleware/adminPermission.js";
@@ -982,8 +990,8 @@ console.log(
 
 // Review Management
 router.get("/reviews", getAllReviews);
-router.get("/reviews/:orderId", getReviewByOrderId);
 router.get("/reviews/restaurant/:restaurantId", getReviewsByRestaurant);
+router.get("/reviews/:orderId", getReviewByOrderId);
 
 // Get order by ID (must be last to avoid matching other routes)
 router.get("/orders/:id", requirePermissions("orders.view"), getOrderById);
@@ -1062,5 +1070,13 @@ router.post("/advertise-banners", uploadMiddleware.single("image"), createAdminA
 router.patch("/advertise-banners/:id", uploadMiddleware.single("image"), updateAdminAdvertiseBanner);
 router.patch("/advertise-banners/:id/status", toggleAdminAdvertiseBannerStatus);
 router.delete("/advertise-banners/:id", deleteAdminAdvertiseBanner);
+
+// Promo Codes (Admin)
+router.get("/promo-codes", requirePermissions("page.promo_codes"), getPromoCodes);
+router.get("/promo-codes/:id", requirePermissions("page.promo_codes"), getPromoCodeById);
+router.post("/promo-codes", requirePermissions("page.promo_codes"), createPromoCode);
+router.put("/promo-codes/:id", requirePermissions("page.promo_codes"), updatePromoCode);
+router.patch("/promo-codes/:id/status", requirePermissions("page.promo_codes"), togglePromoCodeStatus);
+router.delete("/promo-codes/:id", requirePermissions("page.promo_codes"), deletePromoCode);
 
 export default router;

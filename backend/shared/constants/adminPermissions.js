@@ -155,6 +155,11 @@ export const ADMIN_PERMISSIONS = [
     label: "Advertise Banner",
     group: "PROMOTIONS MANAGEMENT",
   },
+  {
+    id: "page.promo_codes",
+    label: "Promo Codes",
+    group: "PROMOTIONS MANAGEMENT",
+  },
 
   // 7. CUSTOMER MANAGEMENT
   {
@@ -492,6 +497,7 @@ export const PERMISSIONS_ALIASES = {
     "page.coupons",
     "page.push_notification",
     "page.advertise_banner",
+    "page.promo_codes",
     "page.hero_banner_management",
     "page.dining_banners",
     "page.dining_list",
@@ -502,6 +508,7 @@ export const PERMISSIONS_ALIASES = {
   "page.push_notification": ["menu.promotions", "notifications.send"],
   "notifications.send": ["page.push_notification", "menu.promotions"],
   "page.advertise_banner": ["menu.promotions"],
+  "page.promo_codes": ["menu.promotions"],
   "page.hero_banner_management": ["menu.promotions"],
   "page.dining_banners": ["menu.promotions"],
   "page.dining_list": ["menu.promotions"],

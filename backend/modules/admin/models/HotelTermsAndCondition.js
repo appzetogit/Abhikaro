@@ -17,6 +17,10 @@ const hotelTermsAndConditionSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    version: {
+      type: Number,
+      default: 1,
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",

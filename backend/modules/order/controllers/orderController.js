@@ -203,6 +203,44 @@ export const createOrder = async (req, res) => {
             });
           }
         }
+      } else if (pricing.adminOfferName) {
+        // Admin Promo Code validation
+        const AdminPromoCode = (
+          await import("../../admin/models/AdminPromoCode.js")
+        ).default;
+        const promoDoc = await AdminPromoCode.findOne({
+          code: String(pricing.adminOfferName).trim().toUpperCase(),
+        });
+
+        if (promoDoc) {
+          const evalResult = promoDoc.evaluateValidity({
+            orderAmount: pricing.subtotal || 0,
+            currentDate: new Date(),
+            restaurantId,
+          });
+
+          if (!evalResult.isValid) {
+            return res.status(400).json({
+              success: false,
+              message: `Promo code error: ${evalResult.reason}`,
+            });
+          }
+
+          if (promoDoc.usageLimitPerUser > 0) {
+            const userPromoCount = await Order.countDocuments({
+              userId,
+              "pricing.adminOfferName": promoDoc.code,
+              status: { $ne: "cancelled" },
+            });
+
+            if (userPromoCount >= promoDoc.usageLimitPerUser) {
+              return res.status(400).json({
+                success: false,
+                message: `You have already used promo code '${promoDoc.code}' the maximum of ${promoDoc.usageLimitPerUser} time(s).`,
+              });
+            }
+          }
+        }
       }
     }
 
@@ -678,6 +716,15 @@ export const createOrder = async (req, res) => {
     }
     // --- Dynamic Commission Calculation End ---
 
+    // Admin subsidizes the promo code discount entirely:
+    // Deduct adminOfferDiscount from admin's commission share, without touching restaurant or hotel shares.
+    if (pricing.adminOfferDiscount && pricing.adminOfferDiscount > 0) {
+      commissionBreakdown.admin = Math.max(
+        0,
+        Math.round((commissionBreakdown.admin - pricing.adminOfferDiscount) * 100) / 100
+      );
+    }
+
     // Extract user location from address (live location from Firebase or address)
     // Note: restaurantLat and restaurantLng already declared above (line 201-204)
     const userLat = address?.location?.coordinates?.[1] || address?.latitude || null;
@@ -858,6 +905,21 @@ export const createOrder = async (req, res) => {
     }
 
     await order.save();
+
+    // Increment promo code timesUsed if an Admin Promo Code was used
+    if (order.pricing?.adminOfferName && !order.pricing?.adminOfferCategoryId) {
+      try {
+        const AdminPromoCode = (
+          await import("../../admin/models/AdminPromoCode.js")
+        ).default;
+        await AdminPromoCode.updateOne(
+          { code: String(order.pricing.adminOfferName).trim().toUpperCase() },
+          { $inc: { timesUsed: 1 } }
+        );
+      } catch (incErr) {
+        logger.warn("Failed to increment promo code timesUsed:", incErr.message);
+      }
+    }
 
     // Log order creation for debugging
     logger.info("Order created successfully:", {

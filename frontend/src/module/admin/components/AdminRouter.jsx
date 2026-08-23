@@ -48,6 +48,7 @@ const Coupons = lazy(() => import("../pages/Coupons"));
 const NewAdvertisement = lazy(() => import("../pages/advertisement/NewAdvertisement"));
 const PushNotification = lazy(() => import("../pages/PushNotification"));
 const AdvertiseBanner = lazy(() => import("../pages/AdvertiseBanner"));
+const AdminPromoCodes = lazy(() => import("../pages/promotions/AdminPromoCodes"));
 // Help & Support
 const CustomerContactUs = lazy(() => import("../pages/CustomerContactUs"));
 const ContactMessages = lazy(() => import("../pages/ContactMessages"));
@@ -196,6 +197,7 @@ export default function AdminRouter() {
           <Route path="advertisement/new" element={<ProtectedRoute requiredPermission="page.advertise_banner"><NewAdvertisement /></ProtectedRoute>} />
           <Route path="push-notification" element={<ProtectedRoute requiredPermission="page.push_notification"><PushNotification /></ProtectedRoute>} />
           <Route path="advertise-banner" element={<ProtectedRoute requiredPermission="page.advertise_banner"><AdvertiseBanner /></ProtectedRoute>} />
+          <Route path="promo-codes" element={<ProtectedRoute requiredPermission="page.promo_codes"><AdminPromoCodes /></ProtectedRoute>} />
 
           {/* HELP & SUPPORT */}
           <Route path="customer-contact-us" element={<ProtectedRoute requiredPermission="page.customer_contact_us"><CustomerContactUs /></ProtectedRoute>} />

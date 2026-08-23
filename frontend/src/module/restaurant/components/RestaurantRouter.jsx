@@ -4,11 +4,14 @@ import ProtectedRoute from "@/components/ProtectedRoute"
 import AuthRedirect from "@/components/AuthRedirect"
 import Loader from "@/components/Loader"
 import { RestaurantSocketProvider } from "@/module/restaurant/context/RestaurantSocketContext"
+import RestaurantTermsGuard from "./RestaurantTermsGuard"
 
 function RestaurantSocketLayout() {
   return (
     <RestaurantSocketProvider>
-      <Outlet />
+      <RestaurantTermsGuard>
+        <Outlet />
+      </RestaurantTermsGuard>
     </RestaurantSocketProvider>
   )
 }

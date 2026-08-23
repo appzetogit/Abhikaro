@@ -380,6 +380,15 @@ export const restaurantAPI = {
     return apiClient.get(API_ENDPOINTS.RESTAURANT.COMMISSION);
   },
 
+  // Terms & Conditions acceptance methods
+  getTermsAcceptanceStatus: () => {
+    return apiClient.get(API_ENDPOINTS.RESTAURANT.LEGAL.TERMS_STATUS);
+  },
+
+  acceptTerms: () => {
+    return apiClient.post(API_ENDPOINTS.RESTAURANT.LEGAL.ACCEPT_TERMS);
+  },
+
   reverify: () => {
     return apiClient.post(API_ENDPOINTS.RESTAURANT.AUTH.REVERIFY);
   },
@@ -553,6 +562,11 @@ export const restaurantAPI = {
   // Get orders
   getOrders: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.RESTAURANT.ORDERS, { params });
+  },
+
+  // Get restaurant customer reviews (public/general endpoint)
+  getRestaurantReviews: (restaurantId, params = {}) => {
+    return apiClient.get(`/reviews/restaurant/${restaurantId}`, { params });
   },
 
   // Get order by ID
@@ -922,6 +936,15 @@ export const hotelAPI = {
 
   getCurrentHotel: () => {
     return apiClient.get(API_ENDPOINTS.HOTEL.AUTH.ME);
+  },
+
+  // Terms & Conditions acceptance methods
+  getTermsAcceptanceStatus: () => {
+    return apiClient.get(API_ENDPOINTS.HOTEL.LEGAL.TERMS_STATUS);
+  },
+
+  acceptTerms: () => {
+    return apiClient.post(API_ENDPOINTS.HOTEL.LEGAL.ACCEPT_TERMS);
   },
 
   // Get hotel profile
@@ -1438,6 +1461,22 @@ export const adminAPI = {
         restaurantId,
       ),
     );
+  },
+
+  // Get restaurant reviews
+  getRestaurantReviews: (restaurantId, params = {}) => {
+    return apiClient.get(
+      API_ENDPOINTS.ADMIN.REVIEWS_BY_RESTAURANT.replace(
+        ":restaurantId",
+        restaurantId,
+      ),
+      { params },
+    );
+  },
+
+  // Get all reviews
+  getReviews: (params = {}) => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.REVIEWS, { params });
   },
 
   // Update restaurant status
@@ -2544,6 +2583,32 @@ export const adminAPI = {
       { status },
     );
   },
+
+  // Promo Codes (Admin & Public Validation)
+  getPromoCodes: (params = {}) => {
+    return apiClient.get("/admin/promo-codes", { params });
+  },
+  getPromoCodeById: (id) => {
+    return apiClient.get(`/admin/promo-codes/${id}`);
+  },
+  createPromoCode: (data) => {
+    return apiClient.post("/admin/promo-codes", data);
+  },
+  updatePromoCode: (id, data) => {
+    return apiClient.put(`/admin/promo-codes/${id}`, data);
+  },
+  togglePromoCodeStatus: (id) => {
+    return apiClient.patch(`/admin/promo-codes/${id}/status`);
+  },
+  deletePromoCode: (id) => {
+    return apiClient.delete(`/admin/promo-codes/${id}`);
+  },
+  getPublicActivePromoCodes: () => {
+    return apiClient.get("/promo-codes/public/active");
+  },
+  validatePromoCode: (data) => {
+    return apiClient.post("/promo-codes/validate", data);
+  },
 };
 
 // Upload / media helper functions
@@ -2818,3 +2883,4 @@ export const chatAPI = {
     return apiClient.put(`/chat/order/${orderId}/read`);
   },
 };
+

@@ -232,7 +232,7 @@ export default function DeliveryBoyViewMap() {
     const mapOptions = {
       center: initialLocation,
       zoom: 5,
-      mapTypeId: google.maps.MapTypeId.TERRAIN, // Default to terrain map
+      mapTypeId: google.maps?.MapTypeId?.TERRAIN || "terrain", // Default to terrain map
       mapTypeControl: true,
       zoomControl: true,
       streetViewControl: false,
@@ -243,14 +243,22 @@ export default function DeliveryBoyViewMap() {
     if (mapTypeControlStyle) {
       mapOptions.mapTypeControlOptions = {
         style: mapTypeControlStyle,
-        position: google.maps.ControlPosition.TOP_RIGHT,
-        mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        position: google.maps?.ControlPosition?.TOP_RIGHT || undefined,
+        mapTypeIds: [
+          google.maps?.MapTypeId?.TERRAIN || "terrain",
+          google.maps?.MapTypeId?.ROADMAP || "roadmap",
+          google.maps?.MapTypeId?.SATELLITE || "satellite"
+        ]
       }
     } else {
       // Fallback: use default mapTypeControlOptions without style
       mapOptions.mapTypeControlOptions = {
-        position: google.maps.ControlPosition.TOP_RIGHT,
-        mapTypeIds: [google.maps.MapTypeId.TERRAIN, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+        position: google.maps?.ControlPosition?.TOP_RIGHT || undefined,
+        mapTypeIds: [
+          google.maps?.MapTypeId?.TERRAIN || "terrain",
+          google.maps?.MapTypeId?.ROADMAP || "roadmap",
+          google.maps?.MapTypeId?.SATELLITE || "satellite"
+        ]
       }
     }
 

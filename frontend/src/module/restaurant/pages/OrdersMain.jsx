@@ -2016,37 +2016,6 @@ export default function OrdersMain() {
       {/* Restaurant Navbar - Sticky at top */}
       <div className="sticky top-0 z-50 bg-white">
         <RestaurantNavbar showNotifications={false} />
-        <div className="px-4 py-2 flex items-center justify-between border-t border-gray-50">
-          <div className="flex items-center gap-2">
-             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500 animate-pulse'}`}></div>
-             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-               {isConnected ? 'Real-time Live' : 'Connecting...'}
-             </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {!isSoundUnlocked && (
-              <button 
-                onClick={() => unlockSound?.()}
-                className="text-[10px] font-bold text-blue-600 uppercase"
-              >
-                Enable Sound
-              </button>
-            )}
-            <button 
-              onClick={() => {
-                toast.promise(fetchAllOrders(true), {
-                  loading: 'Syncing orders...',
-                  success: 'Orders synced',
-                  error: 'Sync failed'
-                })
-              }}
-              className="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-100 rounded-md active:scale-95 transition-transform"
-            >
-              <RefreshCw className="w-2.5 h-2.5 text-gray-600" />
-              <span className="text-[10px] font-bold text-gray-600 uppercase">Sync</span>
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Top Filter Bar - Sticky below navbar */}

@@ -880,7 +880,20 @@ Order again from this restaurant in the ${companyName} app.`
                                 )}
                               </div>
                               <div className="text-right flex-shrink-0">
-                                <span className="text-sm font-semibold text-gray-800">₹{itemTotal.toFixed(2)}</span>
+                                {order.items.length === 1 && (order.pricing?.adminOfferDiscount > 0 || order.pricing?.discount > 0) ? (
+                                  <div>
+                                    <span className="text-xs text-gray-400 line-through mr-1">
+                                      ₹{itemTotal.toFixed(2)}
+                                    </span>
+                                    <span className="text-sm font-bold text-gray-900">
+                                      ₹{Number(order.total || order.pricing?.total || 0).toFixed(2)}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-sm font-semibold text-gray-800">
+                                    ₹{itemTotal.toFixed(2)}
+                                  </span>
+                                )}
                                 {itemQuantity > 1 && (
                                   <p className="text-xs text-gray-500">₹{itemPrice.toFixed(2)} each</p>
                                 )}
@@ -895,7 +908,30 @@ Order again from this restaurant in the ${companyName} app.`
                   )}
                 </div>
 
-                {/* Order Summary (hidden on orders list) */}
+                {/* Total / Promo Discount Summary */}
+                {(order.pricing?.adminOfferDiscount > 0 || order.pricing?.discount > 0 || (order.items && order.items.length > 1)) && (
+                  <div className="px-4 py-1.5 flex items-center justify-between bg-gray-50/80 text-xs border-t border-gray-100">
+                    <span className="text-gray-500">
+                      {order.pricing?.adminOfferDiscount > 0 ? (
+                        <span className="text-emerald-700 font-medium">
+                          Promo ({order.pricing.adminOfferName || "Applied"}): -₹{Number(order.pricing.adminOfferDiscount).toFixed(2)}
+                        </span>
+                      ) : order.pricing?.discount > 0 ? (
+                        <span className="text-emerald-700 font-medium">
+                          Discount: -₹{Number(order.pricing.discount).toFixed(2)}
+                        </span>
+                      ) : (
+                        "Order Total"
+                      )}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-400 text-[11px]">Paid:</span>
+                      <span className="font-bold text-gray-900 text-sm">
+                        ₹{Number(order.total || order.pricing?.total || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Date and Payment Info */}
                 <div className="px-4 py-2 flex items-center justify-between">

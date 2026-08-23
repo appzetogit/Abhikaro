@@ -11,6 +11,7 @@ import hotelOrderRoutes from "./routes/hotelOrderRoutes.js";
 import hotelLeaderboardRoutes from "./routes/hotelLeaderboardRoutes.js";
 import hotelLeaderboardRewardsRoutes from "./routes/hotelLeaderboardRewardsRoutes.js";
 import hotelLeaderboardHistoryRoutes from "./routes/hotelLeaderboardHistoryRoutes.js";
+import hotelLegalRoutes from "./routes/hotelLegalRoutes.js";
 
 const router = express.Router();
 
@@ -19,6 +20,9 @@ router.use("/auth", hotelAuthRoutes);
 
 // Public routes (no authentication required)
 router.use("/public", hotelPublicRoutes);
+
+// Legal routes (require authentication)
+router.use("/legal", authenticate, hotelLegalRoutes);
 
 // Protected routes (require authentication)
 router.use("/requests", hotelRequestsRoutes);

@@ -75,6 +75,8 @@ import chatRoutes from './modules/chat/routes/chatRoutes.js';
 import firebaseSwRoute from './routes/firebaseSwRoute.js';
 import metricsRoutes from './routes/metrics.js';
 import advertiseBannerPublicRoutes from './modules/admin/routes/advertiseBannerPublicRoutes.js';
+import promoCodePublicRoutes from './modules/admin/routes/promoCodePublicRoutes.js';
+import { getReviewsByRestaurant } from './modules/admin/controllers/reviewController.js';
 
 
 // Trigger nodemon restart comment - database connection check
@@ -742,6 +744,8 @@ app.use('/api/campaign', campaignRoutes);
 app.use('/api/notification', notificationRoutes);
 app.use('/api/fcm', fcmRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.get('/api/admin/reviews/restaurant/:restaurantId', getReviewsByRestaurant);
+app.get('/api/reviews/restaurant/:restaurantId', getReviewsByRestaurant);
 app.use('/api/admin', adminRoutes);
 app.use('/api', categoryPublicRoutes);
 app.use('/api', feeSettingsPublicRoutes);
@@ -770,6 +774,8 @@ app.use('/api', heroBannerRoutes);
 app.use('/api/dining', diningRoutes);
 app.use('/api/admin/dining', diningAdminRoutes);
 app.use('/api', advertiseBannerPublicRoutes);
+app.use('/api', promoCodePublicRoutes);
+app.get('/api/reviews/restaurant/:restaurantId', getReviewsByRestaurant);
 app.use('/api/metrics', metricsRoutes);
 
 // Diagnostics: list socket rooms for a restaurant (dev only)

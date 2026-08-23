@@ -1,4 +1,5 @@
 import Order from '../../order/models/Order.js';
+import Restaurant from '../../restaurant/models/Restaurant.js';
 import { asyncHandler } from '../../../shared/middleware/asyncHandler.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import mongoose from 'mongoose';
@@ -183,19 +184,50 @@ export const getReviewsByRestaurant = asyncHandler(async (req, res) => {
     const { restaurantId } = req.params;
     const { page = 1, limit = 20, rating, sortBy = 'submittedAt', sortOrder = 'desc' } = req.query;
     
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
     const skip = (pageNum - 1) * limitNum;
     
-    const query = {
-      restaurantId: restaurantId,
-      status: 'delivered',
-      'review.rating': { $exists: true, $ne: null }
+    // Resolve target restaurant to get all possible IDs
+    let targetRestaurant = null;
+    if (mongoose.Types.ObjectId.isValid(restaurantId) && restaurantId.length === 24) {
+      targetRestaurant = await Restaurant.findById(restaurantId).lean();
+    }
+    if (!targetRestaurant) {
+      targetRestaurant = await Restaurant.findOne({
+        $or: [
+          { restaurantId: restaurantId },
+          { "onboarding.step1.restaurantName": restaurantId }
+        ]
+      }).lean();
+    }
+
+    const possibleRestaurantIds = [
+      restaurantId,
+      targetRestaurant?._id?.toString(),
+      targetRestaurant?._id,
+      targetRestaurant?.restaurantId
+    ].filter(Boolean);
+
+    // Base query for all delivered orders of this restaurant
+    const baseQuery = {
+      restaurantId: { $in: possibleRestaurantIds },
+      isDeleted: { $ne: true },
+      status: 'delivered'
     };
-    
+
+    // Filtered query for current page results
+    const query = { ...baseQuery };
     if (rating) {
       const ratingNum = parseInt(rating);
-      if (ratingNum >= 1 && ratingNum <= 5) {
+      if (ratingNum === 5) {
+        query.$or = [
+          { 'review.rating': 5 },
+          { 'review.rating': { $exists: false } },
+          { 'review.rating': null },
+          { 'review.rating': 0 }
+        ];
+      } else if (ratingNum >= 1 && ratingNum <= 4) {
         query['review.rating'] = ratingNum;
       }
     }
@@ -203,57 +235,88 @@ export const getReviewsByRestaurant = asyncHandler(async (req, res) => {
     const sortOptions = {};
     if (sortBy === 'rating') {
       sortOptions['review.rating'] = sortOrder === 'asc' ? 1 : -1;
+      sortOptions['createdAt'] = -1;
+    } else if (sortOrder === 'oldest' || (sortBy === 'submittedAt' && sortOrder === 'asc')) {
+      sortOptions['createdAt'] = 1;
+      sortOptions['deliveredAt'] = 1;
     } else {
-      sortOptions['review.submittedAt'] = sortOrder === 'asc' ? 1 : -1;
+      // Default: newest first by order creation / delivery date
+      sortOptions['createdAt'] = -1;
+      sortOptions['deliveredAt'] = -1;
     }
     
     const reviews = await Order.find(query)
-      .populate('userId', 'name phone email')
-      .select('orderId userId review deliveredAt createdAt')
+      .populate('userId', 'name phone email profileImage avatar')
+      .select('orderId userId review deliveredAt createdAt items')
       .sort(sortOptions)
       .skip(skip)
       .limit(limitNum)
       .lean();
     
-    const totalReviews = await Order.countDocuments(query);
+    const totalFilteredReviews = await Order.countDocuments(query);
     
-    const avgRatingResult = await Order.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: null,
-          avgRating: { $avg: '$review.rating' },
-          totalReviews: { $sum: 1 }
-        }
-      }
-    ]);
+    // Aggregate overall stats and rating distribution across all delivered orders
+    const allDeliveredOrders = await Order.find(baseQuery)
+      .select('review.rating')
+      .lean();
     
-    const avgRating = avgRatingResult.length > 0 ? (avgRatingResult[0].avgRating || 0) : 0;
+    const totalAllReviews = allDeliveredOrders.length;
+    let ratingSum = 0;
+    const ratingDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+
+    allDeliveredOrders.forEach((ord) => {
+      const r = ord.review?.rating ? Math.round(Number(ord.review.rating)) : 5;
+      const validR = r >= 1 && r <= 5 ? r : 5;
+      ratingDistribution[validR] = (ratingDistribution[validR] || 0) + 1;
+      ratingSum += (ord.review?.rating ? Number(ord.review.rating) : 5);
+    });
+
+    const avgRating = totalAllReviews > 0 ? ratingSum / totalAllReviews : 0;
     
     return successResponse(res, 200, 'Restaurant reviews fetched successfully', {
-      reviews: reviews.map(review => ({
-        orderId: review.orderId,
-        orderMongoId: review._id,
-        customer: {
-          id: review.userId?._id || review.userId,
-          name: review.userId?.name,
-          phone: review.userId?.phone,
-          email: review.userId?.email
-        },
-        rating: review.review?.rating,
-        comment: review.review?.comment,
-        submittedAt: review.review?.submittedAt || review.deliveredAt,
-        deliveredAt: review.deliveredAt
-      })),
+      restaurant: targetRestaurant ? {
+        id: targetRestaurant._id,
+        restaurantId: targetRestaurant.restaurantId,
+        name: targetRestaurant.onboarding?.step1?.restaurantName || targetRestaurant.name,
+        logo: targetRestaurant.profileImage?.url || (typeof targetRestaurant.profileImage === 'string' ? targetRestaurant.profileImage : null) || targetRestaurant.logo,
+        zone: targetRestaurant.location?.area || targetRestaurant.location?.city || targetRestaurant.zone,
+        cuisine: Array.isArray(targetRestaurant.cuisines) && targetRestaurant.cuisines.length > 0 ? targetRestaurant.cuisines[0] : targetRestaurant.cuisine
+      } : null,
+      reviews: reviews.map(review => {
+        const rating = review.review?.rating || 5;
+        const comment = review.review?.comment || review.review?.text || '';
+        return {
+          orderId: review.orderId,
+          orderMongoId: review._id,
+          customer: {
+            id: review.userId?._id || review.userId,
+            name: review.userId?.name || 'Customer',
+            phone: review.userId?.phone || null,
+            email: review.userId?.email || null,
+            avatar: review.userId?.avatar || review.userId?.profileImage || null
+          },
+          rating: Number(rating),
+          comment: comment,
+          submittedAt: review.review?.submittedAt || review.deliveredAt || review.createdAt,
+          deliveredAt: review.deliveredAt,
+          createdAt: review.createdAt,
+          items: Array.isArray(review.items) ? review.items.map(item => ({
+            name: item.name || item.title || 'Item',
+            quantity: item.quantity || 1,
+            price: item.price || 0
+          })) : []
+        };
+      }),
       pagination: {
         currentPage: pageNum,
-        totalPages: Math.ceil(totalReviews / limitNum),
-        totalReviews,
+        totalPages: Math.ceil(totalFilteredReviews / limitNum) || 1,
+        totalReviews: totalFilteredReviews,
         limit: limitNum
       },
       statistics: {
-        averageRating: Math.round(avgRating * 10) / 10,
-        totalReviews
+        averageRating: Number(avgRating.toFixed(1)),
+        totalReviews: totalAllReviews,
+        ratingDistribution
       }
     });
   } catch (error) {
