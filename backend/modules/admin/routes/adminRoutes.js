@@ -305,6 +305,9 @@ import {
   getReviewByOrderId,
   getReviewsByRestaurant,
   getDeliverymanReviews,
+  updateReviewByOrderId,
+  deleteReviewByOrderId,
+  updateRestaurantOverallRating,
 } from "../controllers/reviewController.js";
 import {
   getFeeSettings,
@@ -991,7 +994,10 @@ console.log(
 // Review Management
 router.get("/reviews", getAllReviews);
 router.get("/reviews/restaurant/:restaurantId", getReviewsByRestaurant);
+router.put("/reviews/restaurant/:restaurantId/rating", updateRestaurantOverallRating);
 router.get("/reviews/:orderId", getReviewByOrderId);
+router.put("/reviews/:orderId", updateReviewByOrderId);
+router.delete("/reviews/:orderId", deleteReviewByOrderId);
 
 // Get order by ID (must be last to avoid matching other routes)
 router.get("/orders/:id", requirePermissions("orders.view"), getOrderById);

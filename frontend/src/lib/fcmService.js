@@ -9,16 +9,16 @@ let messagingInstance = null;
 
 async function getMessaging() {
   if (messagingInstance) return messagingInstance;
-  const { getMessaging, isSupported } = await import("firebase/messaging");
+  const { getMessaging: initMessaging, isSupported } = await import("firebase/messaging");
   const supported = await isSupported();
   if (!supported) return null;
-  // Ensure Firebase is initialized (app may be undefined at module load)
-  const { ensureFirebaseInitialized, firebaseApp } = await import("./firebase.js");
+  // Ensure Firebase is initialized
+  const { ensureFirebaseInitialized, getFirebaseApp, firebaseApp } = await import("./firebase.js");
   await ensureFirebaseInitialized();
   const { getApps } = await import("firebase/app");
-  const app = firebaseApp || getApps()?.[0];
+  const app = (getFirebaseApp && getFirebaseApp()) || firebaseApp || getApps()?.[0];
   if (!app) return null;
-  messagingInstance = getMessaging(app);
+  messagingInstance = initMessaging(app);
   return messagingInstance;
 }
 
@@ -96,12 +96,44 @@ export async function getFcmToken() {
       await navigator.serviceWorker.ready;
     }
 
-    const token = await getToken(messaging, {
-      vapidKey: String(vapidKey).trim(),
-      ...(serviceWorkerRegistration ? { serviceWorkerRegistration } : {}),
-    });
+    try {
+      const token = await getToken(messaging, {
+        vapidKey: String(vapidKey).trim(),
+        ...(serviceWorkerRegistration ? { serviceWorkerRegistration } : {}),
+      });
+      return token || null;
+    } catch (tokenErr) {
+      const is401 =
+        tokenErr?.message?.includes("401") ||
+        tokenErr?.message?.includes("unauthorized") ||
+        tokenErr?.message?.includes("token-subscribe-failed") ||
+        tokenErr?.code === "messaging/token-subscribe-failed";
 
-    return token || null;
+      if (is401) {
+        // Attempt to clean up stale push subscription in browser to allow fresh registration
+        try {
+          if (serviceWorkerRegistration) {
+            const sub = await serviceWorkerRegistration.pushManager?.getSubscription();
+            if (sub) {
+              await sub.unsubscribe();
+            }
+          }
+        } catch (_) {
+          // ignore cleanup errors
+        }
+
+        if (import.meta.env.DEV) {
+          log.warn(
+            "[FCM] Registration returned 401 (Unauthorized). Check that:\n" +
+            "1. VAPID key in .env matches the Web Push Certificate in Firebase Console (Project Settings > Cloud Messaging > Web configuration).\n" +
+            "2. Google Cloud API Key (VITE_FIREBASE_API_KEY) has Firebase Cloud Messaging API allowed and is not restricted by HTTP referrers."
+          );
+        }
+      } else if (import.meta.env.DEV) {
+        log.warn("[FCM] getFcmToken failed:", tokenErr?.message || tokenErr);
+      }
+      return null;
+    }
   } catch (err) {
     if (import.meta.env.DEV) {
       log.warn("[FCM] getFcmToken failed:", err?.message || err);

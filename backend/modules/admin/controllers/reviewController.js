@@ -475,3 +475,219 @@ export const getDeliverymanReviews = asyncHandler(async (req, res) => {
     return errorResponse(res, 500, `Failed to fetch deliveryman reviews: ${error.message}`);
   }
 });
+
+/**
+ * Helper to recalculate and synchronize restaurant's rating & statistics
+ */
+export async function syncRestaurantRatingStats(restaurantId) {
+  if (!restaurantId) return null;
+
+  try {
+    let targetRestaurant = null;
+    if (mongoose.Types.ObjectId.isValid(restaurantId) && restaurantId.length === 24) {
+      targetRestaurant = await Restaurant.findById(restaurantId);
+    }
+    if (!targetRestaurant) {
+      targetRestaurant = await Restaurant.findOne({
+        $or: [
+          { restaurantId: restaurantId },
+          { "onboarding.step1.restaurantName": restaurantId }
+        ]
+      });
+    }
+
+    const possibleRestaurantIds = [
+      restaurantId,
+      targetRestaurant?._id?.toString(),
+      targetRestaurant?._id,
+      targetRestaurant?.restaurantId
+    ].filter(Boolean);
+
+    const baseQuery = {
+      restaurantId: { $in: possibleRestaurantIds },
+      isDeleted: { $ne: true },
+      status: 'delivered'
+    };
+
+    const allDeliveredOrders = await Order.find(baseQuery)
+      .select('review.rating')
+      .lean();
+
+    const totalAllReviews = allDeliveredOrders.length;
+    let ratingSum = 0;
+    const ratingDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+
+    allDeliveredOrders.forEach((ord) => {
+      const r = ord.review?.rating ? Math.round(Number(ord.review.rating)) : 5;
+      const validR = r >= 1 && r <= 5 ? r : 5;
+      ratingDistribution[validR] = (ratingDistribution[validR] || 0) + 1;
+      ratingSum += (ord.review?.rating ? Number(ord.review.rating) : 5);
+    });
+
+    const avgRating = totalAllReviews > 0 ? Number((ratingSum / totalAllReviews).toFixed(1)) : 0;
+
+    if (targetRestaurant) {
+      targetRestaurant.rating = avgRating;
+      targetRestaurant.totalRatings = totalAllReviews;
+      await targetRestaurant.save();
+    }
+
+    return {
+      averageRating: avgRating,
+      totalReviews: totalAllReviews,
+      ratingDistribution
+    };
+  } catch (err) {
+    console.error('Error syncing restaurant rating stats:', err);
+    return null;
+  }
+}
+
+/**
+ * Update review for an order (Admin)
+ * PUT /api/admin/reviews/:orderId
+ */
+export const updateReviewByOrderId = asyncHandler(async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { rating, comment, customerName } = req.body;
+
+    if (rating !== undefined && (Number(rating) < 1 || Number(rating) > 5)) {
+      return errorResponse(res, 400, 'Rating must be between 1 and 5');
+    }
+
+    const order = await Order.findOne({
+      $or: [
+        { orderId: orderId },
+        ...(mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24 ? [{ _id: new mongoose.Types.ObjectId(orderId) }] : [])
+      ]
+    });
+
+    if (!order) {
+      return errorResponse(res, 404, 'Order not found');
+    }
+
+    if (!order.review) {
+      order.review = {};
+    }
+
+    if (rating !== undefined) {
+      order.review.rating = Number(rating);
+    }
+    if (comment !== undefined) {
+      order.review.comment = String(comment).trim();
+    }
+    if (customerName && typeof customerName === 'string') {
+      order.userName = customerName.trim();
+    }
+    order.review.submittedAt = order.review.submittedAt || new Date();
+
+    // Mark modified since review is an embedded object
+    order.markModified('review');
+    await order.save();
+
+    // Recalculate restaurant stats
+    const stats = await syncRestaurantRatingStats(order.restaurantId);
+
+    return successResponse(res, 200, 'Review updated successfully', {
+      orderId: order.orderId,
+      orderMongoId: order._id,
+      rating: order.review.rating,
+      comment: order.review.comment,
+      customerName: order.userName,
+      statistics: stats
+    });
+  } catch (error) {
+    console.error('Error updating review:', error);
+    return errorResponse(res, 500, `Failed to update review: ${error.message}`);
+  }
+});
+
+/**
+ * Delete / Remove review from an order (Admin)
+ * DELETE /api/admin/reviews/:orderId
+ */
+export const deleteReviewByOrderId = asyncHandler(async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await Order.findOne({
+      $or: [
+        { orderId: orderId },
+        ...(mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24 ? [{ _id: new mongoose.Types.ObjectId(orderId) }] : [])
+      ]
+    });
+
+    if (!order) {
+      return errorResponse(res, 404, 'Order not found');
+    }
+
+    order.review = undefined;
+    order.markModified('review');
+    await order.save();
+
+    const stats = await syncRestaurantRatingStats(order.restaurantId);
+
+    return successResponse(res, 200, 'Review removed successfully', {
+      orderId: order.orderId,
+      statistics: stats
+    });
+  } catch (error) {
+    console.error('Error deleting review:', error);
+    return errorResponse(res, 500, `Failed to delete review: ${error.message}`);
+  }
+});
+
+/**
+ * Update / Override restaurant overall rating and review count (Admin)
+ * PUT /api/admin/reviews/restaurant/:restaurantId/rating
+ */
+export const updateRestaurantOverallRating = asyncHandler(async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const { rating, totalRatings } = req.body;
+
+    if (rating === undefined && totalRatings === undefined) {
+      return errorResponse(res, 400, 'Please provide rating or totalRatings to update');
+    }
+
+    if (rating !== undefined && (Number(rating) < 0 || Number(rating) > 5)) {
+      return errorResponse(res, 400, 'Rating must be between 0 and 5');
+    }
+
+    let restaurant = null;
+    if (mongoose.Types.ObjectId.isValid(restaurantId) && restaurantId.length === 24) {
+      restaurant = await Restaurant.findById(restaurantId);
+    }
+    if (!restaurant) {
+      restaurant = await Restaurant.findOne({
+        $or: [
+          { restaurantId: restaurantId },
+          { "onboarding.step1.restaurantName": restaurantId }
+        ]
+      });
+    }
+
+    if (!restaurant) {
+      return errorResponse(res, 404, 'Restaurant not found');
+    }
+
+    if (rating !== undefined) {
+      restaurant.rating = Number(Number(rating).toFixed(1));
+    }
+    if (totalRatings !== undefined) {
+      restaurant.totalRatings = Math.max(0, parseInt(totalRatings) || 0);
+    }
+
+    await restaurant.save();
+
+    return successResponse(res, 200, 'Restaurant rating updated successfully', {
+      restaurantId: restaurant.restaurantId || restaurant._id,
+      rating: restaurant.rating,
+      totalRatings: restaurant.totalRatings
+    });
+  } catch (error) {
+    console.error('Error updating restaurant overall rating:', error);
+    return errorResponse(res, 500, `Failed to update restaurant overall rating: ${error.message}`);
+  }
+});

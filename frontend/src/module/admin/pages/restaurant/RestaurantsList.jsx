@@ -58,6 +58,17 @@ export default function RestaurantsList() {
   const [reviewPage, setReviewPage] = useState(1)
   const [reviewTotalPages, setReviewTotalPages] = useState(1)
 
+  // Review Edit states
+  const [editingReview, setEditingReview] = useState(null) // { orderId, rating, comment, customerName }
+  const [savingReview, setSavingReview] = useState(false)
+  const [deletingReviewId, setDeletingReviewId] = useState(null)
+
+  // Overall Rating Edit states
+  const [isEditingOverallRating, setIsEditingOverallRating] = useState(false)
+  const [overallRatingInput, setOverallRatingInput] = useState("5.0")
+  const [overallTotalRatingsInput, setOverallTotalRatingsInput] = useState("0")
+  const [savingOverallRating, setSavingOverallRating] = useState(false)
+
   // Format Restaurant ID to REST format (e.g., REST422829)
   const formatRestaurantId = (id) => {
     if (!id) return "REST000000"
@@ -599,6 +610,178 @@ export default function RestaurantsList() {
     setReviewsRestaurant(null)
     setReviewsList([])
     setReviewsError(null)
+    setEditingReview(null)
+    setIsEditingOverallRating(false)
+  }
+
+  const handleStartEditReview = (review) => {
+    setEditingReview({
+      orderId: review.orderId || review.orderMongoId,
+      rating: Number(review.rating) || 5,
+      comment: review.comment || "",
+      customerName: review.customer?.name || "",
+    })
+  }
+
+  const handleCancelEditReview = () => {
+    setEditingReview(null)
+  }
+
+  const handleSaveReview = async () => {
+    if (!editingReview || !editingReview.orderId) return
+    try {
+      setSavingReview(true)
+      const res = await adminAPI.updateReview(editingReview.orderId, {
+        rating: Number(editingReview.rating),
+        comment: editingReview.comment,
+        customerName: editingReview.customerName,
+      })
+
+      if (res.data?.success) {
+        toast.success("Review updated successfully")
+        setReviewsList((prev) =>
+          prev.map((r) => {
+            const rId = r.orderId || r.orderMongoId
+            if (rId === editingReview.orderId) {
+              return {
+                ...r,
+                rating: Number(editingReview.rating),
+                comment: editingReview.comment,
+                customer: {
+                  ...r.customer,
+                  name: editingReview.customerName || r.customer?.name,
+                },
+              }
+            }
+            return r
+          })
+        )
+
+        if (res.data.data?.statistics) {
+          setReviewsStats(res.data.data.statistics)
+          if (reviewsRestaurant) {
+            const updatedScore = res.data.data.statistics.averageRating
+            const updatedTotal = res.data.data.statistics.totalReviews
+            setRestaurants((prev) =>
+              prev.map((rest) => {
+                const restId = rest._id || rest.id
+                const targetId = reviewsRestaurant._id || reviewsRestaurant.id
+                if (restId === targetId) {
+                  return { ...rest, rating: updatedScore, reviewCount: updatedTotal }
+                }
+                return rest
+              })
+            )
+          }
+        }
+        setEditingReview(null)
+      } else {
+        toast.error(res.data?.message || "Failed to update review")
+      }
+    } catch (err) {
+      console.error("Error updating review:", err)
+      toast.error(err.response?.data?.message || "Failed to update review")
+    } finally {
+      setSavingReview(false)
+    }
+  }
+
+  const handleDeleteReview = async (review) => {
+    const orderId = review.orderId || review.orderMongoId
+    if (!orderId) return
+    if (!window.confirm("Are you sure you want to delete this customer review?")) return
+
+    try {
+      setDeletingReviewId(orderId)
+      const res = await adminAPI.deleteReview(orderId)
+      if (res.data?.success) {
+        toast.success("Review deleted successfully")
+        setReviewsList((prev) => prev.filter((r) => (r.orderId || r.orderMongoId) !== orderId))
+        if (res.data.data?.statistics) {
+          setReviewsStats(res.data.data.statistics)
+          if (reviewsRestaurant) {
+            const updatedScore = res.data.data.statistics.averageRating
+            const updatedTotal = res.data.data.statistics.totalReviews
+            setRestaurants((prev) =>
+              prev.map((rest) => {
+                const restId = rest._id || rest.id
+                const targetId = reviewsRestaurant._id || reviewsRestaurant.id
+                if (restId === targetId) {
+                  return { ...rest, rating: updatedScore, reviewCount: updatedTotal }
+                }
+                return rest
+              })
+            )
+          }
+        }
+      } else {
+        toast.error(res.data?.message || "Failed to delete review")
+      }
+    } catch (err) {
+      console.error("Error deleting review:", err)
+      toast.error(err.response?.data?.message || "Failed to delete review")
+    } finally {
+      setDeletingReviewId(null)
+    }
+  }
+
+  const handleStartEditOverallRating = () => {
+    setOverallRatingInput(String(reviewsStats.averageRating || "0.0"))
+    setOverallTotalRatingsInput(String(reviewsStats.totalReviews || "0"))
+    setIsEditingOverallRating(true)
+  }
+
+  const handleCancelEditOverallRating = () => {
+    setIsEditingOverallRating(false)
+  }
+
+  const handleSaveOverallRating = async () => {
+    if (!reviewsRestaurant) return
+    const restaurantId = reviewsRestaurant._id || reviewsRestaurant.id || reviewsRestaurant.restaurantId
+    if (!restaurantId) return
+
+    const parsedRating = parseFloat(overallRatingInput)
+    const parsedTotal = parseInt(overallTotalRatingsInput, 10)
+
+    if (isNaN(parsedRating) || parsedRating < 0 || parsedRating > 5) {
+      toast.error("Rating must be a number between 0 and 5.0")
+      return
+    }
+
+    try {
+      setSavingOverallRating(true)
+      const res = await adminAPI.updateRestaurantRating(restaurantId, {
+        rating: parsedRating,
+        totalRatings: isNaN(parsedTotal) ? 0 : parsedTotal,
+      })
+
+      if (res.data?.success) {
+        toast.success("Restaurant overall rating updated successfully!")
+        setReviewsStats((prev) => ({
+          ...prev,
+          averageRating: parsedRating,
+          totalReviews: isNaN(parsedTotal) ? prev.totalReviews : parsedTotal,
+        }))
+        setRestaurants((prev) =>
+          prev.map((rest) => {
+            const restId = rest._id || rest.id
+            const targetId = reviewsRestaurant._id || reviewsRestaurant.id
+            if (restId === targetId) {
+              return { ...rest, rating: parsedRating, reviewCount: isNaN(parsedTotal) ? rest.reviewCount : parsedTotal }
+            }
+            return rest
+          })
+        )
+        setIsEditingOverallRating(false)
+      } else {
+        toast.error(res.data?.message || "Failed to update restaurant rating")
+      }
+    } catch (err) {
+      console.error("Error updating restaurant rating:", err)
+      toast.error(err.response?.data?.message || "Failed to update rating")
+    } finally {
+      setSavingOverallRating(false)
+    }
   }
 
   const handleFilterStar = (star) => {
@@ -2267,30 +2450,96 @@ export default function RestaurantsList() {
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center">
                   {/* Left: Big Score & Stars */}
                   <div className="sm:col-span-5 flex flex-col items-center sm:items-start text-center sm:text-left sm:border-r sm:border-slate-200 sm:pr-4">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-900 mb-1">
-                      Overall Rating
-                    </span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight">
-                        {reviewsStats.averageRating > 0 ? Number(reviewsStats.averageRating).toFixed(1) : "0.0"}
+                    <div className="flex items-center justify-between w-full mb-1">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-900">
+                        Overall Rating
                       </span>
-                      <span className="text-base font-semibold text-slate-400">/ 5.0</span>
+                      {!isEditingOverallRating && (
+                        <button
+                          type="button"
+                          onClick={handleStartEditOverallRating}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-0.5 rounded transition-colors"
+                          title="Edit restaurant overall rating"
+                        >
+                          <Edit className="w-3 h-3" /> Edit Rating
+                        </button>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1 my-1.5">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={star}
-                          className={`w-5 h-5 ${
-                            star <= Math.round(reviewsStats.averageRating || 0)
-                              ? "fill-amber-400 text-amber-400"
-                              : "fill-slate-200 text-slate-200"
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <p className="text-xs text-slate-600 font-medium">
-                      Based on <strong className="text-slate-900">{reviewsStats.totalReviews || 0}</strong> verified customer {(reviewsStats.totalReviews || 0) === 1 ? "review" : "reviews"}
-                    </p>
+
+                    {isEditingOverallRating ? (
+                      <div className="w-full bg-white p-3 rounded-lg border border-amber-300 shadow-2xs space-y-2.5 my-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800">Edit Overall Rating</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[11px] font-medium text-slate-600 block mb-1">Rating (0 - 5.0)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="5"
+                              value={overallRatingInput}
+                              onChange={(e) => setOverallRatingInput(e.target.value)}
+                              className="w-full px-2 py-1 text-xs border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-medium text-slate-600 block mb-1">Total Reviews</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={overallTotalRatingsInput}
+                              onChange={(e) => setOverallTotalRatingsInput(e.target.value)}
+                              className="w-full px-2 py-1 text-xs border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={handleCancelEditOverallRating}
+                            disabled={savingOverallRating}
+                            className="px-2.5 py-1 text-xs font-medium rounded border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveOverallRating}
+                            disabled={savingOverallRating}
+                            className="px-3 py-1 text-xs font-semibold rounded bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            {savingOverallRating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight">
+                            {reviewsStats.averageRating > 0 ? Number(reviewsStats.averageRating).toFixed(1) : "0.0"}
+                          </span>
+                          <span className="text-base font-semibold text-slate-400">/ 5.0</span>
+                        </div>
+                        <div className="flex items-center gap-1 my-1.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-5 h-5 ${
+                                star <= Math.round(reviewsStats.averageRating || 0)
+                                  ? "fill-amber-400 text-amber-400"
+                                  : "fill-slate-200 text-slate-200"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium">
+                          Based on <strong className="text-slate-900">{reviewsStats.totalReviews || 0}</strong> verified customer {(reviewsStats.totalReviews || 0) === 1 ? "review" : "reviews"}
+                        </p>
+                      </>
+                    )}
                   </div>
 
                   {/* Right: Star Distribution Bars */}
@@ -2425,15 +2674,116 @@ export default function RestaurantsList() {
               ) : (
                 <div className="space-y-4">
                   {reviewsList.map((review, rIdx) => {
+                    const reviewKey = review.orderId || review.orderMongoId || rIdx
+                    const isEditingThis = editingReview && editingReview.orderId === (review.orderId || review.orderMongoId)
+                    const isDeletingThis = deletingReviewId === (review.orderId || review.orderMongoId)
                     const customerName = review.customer?.name || "Verified Customer"
                     const customerPhone = review.customer?.phone
                     const customerEmail = review.customer?.email
                     const ratingScore = Number(review.rating || 0)
                     const commentText = review.comment?.trim()
 
+                    if (isEditingThis) {
+                      return (
+                        <div
+                          key={reviewKey}
+                          className="bg-amber-50/40 rounded-xl border-2 border-amber-400 p-4 sm:p-5 transition-all shadow-sm space-y-4"
+                        >
+                          <div className="flex items-center justify-between border-b border-amber-200/80 pb-2.5">
+                            <span className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                              <Edit className="w-3.5 h-3.5 text-amber-600" /> Edit Customer Review
+                            </span>
+                            {review.orderId && (
+                              <span className="text-[11px] font-medium text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                Order ID: #{review.orderId}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Star Rating Picker */}
+                          <div>
+                            <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                              Customer Rating ({editingReview.rating} Stars)
+                            </label>
+                            <div className="flex items-center gap-2">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => setEditingReview((prev) => ({ ...prev, rating: star }))}
+                                  className="p-1 rounded hover:scale-110 transition-transform focus:outline-none"
+                                  title={`Set to ${star} stars`}
+                                >
+                                  <Star
+                                    className={`w-6 h-6 ${
+                                      star <= editingReview.rating
+                                        ? "fill-amber-400 text-amber-500"
+                                        : "fill-slate-200 text-slate-300"
+                                    }`}
+                                  />
+                                </button>
+                              ))}
+                              <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                                {editingReview.rating}.0 / 5.0
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Customer Name */}
+                          <div>
+                            <label className="text-xs font-semibold text-slate-700 block mb-1">
+                              Customer Name
+                            </label>
+                            <input
+                              type="text"
+                              value={editingReview.customerName}
+                              onChange={(e) => setEditingReview((prev) => ({ ...prev, customerName: e.target.value }))}
+                              placeholder="Enter customer name"
+                              className="w-full px-3 py-1.5 text-xs sm:text-sm border border-slate-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800"
+                            />
+                          </div>
+
+                          {/* Comment Textarea */}
+                          <div>
+                            <label className="text-xs font-semibold text-slate-700 block mb-1">
+                              Review / Feedback Comment
+                            </label>
+                            <textarea
+                              rows={3}
+                              value={editingReview.comment}
+                              onChange={(e) => setEditingReview((prev) => ({ ...prev, comment: e.target.value }))}
+                              placeholder="Write customer feedback or review comment..."
+                              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800"
+                            />
+                          </div>
+
+                          {/* Save & Cancel Buttons */}
+                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200/80">
+                            <button
+                              type="button"
+                              onClick={handleCancelEditReview}
+                              disabled={savingReview}
+                              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveReview}
+                              disabled={savingReview}
+                              className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1.5 shadow-2xs"
+                            >
+                              {savingReview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                              Save Changes
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    }
+
                     return (
                       <div
-                        key={review.orderMongoId || review.orderId || rIdx}
+                        key={reviewKey}
                         className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 p-4 sm:p-5 transition-all shadow-2xs"
                       >
                         {/* Customer Header */}
@@ -2468,11 +2818,32 @@ export default function RestaurantsList() {
                             </div>
                           </div>
 
-                          {/* Rating & Date */}
+                          {/* Right: Rating, Date & Admin Action Buttons */}
                           <div className="flex flex-col items-end flex-shrink-0">
-                            <div className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-900 shadow-2xs">
-                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-                              <span>{ratingScore.toFixed(1)}</span>
+                            <div className="flex items-center gap-2">
+                              <div className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-900 shadow-2xs">
+                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                                <span>{ratingScore.toFixed(1)}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditReview(review)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-slate-600 transition-colors"
+                                  title="Edit review & rating"
+                                >
+                                  <Edit className="w-3 h-3" /> Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteReview(review)}
+                                  disabled={isDeletingThis}
+                                  className="p-1 text-xs rounded-md border border-slate-200 bg-slate-50 hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 transition-colors disabled:opacity-50"
+                                  title="Delete review"
+                                >
+                                  {isDeletingThis ? <Loader2 className="w-3 h-3 animate-spin text-red-500" /> : <Trash2 className="w-3 h-3" />}
+                                </button>
+                              </div>
                             </div>
                             <span className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                               <Clock className="w-3 h-3 text-slate-400" />

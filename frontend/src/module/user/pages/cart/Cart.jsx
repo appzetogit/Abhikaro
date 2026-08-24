@@ -2346,15 +2346,6 @@ export default function Cart() {
                       Offers & Promo Codes
                     </h3>
                   </div>
-                  {!appliedCoupon && (adminPromoCodes.length > 0 || availableCoupons.length > 0) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCoupons(!showCoupons)}
-                      className="text-xs font-semibold text-orange-600 hover:text-orange-700"
-                    >
-                      {showCoupons ? "Hide Offers" : "View All Offers →"}
-                    </button>
-                  )}
                 </div>
 
                 {appliedCoupon ? (
@@ -2412,56 +2403,6 @@ export default function Cart() {
                         {isValidatingPromo ? "..." : "APPLY"}
                       </Button>
                     </div>
-
-                    {/* Featured / Available Promo Badges */}
-                    {!showCoupons && adminPromoCodes.length > 0 && (
-                      <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
-                        {adminPromoCodes.slice(0, 2).map((promo) => {
-                          const isEligible = subtotal >= (promo.minOrderAmount || 0);
-                          return (
-                            <div
-                              key={promo._id}
-                              className={`flex-shrink-0 flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-xs transition-all ${
-                                isEligible
-                                  ? "bg-orange-50/70 dark:bg-orange-900/10 border border-orange-200/80 dark:border-orange-800/50"
-                                  : "bg-gray-50/80 dark:bg-gray-800/30 border border-gray-200 dark:border-gray-700/60 opacity-60"
-                              }`}
-                            >
-                              <div>
-                                <p
-                                  className={`font-mono font-bold ${
-                                    isEligible
-                                      ? "text-orange-700 dark:text-orange-400"
-                                      : "text-gray-500 dark:text-gray-400"
-                                  }`}
-                                >
-                                  {promo.code}
-                                </p>
-                                <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                                  {promo.discountType === "percentage"
-                                    ? `${promo.discountValue}% OFF`
-                                    : `₹${promo.discountValue} FLAT OFF`}
-                                  {promo.minOrderAmount > 0 ? ` on min ₹${promo.minOrderAmount}` : ""}
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={!isEligible}
-                                className={`h-7 text-xs font-semibold ${
-                                  isEligible
-                                    ? "border-orange-600 text-orange-600 hover:bg-orange-600 hover:text-white"
-                                    : "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:border-gray-700 dark:text-gray-500"
-                                }`}
-                                onClick={() => handleApplyCustomPromo(promo.code)}
-                              >
-                                {isEligible ? "Apply" : `Min ₹${promo.minOrderAmount}`}
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 )}
 

@@ -1,5 +1,9 @@
 import Order from '../../order/models/Order.js';
 import Payment from '../../payment/models/Payment.js';
+import User from '../../auth/models/User.js';
+import Delivery from '../../delivery/models/Delivery.js';
+import Hotel from '../../hotel/models/Hotel.js';
+import OrderSettlement from '../../order/models/OrderSettlement.js';
 import { successResponse, errorResponse } from '../../../shared/utils/response.js';
 import asyncHandler from '../../../shared/middleware/asyncHandler.js';
 import mongoose from 'mongoose';
@@ -215,11 +219,10 @@ export const getOrders = asyncHandler(async (req, res) => {
     const limitNum = Math.min(10000, Math.max(1, parseInt(limit))); // Max 10000 items per page
     const skip = (pageNum - 1) * limitNum;
 
-    // Fetch orders with population - using lean() for better performance
+    // Fetch orders with population - using lean() and excluding bulky delivery states
     const orders = await Order.find(query)
+      .select('-deliveryState -assignmentInfo.nearbyBoys')
       .populate('userId', 'name email phone')
-      // Include basic restaurant location/address details so invoices and admin UIs
-      // can show the full restaurant address.
       .populate('restaurantId', 'name slug location.formattedAddress location.address location.city location.state location.zipCode location.pincode')
       .populate('deliveryPartnerId', 'name phone')
       .sort({ createdAt: -1 })
@@ -238,7 +241,6 @@ export const getOrders = asyncHandler(async (req, res) => {
     let settlementHotelNameMap = new Map();
     let settlementHotelIdMap = new Map();
     try {
-      const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
       const orderIds = orders.map(o => o._id);
       const settlements = await OrderSettlement.find({ orderId: { $in: orderIds } })
         .select('orderId deliveryPartnerId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
@@ -274,53 +276,22 @@ export const getOrders = asyncHandler(async (req, res) => {
       console.warn('Could not batch fetch settlements:', err.message);
     }
 
-    // Dynamically resolve genuine restaurant names for generic/fallback ones
+    // Dynamically resolve genuine restaurant names
     const restaurantIds = [...new Set(orders.map(o => o.restaurantId?.toString()).filter(Boolean))];
     let resolvedRestaurantNamesMap = new Map();
     if (restaurantIds.length > 0) {
       try {
-        const nameAggregation = await Order.aggregate([
-          { $match: { restaurantId: { $in: restaurantIds } } },
-          { $group: {
-              _id: "$restaurantId",
-              names: { $addToSet: "$restaurantName" }
-            }
-          }
-        ]);
+        const validObjIds = restaurantIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+        const restDocs = await Restaurant.find({
+          $or: [
+            { _id: { $in: validObjIds } },
+            { restaurantId: { $in: restaurantIds } }
+          ]
+        }).select('_id restaurantId name').lean();
         
-        let settlementAggregation = [];
-        try {
-          const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
-          settlementAggregation = await OrderSettlement.aggregate([
-            { $match: { restaurantId: { $in: restaurantIds.map(id => mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id) } } },
-            { $group: {
-                _id: "$restaurantId",
-                names: { $addToSet: "$restaurantName" }
-              }
-            }
-          ]);
-        } catch (_) {}
-
-        const mergeMap = new Map();
-        nameAggregation.forEach(item => {
-          if (item._id) mergeMap.set(item._id.toString(), new Set(item.names));
-        });
-        settlementAggregation.forEach(item => {
-          if (item._id) {
-            const idStr = item._id.toString();
-            if (!mergeMap.has(idStr)) {
-              mergeMap.set(idStr, new Set());
-            }
-            item.names.forEach(n => mergeMap.get(idStr).add(n));
-          }
-        });
-
-        mergeMap.forEach((namesSet, idStr) => {
-          const names = Array.from(namesSet).filter(Boolean);
-          const genuineName = names.find(n => !/^Restaurant\s*\d+$/i.test(String(n).trim()) && !/^Unknown Restaurant$/i.test(String(n).trim()));
-          if (genuineName) {
-            resolvedRestaurantNamesMap.set(idStr, genuineName);
-          }
+        restDocs.forEach(r => {
+          if (r._id && r.name) resolvedRestaurantNamesMap.set(r._id.toString(), r.name);
+          if (r.restaurantId && r.name) resolvedRestaurantNamesMap.set(String(r.restaurantId), r.name);
         });
       } catch (err) {
         console.warn('Could not dynamically resolve restaurant names:', err.message);
@@ -343,13 +314,15 @@ export const getOrders = asyncHandler(async (req, res) => {
     let deliveryPartnersMap = new Map();
     if (deliveryPartnerIds.size > 0) {
       try {
-        const Delivery = (await import('../../delivery/models/Delivery.js')).default;
-        const dps = await Delivery.find({ _id: { $in: Array.from(deliveryPartnerIds).map(id => new mongoose.Types.ObjectId(id)) } })
-          .select('name phone')
-          .lean();
-        dps.forEach(dp => {
-          deliveryPartnersMap.set(dp._id.toString(), dp);
-        });
+        const validDpIds = Array.from(deliveryPartnerIds).filter(id => mongoose.Types.ObjectId.isValid(id));
+        if (validDpIds.length > 0) {
+          const dps = await Delivery.find({ _id: { $in: validDpIds } })
+            .select('name phone')
+            .lean();
+          dps.forEach(dp => {
+            deliveryPartnersMap.set(dp._id.toString(), dp);
+          });
+        }
       } catch (err) {
         console.warn('Could not batch fetch delivery partners:', err.message);
       }

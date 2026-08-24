@@ -1479,6 +1479,32 @@ export const adminAPI = {
     return apiClient.get(API_ENDPOINTS.ADMIN.REVIEWS, { params });
   },
 
+  // Update order review (Admin)
+  updateReview: (orderId, data) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.REVIEW_UPDATE.replace(":orderId", orderId),
+      data,
+    );
+  },
+
+  // Delete order review (Admin)
+  deleteReview: (orderId) => {
+    return apiClient.delete(
+      API_ENDPOINTS.ADMIN.REVIEW_DELETE.replace(":orderId", orderId),
+    );
+  },
+
+  // Update restaurant overall rating & review count override (Admin)
+  updateRestaurantRating: (restaurantId, data) => {
+    return apiClient.put(
+      API_ENDPOINTS.ADMIN.RESTAURANT_RATING_UPDATE.replace(
+        ":restaurantId",
+        restaurantId,
+      ),
+      data,
+    );
+  },
+
   // Update restaurant status
   updateRestaurantStatus: (id, isActive) => {
     return apiClient.put(

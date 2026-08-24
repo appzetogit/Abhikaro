@@ -49,9 +49,10 @@ const fetchFirebaseConfig = async () => {
 };
 
 // Initialize Firebase app only once
-let app;
-let firebaseAuth;
-let googleProvider;
+let app = null;
+let firebaseAuth = null;
+let googleProvider = null;
+let firebaseApp = null;
 
 // Function to ensure Firebase is initialized
 async function ensureFirebaseInitialized() {
@@ -84,9 +85,11 @@ async function ensureFirebaseInitialized() {
     const existingApps = getApps();
     if (existingApps.length === 0) {
       app = initializeApp(firebaseConfig);
+      firebaseApp = app;
       log.info("🚀 Firebase initialized successfully");
     } else {
       app = existingApps[0];
+      firebaseApp = app;
     }
 
     // Initialize Auth
@@ -108,5 +111,6 @@ async function ensureFirebaseInitialized() {
 // Initialize immediately (async but we don't await at module level)
 ensureFirebaseInitialized();
 
-export const firebaseApp = app;
-export { firebaseAuth, googleProvider, ensureFirebaseInitialized };
+export const getFirebaseApp = () => firebaseApp || app || (getApps().length > 0 ? getApps()[0] : null);
+export { firebaseApp, firebaseAuth, googleProvider, ensureFirebaseInitialized };
+

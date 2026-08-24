@@ -1,5 +1,6 @@
 import { getDatabase, ref, onValue, off, update, set, get } from 'firebase/database';
-import { firebaseApp, ensureFirebaseInitialized } from './firebase.js';
+import { getApps } from 'firebase/app';
+import { firebaseApp, ensureFirebaseInitialized, getFirebaseApp } from './firebase.js';
 
 let db = null;
 
@@ -14,11 +15,12 @@ async function getFirebaseRealtimeDB() {
   try {
     await ensureFirebaseInitialized();
     
-    if (!firebaseApp) {
+    const app = (getFirebaseApp && getFirebaseApp()) || firebaseApp || (getApps().length > 0 ? getApps()[0] : null);
+    if (!app) {
       return null;
     }
 
-    db = getDatabase(firebaseApp);
+    db = getDatabase(app);
     return db;
   } catch (error) {
     console.error('❌ Error initializing Firebase Realtime Database:', error);
