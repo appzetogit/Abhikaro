@@ -8,11 +8,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import ViewOrderDialog from "../components/orders/ViewOrderDialog"
 
+const getCachedCustomers = () => {
+  try {
+    const cached = sessionStorage.getItem("admin_customers_cache")
+    return cached ? JSON.parse(cached) : []
+  } catch {
+    return []
+  }
+}
+
 export default function Customers() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [customers, setCustomers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [totalCustomers, setTotalCustomers] = useState(0)
+  const [customers, setCustomers] = useState(() => getCachedCustomers())
+  const [loading, setLoading] = useState(() => getCachedCustomers().length === 0)
+  const [totalCustomers, setTotalCustomers] = useState(() => getCachedCustomers().length)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 15
   const [selectedCustomer, setSelectedCustomer] = useState(null)
@@ -269,7 +278,7 @@ export default function Customers() {
     try {
       setLoading(true)
       const params = {
-        limit: 1000000, // Get all customers
+        limit: 1000000, // Fetch all database users
         offset: 0,
         ...(searchQuery && { search: searchQuery }),
         ...(filters.status && { status: filters.status }),
@@ -283,6 +292,11 @@ export default function Customers() {
       if (data?.users) {
         setCustomers(data.users)
         setTotalCustomers(data.total ?? data.users.length)
+        try {
+          if (!searchQuery && !filters.status && !filters.joiningDate && !filters.sortBy) {
+            sessionStorage.setItem("admin_customers_cache", JSON.stringify(data.users))
+          }
+        } catch {}
       } else {
         setCustomers([])
         setTotalCustomers(0)

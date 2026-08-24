@@ -26,24 +26,34 @@ import {
 import { Activity, ArrowUpRight, ShoppingBag, CreditCard, Truck, Receipt, DollarSign, Store, UserCheck, Package, UserCircle, Clock, CheckCircle, Plus, QrCode, UtensilsCrossed, TrendingUp } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 
+const getCachedData = (key, fallback) => {
+  try {
+    const cached = sessionStorage.getItem(key)
+    return cached ? JSON.parse(cached) : fallback
+  } catch {
+    return fallback
+  }
+}
+
 export default function AdminHome() {
   const navigate = useNavigate()
-  const [zones, setZones] = useState([])
+  const [zones, setZones] = useState(() => getCachedData("admin_zones_cache", []))
   const [selectedZone, setSelectedZone] = useState("all")
   const [selectedPeriod, setSelectedPeriod] = useState("overall")
   const [customRange, setCustomRange] = useState({ start: "", end: "" })
-  const [isLoading, setIsLoading] = useState(true)
-  const [dashboardData, setDashboardData] = useState(null)
-  const [hotelCountOverride, setHotelCountOverride] = useState(null)
-  const [diningData, setDiningData] = useState({
+  const [isLoading, setIsLoading] = useState(false)
+  const [dashboardData, setDashboardData] = useState(() => getCachedData("admin_dashboard_stats_cache", null))
+  const [hotelCountOverride, setHotelCountOverride] = useState(() => getCachedData("admin_hotel_count_cache", null))
+  const [diningData, setDiningData] = useState(() => getCachedData("admin_dining_stats_cache", {
     enabledRestaurantsCount: 0,
     totalCommission: 0,
     restaurantEarnings: 0
-  })
-  const [deliveryLeaderboard, setDeliveryLeaderboard] = useState([])
+  }))
+  const [deliveryLeaderboard, setDeliveryLeaderboard] = useState(() => getCachedData("admin_delivery_leaderboard_cache", []))
   const [deliveryLeaderboardLoading, setDeliveryLeaderboardLoading] = useState(false)
   const filtersRequestRef = useRef({ zone: "all", timeFilter: "overall", startDate: "", endDate: "" })
   const debounceRef = useRef(null)
+  const isFirstMountRef = useRef(true)
 
   // Fetch zones for zone filter (once)
   useEffect(() => {
@@ -51,7 +61,11 @@ export default function AdminHome() {
       try {
         const zonesResponse = await adminAPI.getZones({ limit: 1000, isActive: true })
         if (zonesResponse.data?.success && zonesResponse.data?.data) {
-          setZones(zonesResponse.data.data.zones || zonesResponse.data.data || [])
+          const list = zonesResponse.data.data.zones || zonesResponse.data.data || []
+          setZones(list)
+          try {
+            sessionStorage.setItem("admin_zones_cache", JSON.stringify(list))
+          } catch {}
         }
       } catch (error) {
         console.error('❌ Error fetching zones:', error)
@@ -69,6 +83,9 @@ export default function AdminHome() {
         const totalFromPagination = res.data?.data?.pagination?.total
         if (typeof totalFromPagination === "number") {
           setHotelCountOverride(totalFromPagination)
+          try {
+            sessionStorage.setItem("admin_hotel_count_cache", JSON.stringify(totalFromPagination))
+          } catch {}
         }
       } catch (error) {
         console.error("❌ Error fetching hotel count for dashboard:", error)
@@ -82,22 +99,33 @@ export default function AdminHome() {
   useEffect(() => {
     const fetchDiningData = async () => {
       try {
-        // Fetch enabled dining restaurants count
-        const restaurantsRes = await adminAPI.getRestaurants({ page: 1, limit: 1000 })
-        const restaurants = restaurantsRes.data?.data?.restaurants || []
-        const enabledDiningCount = restaurants.filter(
-          (r) => r.isActive === true && r.diningSettings?.isEnabled === true
-        ).length
+        const [restaurantsRes, earningsRes] = await Promise.allSettled([
+          adminAPI.getRestaurants({ page: 1, limit: 1000 }),
+          adminAPI.getDiningEarnings({})
+        ])
 
-        // Fetch dining earnings summary
-        const earningsRes = await adminAPI.getDiningEarnings({})
-        const summary = earningsRes.data?.data?.summary || {}
-        
-        setDiningData({
+        let enabledDiningCount = 0
+        if (restaurantsRes.status === "fulfilled") {
+          const restaurants = restaurantsRes.value.data?.data?.restaurants || []
+          enabledDiningCount = restaurants.filter(
+            (r) => r.isActive === true && r.diningSettings?.isEnabled === true
+          ).length
+        }
+
+        let summary = {}
+        if (earningsRes.status === "fulfilled") {
+          summary = earningsRes.value.data?.data?.summary || {}
+        }
+
+        const newDiningData = {
           enabledRestaurantsCount: enabledDiningCount,
           totalCommission: summary.totalCommissionEarned || 0,
           restaurantEarnings: summary.totalRestaurantEarnings || 0
-        })
+        }
+        setDiningData(newDiningData)
+        try {
+          sessionStorage.setItem("admin_dining_stats_cache", JSON.stringify(newDiningData))
+        } catch {}
       } catch (error) {
         console.error("❌ Error fetching dining data:", error)
       }
@@ -106,7 +134,7 @@ export default function AdminHome() {
     fetchDiningData()
   }, [])
 
-  // Fetch dashboard stats when filters change (single combined request, debounced)
+  // Fetch dashboard stats when filters change
   useEffect(() => {
     const fetchFilteredStats = async () => {
       try {
@@ -121,7 +149,7 @@ export default function AdminHome() {
           params.endDate = customRange.end
         }
 
-        // Skip request if params are unchanged (prevents duplicate refresh)
+        // Skip request if params are unchanged
         const key = JSON.stringify(params)
         const lastKey = JSON.stringify(filtersRequestRef.current)
         if (key === lastKey && dashboardData) {
@@ -133,6 +161,9 @@ export default function AdminHome() {
         const response = await adminAPI.getDashboardStats(params)
         if (response.data?.success && response.data?.data) {
           setDashboardData(response.data.data)
+          try {
+            sessionStorage.setItem("admin_dashboard_stats_cache", JSON.stringify(response.data.data))
+          } catch {}
         } else {
           console.error('❌ Invalid response format:', response.data)
         }
@@ -148,13 +179,18 @@ export default function AdminHome() {
       return
     }
 
-    // Debounce to avoid multiple rapid requests
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current)
-    }
-    debounceRef.current = setTimeout(() => {
+    // Immediate fetch on mount, light debounce on subsequent filter changes
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false
       fetchFilteredStats()
-    }, 250)
+    } else {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+      debounceRef.current = setTimeout(() => {
+        fetchFilteredStats()
+      }, 150)
+    }
 
     return () => {
       if (debounceRef.current) {
@@ -185,6 +221,9 @@ export default function AdminHome() {
             .slice(0, 8)
 
           setDeliveryLeaderboard(rankedPartners)
+          try {
+            sessionStorage.setItem("admin_delivery_leaderboard_cache", JSON.stringify(rankedPartners))
+          } catch {}
         } else {
           setDeliveryLeaderboard([])
         }
@@ -278,15 +317,6 @@ export default function AdminHome() {
   return (
     <div className="px-4 pb-10 lg:px-6 pt-4">
       <div className="relative overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_30px_120px_-60px_rgba(0,0,0,0.28)]">
-        {isLoading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-sm">
-            <div className="flex items-center gap-3 rounded-full bg-white px-4 py-2 text-sm text-neutral-700 ring-1 ring-neutral-200">
-              <span className="h-3 w-3 animate-ping rounded-full bg-neutral-800/70" />
-              Updating metrics...
-            </div>
-          </div>
-        )}
-
         <div className="flex flex-col gap-4 border-b border-neutral-200 bg-linear-to-br from-white via-neutral-50 to-neutral-100 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <div>

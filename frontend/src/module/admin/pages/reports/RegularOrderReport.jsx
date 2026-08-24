@@ -68,7 +68,7 @@ export default function RegularOrderReport() {
         }
 
         // Fetch customers (users)
-        const usersRes = await adminAPI.getUsers({ limit: 1000000 })
+        const usersRes = await adminAPI.getUsers({ limit: 500 })
         if (usersRes.data?.success) {
           setCustomers(usersRes.data.data.users || [])
         }

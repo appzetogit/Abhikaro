@@ -7,6 +7,12 @@ import OrderSettlement from "../../order/models/OrderSettlement.js";
 import TableBooking from "../../dining/models/TableBooking.js";
 import AdminWallet from "../models/AdminWallet.js";
 import emailService from "../../auth/services/emailService.js";
+import User from "../../auth/models/User.js";
+import UserWallet from "../../user/models/UserWallet.js";
+import Delivery from "../../delivery/models/Delivery.js";
+import Menu from "../../restaurant/models/Menu.js";
+import Hotel from "../../hotel/models/Hotel.js";
+import Zone from "../models/Zone.js";
 import {
   successResponse,
   errorResponse,
@@ -49,6 +55,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
 
     const now = new Date();
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     // Helper: parse time filter into date range
     function getTimeFilterRange() {
@@ -237,7 +244,6 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     // Resolve zone filter (if any)
     let zoneIdFilter = null;
     if (zone && zone !== "all" && zone !== "All Zones") {
-      const Zone = (await import("../models/Zone.js")).default;
       const zoneDoc = await Zone.findOne({
         name: { $regex: zone, $options: "i" },
       })
@@ -252,33 +258,122 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     const { from, to, granularity } = getTimeFilterRange();
     const hasFilters = !!zoneIdFilter || timeFilter !== "overall";
 
-    // If no filters, keep existing global behaviour (unchanged)
+    // If no filters, run optimized parallel queries
     if (!hasFilters) {
-      // Original implementation moved into a helper-like block
+      const pendingRestaurantRequestsQuery = {
+        isActive: false,
+        isDeleted: { $ne: true },
+        approvedAt: { $in: [null, undefined] },
+        "onboarding.completedSteps": 4,
+        $or: [
+          { rejectionReason: { $exists: false } },
+          { rejectionReason: null },
+        ],
+      };
 
-      // Get total revenue (sum of all completed orders)
-      const revenueStats = await Order.aggregate([
-        {
-          $match: {
-            status: "delivered",
-            "pricing.total": { $exists: true },
+      const monthNames = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+      ];
+      const twelveMonthsStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+      const twelveMonthsEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      // Execute all primary queries in parallel
+      const [
+        revenueStats,
+        deliveredOrderDocs,
+        orderStats,
+        activeRestaurants,
+        activeDeliveryPartners,
+        totalRestaurants,
+        pendingRestaurantRequests,
+        totalDeliveryBoys,
+        pendingDeliveryBoyRequests,
+        activeRestaurantDocs,
+        totalHotels,
+        activeHotels,
+        allActiveMenus,
+        totalCustomers,
+        recentOrders,
+        recentRestaurants,
+        diningStats,
+        yearOrders,
+      ] = await Promise.all([
+        Order.aggregate([
+          {
+            $match: {
+              status: "delivered",
+              "pricing.total": { $exists: true },
+            },
           },
-        },
-        {
-          $group: {
-            _id: null,
-            totalRevenue: { $sum: "$pricing.total" },
-            last30DaysRevenue: {
-              $sum: {
-                $cond: [
-                  { $gte: ["$createdAt", last30Days] },
-                  "$pricing.total",
-                  0,
-                ],
+          {
+            $group: {
+              _id: null,
+              totalRevenue: { $sum: "$pricing.total" },
+              last30DaysRevenue: {
+                $sum: {
+                  $cond: [
+                    { $gte: ["$createdAt", last30Days] },
+                    "$pricing.total",
+                    0,
+                  ],
+                },
               },
             },
           },
-        },
+        ]),
+        Order.find({ status: "delivered" }).select("_id").lean(),
+        Order.aggregate([
+          {
+            $group: {
+              _id: "$status",
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        Restaurant.countDocuments({
+          approvedAt: { $exists: true, $ne: null },
+          isActive: true,
+          isDeleted: { $ne: true },
+        }),
+        User.countDocuments({
+          role: "delivery",
+          isActive: true,
+        }),
+        Restaurant.countDocuments({
+          approvedAt: { $exists: true, $ne: null },
+          isDeleted: { $ne: true },
+        }),
+        Restaurant.countDocuments(pendingRestaurantRequestsQuery),
+        Delivery.countDocuments({
+          status: { $in: ["approved", "active"] },
+        }),
+        Delivery.countDocuments({
+          status: "pending",
+        }),
+        Restaurant.find({
+          approvedAt: { $exists: true, $ne: null },
+          isActive: true,
+        }).select("_id").lean(),
+        Hotel.countDocuments({}),
+        Hotel.countDocuments({ isActive: true }),
+        Menu.find({ isActive: true }).select("addons sections restaurant").lean(),
+        User.countDocuments({
+          $or: [{ role: "user" }, { role: { $exists: false } }, { role: null }],
+        }),
+        Order.countDocuments({
+          createdAt: { $gte: last24Hours },
+        }),
+        Restaurant.countDocuments({
+          createdAt: { $gte: last24Hours },
+          approvedAt: { $exists: true, $ne: null },
+          isActive: true,
+        }),
+        getDiningStats({}),
+        Order.find({
+          status: "delivered",
+          deliveredAt: { $gte: twelveMonthsStart, $lte: twelveMonthsEnd },
+        }).select("_id pricing deliveredAt").lean(),
       ]);
 
       const revenueData = revenueStats[0] || {
@@ -286,14 +381,12 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         last30DaysRevenue: 0,
       };
 
-      const deliveredOrderIds = await Order.find({ status: "delivered" })
-        .select("_id")
-        .lean();
-      const deliveredOrderIdArray = deliveredOrderIds.map((o) => o._id);
-
-      const allSettlements = await OrderSettlement.find({
-        orderId: { $in: deliveredOrderIdArray },
-      }).lean();
+      const deliveredOrderIdArray = deliveredOrderDocs.map((o) => o._id);
+      const allSettlements = deliveredOrderIdArray.length > 0
+        ? await OrderSettlement.find({
+            orderId: { $in: deliveredOrderIdArray },
+          }).lean()
+        : [];
 
       let totalCommission = 0;
       let totalPlatformFee = 0;
@@ -301,8 +394,18 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       let totalGST = 0;
       let pendingCashCommission = 0;
       let totalQRCommission = 0;
+      let last30DaysCommission = 0;
+      let last30DaysPlatformFee = 0;
+      let last30DaysDeliveryFee = 0;
+      let last30DaysGST = 0;
+
+      const settlementsByOrderId = new Map();
 
       allSettlements.forEach((s) => {
+        if (s.orderId) {
+          settlementsByOrderId.set(s.orderId.toString(), s);
+        }
+
         const commission = s.adminEarning?.commission || 0;
         const platformFee = s.adminEarning?.platformFee || 0;
         const deliveryFee = s.adminEarning?.deliveryFee || 0;
@@ -318,6 +421,14 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         if (s.adminEarning?.adminCommissionStatus === "pending_settlement") {
           pendingCashCommission += commission;
         }
+
+        const sDate = s.createdAt ? new Date(s.createdAt) : null;
+        if (sDate && sDate >= last30Days && sDate <= now) {
+          last30DaysCommission += commission;
+          last30DaysPlatformFee += platformFee;
+          last30DaysDeliveryFee += deliveryFee;
+          last30DaysGST += gst;
+        }
       });
 
       totalCommission = Math.round(totalCommission * 100) / 100;
@@ -326,196 +437,65 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       totalGST = Math.round(totalGST * 100) / 100;
       totalQRCommission = Math.round(totalQRCommission * 100) / 100;
 
-      const last30DaysSettlements = await OrderSettlement.find({
-        createdAt: { $gte: last30Days, $lte: now },
-      }).lean();
-      const last30DaysCommission = last30DaysSettlements.reduce(
-        (sum, s) => sum + (s.adminEarning?.commission || 0),
-        0,
-      );
-      const last30DaysPlatformFee = last30DaysSettlements.reduce(
-        (sum, s) => sum + (s.adminEarning?.platformFee || 0),
-        0,
-      );
-      const last30DaysDeliveryFee = last30DaysSettlements.reduce(
-        (sum, s) => sum + (s.adminEarning?.deliveryFee || 0),
-        0,
-      );
-      const last30DaysGST = last30DaysSettlements.reduce(
-        (sum, s) => sum + (s.adminEarning?.gst || 0),
-        0,
-      );
-
-      const orderStats = await Order.aggregate([
-        {
-          $group: {
-            _id: "$status",
-            count: { $sum: 1 },
-          },
-        },
-      ]);
-
       const orderStatusMap = {};
       orderStats.forEach((stat) => {
         orderStatusMap[stat._id] = stat.count;
       });
 
-      const totalOrders = await Order.countDocuments({ status: "delivered" });
-
-      const activeRestaurants = await Restaurant.countDocuments({
-        approvedAt: { $exists: true, $ne: null },
-        isActive: true,
-        isDeleted: { $ne: true },
-      });
-      const User = (await import("../../auth/models/User.js")).default;
-      const activeDeliveryPartners = await User.countDocuments({
-        role: "delivery",
-        isActive: true,
-      });
+      const totalOrders = deliveredOrderIdArray.length;
       const activePartners = activeRestaurants + activeDeliveryPartners;
 
-      const totalRestaurants = await Restaurant.countDocuments({
-        approvedAt: { $exists: true, $ne: null },
-        isDeleted: { $ne: true },
-      });
-
-      const pendingRestaurantRequestsQuery = {
-        isActive: false,
-        isDeleted: { $ne: true },
-        approvedAt: { $in: [null, undefined] },
-        "onboarding.completedSteps": 4,
-        $or: [
-          { rejectionReason: { $exists: false } },
-          { rejectionReason: null },
-        ],
-      };
-      const pendingRestaurantRequests = await Restaurant.countDocuments(
-        pendingRestaurantRequestsQuery,
+      const activeRestaurantIdSet = new Set(
+        activeRestaurantDocs.map((r) => r._id.toString())
       );
 
-      const Delivery = (await import("../../delivery/models/Delivery.js"))
-        .default;
-      const totalDeliveryBoys = await Delivery.countDocuments({
-        status: { $in: ["approved", "active"] },
-      });
-
-      const pendingDeliveryBoyRequests = await Delivery.countDocuments({
-        status: "pending",
-      });
-
-      const Menu = (await import("../../restaurant/models/Menu.js")).default;
-      const Hotel = (await import("../../hotel/models/Hotel.js")).default;
-      const activeRestaurantDocs = await Restaurant.find({
-        approvedAt: { $exists: true, $ne: null },
-        isActive: true,
-      })
-        .select("_id")
-        .lean();
-      const activeRestaurantIds = activeRestaurantDocs.map((r) => r._id);
-
-      // Total hotels (all) and active hotels (for hotel QR / stay partners)
-      const totalHotels = await Hotel.countDocuments({});
-      const activeHotels = await Hotel.countDocuments({ isActive: true });
-
-      const activeMenus = await Menu.find({
-        isActive: true,
-        restaurant: { $in: activeRestaurantIds },
-      })
-        .select("sections restaurant")
-        .lean();
       let totalFoods = 0;
-      activeMenus.forEach((menu) => {
-        if (menu.sections && Array.isArray(menu.sections)) {
-          menu.sections.forEach((section) => {
-            if (section.items && Array.isArray(section.items)) {
-              totalFoods += section.items.filter((item) => {
-                if (!item || !item.id || !item.name) return false;
-                if (item.approvalStatus === "rejected") return false;
-                if (item.isAvailable === false) return false;
-                return true;
-              }).length;
-            }
-            if (section.subsections && Array.isArray(section.subsections)) {
-              section.subsections.forEach((subsection) => {
-                if (subsection.items && Array.isArray(subsection.items)) {
-                  totalFoods += subsection.items.filter((item) => {
-                    if (!item || !item.id || !item.name) return false;
-                    if (item.approvalStatus === "rejected") return false;
-                    if (item.isAvailable === false) return false;
-                    return true;
-                  }).length;
-                }
-              });
-            }
-          });
-        }
-      });
-
       let totalAddons = 0;
-      const menusWithAddons = await Menu.find({ isActive: true })
-        .select("addons")
-        .lean();
-      menusWithAddons.forEach((menu) => {
-        if (
-          !menu.addons ||
-          !Array.isArray(menu.addons) ||
-          menu.addons.length === 0
-        ) {
-          return;
+
+      allActiveMenus.forEach((menu) => {
+        if (menu.restaurant && activeRestaurantIdSet.has(menu.restaurant.toString())) {
+          if (menu.sections && Array.isArray(menu.sections)) {
+            menu.sections.forEach((section) => {
+              if (section.items && Array.isArray(section.items)) {
+                totalFoods += section.items.filter((item) => {
+                  if (!item || !item.id || !item.name) return false;
+                  if (item.approvalStatus === "rejected") return false;
+                  if (item.isAvailable === false) return false;
+                  return true;
+                }).length;
+              }
+              if (section.subsections && Array.isArray(section.subsections)) {
+                section.subsections.forEach((subsection) => {
+                  if (subsection.items && Array.isArray(subsection.items)) {
+                    totalFoods += subsection.items.filter((item) => {
+                      if (!item || !item.id || !item.name) return false;
+                      if (item.approvalStatus === "rejected") return false;
+                      if (item.isAvailable === false) return false;
+                      return true;
+                    }).length;
+                  }
+                });
+              }
+            });
+          }
         }
 
-        totalAddons += menu.addons.filter((addon) => {
-          if (!addon || typeof addon !== "object") return false;
-          if (
-            !addon.id ||
-            typeof addon.id !== "string" ||
-            addon.id.trim() === ""
-          )
-            return false;
-          if (
-            !addon.name ||
-            typeof addon.name !== "string" ||
-            addon.name.trim() === ""
-          )
-            return false;
-          if (addon.approvalStatus === "rejected") return false;
-          return true;
-        }).length;
-      });
-
-      const totalCustomers = await User.countDocuments({
-        $or: [{ role: "user" }, { role: { $exists: false } }, { role: null }],
+        if (menu.addons && Array.isArray(menu.addons)) {
+          totalAddons += menu.addons.filter((addon) => {
+            if (!addon || typeof addon !== "object") return false;
+            if (!addon.id || typeof addon.id !== "string" || addon.id.trim() === "") return false;
+            if (!addon.name || typeof addon.name !== "string" || addon.name.trim() === "") return false;
+            if (addon.approvalStatus === "rejected") return false;
+            return true;
+          }).length;
+        }
       });
 
       const pendingOrders = orderStatusMap.pending || 0;
       const completedOrders = orderStatusMap.delivered || 0;
 
-      const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const recentOrders = await Order.countDocuments({
-        createdAt: { $gte: last24Hours },
-      });
-      const recentRestaurants = await Restaurant.countDocuments({
-        createdAt: { $gte: last24Hours },
-        approvedAt: { $exists: true, $ne: null },
-        isActive: true,
-      });
-
+      // In-memory monthly chart computation
       const monthlyData = [];
-      const monthNames = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-      ];
-
       for (let i = 11; i >= 0; i--) {
         const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const monthEnd = new Date(
@@ -528,39 +508,21 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
           999,
         );
 
-        const monthOrders = await Order.find({
-          status: "delivered",
-          deliveredAt: { $gte: monthStart, $lte: monthEnd },
-        })
-          .select("_id pricing deliveredAt")
-          .lean();
-
-        const monthOrderIds = monthOrders.map((o) => o._id);
-
-        const monthSettlements = await OrderSettlement.find({
-          orderId: { $in: monthOrderIds },
-        })
-          .select("orderId adminEarning")
-          .lean();
-
-        const settlementMap = new Map();
-        monthSettlements.forEach((s) => {
-          settlementMap.set(s.orderId.toString(), s);
-        });
-
         let monthRevenue = 0;
         let monthCommission = 0;
+        let monthOrdersCount = 0;
 
-        monthOrders.forEach((order) => {
-          monthRevenue += order.pricing?.total || 0;
-
-          const settlement = settlementMap.get(order._id.toString());
-          if (settlement && settlement.adminEarning) {
-            monthCommission += settlement.adminEarning.commission || 0;
+        yearOrders.forEach((order) => {
+          const d = order.deliveredAt ? new Date(order.deliveredAt) : null;
+          if (d && d >= monthStart && d <= monthEnd) {
+            monthRevenue += order.pricing?.total || 0;
+            const settlement = settlementsByOrderId.get(order._id.toString());
+            if (settlement?.adminEarning) {
+              monthCommission += settlement.adminEarning.commission || 0;
+            }
+            monthOrdersCount += 1;
           }
         });
-
-        const monthOrdersCount = monthOrders.length;
 
         monthlyData.push({
           month: monthNames[monthStart.getMonth()],
@@ -569,8 +531,6 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
           orders: monthOrdersCount,
         });
       }
-
-      const diningStats = await getDiningStats({});
 
       return successResponse(
         res,
@@ -665,6 +625,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
           customers: {
             total: totalCustomers,
           },
+          hotels: {
+            total: totalHotels,
+            active: activeHotels,
+          },
           orderStats: {
             pending: pendingOrders,
             completed: completedOrders,
@@ -675,7 +639,6 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     }
 
     // Filtered branch (zone/time)
-
     const orderFilter = {};
     if (zoneIdFilter) {
       orderFilter["assignmentInfo.zoneId"] = zoneIdFilter;
@@ -686,20 +649,145 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       if (to) orderFilter.createdAt.$lte = to;
     }
 
-    const filteredOrders = await Order.find(orderFilter)
-      .select(
-        "_id pricing status createdAt deliveredAt userId restaurantId assignmentInfo deliveryPartnerId",
-      )
-      .lean();
+    const pendingRestaurantRequestsQuery = {
+      isActive: false,
+      isDeleted: { $ne: true },
+      approvedAt: { $in: [null, undefined] },
+      "onboarding.completedSteps": 4,
+      $or: [
+        { rejectionReason: { $exists: false } },
+        { rejectionReason: null },
+      ],
+    };
+
+    const [
+      filteredOrders,
+      totalRestaurants,
+      activeRestaurants,
+      pendingRestaurantRequests,
+      totalDeliveryBoys,
+      activeDeliveryPartners,
+      pendingDeliveryBoyRequests,
+      totalHotels,
+      activeHotels,
+      recentRestaurants,
+      diningStats,
+    ] = await Promise.all([
+      Order.find(orderFilter)
+        .select(
+          "_id pricing status createdAt deliveredAt userId restaurantId assignmentInfo deliveryPartnerId",
+        )
+        .lean(),
+      Restaurant.countDocuments(
+        zoneIdFilter
+          ? {
+              zoneId: zoneIdFilter,
+              approvedAt: { $exists: true, $ne: null },
+              isDeleted: { $ne: true },
+            }
+          : {
+              approvedAt: { $exists: true, $ne: null },
+              isDeleted: { $ne: true },
+            },
+      ),
+      Restaurant.countDocuments(
+        zoneIdFilter
+          ? {
+              zoneId: zoneIdFilter,
+              approvedAt: { $exists: true, $ne: null },
+              isActive: true,
+              isDeleted: { $ne: true },
+            }
+          : {
+              approvedAt: { $exists: true, $ne: null },
+              isActive: true,
+              isDeleted: { $ne: true },
+            },
+      ),
+      Restaurant.countDocuments(
+        zoneIdFilter
+          ? {
+              ...pendingRestaurantRequestsQuery,
+              zoneId: zoneIdFilter,
+            }
+          : pendingRestaurantRequestsQuery,
+      ),
+      Delivery.countDocuments(
+        zoneIdFilter
+          ? {
+              "availability.zones": zoneIdFilter,
+              status: { $in: ["approved", "active"] },
+            }
+          : {
+              status: { $in: ["approved", "active"] },
+            },
+      ),
+      Delivery.countDocuments(
+        zoneIdFilter
+          ? {
+              "availability.zones": zoneIdFilter,
+              status: { $in: ["approved", "active"] },
+              isActive: true,
+            }
+          : {
+              status: { $in: ["approved", "active"] },
+              isActive: true,
+            },
+      ),
+      Delivery.countDocuments(
+        zoneIdFilter
+          ? {
+              "availability.zones": zoneIdFilter,
+              status: "pending",
+            }
+          : {
+              status: "pending",
+            },
+      ),
+      Hotel.countDocuments({}),
+      Hotel.countDocuments({ isActive: true }),
+      Restaurant.countDocuments({
+        createdAt: { $gte: last24Hours },
+        approvedAt: { $exists: true, $ne: null },
+        isActive: true,
+        isDeleted: { $ne: true },
+      }),
+      getDiningStats({
+        fromDate: from,
+        toDate: to,
+        zoneId: zoneIdFilter,
+      }),
+    ]);
 
     const deliveredOrders = filteredOrders.filter(
       (o) => o.status === "delivered",
     );
     const deliveredOrderIds = deliveredOrders.map((o) => o._id);
 
-    const allSettlements = await OrderSettlement.find({
-      orderId: { $in: deliveredOrderIds },
-    }).lean();
+    const restaurantIdsSet = new Set();
+    const customerIdsSet = new Set();
+    filteredOrders.forEach((o) => {
+      if (o.restaurantId) restaurantIdsSet.add(o.restaurantId.toString());
+      if (o.userId) customerIdsSet.add(o.userId.toString());
+    });
+
+    const [allSettlements, totalCustomersCount, restaurantDocs] = await Promise.all([
+      deliveredOrderIds.length > 0
+        ? OrderSettlement.find({
+            orderId: { $in: deliveredOrderIds },
+          }).lean()
+        : [],
+      zoneIdFilter
+        ? customerIdsSet.size
+        : User.countDocuments({
+            $or: [{ role: "user" }, { role: { $exists: false } }, { role: null }],
+          }),
+      restaurantIdsSet.size > 0
+        ? Restaurant.find({
+            restaurantId: { $in: Array.from(restaurantIdsSet) },
+          }).select("_id").lean()
+        : [],
+    ]);
 
     const settlementsByOrderId = new Map();
     allSettlements.forEach((s) => {
@@ -783,113 +871,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     });
 
     const totalOrders = deliveredOrders.length;
-
-    const restaurantIdsSet = new Set();
-    const customerIdsSet = new Set();
-    const deliveryPartnerIdsSet = new Set();
-    filteredOrders.forEach((o) => {
-      if (o.restaurantId) restaurantIdsSet.add(o.restaurantId.toString());
-      if (o.userId) customerIdsSet.add(o.userId.toString());
-      if (o.deliveryPartnerId)
-        deliveryPartnerIdsSet.add(o.deliveryPartnerId.toString());
-    });
-
-    const pendingRestaurantRequestsQuery = {
-      isActive: false,
-      isDeleted: { $ne: true },
-      approvedAt: { $in: [null, undefined] },
-      "onboarding.completedSteps": 4,
-      $or: [
-        { rejectionReason: { $exists: false } },
-        { rejectionReason: null },
-      ],
-    };
-
-    let totalRestaurants;
-    let activeRestaurants;
-    let pendingRestaurantRequests;
-
-    if (zoneIdFilter) {
-      totalRestaurants = await Restaurant.countDocuments({
-        zoneId: zoneIdFilter,
-        approvedAt: { $exists: true, $ne: null },
-        isDeleted: { $ne: true },
-      });
-      activeRestaurants = await Restaurant.countDocuments({
-        zoneId: zoneIdFilter,
-        approvedAt: { $exists: true, $ne: null },
-        isActive: true,
-        isDeleted: { $ne: true },
-      });
-      pendingRestaurantRequests = await Restaurant.countDocuments({
-        ...pendingRestaurantRequestsQuery,
-        zoneId: zoneIdFilter,
-      });
-    } else {
-      totalRestaurants = await Restaurant.countDocuments({
-        approvedAt: { $exists: true, $ne: null },
-        isDeleted: { $ne: true },
-      });
-      activeRestaurants = await Restaurant.countDocuments({
-        approvedAt: { $exists: true, $ne: null },
-        isActive: true,
-        isDeleted: { $ne: true },
-      });
-      pendingRestaurantRequests = await Restaurant.countDocuments(
-        pendingRestaurantRequestsQuery,
-      );
-    }
-
-    const Delivery = (await import("../../delivery/models/Delivery.js")).default;
-    let totalDeliveryBoys;
-    let activeDeliveryPartners;
-    let pendingDeliveryBoyRequests;
-
-    if (zoneIdFilter) {
-      totalDeliveryBoys = await Delivery.countDocuments({
-        "availability.zones": zoneIdFilter,
-        status: { $in: ["approved", "active"] },
-      });
-      activeDeliveryPartners = await Delivery.countDocuments({
-        "availability.zones": zoneIdFilter,
-        status: { $in: ["approved", "active"] },
-        isActive: true,
-      });
-      pendingDeliveryBoyRequests = await Delivery.countDocuments({
-        "availability.zones": zoneIdFilter,
-        status: "pending",
-      });
-    } else {
-      totalDeliveryBoys = await Delivery.countDocuments({
-        status: { $in: ["approved", "active"] },
-      });
-      activeDeliveryPartners = await Delivery.countDocuments({
-        status: { $in: ["approved", "active"] },
-        isActive: true,
-      });
-      pendingDeliveryBoyRequests = await Delivery.countDocuments({
-        status: "pending",
-      });
-    }
-
-    let totalCustomers;
-    if (zoneIdFilter) {
-      totalCustomers = customerIdsSet.size;
-    } else {
-      const User = (await import("../../auth/models/User.js")).default;
-      totalCustomers = await User.countDocuments({
-        $or: [{ role: "user" }, { role: { $exists: false } }, { role: null }],
-      });
-    }
-
-    const Hotel = (await import("../../hotel/models/Hotel.js")).default;
-    const totalHotels = await Hotel.countDocuments({});
-    const activeHotels = await Hotel.countDocuments({ isActive: true });
-
+    const totalCustomers = totalCustomersCount;
     const pendingOrders = orderStatusMap.pending || 0;
     const completedOrders = orderStatusMap.delivered || 0;
 
-    const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const recentOrders = filteredOrders.filter((o) => {
       const ts = o.createdAt;
       if (!ts) return false;
@@ -898,33 +883,19 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       return ts >= last24Hours;
     }).length;
 
-    const recentRestaurants = await Restaurant.countDocuments({
-      createdAt: { $gte: last24Hours },
-      approvedAt: { $exists: true, $ne: null },
-      isActive: true,
-      isDeleted: { $ne: true },
-    });
-
-    const Menu = (await import("../../restaurant/models/Menu.js")).default;
     let totalFoods = 0;
     let totalAddons = 0;
-    if (restaurantIdsSet.size > 0) {
-      const restaurantDocs = await Restaurant.find({
-        restaurantId: { $in: Array.from(restaurantIdsSet) },
-      })
-        .select("_id")
-        .lean();
-      // Filter to valid ObjectIds only to prevent Cast errors
+    if (restaurantDocs.length > 0) {
       const restaurantObjectIds = restaurantDocs
         .map((r) => r._id)
         .filter((id) => mongoose.Types.ObjectId.isValid(id));
 
-      const activeMenus = restaurantObjectIds.length > 0 ? await Menu.find({
-        isActive: true,
-        restaurant: { $in: restaurantObjectIds },
-      })
-        .select("sections addons")
-        .lean() : [];
+      const activeMenus = restaurantObjectIds.length > 0
+        ? await Menu.find({
+            isActive: true,
+            restaurant: { $in: restaurantObjectIds },
+          }).select("sections addons").lean()
+        : [];
 
       activeMenus.forEach((menu) => {
         if (menu.sections && Array.isArray(menu.sections)) {
@@ -955,11 +926,6 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       to,
       granularity,
     );
-    const diningStats = await getDiningStats({
-      fromDate: from,
-      toDate: to,
-      zoneId: zoneIdFilter,
-    });
 
     return successResponse(res, 200, "Dashboard stats retrieved successfully", {
       revenue: {
@@ -1494,18 +1460,31 @@ export const getUsers = asyncHandler(async (req, res) => {
       orderDate,
       joiningDate,
     } = req.query;
-    const User = (await import("../../auth/models/User.js")).default;
 
-    // Build query
-    const query = { role: "user" }; // Only get users, not restaurants/delivery/admins
+    const parsedLimit = limit ? Math.min(Math.max(parseInt(limit, 10) || 100, 1), 1000000) : 1000000;
+    const parsedOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+    // Build query - include users with role="user" or without role set
+    const query = {
+      $or: [{ role: "user" }, { role: { $exists: false } }, { role: null }],
+    };
 
     // Search filter
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
+      const searchRegex = { $regex: search, $options: "i" };
+      query.$and = [
+        {
+          $or: [{ role: "user" }, { role: { $exists: false } }, { role: null }],
+        },
+        {
+          $or: [
+            { name: searchRegex },
+            { email: searchRegex },
+            { phone: searchRegex },
+          ],
+        },
       ];
+      delete query.$or;
     }
 
     // Status filter
@@ -1524,93 +1503,124 @@ export const getUsers = asyncHandler(async (req, res) => {
       query.createdAt = { $gte: startDate, $lte: endDate };
     }
 
-    // Get users
-    const users = await User.find(query)
-      .select("-password -__v")
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .skip(parseInt(offset))
-      .lean();
+    const isFetchingAll = parsedLimit >= 1000;
 
-    // Get user IDs
-    const userIds = users.map((user) => user._id);
-
-    // Fetch wallet balances for these users (UserWallet is the source of truth)
-    // Note: User model also has `wallet.balance`, but that field may drift from UserWallet.
-    const UserWallet = (await import("../../user/models/UserWallet.js")).default;
-    const wallets = await UserWallet.find({ userId: { $in: userIds } })
-      .select("userId balance")
-      .lean();
-
-    const walletBalanceMap = new Map();
-    wallets.forEach((w) => {
-      if (!w?.userId) return;
-      walletBalanceMap.set(String(w.userId), Number(w.balance) || 0);
-    });
-
-    // Get order statistics for each user:
-    // - totalOrder: COUNT ONLY delivered orders
-    // - totalOrderAmount: SUM ONLY delivered orders' totals
-    //   (so cancelled/failed/non-delivered never add to spent)
-    const orderStats = await Order.aggregate([
-      {
-        $match: {
-          userId: { $in: userIds },
-        },
-      },
-      {
-        $group: {
-          _id: "$userId",
-          totalOrders: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "delivered"] }, 1, 0],
+    // Fetch users, total count, wallets, and order statistics in parallel
+    const [users, total, allWallets, allOrderStats] = await Promise.all([
+      User.find(query)
+        .select("_id name email phone isActive createdAt wallet.balance")
+        .sort({ createdAt: -1 })
+        .limit(parsedLimit)
+        .skip(parsedOffset)
+        .lean(),
+      User.countDocuments(query),
+      isFetchingAll
+        ? UserWallet.find({}).select("userId balance").lean()
+        : null,
+      isFetchingAll
+        ? Order.aggregate([
+            {
+              $match: {
+                status: "delivered",
+              },
             },
-          },
-          totalAmount: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ["$status", "delivered"] },
-                    {
-                      $or: [
-                        { $eq: ["$payment.status", "completed"] },
-                        {
-                          $in: [
-                            "$payment.method",
-                            ["cash", "pay_at_hotel"],
-                          ],
-                        },
-                      ],
-                    },
-                  ],
+            {
+              $group: {
+                _id: "$userId",
+                totalOrders: { $sum: 1 },
+                totalAmount: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $or: [
+                          { $eq: ["$payment.status", "completed"] },
+                          { $in: ["$payment.method", ["cash", "pay_at_hotel"]] },
+                        ],
+                      },
+                      "$pricing.total",
+                      0,
+                    ],
+                  },
                 },
-                "$pricing.total",
-                0,
-              ],
+              },
             },
-          },
-        },
-      },
+          ])
+        : null,
     ]);
 
-    // Create a map of userId -> stats (ensure numbers for frontend)
-    const statsMap = {};
-    orderStats.forEach((stat) => {
-      statsMap[stat._id.toString()] = {
-        totalOrder: Number(stat.totalOrders) || 0,
-        totalOrderAmount: Number(stat.totalAmount) || 0,
-      };
-    });
+    let wallets = allWallets;
+    let orderStats = allOrderStats;
 
-    // Format users with order statistics
+    if (!isFetchingAll) {
+      const userIds = users.map((user) => user._id);
+      const [w, o] = await Promise.all([
+        userIds.length > 0
+          ? UserWallet.find({ userId: { $in: userIds } })
+              .select("userId balance")
+              .lean()
+          : [],
+        userIds.length > 0
+          ? Order.aggregate([
+              {
+                $match: {
+                  userId: { $in: userIds },
+                  status: "delivered",
+                },
+              },
+              {
+                $group: {
+                  _id: "$userId",
+                  totalOrders: { $sum: 1 },
+                  totalAmount: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $or: [
+                            { $eq: ["$payment.status", "completed"] },
+                            { $in: ["$payment.method", ["cash", "pay_at_hotel"]] },
+                          ],
+                        },
+                        "$pricing.total",
+                        0,
+                      ],
+                    },
+                  },
+                },
+              },
+            ])
+          : [],
+      ]);
+      wallets = w;
+      orderStats = o;
+    }
+
+    const walletBalanceMap = new Map();
+    if (Array.isArray(wallets)) {
+      wallets.forEach((w) => {
+        if (w?.userId) {
+          walletBalanceMap.set(String(w.userId), Number(w.balance) || 0);
+        }
+      });
+    }
+
+    const statsMap = new Map();
+    if (Array.isArray(orderStats)) {
+      orderStats.forEach((stat) => {
+        if (stat?._id) {
+          statsMap.set(String(stat._id), {
+            totalOrder: Number(stat.totalOrders) || 0,
+            totalOrderAmount: Number(stat.totalAmount) || 0,
+          });
+        }
+      });
+    }
+
     const formattedUsers = users.map((user, index) => {
-      const stats = statsMap[user._id.toString()] || {
+      const stats = statsMap.get(String(user._id)) || {
         totalOrder: 0,
         totalOrderAmount: 0,
       };
 
-      // Format joining date
       const joiningDate = new Date(user.createdAt);
       const formattedDate = joiningDate.toLocaleDateString("en-GB", {
         day: "numeric",
@@ -1619,19 +1629,21 @@ export const getUsers = asyncHandler(async (req, res) => {
       });
 
       const walletBalance =
-        walletBalanceMap.get(String(user._id)) ?? Number(user?.wallet?.balance) ?? 0;
+        walletBalanceMap.get(String(user._id)) ??
+        Number(user?.wallet?.balance) ??
+        0;
 
       return {
-        sl: parseInt(offset, 10) + index + 1,
+        sl: parsedOffset + index + 1,
         id: user._id.toString(),
         name: user.name || "N/A",
         email: user.email || "N/A",
         phone: user.phone || "N/A",
         totalOrder: Number(stats.totalOrder) || 0,
-        totalOrderAmount: Number(stats.totalOrderAmount) || 0,
+        totalOrderAmount: Math.round((Number(stats.totalOrderAmount) || 0) * 100) / 100,
         walletBalance: Number(walletBalance) || 0,
         joiningDate: formattedDate,
-        status: user.isActive !== false, // Default to true if not set
+        status: user.isActive !== false,
         createdAt: user.createdAt,
       };
     });
@@ -1649,20 +1661,11 @@ export const getUsers = asyncHandler(async (req, res) => {
       }
     }
 
-    // Order date filter (filter by order date after aggregation)
-    let filteredUsers = formattedUsers;
-    if (orderDate) {
-      // This would require additional query to filter by order date
-      // For now, we'll skip this as it's complex and may require different approach
-    }
-
-    const total = await User.countDocuments(query);
-
     return successResponse(res, 200, "Users retrieved successfully", {
-      users: filteredUsers,
+      users: formattedUsers,
       total,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit: parsedLimit,
+      offset: parsedOffset,
     });
   } catch (error) {
     logger.error(`Error fetching users: ${error.message}`, {
