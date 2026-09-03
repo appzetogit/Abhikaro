@@ -28,6 +28,9 @@ const logger = winston.createLogger({
   ],
 });
 
+// Mutex to prevent duplicate concurrent completeDelivery execution for the same order
+const activeCompletingOrderIds = new Set();
+
 /**
  * Get Delivery Partner Orders
  * GET /api/delivery/orders
@@ -2427,7 +2430,7 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       try {
         // Check if earnings were already calculated
         const wallet = await DeliveryWallet.findOne({
-          deliveryPartnerId: delivery._id,
+          deliveryId: delivery._id,
         });
         const orderIdForTransaction = order._id?.toString
           ? order._id.toString()

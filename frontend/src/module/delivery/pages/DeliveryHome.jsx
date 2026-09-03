@@ -702,6 +702,7 @@ export default function DeliveryHome() {
   const [showChatOverlay, setShowChatOverlay] = useState(false)
   const [customerRating, setCustomerRating] = useState(0)
   const [customerReviewText, setCustomerReviewText] = useState("")
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false)
   const [orderEarnings, setOrderEarnings] = useState(0) // Store earnings from completed order
   const [orderEarningsBreakdown, setOrderEarningsBreakdown] = useState(null) // Store commission breakdown (base + per-km)
   const [routePolyline, setRoutePolyline] = useState([])
@@ -12444,7 +12445,9 @@ export default function DeliveryHome() {
 
             {/* Submit Button */}
             <button
+              disabled={isSubmittingReview}
               onClick={async () => {
+                if (isSubmittingReview) return
                 // Get order ID - use MongoDB _id for API call
                 const orderIdForApi = selectedRestaurant?.id ||
                   newOrder?.orderMongoId ||
@@ -12454,8 +12457,8 @@ export default function DeliveryHome() {
 
                 // Save review by calling completeDelivery API with rating and review
                 if (orderIdForApi) {
+                  setIsSubmittingReview(true)
                   try {
-
                     // Call completeDelivery API with rating and review
                     const response = await deliveryAPI.completeDelivery(
                       orderIdForApi,
@@ -12475,7 +12478,6 @@ export default function DeliveryHome() {
                       const earningsBreakdown = response.data.data?.earnings?.breakdown || null
                       setOrderEarningsBreakdown(earningsBreakdown)
 
-
                       // Notify wallet listeners (Pocket balance, Pocket page) so cash collected updates
                       window.dispatchEvent(new Event('deliveryWalletStateUpdated'))
 
@@ -12488,15 +12490,15 @@ export default function DeliveryHome() {
                       setShowCustomerReviewPopup(false)
                       setShowPaymentPage(true)
                     } else {
-
                       toast.error(response.data?.message || 'Failed to submit review. Please try again.')
                     }
                   } catch (error) {
-
                     toast.error('Failed to submit review. Please try again.')
                     // Still show payment page even if review fails
                     setShowCustomerReviewPopup(false)
                     setShowPaymentPage(true)
+                  } finally {
+                    setIsSubmittingReview(false)
                   }
                 } else {
                   // If no order ID, just show payment page
@@ -12504,9 +12506,9 @@ export default function DeliveryHome() {
                   setShowPaymentPage(true)
                 }
               }}
-              className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold text-lg hover:bg-green-700 transition-colors shadow-lg"
+              className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold text-lg hover:bg-green-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Submit Review
+              {isSubmittingReview ? "Submitting..." : "Submit Review"}
             </button>
           </div>
         </div>

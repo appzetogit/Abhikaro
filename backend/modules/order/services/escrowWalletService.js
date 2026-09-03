@@ -320,7 +320,20 @@ export const creditDeliveryWallet = async (
     const DeliveryWallet = (
       await import("../../delivery/models/DeliveryWallet.js")
     ).default;
-    const wallet = await DeliveryWallet.findOrCreateByDeliveryId(deliveryId);
+    const orderIdStr = orderId?.toString ? orderId.toString() : String(orderId);
+    const existingTransaction = (wallet.transactions || []).find(
+      (t) =>
+        t.orderId &&
+        t.orderId.toString() === orderIdStr &&
+        t.type === "payment",
+    );
+
+    if (existingTransaction) {
+      console.warn(
+        `⚠️ Earning already added in creditDeliveryWallet for order ${orderNumber || orderIdStr}, skipping duplicate credit`,
+      );
+      return wallet;
+    }
 
     wallet.addTransaction({
       amount: amount,

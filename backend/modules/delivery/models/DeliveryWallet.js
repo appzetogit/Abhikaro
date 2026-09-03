@@ -175,6 +175,18 @@ deliveryWalletSchema.virtual('pendingWithdrawals').get(function() {
 
 // Method to add transaction and update balances
 deliveryWalletSchema.methods.addTransaction = function(transactionData) {
+  // Idempotency check: if this is an order payment (earning) and a payment transaction already exists for this orderId, skip duplicate
+  if (transactionData?.type === 'payment' && transactionData?.orderId) {
+    const orderIdStr = transactionData.orderId.toString();
+    const existing = (this.transactions || []).find(
+      t => t.type === 'payment' && t.orderId && t.orderId.toString() === orderIdStr
+    );
+    if (existing) {
+      console.warn(`⚠️ Duplicate payment transaction prevented in DeliveryWallet.addTransaction for order ${orderIdStr}`);
+      return existing;
+    }
+  }
+
   const transaction = {
     ...transactionData,
     createdAt: new Date()

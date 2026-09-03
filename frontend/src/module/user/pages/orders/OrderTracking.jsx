@@ -2026,22 +2026,7 @@ export default function OrderTracking() {
           </Link>
         </motion.div>
 
-        {/* Help Section */}
-        {canCancelOrder && (
-          <motion.div
-            className="bg-white rounded-xl shadow-sm overflow-hidden"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
-          >
-            <SectionItem
-              icon={CircleSlash}
-              title="Cancel order"
-              subtitle=""
-              onClick={handleCancelOrder}
-            />
-          </motion.div>
-        )}
+        {/* Help Section - Cancel order hidden */}
 
       </div>
 
