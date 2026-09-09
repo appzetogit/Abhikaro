@@ -80,6 +80,8 @@ function UserReloadHandler({ children, sessionRestored }) {
         currentPath === "/" ||
         currentPath.startsWith("/dining") ||
         currentPath.startsWith("/cart") ||
+        currentPath.startsWith("/thankyou") ||
+        currentPath.startsWith("/thank-you") ||
         currentPath.startsWith("/orders") ||
         currentPath.startsWith("/profile") ||
         currentPath.startsWith("/offers") ||
@@ -110,6 +112,8 @@ function UserReloadHandler({ children, sessionRestored }) {
       const isProtectedUserRoute =
         (!isPublicProfileRoute && routeWithoutQuery.startsWith("/profile")) ||
         routeWithoutQuery.startsWith("/cart") ||
+        routeWithoutQuery.startsWith("/thankyou") ||
+        routeWithoutQuery.startsWith("/thank-you") ||
         routeWithoutQuery.startsWith("/orders") ||
         routeWithoutQuery.startsWith("/wallet") ||
         routeWithoutQuery.startsWith("/notifications") ||

@@ -94,7 +94,7 @@ export default function RestaurantHistory() {
       setOrdersLoading(true)
       const params = {
         page: 1,
-        limit: 500,
+        limit: 10000,
         restaurant: selectedRestaurant._id || selectedRestaurant.restaurantId,
         status: statusFilter === "all" ? undefined : statusFilter,
         paymentStatus: paymentFilter || undefined,

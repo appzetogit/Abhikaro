@@ -35,11 +35,17 @@ export default function AddToCartAnimation({
   const flyingThumbnailRef = useRef(null);
   const prevItemsRef = useRef(items);
 
-  // Hide pill on cart pages, order pages, and account page (if enabled)
+  // Hide pill on cart pages, thank you pages, order pages, and account page (if enabled)
   const iscartPage = location.pathname === '/cart' ||
     location.pathname === '/user/cart' ||
     location.pathname.startsWith('/cart/') ||
-    location.pathname.startsWith('/user/cart/');
+    location.pathname.startsWith('/user/cart/') ||
+    location.pathname === '/thankyou' ||
+    location.pathname === '/user/thankyou' ||
+    location.pathname.startsWith('/thankyou/') ||
+    location.pathname.startsWith('/user/thankyou/') ||
+    location.pathname === '/thank-you' ||
+    location.pathname === '/user/thank-you';
   const isOrderPage = location.pathname.startsWith('/orders/');
   const isAccountPage = location.pathname === '/account';
   const shouldHidePill = hideOnPages && (iscartPage || isOrderPage || isAccountPage);

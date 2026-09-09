@@ -242,7 +242,7 @@ export default function OrderDetectDelivery() {
         setError(null)
         const params = {
           page: 1,
-          limit: 1000, // Fetch all orders for now
+          limit: 10000, // Fetch all orders
         }
         
         const response = await adminAPI.getOrders(params)

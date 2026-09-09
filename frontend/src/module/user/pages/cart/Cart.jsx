@@ -119,8 +119,6 @@ export default function Cart() {
   const [showBillDetails, setShowBillDetails] = useState(false)
   const [showPlacingOrder, setShowPlacingOrder] = useState(false)
   const [orderProgress, setOrderProgress] = useState(0)
-  const [showOrderSuccess, setShowOrderSuccess] = useState(false)
-  const [placedOrderId, setPlacedOrderId] = useState(null)
 
   // Restaurant and pricing state
   const [restaurantData, setRestaurantData] = useState(null)
@@ -163,41 +161,6 @@ export default function Cart() {
   })
 
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(-10)
-
-  // Warm up Google Maps as soon as success screen appears so the tracking map renders instantly
-  useEffect(() => {
-    if (showOrderSuccess) {
-      try {
-        preloadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
-      } catch {}
-    }
-  }, [showOrderSuccess])
-
-  // Meta Ads Purchase Tracking
-  useEffect(() => {
-    if (showOrderSuccess && pricing) {
-      try {
-        if (typeof window !== "undefined") {
-          const value = pricing.finalAmount || pricing.totalAmount || 0;
-          if (window.fbq) {
-            window.fbq("track", "Purchase", {
-              value: value,
-              currency: "INR"
-            });
-          }
-          if (window.FB && window.FB.AppEvents) {
-            window.FB.AppEvents.logEvent("Purchase", value, {
-              fb_currency: "INR"
-            });
-          }
-        }
-      } catch (error) {
-        // ignore tracking errors
-      }
-    }
-  }, [showOrderSuccess, pricing])
-
-  // Note: order placed success screen no longer shows advertise banners.
   // Checkout-only contact draft:
   // - Initialize from sessionStorage if present
   // - Otherwise initialize once from profile (if fields empty)
@@ -274,13 +237,6 @@ export default function Cart() {
       // ignore
     }
   }
-
-  // Clear checkout drafts when order is successfully placed
-  useEffect(() => {
-    if (showOrderSuccess) {
-      clearCheckoutDrafts()
-    }
-  }, [showOrderSuccess, userProfile])
 
   const handleSaveContact = async () => {
     const trimmedName = String(contactName || "").trim()
@@ -481,9 +437,9 @@ export default function Cart() {
 
 
 
-  // Lock body scroll and scroll to top when any full-screen modal opens
+  // Lock body scroll and scroll to top when placing order modal opens
   useEffect(() => {
-    if (showPlacingOrder || showOrderSuccess) {
+    if (showPlacingOrder) {
       // Lock body scroll
       document.body.style.overflow = 'hidden'
       document.body.style.position = 'fixed'
@@ -511,7 +467,7 @@ export default function Cart() {
       document.body.style.width = ''
       document.body.style.top = ''
     }
-  }, [showPlacingOrder, showOrderSuccess])
+  }, [showPlacingOrder])
 
   // Detect hotel order context on mount
   useEffect(() => {
@@ -1664,8 +1620,6 @@ export default function Cart() {
                 // Success UI and cleanups
                 toast.success("Payment successful. Order placed!")
                 clearCheckoutDrafts()
-                setPlacedOrderId(createdOrderId)
-                setShowOrderSuccess(true)
                 window.dispatchEvent(new Event('orderStatusUpdated'))
 
                 // Clear cart and checkout-specific address overrides
@@ -1675,6 +1629,14 @@ export default function Cart() {
                 setHasManuallySelectedDeliveryAddress(false)
 
                 setIsPlacingOrder(false)
+                navigate(`/thankyou?orderId=${createdOrderId}`, {
+                  state: {
+                    orderId: createdOrderId,
+                    address: checkoutDeliveryAddress,
+                    pricing
+                  },
+                  replace: true
+                })
                 return
               }
 
@@ -1688,11 +1650,20 @@ export default function Cart() {
                   const oid = recon.data.data.orderId
                   toast.success("Payment successful. Order placed!")
                   clearCheckoutDrafts()
-                  setPlacedOrderId(oid)
-                  setShowOrderSuccess(true)
                   window.dispatchEvent(new Event('orderStatusUpdated'))
                   clearCart()
+                  sessionStorage.removeItem("checkout_delivery_address")
+                  sessionStorage.removeItem("checkout_delivery_address_manual")
+                  setHasManuallySelectedDeliveryAddress(false)
                   setIsPlacingOrder(false)
+                  navigate(`/thankyou?orderId=${oid}`, {
+                    state: {
+                      orderId: oid,
+                      address: checkoutDeliveryAddress,
+                      pricing
+                    },
+                    replace: true
+                  })
                   return
                 }
               } catch (_) {
@@ -1708,11 +1679,20 @@ export default function Cart() {
                 if (s === 'succeeded' && oid) {
                   toast.success("Order placed!")
                   clearCheckoutDrafts()
-                  setPlacedOrderId(oid)
-                  setShowOrderSuccess(true)
                   window.dispatchEvent(new Event('orderStatusUpdated'))
                   clearCart()
+                  sessionStorage.removeItem("checkout_delivery_address")
+                  sessionStorage.removeItem("checkout_delivery_address_manual")
+                  setHasManuallySelectedDeliveryAddress(false)
                   setIsPlacingOrder(false)
+                  navigate(`/thankyou?orderId=${oid}`, {
+                    state: {
+                      orderId: oid,
+                      address: checkoutDeliveryAddress,
+                      pricing
+                    },
+                    replace: true
+                  })
                 } else if (s === 'failed') {
                   alert("Payment failed. Please try again.")
                   setIsPlacingOrder(false)
@@ -1778,9 +1758,8 @@ export default function Cart() {
         if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
           markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
         }
-        setPlacedOrderId(order?.orderId || order?.id || null)
+        const finalOrderId = order?.orderId || order?.id || null
         clearCheckoutDrafts()
-        setShowOrderSuccess(true)
         // Notify home screen tracking card to refresh active orders
         window.dispatchEvent(new Event('orderStatusUpdated'))
         
@@ -1791,6 +1770,16 @@ export default function Cart() {
         setHasManuallySelectedDeliveryAddress(false)
         
         setIsPlacingOrder(false)
+        navigate(`/thankyou?orderId=${finalOrderId}`, {
+          state: {
+            orderId: finalOrderId,
+            address: checkoutDeliveryAddress,
+            pricing,
+            hotelName,
+            isHotelOrder: true
+          },
+          replace: true
+        })
         return
       }
 
@@ -1811,9 +1800,8 @@ export default function Cart() {
         } catch (e) {
           // Failed to create local tracking order
         }
-        setPlacedOrderId(order?.orderId || order?.id || null)
+        const finalOrderId = order?.orderId || order?.id || null
         clearCheckoutDrafts()
-        setShowOrderSuccess(true)
         // Notify home screen tracking card to refresh active orders
         window.dispatchEvent(new Event('orderStatusUpdated'))
         
@@ -1836,6 +1824,14 @@ export default function Cart() {
         if (isCategoryOfferApplied && categoryOfferDiscount > 0 && bestCategoryOffer) {
           markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
         }
+        navigate(`/thankyou?orderId=${finalOrderId}`, {
+          state: {
+            orderId: finalOrderId,
+            address: checkoutDeliveryAddress,
+            pricing
+          },
+          replace: true
+        })
         return
       }
 
@@ -1903,12 +1899,18 @@ export default function Cart() {
                 markAdminOfferUsedToday(bestCategoryOffer.id, bestCategoryOffer.usageLimitPerDay)
               }
               clearCheckoutDrafts()
-              setPlacedOrderId(order.orderId)
-              setShowOrderSuccess(true)
               // Notify home screen tracking card to refresh active orders
               window.dispatchEvent(new Event('orderStatusUpdated'))
               clearCart()
               setIsPlacingOrder(false)
+              navigate(`/thankyou?orderId=${order.orderId}`, {
+                state: {
+                  orderId: order.orderId,
+                  address: checkoutDeliveryAddress,
+                  pricing
+                },
+                replace: true
+              })
             } else {
               throw new Error(verifyResponse.data.message || "Payment verification failed")
             }
@@ -2041,15 +2043,6 @@ export default function Cart() {
     }
   }
 
-  const handleGoToOrders = () => {
-    // Kick off a last-moment preload (non-blocking) to minimize first render latency
-    try {
-      preloadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
-    } catch {}
-    setShowOrderSuccess(false)
-    navigate(`/user/orders/${placedOrderId}?confirmed=true`)
-  }
-
   // Layout helpers - behave differently for hotel QR orders vs normal orders
   const scrollContainerClass = isHotelOrder
     ? "pt-16 md:pt-20 pb-16 md:pb-24"
@@ -2068,8 +2061,8 @@ export default function Cart() {
         paddingBottom: "200px", // Bottom button height + extra space
       }
 
-  // Empty cart state - but don't show if order success or placing order modal is active
-  if (cart.length === 0 && !showOrderSuccess && !showPlacingOrder) {
+  // Empty cart state - but don't show if placing order modal is active
+  if (cart.length === 0 && !showPlacingOrder) {
     return (
       <AnimatedPage className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a]">
         <div className="bg-white dark:bg-[#1a1a1a] border-b dark:border-gray-800 sticky top-0 z-10">
@@ -3087,116 +3080,6 @@ export default function Cart() {
                 </span>
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Order Success Celebration Page */}
-      {showOrderSuccess && (
-        <div
-          className="fixed inset-0 z-[70] bg-white flex flex-col items-center justify-center h-screen w-screen overflow-hidden"
-          style={{ animation: 'fadeIn 0.3s ease-out' }}
-        >
-          {/* Confetti Background */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            {/* Animated confetti pieces */}
-            {[...Array(50)].map((_, i) => (
-              <div
-                key={i}
-                className="absolute w-3 h-3 rounded-sm"
-                style={{
-                  left: `${Math.random() * 100}%`,
-                  top: `-10%`,
-                  backgroundColor: ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'][Math.floor(Math.random() * 6)],
-                  animation: `confettiFall ${2 + Math.random() * 2}s linear ${Math.random() * 2}s infinite`,
-                  transform: `rotate(${Math.random() * 360}deg)`,
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Success Content */}
-          <div className="relative z-10 flex flex-col items-center px-6">
-            {/* Success Tick Circle */}
-            <div
-              className="relative mb-8"
-              style={{ animation: 'scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both' }}
-            >
-              {/* Outer ring animation */}
-              <div
-                className="absolute inset-0 w-32 h-32 rounded-full border-4 border-green-500"
-                style={{
-                  animation: 'ringPulse 1.5s ease-out infinite',
-                  opacity: 0.3
-                }}
-              />
-              {/* Main circle */}
-              <div className="w-32 h-32 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-2xl">
-                <svg
-                  className="w-16 h-16 text-white"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ animation: 'checkDraw 0.5s ease-out 0.5s both' }}
-                >
-                  <path d="M5 12l5 5L19 7" className="check-path" />
-                </svg>
-              </div>
-              {/* Sparkles */}
-              {[...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute w-2 h-2 bg-yellow-400 rounded-full"
-                  style={{
-                    top: '50%',
-                    left: '50%',
-                    animation: `sparkle 0.6s ease-out ${0.3 + i * 0.1}s both`,
-                    transform: `rotate(${i * 60}deg) translateY(-80px)`,
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Location Info */}
-            <div
-              className="text-center"
-              style={{ animation: 'slideUp 0.5s ease-out 0.6s both' }}
-            >
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <div className="w-5 h-5 text-red-500">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {checkoutDeliveryAddress?.city || "Your Location"}
-                </h2>
-              </div>
-              <p className="text-gray-500 text-base">
-                {checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || checkoutDeliveryAddress?.formattedAddress || checkoutDeliveryAddress?.address || "Delivery Address") : "Delivery Address"}
-              </p>
-            </div>
-
-            {/* Order Placed Message */}
-            <div
-              className="mt-12 text-center"
-              style={{ animation: 'slideUp 0.5s ease-out 0.8s both' }}
-            >
-              <h3 className="text-3xl font-bold text-green-600 mb-2">Order Placed!</h3>
-              <p className="text-gray-600">Your delicious food is on its way</p>
-            </div>
-
-            {/* Action Button */}
-            <button
-              onClick={handleGoToOrders}
-              className="mt-10 bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-12 rounded-xl shadow-lg transition-all hover:shadow-xl hover:scale-105"
-              style={{ animation: 'slideUp 0.5s ease-out 1s both' }}
-            >
-              Track Your Order
-            </button>
           </div>
         </div>
       )}

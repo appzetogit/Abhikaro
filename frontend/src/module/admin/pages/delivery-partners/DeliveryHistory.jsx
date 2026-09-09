@@ -138,7 +138,7 @@ export default function DeliveryHistory() {
       setOrdersLoading(true)
       const params = {
         page: 1,
-        limit: 500,
+        limit: 10000,
         status: "delivered",
         deliveryPartnerId: selectedDeliveryId,
         paymentStatus: paymentFilter || undefined,

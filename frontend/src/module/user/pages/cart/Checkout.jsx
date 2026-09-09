@@ -76,7 +76,14 @@ export default function Checkout() {
 
       clearCart()
       setIsPlacingOrder(false)
-      navigate(`/user/orders/${orderId}?confirmed=true`)
+      navigate(`/thankyou?orderId=${orderId}`, {
+        state: {
+          orderId,
+          address: defaultAddress,
+          pricing: { totalAmount: total, finalAmount: total }
+        },
+        replace: true
+      })
     }, 1500)
   }
 

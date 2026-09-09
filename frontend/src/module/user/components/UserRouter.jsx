@@ -29,6 +29,7 @@ const SearchResults = lazy(() => import("../pages/SearchResults"))
 // Cart
 const Cart = lazy(() => import("../pages/cart/Cart"))
 const Checkout = lazy(() => import("../pages/cart/Checkout"))
+const ThankYou = lazy(() => import("../pages/cart/ThankYou"))
 
 // Orders
 const Orders = lazy(() => import("../pages/orders/Orders"))
@@ -138,9 +139,11 @@ export default function UserRouter() {
             <Route path="/restaurants/:slug/info" element={<RestaurantInfo />} />
             <Route path="/search" element={<SearchResults />} />
 
-            {/* Cart */}
+            {/* Cart & Thank You */}
             <Route path="/cart" element={<Cart />} />
             <Route path="/cart/checkout" element={<Checkout />} />
+            <Route path="/thankyou" element={<ThankYou />} />
+            <Route path="/thank-you" element={<ThankYou />} />
 
             {/* Orders */}
             <Route path="/orders" element={<Orders />} />

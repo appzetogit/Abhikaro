@@ -478,6 +478,8 @@ apiClient.interceptors.response.use(
        !currentPath.startsWith("/delivery/help/tickets/")) ||
       (currentPath.startsWith("/hotel") && currentPath !== "/hotel/support") ||
       currentPath.startsWith("/cart") ||
+      currentPath.startsWith("/thankyou") ||
+      currentPath.startsWith("/thank-you") ||
       currentPath.startsWith("/orders") ||
       currentPath.startsWith("/profile") ||
       currentPath.startsWith("/wallet") ||
@@ -485,6 +487,8 @@ apiClient.interceptors.response.use(
       currentPath.startsWith("/bookings") ||
       currentPath.startsWith("/complaints") ||
       currentPath.startsWith("/user/cart") ||
+      currentPath.startsWith("/user/thankyou") ||
+      currentPath.startsWith("/user/thank-you") ||
       currentPath.startsWith("/user/orders") ||
       currentPath.startsWith("/user/profile") ||
       currentPath.startsWith("/user/wallet") ||
@@ -625,6 +629,8 @@ apiClient.interceptors.response.use(
           currentPath.includes("/landing-page");
         const isProtectedUserPath =
           currentPath.startsWith("/cart") ||
+          currentPath.startsWith("/thankyou") ||
+          currentPath.startsWith("/thank-you") ||
           currentPath.startsWith("/orders") ||
           currentPath.startsWith("/profile") ||
           currentPath.startsWith("/wallet") ||
@@ -632,6 +638,8 @@ apiClient.interceptors.response.use(
           currentPath.startsWith("/bookings") ||
           currentPath.startsWith("/complaints") ||
           currentPath.startsWith("/user/cart") ||
+          currentPath.startsWith("/user/thankyou") ||
+          currentPath.startsWith("/user/thank-you") ||
           currentPath.startsWith("/user/orders") ||
           currentPath.startsWith("/user/profile") ||
           currentPath.startsWith("/user/wallet") ||

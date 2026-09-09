@@ -44,7 +44,7 @@ export default function OrdersPage({ statusKey = "all" }) {
       setIsLoading(true)
       const params = {
         page: 1,
-        limit: 100,
+        limit: 10000,
         status: statusKey === "all" ? undefined : 
                statusKey === "restaurant-cancelled" ? "cancelled" : statusKey,
         cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined

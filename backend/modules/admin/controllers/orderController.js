@@ -32,7 +32,7 @@ export const getOrders = asyncHandler(async (req, res) => {
     const { 
       status, 
       page = 1, 
-      limit = 50,
+      limit = 10000,
       search,
       fromDate,
       toDate,
@@ -216,7 +216,7 @@ export const getOrders = asyncHandler(async (req, res) => {
 
     // Calculate pagination - enforce max limit for performance
     const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(10000, Math.max(1, parseInt(limit))); // Max 10000 items per page
+    const limitNum = Math.min(50000, Math.max(1, parseInt(limit || 10000))); // Max 50000 items per page
     const skip = (pageNum - 1) * limitNum;
 
     // Fetch orders with population - using lean() and excluding bulky delivery states
