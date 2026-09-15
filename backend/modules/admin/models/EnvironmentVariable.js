@@ -106,30 +106,15 @@ const environmentVariableSchema = new mongoose.Schema(
       trim: true
     },
     
-    // SMS Hub India
-    SMSINDIAHUB_API_KEY: {
+    // MSG91 Configuration
+    MSG91_AUTH_KEY: {
       type: String,
-      default: '',
+      default: '449403AyhxOv1C6a1fe01aP1',
       trim: true
     },
-    SMSINDIAHUB_SENDER_ID: {
+    MSG91_TEMPLATE_ID: {
       type: String,
-      default: 'BGADEC',
-      trim: true
-    },
-    SMSINDIAHUB_PE_ID: {
-      type: String,
-      default: '1001164203633432409',
-      trim: true
-    },
-    SMSINDIAHUB_TEMPLATE_ID: {
-      type: String,
-      default: '1007282516644508833',
-      trim: true
-    },
-    SMSINDIAHUB_MESSAGE_TEMPLATE: {
-      type: String,
-      default: 'Welcome to the ##var## powered by Appzeto.Your OTP for registration is ##var##.BGADEC',
+      default: '68874806d6fc056ef1351842',
       trim: true
     },
     
@@ -187,7 +172,7 @@ environmentVariableSchema.methods.toEnvObject = function() {
     'FIREBASE_PRIVATE_KEY',
     'SMTP_USER',
     'SMTP_PASS',
-    'SMSINDIAHUB_API_KEY',
+    'MSG91_AUTH_KEY',
     'VITE_GOOGLE_MAPS_API_KEY'
   ];
   
@@ -217,7 +202,7 @@ environmentVariableSchema.pre('save', function(next) {
     'FIREBASE_PRIVATE_KEY',
     'SMTP_USER',
     'SMTP_PASS',
-    'SMSINDIAHUB_API_KEY',
+    'MSG91_AUTH_KEY',
     'VITE_GOOGLE_MAPS_API_KEY'
   ];
   

@@ -43,11 +43,8 @@ export const ENV_ONLY_KEYS = [
   "SMTP_PORT",
   "SMTP_USER",
   "SMTP_PASS",
-  "SMSINDIAHUB_API_KEY",
-  "SMSINDIAHUB_SENDER_ID",
-  "SMSINDIAHUB_PE_ID",
-  "SMSINDIAHUB_TEMPLATE_ID",
-  "SMSINDIAHUB_MESSAGE_TEMPLATE",
+  "MSG91_AUTH_KEY",
+  "MSG91_TEMPLATE_ID",
   "VITE_GOOGLE_MAPS_API_KEY",
 ];
 
@@ -251,18 +248,16 @@ export async function getSMTPCredentials() {
 }
 
 /**
- * Get SMS Hub India credentials
- * @returns {Promise<Object>} { apiKey, senderId }
+ * Get MSG91 credentials
+ * @returns {Promise<Object>} { authKey, templateId }
  */
-export async function getSMSHubIndiaCredentials() {
+export async function getMSG91Credentials() {
   return {
-    apiKey: await getEnvVar("SMSINDIAHUB_API_KEY"),
-    senderId: await getEnvVar("SMSINDIAHUB_SENDER_ID"),
-    peId: await getEnvVar("SMSINDIAHUB_PE_ID"),
-    templateId: await getEnvVar("SMSINDIAHUB_TEMPLATE_ID"),
-    messageTemplate: await getEnvVar("SMSINDIAHUB_MESSAGE_TEMPLATE"),
+    authKey: (await getEnvVar("MSG91_AUTH_KEY")) || process.env.MSG91_AUTH_KEY,
+    templateId: (await getEnvVar("MSG91_TEMPLATE_ID")) || process.env.MSG91_TEMPLATE_ID,
   };
 }
+
 
 /**
  * Get Google Maps API Key

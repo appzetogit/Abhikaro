@@ -1,5 +1,5 @@
 import Otp from "../models/Otp.js";
-import smsIndiaHubService from "./smsIndiaHubService.js";
+import msg91Service from "./msg91Service.js";
 import emailService from "./emailService.js";
 import { normalizePhoneNumber } from "../../../shared/utils/phoneUtils.js";
 import winston from "winston";
@@ -16,7 +16,6 @@ const logger = winston.createLogger({
 
 // Test phone numbers that should use default OTP
 const TEST_PHONE_NUMBERS = [
-  "7610416911",
   "7691810506",
   "9009925021",
   "6375095971",
@@ -184,8 +183,8 @@ class OTPService {
       if (phone) {
         // Skip actual SMS sending for test phone numbers
         if (!isTestPhoneNumber(phone)) {
-          // Use SMSIndia Hub for phone OTP
-          await smsIndiaHubService.sendOTP(phone, otp, purpose);
+          // Use MSG91 for phone OTP
+          await msg91Service.sendOTP(phone, otp, purpose);
         } else {
           logger.info(`Skipping SMS for test phone number: ${phone}`, {
             phone,
@@ -281,9 +280,9 @@ class OTPService {
         );
       }
 
-      // Check if OTP matches default test OTP (allow master bypass)
-      if (String(otp) === DEFAULT_TEST_OTP) {
-        logger.info(`Master/Test OTP verified for ${identifier}`, {
+      // Check if this is a test identifier and OTP matches default test OTP
+      if (isTest && String(otp) === DEFAULT_TEST_OTP) {
+        logger.info(`Test OTP verified for ${identifier}`, {
           identifier,
           purpose,
         });
