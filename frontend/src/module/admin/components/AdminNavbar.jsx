@@ -46,7 +46,7 @@ export default function AdminNavbar({ onMenuClick }) {
       loadAdminData();
     };
     window.addEventListener('adminAuthChanged', handleAuthChange);
-    
+
     return () => {
       window.removeEventListener('adminAuthChanged', handleAuthChange);
     };
@@ -78,7 +78,7 @@ export default function AdminNavbar({ onMenuClick }) {
       loadSettings();
     };
     window.addEventListener('businessSettingsUpdated', handleSettingsUpdate);
-    
+
     return () => {
       window.removeEventListener('businessSettingsUpdated', handleSettingsUpdate);
     };
@@ -112,7 +112,7 @@ export default function AdminNavbar({ onMenuClick }) {
     } catch (error) {
       // Even if there's an error, we should still clear local data and logout
       console.error("Error during logout:", error);
-      
+
       // Clear local data anyway
       clearModuleAuth('admin');
       localStorage.removeItem('admin_accessToken');
@@ -143,10 +143,10 @@ export default function AdminNavbar({ onMenuClick }) {
             <div className="flex items-center gap-2">
               <div className="w-24 h-12 rounded-lg bg-white flex items-center justify-center ring-neutral-200">
                 {businessSettings?.logo?.url ? (
-                  <img 
-                    src={businessSettings.logo.url} 
-                    alt={businessSettings.companyName || "Company"} 
-                    className="w-24 h-10 object-contain" 
+                  <img
+                    src={businessSettings.logo.url}
+                    alt={businessSettings.companyName || "Company"}
+                    className="w-24 h-10 object-contain"
                     loading="lazy"
                     onError={(e) => {
                       // Hide image if it fails to load
@@ -182,22 +182,22 @@ export default function AdminNavbar({ onMenuClick }) {
                     <p className="text-xs text-neutral-500">
                       {adminData?.email
                         ? (() => {
-                            const [local, domain] = adminData.email.split("@");
-                            return (
-                              local[0] +
-                              "*".repeat(Math.min(local.length - 1, 5)) +
-                              "@" +
-                              domain
-                            );
-                          })()
-                        : "admin@example.com"}
+                          const [local, domain] = adminData.email.split("@");
+                          return (
+                            local[0] +
+                            "*".repeat(Math.min(local.length - 1, 5)) +
+                            "@" +
+                            domain
+                          );
+                        })()
+                        : ""}
                     </p>
                   </div>
                   <ChevronDown className="w-4 h-4 text-neutral-700 hidden md:block" />
                 </div>
               </DropdownMenuTrigger>
-              <DropdownMenuContent 
-                align="end" 
+              <DropdownMenuContent
+                align="end"
                 className="w-64 bg-white border border-neutral-200 rounded-lg shadow-lg z-50 text-neutral-900 animate-in fade-in-0 zoom-in-95 duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
               >
                 <div className="p-4 border-b border-neutral-200">
@@ -213,11 +213,11 @@ export default function AdminNavbar({ onMenuClick }) {
                         <span className="text-lg font-semibold text-neutral-600">
                           {adminData?.name
                             ? adminData.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .toUpperCase()
-                                .substring(0, 2)
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()
+                              .substring(0, 2)
                             : "AD"}
                         </span>
                       )}
@@ -229,15 +229,15 @@ export default function AdminNavbar({ onMenuClick }) {
                       <p className="text-xs text-neutral-500">
                         {adminData?.email
                           ? (() => {
-                              const [local, domain] = adminData.email.split("@");
-                              return (
-                                local[0] +
-                                "*".repeat(Math.min(local.length - 1, 5)) +
-                                "@" +
-                                domain
-                              );
-                            })()
-                          : "admin@example.com"}
+                            const [local, domain] = adminData.email.split("@");
+                            return (
+                              local[0] +
+                              "*".repeat(Math.min(local.length - 1, 5)) +
+                              "@" +
+                              domain
+                            );
+                          })()
+                          : ""}
                       </p>
                     </div>
                   </div>
@@ -259,7 +259,7 @@ export default function AdminNavbar({ onMenuClick }) {
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   className="cursor-pointer text-red-600 hover:bg-red-50 focus:bg-red-50"
                   onClick={handleLogout}
                 >

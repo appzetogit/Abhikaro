@@ -22,6 +22,14 @@ import { releaseEscrow } from '../../order/services/escrowWalletService.js';
 
 const WALLET_HISTORY_CUTOFF_DATE = new Date('2026-07-05T00:40:00+05:30');
 
+// High-speed in-memory cache for admin orders listing (25s TTL)
+const ordersMemoryCache = new Map();
+const ORDERS_CACHE_TTL_MS = 25 * 1000;
+
+export function invalidateAdminOrdersCache() {
+  ordersMemoryCache.clear();
+}
+
 /**
  * Get all orders for admin
  * GET /api/admin/orders
@@ -29,6 +37,13 @@ const WALLET_HISTORY_CUTOFF_DATE = new Date('2026-07-05T00:40:00+05:30');
  */
 export const getOrders = asyncHandler(async (req, res) => {
   try {
+    // Fast memory cache lookup (1-2ms response for warm queries)
+    const cacheKey = JSON.stringify(req.query);
+    const cachedEntry = ordersMemoryCache.get(cacheKey);
+    if (cachedEntry && (Date.now() - cachedEntry.timestamp < ORDERS_CACHE_TTL_MS)) {
+      return successResponse(res, 200, 'Orders retrieved successfully', cachedEntry.data);
+    }
+
     const { 
       status, 
       page = 1, 
@@ -219,193 +234,185 @@ export const getOrders = asyncHandler(async (req, res) => {
     const limitNum = Math.min(50000, Math.max(1, parseInt(limit || 10000))); // Max 50000 items per page
     const skip = (pageNum - 1) * limitNum;
 
-    // Fetch orders with population - using lean() and excluding bulky delivery states
-    const orders = await Order.find(query)
-      .select('-deliveryState -assignmentInfo.nearbyBoys')
-      .populate('userId', 'name email phone')
-      .populate('restaurantId', 'name slug location.formattedAddress location.address location.city location.state location.zipCode location.pincode')
-      .populate('deliveryPartnerId', 'name phone')
-      .sort({ createdAt: -1 })
-      .limit(limitNum)
-      .skip(skip)
-      .lean();
+    // Fetch orders and total count concurrently for maximum speed
+    const [orders, total] = await Promise.all([
+      Order.find(query)
+        .select('-deliveryState -assignmentInfo.nearbyBoys')
+        .populate('userId', 'name email phone')
+        .populate('restaurantId', 'name slug location.formattedAddress location.address location.city location.state location.zipCode location.pincode')
+        .populate('deliveryPartnerId', 'name phone')
+        .sort({ createdAt: -1 })
+        .limit(limitNum)
+        .skip(skip)
+        .lean(),
+      Order.countDocuments(query)
+    ]);
 
-    // Get total count
-    const total = await Order.countDocuments(query);
+    // Prepare lookups for parallel batch auxiliary queries
+    const orderIds = orders.map(o => o._id);
+    const restaurantIds = [...new Set(orders.map(o => o.restaurantId?.toString()).filter(Boolean))];
+    const validRestObjIds = restaurantIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+    
+    const initialDpIds = new Set();
+    orders.forEach(o => {
+      if (o.deliveryPartnerId) initialDpIds.add(o.deliveryPartnerId.toString());
+    });
 
-    // Batch fetch settlements for platform fee, refund status, and accurate earnings (more efficient than individual queries)
+    const hotelObjectIds = [];
+    const hotelIdStrings = [];
+    for (const o of orders) {
+      if (o?.hotelId && mongoose.Types.ObjectId.isValid(o.hotelId)) {
+        hotelObjectIds.push(new mongoose.Types.ObjectId(o.hotelId));
+      }
+      if (o?.hotelReference && typeof o.hotelReference === 'string') {
+        hotelIdStrings.push(o.hotelReference);
+      }
+    }
+
+    // Run all auxiliary queries concurrently in parallel
+    const [
+      settlementsResult,
+      restaurantsResult,
+      paymentsResult,
+      commissionsResult,
+      commissionSettingsResult,
+      hotelsResult
+    ] = await Promise.allSettled([
+      orderIds.length > 0
+        ? OrderSettlement.find({ orderId: { $in: orderIds } })
+            .select('orderId deliveryPartnerId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
+            .lean()
+        : Promise.resolve([]),
+      restaurantIds.length > 0
+        ? Restaurant.find({
+            $or: [
+              { _id: { $in: validRestObjIds } },
+              { restaurantId: { $in: restaurantIds } }
+            ]
+          }).select('_id restaurantId name').lean()
+        : Promise.resolve([]),
+      orderIds.length > 0
+        ? Payment.find({ orderId: { $in: orderIds } })
+            .select('orderId status')
+            .lean()
+        : Promise.resolve([]),
+      orderIds.length > 0
+        ? (async () => {
+            const AdminCommission = (await import('../models/AdminCommission.js')).default;
+            return AdminCommission.find({
+              orderId: { $in: orderIds },
+              status: 'completed'
+            }).select('orderId commissionAmount restaurantEarning').lean();
+          })()
+        : Promise.resolve([]),
+      (async () => {
+        const CommissionSettings = (await import('../models/CommissionSettings.js')).default;
+        return CommissionSettings.findOne().sort({ createdAt: -1 }).lean();
+      })(),
+      (async () => {
+        const or = [];
+        if (hotelObjectIds.length) or.push({ _id: { $in: hotelObjectIds } });
+        if (hotelIdStrings.length) or.push({ hotelId: { $in: hotelIdStrings } });
+        if (!or.length) return [];
+        const Hotel = (await import('../../hotel/models/Hotel.js')).default;
+        return Hotel.find({ $or: or }).select('_id hotelId commission adminCommission hotelName').lean();
+      })()
+    ]);
+
+    // Populate settlement maps
     let settlementPlatformFeeMap = new Map();
     let refundStatusMap = new Map();
     let settlementEarningsMap = new Map();
     let settlementDeliveryPartnerMap = new Map();
     let settlementHotelNameMap = new Map();
     let settlementHotelIdMap = new Map();
-    try {
-      const orderIds = orders.map(o => o._id);
-      const settlements = await OrderSettlement.find({ orderId: { $in: orderIds } })
-        .select('orderId deliveryPartnerId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
-        .lean();
-      
-      // Create maps for quick lookup
-      settlements.forEach(s => {
-        if (s.orderId) {
-          if (s.userPayment?.platformFee !== undefined) {
-            settlementPlatformFeeMap.set(s.orderId.toString(), s.userPayment.platformFee);
-          }
-          if (s.cancellationDetails?.refundStatus) {
-            refundStatusMap.set(s.orderId.toString(), s.cancellationDetails.refundStatus);
-          }
-          if (s.deliveryPartnerId) {
-            settlementDeliveryPartnerMap.set(s.orderId.toString(), s.deliveryPartnerId.toString());
-          }
-          if (s.hotelEarning?.hotelName) {
-            settlementHotelNameMap.set(s.orderId.toString(), s.hotelEarning.hotelName);
-          }
-          if (s.hotelEarning?.hotelId) {
-            settlementHotelIdMap.set(s.orderId.toString(), s.hotelEarning.hotelId.toString());
-          }
-          settlementEarningsMap.set(s.orderId.toString(), {
-            adminEarning: Number(s.adminEarning?.totalEarning || 0),
-            restaurantEarning: Number(s.restaurantEarning?.netEarning || 0),
-            deliveryEarning: Number(s.deliveryPartnerEarning?.totalEarning || 0),
-            hotelEarning: Number(s.hotelEarning?.commission || 0)
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('Could not batch fetch settlements:', err.message);
-    }
 
-    // Dynamically resolve genuine restaurant names
-    const restaurantIds = [...new Set(orders.map(o => o.restaurantId?.toString()).filter(Boolean))];
-    let resolvedRestaurantNamesMap = new Map();
-    if (restaurantIds.length > 0) {
-      try {
-        const validObjIds = restaurantIds.filter(id => mongoose.Types.ObjectId.isValid(id));
-        const restDocs = await Restaurant.find({
-          $or: [
-            { _id: { $in: validObjIds } },
-            { restaurantId: { $in: restaurantIds } }
-          ]
-        }).select('_id restaurantId name').lean();
-        
-        restDocs.forEach(r => {
-          if (r._id && r.name) resolvedRestaurantNamesMap.set(r._id.toString(), r.name);
-          if (r.restaurantId && r.name) resolvedRestaurantNamesMap.set(String(r.restaurantId), r.name);
+    const settlements = settlementsResult.status === 'fulfilled' ? settlementsResult.value || [] : [];
+    settlements.forEach(s => {
+      if (s.orderId) {
+        if (s.userPayment?.platformFee !== undefined) {
+          settlementPlatformFeeMap.set(s.orderId.toString(), s.userPayment.platformFee);
+        }
+        if (s.cancellationDetails?.refundStatus) {
+          refundStatusMap.set(s.orderId.toString(), s.cancellationDetails.refundStatus);
+        }
+        if (s.deliveryPartnerId) {
+          settlementDeliveryPartnerMap.set(s.orderId.toString(), s.deliveryPartnerId.toString());
+          initialDpIds.add(s.deliveryPartnerId.toString());
+        }
+        if (s.hotelEarning?.hotelName) {
+          settlementHotelNameMap.set(s.orderId.toString(), s.hotelEarning.hotelName);
+        }
+        if (s.hotelEarning?.hotelId) {
+          settlementHotelIdMap.set(s.orderId.toString(), s.hotelEarning.hotelId.toString());
+        }
+        settlementEarningsMap.set(s.orderId.toString(), {
+          adminEarning: Number(s.adminEarning?.totalEarning || 0),
+          restaurantEarning: Number(s.restaurantEarning?.netEarning || 0),
+          deliveryEarning: Number(s.deliveryPartnerEarning?.totalEarning || 0),
+          hotelEarning: Number(s.hotelEarning?.commission || 0)
         });
-      } catch (err) {
-        console.warn('Could not dynamically resolve restaurant names:', err.message);
-      }
-    }
-
-    // Batch fetch delivery partners from both orders and settlements
-    const deliveryPartnerIds = new Set();
-    orders.forEach(o => {
-      if (o.deliveryPartnerId) {
-        deliveryPartnerIds.add(o.deliveryPartnerId.toString());
-      }
-    });
-    settlementDeliveryPartnerMap.forEach(dpId => {
-      if (dpId) {
-        deliveryPartnerIds.add(dpId);
       }
     });
 
+    // Populate restaurant names map
+    let resolvedRestaurantNamesMap = new Map();
+    const restDocs = restaurantsResult.status === 'fulfilled' ? restaurantsResult.value || [] : [];
+    restDocs.forEach(r => {
+      if (r._id && r.name) resolvedRestaurantNamesMap.set(r._id.toString(), r.name);
+      if (r.restaurantId && r.name) resolvedRestaurantNamesMap.set(String(r.restaurantId), r.name);
+    });
+
+    // Batch fetch delivery partners
     let deliveryPartnersMap = new Map();
-    if (deliveryPartnerIds.size > 0) {
+    const validDpIds = Array.from(initialDpIds).filter(id => mongoose.Types.ObjectId.isValid(id));
+    if (validDpIds.length > 0) {
       try {
-        const validDpIds = Array.from(deliveryPartnerIds).filter(id => mongoose.Types.ObjectId.isValid(id));
-        if (validDpIds.length > 0) {
-          const dps = await Delivery.find({ _id: { $in: validDpIds } })
-            .select('name phone')
-            .lean();
-          dps.forEach(dp => {
-            deliveryPartnersMap.set(dp._id.toString(), dp);
-          });
-        }
+        const dps = await Delivery.find({ _id: { $in: validDpIds } })
+          .select('name phone')
+          .lean();
+        (dps || []).forEach(dp => {
+          deliveryPartnersMap.set(dp._id.toString(), dp);
+        });
       } catch (err) {
         console.warn('Could not batch fetch delivery partners:', err.message);
       }
     }
 
-
-    // Batch fetch Payment collection for payment status (source of truth - COD/Razorpay)
+    // Populate payment status map
     let paymentStatusMapById = new Map();
-    try {
-      const payments = await Payment.find({ orderId: { $in: orders.map(o => o._id) } })
-        .select('orderId status')
-        .lean();
-      payments.forEach(p => {
-        if (p.orderId) paymentStatusMapById.set(p.orderId.toString(), p.status);
-      });
-    } catch (err) {
-      console.warn('Could not batch fetch payment status:', err.message);
-    }
+    const payments = paymentsResult.status === 'fulfilled' ? paymentsResult.value || [] : [];
+    payments.forEach(p => {
+      if (p.orderId) paymentStatusMapById.set(p.orderId.toString(), p.status);
+    });
 
-    // Batch fetch AdminCommission for per‑order earnings breakdown
+    // Populate commission map
     let commissionMapByOrderId = new Map();
-    try {
-      const AdminCommission = (await import('../models/AdminCommission.js')).default;
-      const commissions = await AdminCommission.find({
-        orderId: { $in: orders.map(o => o._id) },
-        status: 'completed'
-      })
-        .select('orderId commissionAmount restaurantEarning')
-        .lean();
+    const commissions = commissionsResult.status === 'fulfilled' ? commissionsResult.value || [] : [];
+    commissions.forEach(c => {
+      if (c.orderId) {
+        commissionMapByOrderId.set(c.orderId.toString(), {
+          adminEarning: c.commissionAmount || 0,
+          restaurantEarning: c.restaurantEarning || 0
+        });
+      }
+    });
 
-      commissions.forEach(c => {
-        if (c.orderId) {
-          commissionMapByOrderId.set(c.orderId.toString(), {
-            adminEarning: c.commissionAmount || 0,
-            restaurantEarning: c.restaurantEarning || 0
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('Could not batch fetch admin commissions for earnings breakdown:', err.message);
-    }
-
-    // Batch fetch Hotel commission config for QR/Hotel orders (prevents ₹300/₹71 fallback)
+    // Populate hotel configs map
     let hotelConfigByKey = new Map();
     let qrGlobalCommission = { hotel: 0, admin: 0 };
-    try {
-      const CommissionSettings = (await import('../models/CommissionSettings.js')).default;
-      const latest = await CommissionSettings.findOne().sort({ createdAt: -1 }).lean();
-      const hotelPct = Number(latest?.qrCommission?.hotel || 0);
-      const adminPct = Number(latest?.qrCommission?.admin || 0);
-      qrGlobalCommission = { hotel: hotelPct, admin: adminPct };
-    } catch (err) {
-      // Non-blocking; we'll fall back to stored fields if config missing
-      console.warn('Could not load CommissionSettings for QR split:', err.message);
+    if (commissionSettingsResult.status === 'fulfilled' && commissionSettingsResult.value) {
+      const latest = commissionSettingsResult.value;
+      qrGlobalCommission = {
+        hotel: Number(latest?.qrCommission?.hotel || 0),
+        admin: Number(latest?.qrCommission?.admin || 0)
+      };
     }
-
-    try {
-      const Hotel = (await import('../../hotel/models/Hotel.js')).default;
-      const hotelObjectIds = [];
-      const hotelIdStrings = [];
-      for (const o of orders) {
-        if (o?.hotelId && mongoose.Types.ObjectId.isValid(o.hotelId)) {
-          hotelObjectIds.push(new mongoose.Types.ObjectId(o.hotelId));
-        }
-        if (o?.hotelReference && typeof o.hotelReference === 'string') {
-          hotelIdStrings.push(o.hotelReference);
-        }
-      }
-      const or = [];
-      if (hotelObjectIds.length) or.push({ _id: { $in: hotelObjectIds } });
-      if (hotelIdStrings.length) or.push({ hotelId: { $in: hotelIdStrings } });
-      if (or.length) {
-        const hotels = await Hotel.find({ $or: or })
-          .select('_id hotelId commission adminCommission hotelName')
-          .lean();
-        for (const h of hotels || []) {
-          if (h?._id) hotelConfigByKey.set(String(h._id), h);
-          if (h?.hotelId) hotelConfigByKey.set(String(h.hotelId), h);
-        }
-      }
-    } catch (err) {
-      console.warn('Could not batch load Hotel config for QR split:', err.message);
-    }
+    const hotels = hotelsResult.status === 'fulfilled' ? hotelsResult.value || [] : [];
+    hotels.forEach(h => {
+      if (h?._id) hotelConfigByKey.set(String(h._id), h);
+      if (h?.hotelId) hotelConfigByKey.set(String(h.hotelId), h);
+    });
 
     // Transform orders to match frontend format
     const transformedOrders = orders.map((order, index) => {
@@ -811,7 +818,7 @@ export const getOrders = asyncHandler(async (req, res) => {
       };
     });
 
-    return successResponse(res, 200, 'Orders retrieved successfully', {
+    const responsePayload = {
       orders: transformedOrders,
       pagination: {
         page: parseInt(page),
@@ -819,7 +826,19 @@ export const getOrders = asyncHandler(async (req, res) => {
         total,
         pages: Math.ceil(total / parseInt(limit))
       }
+    };
+
+    // Cache the response
+    if (ordersMemoryCache.size > 100) {
+      const oldestKey = ordersMemoryCache.keys().next().value;
+      ordersMemoryCache.delete(oldestKey);
+    }
+    ordersMemoryCache.set(cacheKey, {
+      data: responsePayload,
+      timestamp: Date.now()
     });
+
+    return successResponse(res, 200, 'Orders retrieved successfully', responsePayload);
   } catch (error) {
     console.error('Error fetching admin orders:', error);
     return errorResponse(res, 500, 'Failed to fetch orders');
@@ -1431,6 +1450,8 @@ export const bulkDeleteOrders = asyncHandler(async (req, res) => {
     );
     const deletedOrders = orderDeleteRes?.modifiedCount || 0;
 
+    invalidateAdminOrdersCache();
+
     return successResponse(res, 200, "Orders deleted successfully", {
       requested: uniqueIds.length,
       matched: orders.length,
@@ -1478,6 +1499,7 @@ export const approveOfflinePayment = asyncHandler(async (req, res) => {
     if (!order.payment) order.payment = {};
     order.payment.status = 'completed';
     await order.save();
+    invalidateAdminOrdersCache();
 
     // Update Payment collection as source of truth
     const paymentRecord = await Payment.findOne({ orderId: order._id });
@@ -1609,6 +1631,7 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
     }
 
     await order.save();
+    invalidateAdminOrdersCache();
 
     if (shouldNotifyRestaurantPreparing) {
       try {
@@ -3165,6 +3188,8 @@ export const processRefund = asyncHandler(async (req, res) => {
       settlement.metadata.set('adminRefundNotes', notes);
       await settlement.save();
     }
+
+    invalidateAdminOrdersCache();
 
     return successResponse(res, 200, refundResult.message || 'Refund processed successfully', {
       orderId: order.orderId,

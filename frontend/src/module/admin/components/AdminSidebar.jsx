@@ -49,6 +49,8 @@ import { Input } from "@/components/ui/input"
 import { sidebarMenuData } from "../sidebarMenu"
 import { hasPermission, isSuperAdmin } from "../utils/adminPermissions"
 import { getCachedSettings, loadBusinessSettings } from "@/lib/utils/businessSettings"
+import { getOrdersCache, setOrdersCache } from "../utils/ordersCache"
+import { adminAPI } from "@/lib/api"
 
 // Icon mapping
 const iconMap = {
@@ -380,6 +382,54 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     })
   }
 
+  // Idle and hover prefetch of orders data for instant 0ms mount
+  const prefetchOrdersData = async () => {
+    try {
+      const cached = getOrdersCache("admin_orders_all")
+      if (!cached || cached.length === 0) {
+        const res = await adminAPI.getOrders({ page: 1, limit: 10000 })
+        if (res?.data?.success && res?.data?.data?.orders) {
+          setOrdersCache("admin_orders_all", res.data.data.orders)
+        }
+      }
+    } catch (e) {
+      // Non-blocking
+    }
+  }
+
+  // Helper to prefetch route chunks and order data on hover or idle
+  const prefetchRoute = (path) => {
+    if (!path) return
+    try {
+      if (path === "/admin") {
+        import("../pages/AdminHome")
+      } else if (path === "/admin/order-detect-delivery") {
+        import("../pages/OrderDetectDelivery")
+        prefetchOrdersData()
+      } else if (path.startsWith("/admin/orders/")) {
+        import("../pages/orders/OrdersPage")
+        prefetchOrdersData()
+      } else if (path === "/admin/restaurants") {
+        import("../pages/restaurant/RestaurantsList")
+      } else if (path === "/admin/payment-history") {
+        import("../pages/orders/PaymentHistory")
+      }
+    } catch (e) {
+      // Non-blocking prefetch
+    }
+  }
+
+  // Preload key chunks and data during browser idle time for zero-delay sidebar navigation
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      prefetchRoute("/admin")
+      prefetchRoute("/admin/order-detect-delivery")
+      prefetchRoute("/admin/orders/all")
+      prefetchOrdersData()
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [])
+
   const renderMenuItem = (item, index, isInSection = false) => {
     if (item.type === "link") {
       const Icon = iconMap[item.icon] || Utensils
@@ -387,6 +437,8 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         <Link
           key={index}
           to={item.path}
+          onMouseEnter={() => prefetchRoute(item.path)}
+          onTouchStart={() => prefetchRoute(item.path)}
           onClick={() => {
             if (window.innerWidth < 1024 && onClose) {
               onClose()
@@ -441,6 +493,9 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         <div key={index} className="menu-item-animate" style={{ animationDelay: `${index * 0.05}s` }}>
           <button
             onClick={() => toggleSection(sectionKey)}
+            onMouseEnter={() => {
+              if (sectionKey.includes("order")) prefetchOrdersData()
+            }}
             className={cn(
               "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition-all duration-300 ease-out text-sm font-medium text-left",
               "text-white hover:bg-white/5"
@@ -448,20 +503,25 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
           >
             <div className="flex items-center gap-2.5 text-left">
               <Icon className="w-4 h-4 shrink-0 text-neutral-300 transition-transform duration-300" />
-              <span className="font-medium text-left">{item.label}</span>
+              <span className="text-left font-medium">{item.label}</span>
             </div>
-            <div className="transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
-              <ChevronDown className="w-4 h-4 shrink-0 text-neutral-300" />
-            </div>
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 shrink-0 text-neutral-400 transition-transform duration-300" />
+            ) : (
+              <ChevronRight className="w-4 h-4 shrink-0 text-neutral-400 transition-transform duration-300" />
+            )}
           </button>
+
           {isExpanded && item.subItems && (
-            <div className="ml-5 mt-1 space-y-1 border-neutral-800/60 pl-3 submenu-animate overflow-hidden">
+            <div className="ml-4 pl-3 border-l border-white/10 space-y-1 mt-1 submenu-animate">
               {item.subItems.map((subItem, subIndex) => {
                 const allSubPaths = item.subItems.map(si => si.path)
                 return (
                   <Link
                     key={subIndex}
                     to={subItem.path}
+                    onMouseEnter={() => prefetchRoute(subItem.path)}
+                    onTouchStart={() => prefetchRoute(subItem.path)}
                     onClick={() => {
                       if (window.innerWidth < 1024 && onClose) {
                         onClose()

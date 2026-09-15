@@ -9,7 +9,49 @@ import ViewOrderDialog from "../../components/orders/ViewOrderDialog"
 import SettingsDialog from "../../components/orders/SettingsDialog"
 import RefundModal from "../../components/orders/RefundModal"
 import { useOrdersManagement } from "../../components/orders/useOrdersManagement"
-import { Loader2 } from "lucide-react"
+import { getOrdersCache, setOrdersCache, clearOrdersCache } from "../../utils/ordersCache"
+
+// Skeleton for cold loading
+function OrdersPageSkeleton({ title = "Orders" }) {
+  return (
+    <div className="p-4 lg:p-6 bg-slate-50 min-h-screen w-full max-w-full overflow-x-hidden animate-pulse">
+      {/* Topbar Skeleton */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-44 bg-slate-200 rounded-lg"></div>
+          <div className="h-6 w-12 bg-slate-200 rounded-full"></div>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="h-10 w-full sm:w-64 bg-slate-200 rounded-lg"></div>
+          <div className="h-10 w-24 bg-slate-200 rounded-lg"></div>
+          <div className="h-10 w-24 bg-slate-200 rounded-lg"></div>
+        </div>
+      </div>
+
+      {/* Table Skeleton */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="h-4 w-32 bg-slate-200 rounded"></div>
+          <div className="h-4 w-20 bg-slate-200 rounded"></div>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="px-6 py-4 flex items-center justify-between gap-4">
+              <div className="h-4 w-8 bg-slate-100 rounded"></div>
+              <div className="h-4 w-36 bg-slate-100 rounded"></div>
+              <div className="h-4 w-28 bg-slate-100 rounded"></div>
+              <div className="h-4 w-32 bg-slate-100 rounded"></div>
+              <div className="h-4 w-40 bg-slate-100 rounded"></div>
+              <div className="h-4 w-24 bg-slate-100 rounded"></div>
+              <div className="h-6 w-20 bg-slate-100 rounded-full"></div>
+              <div className="h-4 w-16 bg-slate-100 rounded"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // Status configuration with titles, colors, and icons
 const statusConfig = {
@@ -29,8 +71,42 @@ const statusConfig = {
 
 export default function OrdersPage({ statusKey = "all" }) {
   const config = statusConfig[statusKey] || statusConfig["all"]
-  const [orders, setOrders] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
+  const cacheKey = `admin_orders_${statusKey}`
+
+  // Instant SWR: check direct cache or derive from admin_orders_all (0ms)
+  const resolveInitialOrders = () => {
+    const directCache = getOrdersCache(cacheKey)
+    if (Array.isArray(directCache) && directCache.length > 0) {
+      return directCache
+    }
+    const allCache = getOrdersCache("admin_orders_all")
+    if (Array.isArray(allCache) && allCache.length > 0) {
+      if (statusKey === "all") return allCache
+      const filtered = allCache.filter(o => {
+        const s = (o.status || o.orderStatus || "").toLowerCase()
+        if (statusKey === "pending") return s === "pending"
+        if (statusKey === "accepted") return s === "confirmed" || s === "accepted"
+        if (statusKey === "processing") return s === "preparing" || s === "processing"
+        if (statusKey === "food-on-the-way") return s === "out_for_delivery" || s.includes("way")
+        if (statusKey === "delivered") return s === "delivered"
+        if (statusKey === "canceled") return s === "cancelled" || s === "canceled"
+        if (statusKey === "restaurant-cancelled") return o.cancelledBy === "restaurant" || (o.cancellationReason && /restaurant/i.test(o.cancellationReason))
+        if (statusKey === "scheduled") return s === "scheduled"
+        if (statusKey === "payment-failed") return s === "pending" && (o.paymentStatus === "Failed" || o.payment?.status === "failed")
+        if (statusKey === "refunded") return Boolean(o.refundStatus)
+        if (statusKey === "offline-payments") return o.paymentType === "Cash on Delivery" || o.payment?.method === "cash" || o.payment?.method === "cod"
+        return false
+      })
+      if (filtered.length > 0) return filtered
+    }
+    return []
+  }
+
+  const initialOrders = resolveInitialOrders()
+  const [orders, setOrders] = useState(initialOrders)
+  const [totalCount, setTotalCount] = useState(() => initialOrders.length)
+  const [isLoading, setIsLoading] = useState(() => initialOrders.length === 0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedOrderIds, setSelectedOrderIds] = useState([])
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [processingRefund, setProcessingRefund] = useState(null)
@@ -39,9 +115,13 @@ export default function OrdersPage({ statusKey = "all" }) {
   
   // Fetch orders from backend API
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const fetchOrders = async () => {
+  const fetchOrders = async (isSilent = false) => {
     try {
-      setIsLoading(true)
+      if (!isSilent) {
+        setIsLoading(true)
+      } else {
+        setIsRefreshing(true)
+      }
       const params = {
         page: 1,
         limit: 10000,
@@ -53,23 +133,40 @@ export default function OrdersPage({ statusKey = "all" }) {
       const response = await adminAPI.getOrders(params)
       
       if (response.data?.success && response.data?.data?.orders) {
-        setOrders(response.data.data.orders)
+        const fetchedOrders = response.data.data.orders
+        setOrders(fetchedOrders)
+        const serverTotal = response.data.data.pagination?.total
+        setTotalCount(typeof serverTotal === "number" ? serverTotal : fetchedOrders.length)
+        setOrdersCache(cacheKey, fetchedOrders)
       } else {
-        console.error("Failed to fetch orders:", response.data)
-        toast.error("Failed to fetch orders")
-        setOrders([])
+        if (!isSilent) {
+          console.error("Failed to fetch orders:", response.data)
+          toast.error("Failed to fetch orders")
+          setOrders([])
+        }
       }
     } catch (error) {
       console.error("Error fetching orders:", error)
-      toast.error(error.response?.data?.message || "Failed to fetch orders")
-      setOrders([])
+      if (!isSilent) {
+        toast.error(error.response?.data?.message || "Failed to fetch orders")
+        setOrders([])
+      }
     } finally {
       setIsLoading(false)
+      setIsRefreshing(false)
     }
   }
 
   useEffect(() => {
-    fetchOrders()
+    const currentCached = resolveInitialOrders()
+    if (currentCached.length > 0) {
+      setOrders(currentCached)
+      setIsLoading(false)
+      fetchOrders(true) // Silent background update
+    } else {
+      setIsLoading(true)
+      fetchOrders(false)
+    }
   }, [statusKey, refreshTrigger])
 
   // Clear selection when list changes (status/search/filters refresh)
@@ -159,6 +256,10 @@ export default function OrdersPage({ statusKey = "all" }) {
         const refreshResponse = await adminAPI.getOrders(params)
         if (refreshResponse.data?.success && refreshResponse.data?.data?.orders) {
           setOrders(refreshResponse.data.data.orders)
+          const serverTotal = refreshResponse.data.data.pagination?.total
+          setTotalCount(typeof serverTotal === "number" ? serverTotal : refreshResponse.data.data.orders.length)
+          setOrdersCache(cacheKey, refreshResponse.data.data.orders)
+          clearOrdersCache("admin_order_detect_delivery")
         }
       } else {
         toast.error(response.data?.message || "Failed to process refund")
@@ -322,8 +423,10 @@ export default function OrdersPage({ statusKey = "all" }) {
     try {
       setBulkDeleting(true)
       const res = await adminAPI.bulkDeleteOrders(selectedOrderIds)
-      if (res?.data?.success) {
-        toast.success(`Deleted ${res.data?.data?.deletedOrders || 0} order(s)`)
+      if (res.data?.success) {
+        toast.success(res.data?.message || `Successfully deleted ${selectedOrderIds.length} orders`)
+        clearOrdersCache("admin_orders_")
+        clearOrdersCache("admin_order_detect_delivery")
         clearSelection()
         setRefreshTrigger((t) => t + 1)
       } else {
@@ -337,22 +440,16 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="p-4 lg:p-6 bg-slate-50 min-h-screen w-full max-w-full overflow-x-hidden flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-          <p className="text-gray-600">Loading orders...</p>
-        </div>
-      </div>
-    )
+  // Loading state (shown only on cold start without cache)
+  if (isLoading && orders.length === 0) {
+    return <OrdersPageSkeleton title={config.title} />
   }
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen w-full max-w-full overflow-x-hidden">
       <OrdersTopbar 
         title={config.title} 
-        count={count} 
+        count={activeFiltersCount > 0 || (searchQuery && searchQuery.trim()) ? count : (totalCount || count)} 
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onFilterClick={() => setIsFilterOpen(true)}

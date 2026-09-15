@@ -49,9 +49,29 @@ const logger = winston.createLogger({
  * - timeFilter: overall | today | week | month | year | custom
  * - startDate, endDate: ISO strings for custom range
  */
+const dashboardStatsMemoryCache = new Map();
+const DASHBOARD_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
 export const getDashboardStats = asyncHandler(async (req, res) => {
   try {
     const { zone, timeFilter = "overall", startDate, endDate } = req.query;
+
+    const cacheKey = JSON.stringify({
+      zone: zone || "all",
+      timeFilter: timeFilter || "overall",
+      startDate: startDate || "",
+      endDate: endDate || "",
+    });
+
+    const cachedEntry = dashboardStatsMemoryCache.get(cacheKey);
+    if (cachedEntry && Date.now() - cachedEntry.timestamp < DASHBOARD_CACHE_TTL_MS) {
+      return successResponse(
+        res,
+        200,
+        "Dashboard stats retrieved successfully",
+        cachedEntry.data,
+      );
+    }
 
     const now = new Date();
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -278,7 +298,14 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       const twelveMonthsStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
       const twelveMonthsEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-      // Execute all primary queries in parallel
+      // 1. Fetch active restaurant IDs first (takes ~100ms) for targeted Menu aggregation
+      const activeRestaurantDocs = await Restaurant.find({
+        approvedAt: { $exists: true, $ne: null },
+        isActive: true,
+      }).select("_id").lean();
+      const activeRestaurantIds = activeRestaurantDocs.map((r) => r._id);
+
+      // 2. Execute all primary queries in parallel
       const [
         revenueStats,
         deliveredOrderDocs,
@@ -289,15 +316,15 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         pendingRestaurantRequests,
         totalDeliveryBoys,
         pendingDeliveryBoyRequests,
-        activeRestaurantDocs,
         totalHotels,
         activeHotels,
-        allActiveMenus,
+        menuStatsResult,
         totalCustomers,
         recentOrders,
         recentRestaurants,
         diningStats,
         yearOrders,
+        diningRestaurantsEnabled,
       ] = await Promise.all([
         Order.aggregate([
           {
@@ -351,13 +378,100 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         Delivery.countDocuments({
           status: "pending",
         }),
-        Restaurant.find({
-          approvedAt: { $exists: true, $ne: null },
-          isActive: true,
-        }).select("_id").lean(),
         Hotel.countDocuments({}),
         Hotel.countDocuments({ isActive: true }),
-        Menu.find({ isActive: true }).select("addons sections restaurant").lean(),
+        Menu.aggregate([
+          {
+            $match: {
+              isActive: true,
+              restaurant: { $in: activeRestaurantIds },
+            },
+          },
+          {
+            $project: {
+              sections: {
+                $filter: {
+                  input: { $ifNull: ["$sections", []] },
+                  as: "sec",
+                  cond: { $ne: ["$$sec.isAvailable", false] },
+                },
+              },
+              addons: {
+                $filter: {
+                  input: { $ifNull: ["$addons", []] },
+                  as: "add",
+                  cond: { $ne: ["$$add.approvalStatus", "rejected"] },
+                },
+              },
+            },
+          },
+          {
+            $project: {
+              itemCount: {
+                $sum: [
+                  {
+                    $reduce: {
+                      input: "$sections",
+                      initialValue: 0,
+                      in: {
+                        $add: [
+                          "$$value",
+                          {
+                            $size: {
+                              $filter: {
+                                input: { $ifNull: ["$$this.items", []] },
+                                as: "item",
+                                cond: {
+                                  $and: [
+                                    { $ne: ["$$item.approvalStatus", "rejected"] },
+                                    { $ne: ["$$item.isAvailable", false] },
+                                  ],
+                                },
+                              },
+                            },
+                          },
+                          {
+                            $reduce: {
+                              input: { $ifNull: ["$$this.subsections", []] },
+                              initialValue: 0,
+                              in: {
+                                $add: [
+                                  "$$value",
+                                  {
+                                    $size: {
+                                      $filter: {
+                                        input: { $ifNull: ["$$this.items", []] },
+                                        as: "subitem",
+                                        cond: {
+                                          $and: [
+                                            { $ne: ["$$subitem.approvalStatus", "rejected"] },
+                                            { $ne: ["$$subitem.isAvailable", false] },
+                                          ],
+                                        },
+                                      },
+                                    },
+                                  },
+                                ],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ],
+              },
+              addonCount: { $size: "$addons" },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalFoods: { $sum: "$itemCount" },
+              totalAddons: { $sum: "$addonCount" },
+            },
+          },
+        ]),
         User.countDocuments({
           $or: [{ role: "user" }, { role: { $exists: false } }, { role: null }],
         }),
@@ -374,6 +488,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
           status: "delivered",
           deliveredAt: { $gte: twelveMonthsStart, $lte: twelveMonthsEnd },
         }).select("_id pricing deliveredAt").lean(),
+        Restaurant.countDocuments({
+          isActive: true,
+          "diningSettings.isEnabled": true,
+        }),
       ]);
 
       const revenueData = revenueStats[0] || {
@@ -382,60 +500,101 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       };
 
       const deliveredOrderIdArray = deliveredOrderDocs.map((o) => o._id);
-      const allSettlements = deliveredOrderIdArray.length > 0
-        ? await OrderSettlement.find({
-            orderId: { $in: deliveredOrderIdArray },
-          }).lean()
-        : [];
 
-      let totalCommission = 0;
-      let totalPlatformFee = 0;
-      let totalDeliveryFee = 0;
-      let totalGST = 0;
-      let pendingCashCommission = 0;
-      let totalQRCommission = 0;
-      let last30DaysCommission = 0;
-      let last30DaysPlatformFee = 0;
-      let last30DaysDeliveryFee = 0;
-      let last30DaysGST = 0;
+      // 3. Fast parallel settlement aggregations
+      const [settlementAggResult, yearSettlements] = await Promise.all([
+        deliveredOrderIdArray.length > 0
+          ? OrderSettlement.aggregate([
+              {
+                $match: {
+                  orderId: { $in: deliveredOrderIdArray },
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalCommission: { $sum: "$adminEarning.commission" },
+                  totalPlatformFee: { $sum: "$adminEarning.platformFee" },
+                  totalDeliveryFee: { $sum: "$adminEarning.deliveryFee" },
+                  totalGST: { $sum: "$adminEarning.gst" },
+                  totalQRCommission: { $sum: "$adminEarning.hotelCommission" },
+                  pendingCashCommission: {
+                    $sum: {
+                      $cond: [
+                        { $eq: ["$adminEarning.adminCommissionStatus", "pending_settlement"] },
+                        "$adminEarning.commission",
+                        0,
+                      ],
+                    },
+                  },
+                  last30DaysCommission: {
+                    $sum: {
+                      $cond: [
+                        { $gte: ["$createdAt", last30Days] },
+                        "$adminEarning.commission",
+                        0,
+                      ],
+                    },
+                  },
+                  last30DaysPlatformFee: {
+                    $sum: {
+                      $cond: [
+                        { $gte: ["$createdAt", last30Days] },
+                        "$adminEarning.platformFee",
+                        0,
+                      ],
+                    },
+                  },
+                  last30DaysDeliveryFee: {
+                    $sum: {
+                      $cond: [
+                        { $gte: ["$createdAt", last30Days] },
+                        "$adminEarning.deliveryFee",
+                        0,
+                      ],
+                    },
+                  },
+                  last30DaysGST: {
+                    $sum: {
+                      $cond: [
+                        { $gte: ["$createdAt", last30Days] },
+                        "$adminEarning.gst",
+                        0,
+                      ],
+                    },
+                  },
+                },
+              },
+            ])
+          : [],
+        deliveredOrderIdArray.length > 0
+          ? OrderSettlement.find({
+              orderId: { $in: deliveredOrderIdArray },
+              createdAt: { $gte: twelveMonthsStart },
+            })
+              .select("orderId adminEarning.commission")
+              .lean()
+          : [],
+      ]);
+
+      const sAgg = settlementAggResult[0] || {};
+      const totalCommission = Math.round((sAgg.totalCommission || 0) * 100) / 100;
+      const totalPlatformFee = Math.round((sAgg.totalPlatformFee || 0) * 100) / 100;
+      const totalDeliveryFee = Math.round((sAgg.totalDeliveryFee || 0) * 100) / 100;
+      const totalGST = Math.round((sAgg.totalGST || 0) * 100) / 100;
+      const totalQRCommission = Math.round((sAgg.totalQRCommission || 0) * 100) / 100;
+      const pendingCashCommission = Math.round((sAgg.pendingCashCommission || 0) * 100) / 100;
+      const last30DaysCommission = Math.round((sAgg.last30DaysCommission || 0) * 100) / 100;
+      const last30DaysPlatformFee = Math.round((sAgg.last30DaysPlatformFee || 0) * 100) / 100;
+      const last30DaysDeliveryFee = Math.round((sAgg.last30DaysDeliveryFee || 0) * 100) / 100;
+      const last30DaysGST = Math.round((sAgg.last30DaysGST || 0) * 100) / 100;
 
       const settlementsByOrderId = new Map();
-
-      allSettlements.forEach((s) => {
+      yearSettlements.forEach((s) => {
         if (s.orderId) {
           settlementsByOrderId.set(s.orderId.toString(), s);
         }
-
-        const commission = s.adminEarning?.commission || 0;
-        const platformFee = s.adminEarning?.platformFee || 0;
-        const deliveryFee = s.adminEarning?.deliveryFee || 0;
-        const gst = s.adminEarning?.gst || 0;
-        const hotelCommission = s.adminEarning?.hotelCommission || 0;
-
-        totalCommission += commission;
-        totalPlatformFee += platformFee;
-        totalDeliveryFee += deliveryFee;
-        totalGST += gst;
-        totalQRCommission += hotelCommission;
-
-        if (s.adminEarning?.adminCommissionStatus === "pending_settlement") {
-          pendingCashCommission += commission;
-        }
-
-        const sDate = s.createdAt ? new Date(s.createdAt) : null;
-        if (sDate && sDate >= last30Days && sDate <= now) {
-          last30DaysCommission += commission;
-          last30DaysPlatformFee += platformFee;
-          last30DaysDeliveryFee += deliveryFee;
-          last30DaysGST += gst;
-        }
       });
-
-      totalCommission = Math.round(totalCommission * 100) / 100;
-      totalPlatformFee = Math.round(totalPlatformFee * 100) / 100;
-      totalDeliveryFee = Math.round(totalDeliveryFee * 100) / 100;
-      totalGST = Math.round(totalGST * 100) / 100;
-      totalQRCommission = Math.round(totalQRCommission * 100) / 100;
 
       const orderStatusMap = {};
       orderStats.forEach((stat) => {
@@ -445,51 +604,9 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       const totalOrders = deliveredOrderIdArray.length;
       const activePartners = activeRestaurants + activeDeliveryPartners;
 
-      const activeRestaurantIdSet = new Set(
-        activeRestaurantDocs.map((r) => r._id.toString())
-      );
-
-      let totalFoods = 0;
-      let totalAddons = 0;
-
-      allActiveMenus.forEach((menu) => {
-        if (menu.restaurant && activeRestaurantIdSet.has(menu.restaurant.toString())) {
-          if (menu.sections && Array.isArray(menu.sections)) {
-            menu.sections.forEach((section) => {
-              if (section.items && Array.isArray(section.items)) {
-                totalFoods += section.items.filter((item) => {
-                  if (!item || !item.id || !item.name) return false;
-                  if (item.approvalStatus === "rejected") return false;
-                  if (item.isAvailable === false) return false;
-                  return true;
-                }).length;
-              }
-              if (section.subsections && Array.isArray(section.subsections)) {
-                section.subsections.forEach((subsection) => {
-                  if (subsection.items && Array.isArray(subsection.items)) {
-                    totalFoods += subsection.items.filter((item) => {
-                      if (!item || !item.id || !item.name) return false;
-                      if (item.approvalStatus === "rejected") return false;
-                      if (item.isAvailable === false) return false;
-                      return true;
-                    }).length;
-                  }
-                });
-              }
-            });
-          }
-        }
-
-        if (menu.addons && Array.isArray(menu.addons)) {
-          totalAddons += menu.addons.filter((addon) => {
-            if (!addon || typeof addon !== "object") return false;
-            if (!addon.id || typeof addon.id !== "string" || addon.id.trim() === "") return false;
-            if (!addon.name || typeof addon.name !== "string" || addon.name.trim() === "") return false;
-            if (addon.approvalStatus === "rejected") return false;
-            return true;
-          }).length;
-        }
-      });
+      const mAgg = menuStatsResult[0] || {};
+      const totalFoods = mAgg.totalFoods || 0;
+      const totalAddons = mAgg.totalAddons || 0;
 
       const pendingOrders = orderStatusMap.pending || 0;
       const completedOrders = orderStatusMap.delivered || 0;
@@ -532,109 +649,117 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         });
       }
 
+      const responseData = {
+        revenue: {
+          total: revenueData.totalRevenue || 0,
+          last30Days: revenueData.last30DaysRevenue || 0,
+          currency: "INR",
+        },
+        commission: {
+          total: totalCommission,
+          last30Days: last30DaysCommission,
+          currency: "INR",
+        },
+        platformFee: {
+          total: totalPlatformFee,
+          last30Days: last30DaysPlatformFee,
+          currency: "INR",
+        },
+        deliveryFee: {
+          total: totalDeliveryFee,
+          last30Days: last30DaysDeliveryFee,
+          currency: "INR",
+        },
+        gst: {
+          total: totalGST,
+          last30Days: last30DaysGST,
+          currency: "INR",
+        },
+        pendingCashCommission: {
+          total: pendingCashCommission,
+          currency: "INR",
+        },
+        totalAdminEarnings: {
+          total:
+            totalCommission +
+            totalPlatformFee +
+            totalDeliveryFee +
+            totalGST,
+          last30Days:
+            last30DaysCommission +
+            last30DaysPlatformFee +
+            last30DaysDeliveryFee +
+            last30DaysGST,
+          currency: "INR",
+        },
+        orders: {
+          total: totalOrders,
+          byStatus: {
+            pending: orderStatusMap.pending || 0,
+            confirmed: orderStatusMap.confirmed || 0,
+            preparing: orderStatusMap.preparing || 0,
+            ready: orderStatusMap.ready || 0,
+            out_for_delivery: orderStatusMap.out_for_delivery || 0,
+            delivered: orderStatusMap.delivered || 0,
+            cancelled: orderStatusMap.cancelled || 0,
+          },
+        },
+        partners: {
+          total: activePartners,
+          restaurants: activeRestaurants,
+          delivery: activeDeliveryPartners,
+        },
+        recentActivity: {
+          orders: recentOrders,
+          restaurants: recentRestaurants,
+          period: "last24Hours",
+        },
+        monthlyData,
+        restaurants: {
+          total: totalRestaurants,
+          active: activeRestaurants,
+          pendingRequests: pendingRestaurantRequests,
+        },
+        deliveryBoys: {
+          total: totalDeliveryBoys,
+          active: activeDeliveryPartners,
+          pendingRequests: pendingDeliveryBoyRequests,
+        },
+        foods: {
+          total: totalFoods,
+        },
+        addons: {
+          total: totalAddons,
+        },
+        qrCommission: {
+          total: totalQRCommission,
+          currency: "INR",
+        },
+        customers: {
+          total: totalCustomers,
+        },
+        hotels: {
+          total: totalHotels,
+          active: activeHotels,
+        },
+        orderStats: {
+          pending: pendingOrders,
+          completed: completedOrders,
+        },
+        diningStats,
+        diningRestaurantsEnabled,
+      };
+
+      dashboardStatsMemoryCache.set(cacheKey, {
+        timestamp: Date.now(),
+        data: responseData,
+      });
+
       return successResponse(
         res,
         200,
         "Dashboard stats retrieved successfully",
-        {
-          revenue: {
-            total: revenueData.totalRevenue || 0,
-            last30Days: revenueData.last30DaysRevenue || 0,
-            currency: "INR",
-          },
-          commission: {
-            total: totalCommission,
-            last30Days: last30DaysCommission,
-            currency: "INR",
-          },
-          platformFee: {
-            total: totalPlatformFee,
-            last30Days: last30DaysPlatformFee,
-            currency: "INR",
-          },
-          deliveryFee: {
-            total: totalDeliveryFee,
-            last30Days: last30DaysDeliveryFee,
-            currency: "INR",
-          },
-          gst: {
-            total: totalGST,
-            last30Days: last30DaysGST,
-            currency: "INR",
-          },
-          pendingCashCommission: {
-            total: Math.round(pendingCashCommission * 100) / 100,
-            currency: "INR",
-          },
-          totalAdminEarnings: {
-            total:
-              totalCommission +
-              totalPlatformFee +
-              totalDeliveryFee +
-              totalGST,
-            last30Days:
-              last30DaysCommission +
-              last30DaysPlatformFee +
-              last30DaysDeliveryFee +
-              last30DaysGST,
-            currency: "INR",
-          },
-          orders: {
-            total: totalOrders,
-            byStatus: {
-              pending: orderStatusMap.pending || 0,
-              confirmed: orderStatusMap.confirmed || 0,
-              preparing: orderStatusMap.preparing || 0,
-              ready: orderStatusMap.ready || 0,
-              out_for_delivery: orderStatusMap.out_for_delivery || 0,
-              delivered: orderStatusMap.delivered || 0,
-              cancelled: orderStatusMap.cancelled || 0,
-            },
-          },
-          partners: {
-            total: activePartners,
-            restaurants: activeRestaurants,
-            delivery: activeDeliveryPartners,
-          },
-          recentActivity: {
-            orders: recentOrders,
-            restaurants: recentRestaurants,
-            period: "last24Hours",
-          },
-          monthlyData,
-          restaurants: {
-            total: totalRestaurants,
-            active: activeRestaurants,
-            pendingRequests: pendingRestaurantRequests,
-          },
-          deliveryBoys: {
-            total: totalDeliveryBoys,
-            active: activeDeliveryPartners,
-            pendingRequests: pendingDeliveryBoyRequests,
-          },
-          foods: {
-            total: totalFoods,
-          },
-          addons: {
-            total: totalAddons,
-          },
-          qrCommission: {
-            total: totalQRCommission,
-            currency: "INR",
-          },
-          customers: {
-            total: totalCustomers,
-          },
-          hotels: {
-            total: totalHotels,
-            active: activeHotels,
-          },
-          orderStats: {
-            pending: pendingOrders,
-            completed: completedOrders,
-          },
-          diningStats,
-        },
+        responseData,
       );
     }
 
@@ -775,7 +900,9 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       deliveredOrderIds.length > 0
         ? OrderSettlement.find({
             orderId: { $in: deliveredOrderIds },
-          }).lean()
+          })
+            .select("orderId adminEarning createdAt")
+            .lean()
         : [],
       zoneIdFilter
         ? customerIdsSet.size
@@ -927,7 +1054,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       granularity,
     );
 
-    return successResponse(res, 200, "Dashboard stats retrieved successfully", {
+    const responseData = {
       revenue: {
         total: totalRevenue,
         last30Days: last30DaysRevenue,
@@ -1022,7 +1149,20 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
         completed: completedOrders,
       },
       diningStats,
+      diningRestaurantsEnabled: restaurantDocs.length,
+    };
+
+    dashboardStatsMemoryCache.set(cacheKey, {
+      timestamp: Date.now(),
+      data: responseData,
     });
+
+    return successResponse(
+      res,
+      200,
+      "Dashboard stats retrieved successfully",
+      responseData,
+    );
   } catch (error) {
     logger.error(`Error fetching dashboard stats: ${error.message}`);
     return errorResponse(res, 500, "Failed to fetch dashboard statistics");

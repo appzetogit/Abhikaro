@@ -13,123 +13,7 @@ import {
 } from "lucide-react"
 import { DateRangeCalendar } from "@/components/ui/date-range-calendar"
 import { restaurantAPI } from "@/lib/api"
-
-// Mock order data matching the image (fallback)
-const mockOrders = [
-  {
-    id: "7593519447",
-    status: "REJECTED",
-    date: "19 Dec",
-    time: "06:35 AM",
-    restaurant: "Kadhai Chammach Restaurant",
-    address: "By Pass Road (South), Indore",
-    customer: "Aryan baghel",
-    items: [
-      { name: "Egg Biryani", quantity: 1, price: 199 }
-    ],
-    totalPrice: 199,
-    reason: "Rejected by Restaurant: items were out of stock"
-  },
-  {
-    id: "7591372071",
-    status: "REJECTED",
-    date: "18 Dec",
-    time: "04:04 AM",
-    restaurant: "Kadhai Chammach Restaurant",
-    address: "By Pass Road (South), Indore",
-    customer: "Mantavya katkoria",
-    items: [
-      { name: "Egg Biryani", quantity: 1, price: 199 },
-      { name: "Chicken Curry", quantity: 1, price: 39 }
-    ],
-    totalPrice: 238,
-    reason: "Rejected by Restaurant: items were out of stock"
-  },
-  {
-    id: "7560307359",
-    status: "CANCELLED",
-    date: "12 Dec",
-    time: "04:27 AM",
-    restaurant: "Kadhai Chammach Restaurant",
-    address: "By Pass Road (South), Indore",
-    customer: "John Doe",
-    items: [
-      { name: "Veg Biryani", quantity: 2, price: 150 }
-    ],
-    totalPrice: 300,
-    reason: "Cancelled by customer"
-  },
-  {
-    id: "7593519448",
-    status: "DELIVERED",
-    tags: ["SELF DELIVERY"],
-    date: "19 Dec",
-    time: "08:15 AM",
-    restaurant: "Kadhai Chammach Restaurant",
-    address: "By Pass Road (South), Indore",
-    customer: "Priya Sharma",
-    items: [
-      { name: "Paneer Tikka", quantity: 2, price: 250 },
-      { name: "Naan", quantity: 4, price: 80 }
-    ],
-    totalPrice: 330,
-  },
-  {
-    id: "7593519449",
-    status: "PREPARING",
-    tags: ["LARGE ORDER"],
-    date: "19 Dec",
-    time: "09:30 AM",
-    restaurant: "Kadhai Chammach Restaurant",
-    address: "By Pass Road (South), Indore",
-    customer: "Rahul Verma",
-    items: [
-      { name: "Chicken Biryani", quantity: 5, price: 999 }
-    ],
-    totalPrice: 999,
-  },
-  {
-    id: "7593519450",
-    status: "READY",
-    date: "19 Dec",
-    time: "10:00 AM",
-    restaurant: "Kadhai Chammach Restaurant",
-    address: "By Pass Road (South), Indore",
-    customer: "Sneha Patel",
-    items: [
-      { name: "Dal Makhani", quantity: 1, price: 180 }
-    ],
-    totalPrice: 180,
-  },
-  {
-    id: "7593519451",
-    status: "OUT FOR DELIVERY",
-    tags: ["FOOD RESCUE"],
-    date: "19 Dec",
-    time: "10:45 AM",
-    restaurant: "Kadhai Chammach Restaurant",
-    address: "By Pass Road (South), Indore",
-    customer: "Amit Kumar",
-    items: [
-      { name: "Mix Veg", quantity: 2, price: 160 }
-    ],
-    totalPrice: 160,
-  },
-  {
-    id: "7593519452",
-    status: "DELIVERED",
-    tags: ["IRCTC"],
-    date: "19 Dec",
-    time: "11:20 AM",
-    restaurant: "Kadhai Chammach Restaurant",
-    address: "By Pass Road (South), Indore",
-    customer: "Neha Singh",
-    items: [
-      { name: "Veg Thali", quantity: 1, price: 220 }
-    ],
-    totalPrice: 220,
-  }
-]
+import { getOrdersCache, setOrdersCache } from "@/module/admin/utils/ordersCache"
 
 // Initialize with current week if needed
 const getCurrentWeek = () => {
@@ -315,38 +199,61 @@ export default function AllOrdersPage() {
     else if (status === 'PREPARING') status = 'PREPARING'
     else if (status === 'READY') status = 'READY'
     else if (status === 'OUT_FOR_DELIVERY' || status === 'OUT FOR DELIVERY') status = 'OUT FOR DELIVERY'
+    else if (status === 'CONFIRMED') status = 'CONFIRMED'
+    else status = 'ORDERED'
     
-    // Get rejection/cancellation reason
-    let reason = null
-    if (status === 'REJECTED' && order.rejectionReason) {
-      reason = `Rejected by Restaurant: ${order.rejectionReason}`
-    } else if (status === 'CANCELLED' && order.cancellationReason) {
-      reason = `Cancelled by ${order.cancelledBy === 'customer' ? 'customer' : 'restaurant'}: ${order.cancellationReason}`
-    } else if (status === 'REJECTED') {
-      reason = 'Rejected by Restaurant'
-    } else if (status === 'CANCELLED') {
-      reason = 'Cancelled by customer'
+    // Check if rejected (cancelled by restaurant or reason contains rejected)
+    const cancellationReason = order.cancellationReason || ''
+    const isRejected = order.cancelledBy === 'restaurant' || 
+                      /rejected/i.test(cancellationReason) ||
+                      order.status === 'rejected'
+    
+    if (isRejected && order.status === 'cancelled') {
+      status = "REJECTED"
     }
     
-    // Determine tags based on order properties.
-    // NOTE: Customer-facing modifiers like cutlery / veg-only are intentionally not shown in this UI.
+    // Format reason
+    let reason = null
+    if (status === 'REJECTED' || status === 'CANCELLED') {
+      if (order.cancelledBy === 'restaurant') {
+        reason = `Rejected by Restaurant: ${cancellationReason || 'items were out of stock'}`
+      } else if (order.cancelledBy === 'user') {
+        reason = `Cancelled by customer: ${cancellationReason || 'Customer requested cancellation'}`
+      } else {
+        reason = cancellationReason || (status === 'REJECTED' ? 'Rejected' : 'Cancelled')
+      }
+    }
+    
+    // Format tags
     const tags = []
-    if (order.deliveryFleet === 'express') tags.push('EXPRESS DELIVERY')
-    if (order.deliveryFleet === 'self') tags.push('SELF DELIVERY')
+    if (order.orderType === 'TAKEAWAY' || order.orderType === 'takeaway') {
+      tags.push('TAKEAWAY')
+    }
+    if (order.orderType === 'QR' || order.orderType === 'qr') {
+      tags.push('DINE IN')
+    }
+    if (order.deliveryFleet === 'restaurant') {
+      tags.push('SELF DELIVERY')
+    }
+    if (order.pricing?.total > 1000) {
+      tags.push('LARGE ORDER')
+    }
     
     return {
-      id: order.orderId || order._id?.toString() || '',
+      id: order.orderId || order._id?.toString() || 'N/A',
       status,
       date,
       time,
       restaurant: restaurantName,
       address,
       customer: customerName,
+      customerPhone: order.userId?.phone || order.customerPhone || '',
       items,
       totalPrice: order.pricing?.total || 0,
       reason,
       tags: tags.length > 0 ? tags : undefined,
       createdAt: order.createdAt,
+      originalOrder: order,
       mongoId: order._id?.toString()
     }
   }, [restaurantData])
@@ -354,8 +261,9 @@ export default function AllOrdersPage() {
   // Fetch orders from backend
   useEffect(() => {
     const fetchOrders = async () => {
+      const hasCache = Array.isArray(cachedOrders) && cachedOrders.length > 0
       try {
-        setLoading(true)
+        if (!hasCache) setLoading(true)
         setError(null)
         
         // Build query params
@@ -370,6 +278,7 @@ export default function AllOrdersPage() {
         if (response.data?.success && response.data.data?.orders) {
           // Transform orders
           const transformedOrders = response.data.data.orders.map(transformOrder)
+          setOrdersCache(RESTAURANT_CACHE_KEY, transformedOrders)
           
           // Filter by date range
           const filteredByDate = transformedOrders.filter(order => {
@@ -384,15 +293,15 @@ export default function AllOrdersPage() {
           
           setOrders(filteredByDate)
         } else {
-          setOrders([])
+          if (!hasCache) setOrders([])
         }
       } catch (err) {
         // Suppress 401 errors as they're handled by axios interceptor
         if (err.response?.status !== 401) {
           console.error('Error fetching orders:', err)
-          setError(err.message || 'Failed to fetch orders')
+          if (!hasCache) setError(err.message || 'Failed to fetch orders')
         }
-        setOrders([])
+        if (!hasCache) setOrders([])
       } finally {
         setLoading(false)
       }
@@ -669,12 +578,18 @@ export default function AllOrdersPage() {
 
       {/* Orders List */}
       <div className="px-4 pb-24 space-y-3">
-        {loading && (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-gray-600 text-sm">Loading orders...</p>
-            </div>
+        {loading && orders.length === 0 && (
+          <div className="space-y-3 animate-pulse">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="h-5 w-24 bg-gray-200 rounded"></div>
+                  <div className="h-4 w-28 bg-gray-200 rounded"></div>
+                </div>
+                <div className="h-4 w-40 bg-gray-200 rounded"></div>
+                <div className="h-4 w-60 bg-gray-200 rounded"></div>
+              </div>
+            ))}
           </div>
         )}
         

@@ -28,11 +28,19 @@ import { adminAPI } from "@/lib/api"
 
 const getCachedData = (key, fallback) => {
   try {
-    const cached = sessionStorage.getItem(key)
+    const cached = localStorage.getItem(key) || sessionStorage.getItem(key)
     return cached ? JSON.parse(cached) : fallback
   } catch {
     return fallback
   }
+}
+
+const setCachedData = (key, data) => {
+  try {
+    const str = JSON.stringify(data)
+    localStorage.setItem(key, str)
+    sessionStorage.setItem(key, str)
+  } catch {}
 }
 
 export default function AdminHome() {
@@ -59,13 +67,11 @@ export default function AdminHome() {
   useEffect(() => {
     const fetchZones = async () => {
       try {
-        const zonesResponse = await adminAPI.getZones({ limit: 1000, isActive: true })
+        const zonesResponse = await adminAPI.getZones({ limit: 100, isActive: true })
         if (zonesResponse.data?.success && zonesResponse.data?.data) {
           const list = zonesResponse.data.data.zones || zonesResponse.data.data || []
           setZones(list)
-          try {
-            sessionStorage.setItem("admin_zones_cache", JSON.stringify(list))
-          } catch {}
+          setCachedData("admin_zones_cache", list)
         }
       } catch (error) {
         console.error('❌ Error fetching zones:', error)
@@ -83,9 +89,7 @@ export default function AdminHome() {
         const totalFromPagination = res.data?.data?.pagination?.total
         if (typeof totalFromPagination === "number") {
           setHotelCountOverride(totalFromPagination)
-          try {
-            sessionStorage.setItem("admin_hotel_count_cache", JSON.stringify(totalFromPagination))
-          } catch {}
+          setCachedData("admin_hotel_count_cache", totalFromPagination)
         }
       } catch (error) {
         console.error("❌ Error fetching hotel count for dashboard:", error)
@@ -95,44 +99,32 @@ export default function AdminHome() {
     fetchHotelCount()
   }, [])
 
-  // Fetch dining data (enabled restaurants count, commission, earnings)
+  // Fetch dining earnings summary (enabled restaurants count taken directly from dashboardData)
   useEffect(() => {
     const fetchDiningData = async () => {
       try {
-        const [restaurantsRes, earningsRes] = await Promise.allSettled([
-          adminAPI.getRestaurants({ page: 1, limit: 1000 }),
-          adminAPI.getDiningEarnings({})
-        ])
-
-        let enabledDiningCount = 0
-        if (restaurantsRes.status === "fulfilled") {
-          const restaurants = restaurantsRes.value.data?.data?.restaurants || []
-          enabledDiningCount = restaurants.filter(
-            (r) => r.isActive === true && r.diningSettings?.isEnabled === true
-          ).length
-        }
-
+        const earningsRes = await adminAPI.getDiningEarnings({})
         let summary = {}
-        if (earningsRes.status === "fulfilled") {
-          summary = earningsRes.value.data?.data?.summary || {}
+        if (earningsRes?.data?.success && earningsRes.data?.data) {
+          summary = earningsRes.data.data.summary || {}
         }
 
-        const newDiningData = {
-          enabledRestaurantsCount: enabledDiningCount,
-          totalCommission: summary.totalCommissionEarned || 0,
-          restaurantEarnings: summary.totalRestaurantEarnings || 0
-        }
-        setDiningData(newDiningData)
-        try {
-          sessionStorage.setItem("admin_dining_stats_cache", JSON.stringify(newDiningData))
-        } catch {}
+        setDiningData((prev) => {
+          const newDiningData = {
+            enabledRestaurantsCount: dashboardData?.diningRestaurantsEnabled ?? prev.enabledRestaurantsCount ?? 0,
+            totalCommission: summary.totalCommissionEarned || 0,
+            restaurantEarnings: summary.totalRestaurantEarnings || 0
+          }
+          setCachedData("admin_dining_stats_cache", newDiningData)
+          return newDiningData
+        })
       } catch (error) {
         console.error("❌ Error fetching dining data:", error)
       }
     }
 
     fetchDiningData()
-  }, [])
+  }, [dashboardData?.diningRestaurantsEnabled])
 
   // Fetch dashboard stats when filters change
   useEffect(() => {
@@ -161,9 +153,7 @@ export default function AdminHome() {
         const response = await adminAPI.getDashboardStats(params)
         if (response.data?.success && response.data?.data) {
           setDashboardData(response.data.data)
-          try {
-            sessionStorage.setItem("admin_dashboard_stats_cache", JSON.stringify(response.data.data))
-          } catch {}
+          setCachedData("admin_dashboard_stats_cache", response.data.data)
         } else {
           console.error('❌ Invalid response format:', response.data)
         }
@@ -204,7 +194,7 @@ export default function AdminHome() {
     const fetchDeliveryLeaderboard = async () => {
       try {
         setDeliveryLeaderboardLoading(true)
-        const response = await adminAPI.getDeliveryPartners({ page: 1, limit: 1000 })
+        const response = await adminAPI.getDeliveryPartners({ page: 1, limit: 30 })
         if (response?.data?.success) {
           let partners = response.data.data?.deliveryPartners || []
 
@@ -221,9 +211,7 @@ export default function AdminHome() {
             .slice(0, 8)
 
           setDeliveryLeaderboard(rankedPartners)
-          try {
-            sessionStorage.setItem("admin_delivery_leaderboard_cache", JSON.stringify(rankedPartners))
-          } catch {}
+          setCachedData("admin_delivery_leaderboard_cache", rankedPartners)
         } else {
           setDeliveryLeaderboard([])
         }
@@ -414,6 +402,7 @@ export default function AdminHome() {
               icon={<ShoppingBag className="h-5 w-5 text-emerald-600" />}
               accent="bg-emerald-200/40"
               onClick={() => navigate("/admin/orders/delivered")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Commission earned"
@@ -421,6 +410,7 @@ export default function AdminHome() {
               helper="Restaurant commission"
               icon={<ArrowUpRight className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
+              loading={!dashboardData}
             />
             <MetricCard
               title="Orders processed"
@@ -429,6 +419,7 @@ export default function AdminHome() {
               icon={<Activity className="h-5 w-5 text-amber-600" />}
               accent="bg-amber-200/40"
               onClick={() => navigate("/admin/orders/delivered")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Platform fee"
@@ -436,6 +427,7 @@ export default function AdminHome() {
               helper="Total platform fees"
               icon={<CreditCard className="h-5 w-5 text-purple-600" />}
               accent="bg-purple-200/40"
+              loading={!dashboardData}
             />
             <MetricCard
               title="Delivery fee"
@@ -443,6 +435,7 @@ export default function AdminHome() {
               helper="Total delivery fees"
               icon={<Truck className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
+              loading={!dashboardData}
             />
             <MetricCard
               title="GST"
@@ -450,6 +443,7 @@ export default function AdminHome() {
               helper="Total GST collected"
               icon={<Receipt className="h-5 w-5 text-orange-600" />}
               accent="bg-orange-200/40"
+              loading={!dashboardData}
             />
             <MetricCard
               title="Total revenue"
@@ -458,6 +452,7 @@ export default function AdminHome() {
               icon={<DollarSign className="h-5 w-5 text-green-600" />}
               accent="bg-green-200/40"
               onClick={() => navigate("/admin/restaurants/commission")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Total restaurants"
@@ -466,6 +461,7 @@ export default function AdminHome() {
               icon={<Store className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
               onClick={() => navigate("/admin/restaurants")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Total hotels"
@@ -474,6 +470,7 @@ export default function AdminHome() {
               icon={<Store className="h-5 w-5 text-fuchsia-600" />}
               accent="bg-fuchsia-200/40"
               onClick={() => navigate("/admin/hotels")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Restaurant request pending"
@@ -482,6 +479,7 @@ export default function AdminHome() {
               icon={<UserCheck className="h-5 w-5 text-orange-600" />}
               accent="bg-orange-200/40"
               onClick={() => navigate("/admin/restaurants/joining-request")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Total delivery boy"
@@ -490,6 +488,7 @@ export default function AdminHome() {
               icon={<Truck className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
               onClick={() => navigate("/admin/delivery-partners")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Delivery boy request pending"
@@ -498,6 +497,7 @@ export default function AdminHome() {
               icon={<Clock className="h-5 w-5 text-yellow-600" />}
               accent="bg-yellow-200/40"
               onClick={() => navigate("/admin/delivery-partners/join-request")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Total foods"
@@ -506,6 +506,7 @@ export default function AdminHome() {
               icon={<Package className="h-5 w-5 text-purple-600" />}
               accent="bg-purple-200/40"
               onClick={() => navigate("/admin/foods")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Hotel QR Commission"
@@ -514,6 +515,7 @@ export default function AdminHome() {
               icon={<QrCode className="h-5 w-5 text-pink-600" />}
               accent="bg-pink-200/40"
               onClick={() => navigate("/admin/hotels")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Total customers"
@@ -522,6 +524,7 @@ export default function AdminHome() {
               icon={<UserCircle className="h-5 w-5 text-cyan-600" />}
               accent="bg-cyan-200/40"
               onClick={() => navigate("/admin/customers")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Pending orders"
@@ -530,6 +533,7 @@ export default function AdminHome() {
               icon={<Clock className="h-5 w-5 text-red-600" />}
               accent="bg-red-200/40"
               onClick={() => navigate("/admin/orders/pending")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Completed orders"
@@ -538,6 +542,7 @@ export default function AdminHome() {
               icon={<CheckCircle className="h-5 w-5 text-emerald-600" />}
               accent="bg-emerald-200/40"
               onClick={() => navigate("/admin/orders/delivered")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Dining restaurants enabled"
@@ -546,6 +551,7 @@ export default function AdminHome() {
               icon={<UtensilsCrossed className="h-5 w-5 text-teal-600" />}
               accent="bg-teal-200/40"
               onClick={() => navigate("/admin/restaurants")}
+              loading={!dashboardData}
             />
             <MetricCard
               title="Total dining commission"
@@ -553,6 +559,7 @@ export default function AdminHome() {
               helper="Admin commission from dining"
               icon={<DollarSign className="h-5 w-5 text-rose-600" />}
               accent="bg-rose-200/40"
+              loading={!dashboardData}
             />
             <MetricCard
               title="Restaurant dining earnings"
@@ -560,6 +567,7 @@ export default function AdminHome() {
               helper="Total restaurant earnings"
               icon={<TrendingUp className="h-5 w-5 text-violet-600" />}
               accent="bg-violet-200/40"
+              loading={!dashboardData}
             />
           </div>
 
@@ -781,7 +789,7 @@ export default function AdminHome() {
   )
 }
 
-function MetricCard({ title, value, helper, icon, accent, onClick }) {
+function MetricCard({ title, value, helper, icon, accent, onClick, loading }) {
   return (
     <Card
       className={`overflow-hidden border-neutral-200 bg-white p-0 ${onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
@@ -791,12 +799,16 @@ function MetricCard({ title, value, helper, icon, accent, onClick }) {
       <CardContent className="relative flex flex-col gap-1.5 px-3 pb-3 pt-3">
         <div className={`absolute inset-0 ${accent} `} />
         <div className="relative flex items-center justify-between">
-          <div>
+          <div className="flex-1 min-w-0 pr-2">
             <p className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{title}</p>
-            <p className="text-xl font-semibold text-neutral-900 leading-snug">{value}</p>
+            {loading ? (
+              <div className="my-1.5 h-6 w-24 animate-pulse rounded bg-neutral-200/80" />
+            ) : (
+              <p className="text-xl font-semibold text-neutral-900 leading-snug">{value}</p>
+            )}
             <p className="text-[11px] text-neutral-500">{helper}</p>
           </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 ring-1 ring-neutral-200">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 ring-1 ring-neutral-200 shrink-0">
             {icon}
           </div>
         </div>
