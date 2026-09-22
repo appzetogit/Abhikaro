@@ -16,10 +16,8 @@ const logger = winston.createLogger({
 
 // Test phone numbers that should use default OTP
 const TEST_PHONE_NUMBERS = [
-  "7691810506",
+  "7610416911",
   "9009925021",
-  "6375095971",
-  "9876543210",
 ];
 
 // Test email addresses that should use default OTP
@@ -40,7 +38,7 @@ const DEFAULT_TEST_OTP = "110211";
 const extractPhoneDigits = (phone) => {
   if (!phone) return "";
   // Remove all non-digit characters
-  const digits = phone.replace(/\D/g, "");
+  const digits = String(phone).replace(/\D/g, "");
   // If starts with country code (like 91), remove it to get last 10 digits
   // For Indian numbers, country code is 91, so we take last 10 digits
   if (digits.length > 10 && digits.startsWith("91")) {
@@ -122,32 +120,34 @@ class OTPService {
       const identifier = phone || email;
       const identifierType = phone ? "phone" : "email";
 
-      // Check rate limiting (max 3 OTPs per identifier per hour) - using MongoDB
-      // Always enforce rate limiting in all environments
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const rateLimitQuery = {
-        purpose,
-        createdAt: { $gte: oneHourAgo },
-      };
-
-      // Use normalized identifier for rate limiting
-      if (normalizedPhone) {
-        rateLimitQuery.normalizedPhone = normalizedPhone;
-      } else if (normalizedEmail) {
-        rateLimitQuery.email = normalizedEmail;
-      }
-
-      const recentOtpCount = await Otp.countDocuments(rateLimitQuery);
-      if (recentOtpCount >= 3) {
-        throw new Error(
-          "Too many OTP requests. Please try again after some time.",
-        );
-      }
-
       // Generate OTP (use default for test identifiers)
       const isTestResult = isTestIdentifier(phone, email);
       const otp = isTestResult ? DEFAULT_TEST_OTP : generateOTP();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+      // Check rate limiting (max 3 OTPs per identifier per hour) - using MongoDB
+      // Skip rate limiting for test identifiers
+      if (!isTestResult) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const rateLimitQuery = {
+          purpose,
+          createdAt: { $gte: oneHourAgo },
+        };
+
+        // Use normalized identifier for rate limiting
+        if (normalizedPhone) {
+          rateLimitQuery.normalizedPhone = normalizedPhone;
+        } else if (normalizedEmail) {
+          rateLimitQuery.email = normalizedEmail;
+        }
+
+        const recentOtpCount = await Otp.countDocuments(rateLimitQuery);
+        if (recentOtpCount >= 3) {
+          throw new Error(
+            "Too many OTP requests. Please try again after some time.",
+          );
+        }
+      }
 
       // Build query for invalidating previous OTPs using normalized identifiers
       const invalidateQuery = { purpose, verified: false };
@@ -281,7 +281,7 @@ class OTPService {
       }
 
       // Check if this is a test identifier and OTP matches default test OTP
-      if (isTest && String(otp) === DEFAULT_TEST_OTP) {
+      if (isTest && String(otp).trim() === DEFAULT_TEST_OTP) {
         logger.info(`Test OTP verified for ${identifier}`, {
           identifier,
           purpose,

@@ -5,9 +5,8 @@
 
 // Test phone numbers that should use default OTP
 const TEST_PHONE_NUMBERS = [
-  '7691810506',
+  '7610416911',
   '9009925021',
-  '6375095971',
 ];
 
 // Default OTP for test phone numbers
@@ -21,7 +20,7 @@ export const DEFAULT_TEST_OTP = '110211';
 export const extractPhoneDigits = (phone) => {
   if (!phone) return '';
   // Remove all non-digit characters
-  const digits = phone.replace(/\D/g, '');
+  const digits = String(phone).replace(/\D/g, '');
   // If starts with country code (like 91), remove it to get last 10 digits
   // For Indian numbers, country code is 91, so we take last 10 digits
   if (digits.length > 10 && digits.startsWith('91')) {
