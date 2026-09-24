@@ -352,7 +352,7 @@ export default function DeliverySignup() {
             <div>
               <div className="font-semibold mb-1">Demo Credentials</div>
               <div>
-                <span className="font-semibold">Phone :</span> +91 9876543210
+                <span className="font-semibold">Phone :</span> +91 8349936670
               </div>
               <div>
                 <span className="font-semibold">OTP :</span> 123456

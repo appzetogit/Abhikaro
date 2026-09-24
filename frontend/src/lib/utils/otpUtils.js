@@ -5,12 +5,11 @@
 
 // Test phone numbers that should use default OTP
 const TEST_PHONE_NUMBERS = [
-  '7610416911',
-  '9009925021',
+  '8349936670',
 ];
 
 // Default OTP for test phone numbers
-export const DEFAULT_TEST_OTP = '110211';
+export const DEFAULT_TEST_OTP = '123456';
 
 /**
  * Extract phone number digits (without country code)

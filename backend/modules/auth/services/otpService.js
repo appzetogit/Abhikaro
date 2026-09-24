@@ -16,8 +16,7 @@ const logger = winston.createLogger({
 
 // Test phone numbers that should use default OTP
 const TEST_PHONE_NUMBERS = [
-  "7610416911",
-  "9009925021",
+  "8349936670",
 ];
 
 // Test email addresses that should use default OTP
@@ -28,7 +27,7 @@ const TEST_EMAILS = [
 ];
 
 // Default OTP for test identifiers
-const DEFAULT_TEST_OTP = "110211";
+const DEFAULT_TEST_OTP = "123456";
 
 /**
  * Extract phone number digits (without country code)
