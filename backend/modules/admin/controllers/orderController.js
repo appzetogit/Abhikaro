@@ -289,7 +289,7 @@ export const getOrders = asyncHandler(async (req, res) => {
               { _id: { $in: validRestObjIds } },
               { restaurantId: { $in: restaurantIds } }
             ]
-          }).select('_id restaurantId name').lean()
+          }).select('_id restaurantId name onboarding.step1.restaurantName').lean()
         : Promise.resolve([]),
       orderIds.length > 0
         ? Payment.find({ orderId: { $in: orderIds } })
@@ -359,8 +359,9 @@ export const getOrders = asyncHandler(async (req, res) => {
     let resolvedRestaurantNamesMap = new Map();
     const restDocs = restaurantsResult.status === 'fulfilled' ? restaurantsResult.value || [] : [];
     restDocs.forEach(r => {
-      if (r._id && r.name) resolvedRestaurantNamesMap.set(r._id.toString(), r.name);
-      if (r.restaurantId && r.name) resolvedRestaurantNamesMap.set(String(r.restaurantId), r.name);
+      const genuineName = r.onboarding?.step1?.restaurantName?.trim() || r.name;
+      if (r._id && genuineName) resolvedRestaurantNamesMap.set(r._id.toString(), genuineName);
+      if (r.restaurantId && genuineName) resolvedRestaurantNamesMap.set(String(r.restaurantId), genuineName);
     });
 
     // Batch fetch delivery partners
@@ -701,7 +702,16 @@ export const getOrders = asyncHandler(async (req, res) => {
         customerName: order.userId?.name || order.userName || 'Unknown',
         customerPhone: order.userId?.phone || order.userPhone || 'N/A',
         customerEmail: order.userId?.email || order.userEmail || '',
-        restaurant: resolvedRestaurantNamesMap.get(order.restaurantId?.toString()) || order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant',
+        restaurant: (() => {
+          const isGeneric = (n) => !n || /^restaurant\s*\d+$/i.test(String(n).trim());
+          const candidates = [
+            order.restaurantName,
+            resolvedRestaurantNamesMap.get(order.restaurantId?.toString()),
+            order.restaurantId?.name
+          ].filter(Boolean);
+          const nonGeneric = candidates.find(n => !isGeneric(n));
+          return nonGeneric || candidates[0] || 'Unknown Restaurant';
+        })(),
         restaurantId: order.restaurantId?.toString?.() || order.restaurantId || '',
         restaurantAddress: restaurantAddress || null,
         // Hotel/QR context (used by admin UI for QR-origin orders)
@@ -1213,28 +1223,39 @@ export const getOrderById = asyncHandler(async (req, res) => {
       order.deliveryPartnerPhone = order.deliveryPartnerId?.phone || null;
 
       // Resolve genuine restaurant name dynamically for this single restaurant
-      if (order.restaurantId && /^Restaurant\s*\d+$/i.test(order.restaurantName || "")) {
+      if (order.restaurantId) {
         try {
-          const otherOrder = await Order.findOne({
-            restaurantId: order.restaurantId,
-            restaurantName: { $not: /^Restaurant\s*\d+$/i, $ne: 'Unknown Restaurant' }
-          }).select('restaurantName').lean();
-          
-          let genuineName = otherOrder?.restaurantName;
-          if (!genuineName) {
-            const otherSettlement = await OrderSettlement.findOne({
-              restaurantId: mongoose.Types.ObjectId.isValid(order.restaurantId) ? new mongoose.Types.ObjectId(order.restaurantId) : order.restaurantId,
-              restaurantName: { $not: /^Restaurant\s*\d+$/i, $ne: 'Unknown Restaurant' }
-            }).select('restaurantName').lean();
-            genuineName = otherSettlement?.restaurantName;
-          }
-          
+          const Restaurant = (await import('../../restaurant/models/Restaurant.js')).default;
+          const query = {
+            $or: [
+              { restaurantId: order.restaurantId },
+              ...(mongoose.Types.ObjectId.isValid(order.restaurantId) ? [{ _id: new mongoose.Types.ObjectId(order.restaurantId) }] : [])
+            ]
+          };
+          const restDoc = await Restaurant.findOne(query).select('name onboarding.step1.restaurantName').lean();
+          const genuineName = restDoc?.onboarding?.step1?.restaurantName?.trim() || 
+                             (!/^Restaurant\s*\d+$/i.test(restDoc?.name || "") ? restDoc?.name?.trim() : null);
+
           if (genuineName) {
             order.restaurantName = genuineName;
+            order.restaurant = genuineName;
+          } else if (order.restaurantId && /^Restaurant\s*\d+$/i.test(order.restaurantName || "")) {
+            const otherOrder = await Order.findOne({
+              restaurantId: order.restaurantId,
+              restaurantName: { $not: /^Restaurant\s*\d+$/i, $ne: 'Unknown Restaurant' }
+            }).select('restaurantName').lean();
+            if (otherOrder?.restaurantName) {
+              order.restaurantName = otherOrder.restaurantName;
+              order.restaurant = otherOrder.restaurantName;
+            }
           }
         } catch (err) {
           console.warn('Could not resolve genuine restaurant name in getOrderById:', err.message);
         }
+      }
+
+      if (!order.restaurant) {
+        order.restaurant = order.restaurantName || order.restaurantId?.name || 'Unknown Restaurant';
       }
 
       const orderAmount = Number(order?.pricing?.total || 0);

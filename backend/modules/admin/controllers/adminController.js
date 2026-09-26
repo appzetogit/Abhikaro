@@ -3023,6 +3023,16 @@ export const approveRestaurant = asyncHandler(async (req, res) => {
     restaurant.approvedBy = adminId;
     restaurant.rejectionReason = undefined; // Clear any previous rejection
 
+    // Ensure name & ownerName are synced with onboarding.step1 if available
+    const step1Name = restaurant.onboarding?.step1?.restaurantName?.trim();
+    if (step1Name && (!restaurant.name || /^Restaurant\s*\d+$/i.test(restaurant.name.trim()))) {
+      restaurant.name = step1Name;
+    }
+    const step1Owner = restaurant.onboarding?.step1?.ownerName?.trim();
+    if (step1Owner && (!restaurant.ownerName || /^Restaurant\s*\d+$/i.test(restaurant.ownerName.trim()))) {
+      restaurant.ownerName = step1Owner;
+    }
+
     await restaurant.save();
 
     logger.info(`Restaurant approved: ${id}`, {

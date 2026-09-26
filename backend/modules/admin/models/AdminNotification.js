@@ -17,7 +17,8 @@ const adminNotificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-adminNotificationSchema.index({ createdAt: -1 });
+// TTL Index: Auto-delete notifications after 3 days (3 * 24 * 60 * 60 = 259,200 seconds)
+adminNotificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 3 * 24 * 60 * 60 });
 adminNotificationSchema.index({ target: 1, createdAt: -1 });
 
 export default mongoose.model("AdminNotification", adminNotificationSchema);

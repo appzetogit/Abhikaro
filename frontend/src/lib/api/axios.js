@@ -372,6 +372,12 @@ apiClient.interceptors.response.use(
       response.data = resolveUploadsUrls(response.data, BACKEND_ORIGIN);
     }
 
+    // Invalidate request cache on successful write operations
+    const method = (response.config?.method || "").toLowerCase();
+    if (["post", "put", "patch", "delete"].includes(method)) {
+      clearRequestCache();
+    }
+
     // Reset network error state on successful response (backend is back online)
     if (networkErrorState.errorCount > 0) {
       networkErrorState.errorCount = 0;

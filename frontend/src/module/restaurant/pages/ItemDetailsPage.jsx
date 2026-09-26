@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch"
 // Removed getAllFoods and saveFood - now using menu API
 import api from "@/lib/api"
 import { restaurantAPI, uploadAPI } from "@/lib/api"
+import { clearRequestCache } from "@/lib/utils/requestDeduplication"
 import { toast } from "sonner"
 
 // Utility to detect if running in Flutter WebView
@@ -1017,6 +1018,8 @@ export default function ItemDetailsPage() {
         }
       }
 
+      // Clear cache to ensure fresh sections are fetched
+      clearRequestCache()
       // Fallback: full menu update (used for editing items or when section id is not known)
       const menuResponse = await restaurantAPI.getMenu()
       let menu = menuResponse.data?.data?.menu
@@ -1194,18 +1197,30 @@ export default function ItemDetailsPage() {
       const updateResponse = await restaurantAPI.updateMenu({ sections })
 
       if (updateResponse.data?.success) {
+        // Clear cache so that the menu page immediately fetches fresh data from DB
+        clearRequestCache()
         const imageCount = allImageUrls.length
         toast.success(
           isNewItem
             ? `Item created successfully with ${imageCount} image(s)`
             : `Item updated successfully with ${imageCount} image(s)`
         )
-        // Small delay to ensure backend has processed the update
-        await new Promise(resolve => setTimeout(resolve, 300))
-        // Navigate back to HubMenu with replace to prevent back navigation issues
-        navigate("/restaurant/hub-menu", { replace: true })
-        // Trigger a page refresh event
-        window.dispatchEvent(new CustomEvent('foodsChanged'))
+        const savedSections = updateResponse.data?.data?.menu?.sections || sections
+        // Small delay to ensure DB write is finalized
+        await new Promise(resolve => setTimeout(resolve, 100))
+        // Navigate back to HubMenu with replace and pass savedSections for instant UI update
+        navigate("/restaurant/hub-menu", { 
+          replace: true,
+          state: { 
+            updatedSections: savedSections,
+            refresh: true, 
+            timestamp: Date.now() 
+          }
+        })
+        // Trigger a page refresh event with the updated sections
+        window.dispatchEvent(new CustomEvent('foodsChanged', {
+          detail: { sections: savedSections }
+        }))
       } else {
         console.error('[FRONTEND] Update failed:', updateResponse.data)
         toast.error(updateResponse.data?.message || "Failed to save item")

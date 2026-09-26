@@ -46,41 +46,61 @@ function generateRequestKey(method, url, data = null) {
  * @returns {Promise} Request promise
  */
 export function deduplicateRequest(requestFn, config, deduplicationWindow = 1000) {
-  const method = config.method || 'GET';
+  const method = (config.method || 'GET').toUpperCase();
   const url = config.url || config;
   const data = config.data || config.params || null;
   const key = generateRequestKey(method, url, data);
 
-  // Check if same request is already pending
+  const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+  const bypassCache = Boolean(config.skipCache || config.forceFresh || config.noCache);
+
+  // If this is a write method, immediately clear any cached GET responses to prevent stale reads
+  if (isWrite) {
+    completedRequests.clear();
+  }
+
+  // If cache bypass is requested, remove any existing entry for this key
+  if (bypassCache) {
+    completedRequests.delete(key);
+  }
+
+  // Check if same request is already in-flight (parallel duplicate prevention)
   if (pendingRequests.has(key)) {
     if (isDev) {
-      console.log(`🔄 Deduplicating request: ${key}`);
+      console.log(`🔄 Deduplicating in-flight request: ${key}`);
     }
     return pendingRequests.get(key);
   }
 
-  // Check if same request was completed recently
-  const completedRequest = completedRequests.get(key);
-  if (completedRequest && (Date.now() - completedRequest.timestamp) < deduplicationWindow) {
-    if (isDev) {
-      console.log(`✅ Returning cached response for: ${key}`);
+  // Check if same request was completed recently (ONLY for GET requests without cache-bypass)
+  if (!isWrite && !bypassCache) {
+    const completedRequest = completedRequests.get(key);
+    if (completedRequest && (Date.now() - completedRequest.timestamp) < deduplicationWindow) {
+      if (isDev) {
+        console.log(`✅ Returning cached response for: ${key}`);
+      }
+      return Promise.resolve(completedRequest.response);
     }
-    return Promise.resolve(completedRequest.response);
   }
 
   // Create new request
   const requestPromise = requestFn(config)
     .then((response) => {
-      // Store completed request
-      completedRequests.set(key, {
-        response,
-        timestamp: Date.now(),
-      });
+      if (isWrite) {
+        // Mutation succeeded: invalidate all cached GET responses immediately
+        clearRequestCache();
+      } else if (!bypassCache) {
+        // Store completed GET request
+        completedRequests.set(key, {
+          response,
+          timestamp: Date.now(),
+        });
 
-      // Clean up old completed requests (older than deduplication window)
-      setTimeout(() => {
-        completedRequests.delete(key);
-      }, deduplicationWindow);
+        // Clean up old completed requests (older than deduplication window)
+        setTimeout(() => {
+          completedRequests.delete(key);
+        }, deduplicationWindow);
+      }
 
       return response;
     })

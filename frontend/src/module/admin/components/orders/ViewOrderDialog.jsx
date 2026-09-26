@@ -41,6 +41,8 @@ const formatMoney = (n) => {
   return `₹${num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+const isGenericRestaurantName = (name) => !name || /^restaurant\s*\d+$/i.test(String(name).trim())
+
 export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp, onPaymentApproved }) {
   const [approvingPayment, setApprovingPayment] = useState(false)
   const [reassigning, setReassigning] = useState(false)
@@ -65,7 +67,13 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
         const resp = await adminAPI.getOrderById(orderIdToUse)
         const fetched = resp?.data?.data?.order || null
         if (!cancelled && fetched) {
-          setFullOrder((prev) => ({ ...(prev || {}), ...(fetched || {}) }))
+          setFullOrder((prev) => {
+            const merged = { ...(prev || {}), ...(fetched || {}) }
+            if (fetched.restaurantName && !isGenericRestaurantName(fetched.restaurantName)) {
+              merged.restaurant = fetched.restaurantName
+            }
+            return merged
+          })
         }
       } catch (_) {
         // Non-blocking
@@ -360,7 +368,15 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
   const customerName = viewOrder?.userName || viewOrder?.customerName || viewOrder?.userId?.fullName || viewOrder?.userId?.name || "N/A"
   const customerPhone = viewOrder?.userPhone || viewOrder?.customerPhone || viewOrder?.userId?.phone || "N/A"
   const customerEmail = viewOrder?.customerEmail || viewOrder?.userId?.email || "N/A"
-  const restaurantName = viewOrder?.restaurant || viewOrder?.restaurantName || viewOrder?.restaurantId?.name || "N/A"
+
+  const restaurantCandidates = [
+    viewOrder?.restaurantName,
+    viewOrder?.restaurant,
+    viewOrder?.restaurantId?.onboarding?.step1?.restaurantName,
+    viewOrder?.restaurantId?.name
+  ].filter(Boolean)
+  const genuineRestaurantName = restaurantCandidates.find((n) => !isGenericRestaurantName(n))
+  const restaurantName = genuineRestaurantName || restaurantCandidates[0] || "N/A"
 
   // Pricing breakdown safe fallbacks
   const subtotal = viewOrder?.totalItemAmount ?? viewOrder?.pricing?.subtotal ?? 0

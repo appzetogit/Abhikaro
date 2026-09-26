@@ -7,6 +7,10 @@ import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern
 
 // Get menu for a restaurant
 export const getMenu = asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   // Restaurant is attached by authenticate middleware
   const restaurantId = req.restaurant._id;
 

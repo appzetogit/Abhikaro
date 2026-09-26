@@ -192,32 +192,32 @@ export const upsertOnboarding = async (req, res) => {
     const finalCompletedSteps = onboarding.completedSteps || completedSteps;
 
     // Update restaurant schema when step1 is completed (basic info)
-    // Always update if step1 is provided, regardless of completedSteps
-    // This ensures name and other step1 data are always synced
-    if (step1) {
+    // Always update if step1 is provided, or if existingRestaurant has a placeholder name and onboarding.step1 exists
+    const step1ToSync = step1 || (isDefaultPlaceholderName(existingRestaurant?.name) ? existingRestaurant?.onboarding?.step1 : null);
+    if (step1ToSync) {
       console.log(
-        "🔄 Step1 data provided, updating restaurant schema with step1 data...",
+        "🔄 Step1 data provided or pending placeholder fix, updating restaurant schema with step1 data...",
       );
       try {
         const updateData = {};
-        // Always update name if restaurantName is provided (even if it's the same)
-        // This fixes cases where restaurant was created with default name like "Restaurant 6911"
-        if (step1.restaurantName) {
-          const desired = String(step1.restaurantName).trim();
-          // Overwrite placeholders or empty names; otherwise still allow explicit update
-          if (!existingRestaurant?.name || isDefaultPlaceholderName(existingRestaurant?.name)) {
-            updateData.name = desired;
-          } else {
-            updateData.name = desired;
+        if (step1ToSync.restaurantName) {
+          const desired = String(step1ToSync.restaurantName).trim();
+          updateData.name = desired;
+
+          // Also update slug if slug is placeholder or missing
+          if (!existingRestaurant?.slug || /^restaurant-\d+$/i.test(existingRestaurant.slug)) {
+            const baseSlug = desired
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/(^-|-$)/g, "");
+            if (baseSlug) {
+              updateData.slug = baseSlug;
+            }
           }
         }
-        if (step1.ownerName) {
-          const desired = String(step1.ownerName).trim();
-          if (!existingRestaurant?.ownerName || isDefaultPlaceholderName(existingRestaurant?.ownerName)) {
-            updateData.ownerName = desired;
-          } else {
-            updateData.ownerName = desired;
-          }
+        if (step1ToSync.ownerName) {
+          const desired = String(step1ToSync.ownerName).trim();
+          updateData.ownerName = desired;
         }
         if (step1.ownerEmail) {
           updateData.ownerEmail = String(step1.ownerEmail).trim().toLowerCase();

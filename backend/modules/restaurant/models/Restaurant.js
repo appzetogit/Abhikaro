@@ -442,8 +442,21 @@ restaurantSchema.pre("save", async function (next) {
     }
   }
 
-  // Generate slug from name (always generate if name exists and slug doesn't)
-  if (this.name && !this.slug) {
+  // Synchronize name and ownerName with onboarding.step1 if available
+  const isPlaceholderName = (val) => !val || /^Restaurant\s*\d+$/i.test(String(val).trim());
+  const step1Name = this.onboarding?.step1?.restaurantName?.trim();
+  const step1Owner = this.onboarding?.step1?.ownerName?.trim();
+
+  if (step1Name && isPlaceholderName(this.name)) {
+    this.name = step1Name;
+  }
+  if (step1Owner && isPlaceholderName(this.ownerName)) {
+    this.ownerName = step1Owner;
+  }
+
+  // Generate slug from name (generate if missing or if slug was based on old placeholder)
+  const isPlaceholderSlug = (val) => !val || /^restaurant-\d+$/i.test(String(val).trim());
+  if (this.name && (isPlaceholderSlug(this.slug) || !this.slug)) {
     let baseSlug = this.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")

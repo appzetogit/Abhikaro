@@ -19,6 +19,7 @@
  */
 
 import apiClient from "./axios.js";
+import { clearRequestCache } from "../utils/requestDeduplication.js";
 import { API_ENDPOINTS } from "./config.js";
 
 // Export the configured axios instance
@@ -483,10 +484,14 @@ export const restaurantAPI = {
   },
 
   // Menu operations
-  getMenu: () => {
-    return apiClient.get(API_ENDPOINTS.RESTAURANT.MENU);
+  getMenu: (params = {}) => {
+    return apiClient.get(API_ENDPOINTS.RESTAURANT.MENU, {
+      params: { ...params, _t: Date.now() },
+      skipCache: true,
+    });
   },
   updateMenu: (menuData) => {
+    clearRequestCache();
     return apiClient.put(API_ENDPOINTS.RESTAURANT.MENU, menuData);
   },
   deleteMenuItem: (sectionId, itemId) => {
@@ -693,10 +698,14 @@ export const restaurantAPI = {
   },
 
   // Menu operations (for restaurant module)
-  getMenu: () => {
-    return apiClient.get(API_ENDPOINTS.RESTAURANT.MENU);
+  getMenu: (params = {}) => {
+    return apiClient.get(API_ENDPOINTS.RESTAURANT.MENU, {
+      params: { ...params, _t: Date.now() },
+      skipCache: true,
+    });
   },
   updateMenu: (menuData) => {
+    clearRequestCache();
     return apiClient.put(API_ENDPOINTS.RESTAURANT.MENU, menuData);
   },
   addSection: (name) => {

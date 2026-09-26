@@ -23,12 +23,14 @@ import {
 } from "lucide-react"
 import BottomNavOrders from "../components/BottomNavOrders"
 // Removed foodManagement - now using backend API directly
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { restaurantAPI, uploadAPI } from "@/lib/api"
+import { clearRequestCache } from "@/lib/utils/requestDeduplication"
 import { toast } from "sonner"
 
 export default function HubMenu() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [loadingMenu, setLoadingMenu] = useState(true)
   const [activeTab, setActiveTab] = useState("all")
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -185,6 +187,7 @@ export default function HubMenu() {
       if (showLoading) {
         setLoadingMenu(true)
       }
+      clearRequestCache()
       const response = await restaurantAPI.getMenu()
 
       if (response.data && response.data.success && response.data.data && response.data.data.menu) {
@@ -255,6 +258,7 @@ export default function HubMenu() {
     // Listen for global foodsChanged events (e.g. from ItemDetailsPage)
     const handleFoodsChanged = () => {
       console.log('foodsChanged event received - refreshing menu')
+      clearRequestCache()
       safeFetchMenu(false)
     }
 
@@ -269,6 +273,15 @@ export default function HubMenu() {
       window.removeEventListener('foodsChanged', handleFoodsChanged)
     }
   }, [])
+
+  // Instantly refresh menu when navigated back from ItemDetailsPage with refresh flag
+  useEffect(() => {
+    if (location.state?.refresh || location.state?.timestamp) {
+      console.log('Navigation refresh flag detected - fetching fresh menu')
+      clearRequestCache()
+      fetchMenu(false)
+    }
+  }, [location.key, location.state])
 
   // Periodic refresh to check for approval updates (every 60 seconds, increased from 30s)
   useEffect(() => {

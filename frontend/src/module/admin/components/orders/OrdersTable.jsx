@@ -96,9 +96,14 @@ export default function OrdersTable({
     }
   }, [allSelected, someSelected])
 
-  const formatRestaurantName = (name) => {
-    if (name === "Cafe Monarch") return "Café Monarch"
-    return name
+  const formatRestaurantName = (name, order) => {
+    const isGeneric = (n) => !n || /^restaurant\s*\d+$/i.test(String(n).trim());
+    let resName = name;
+    if (isGeneric(resName) && order?.restaurantName && !isGeneric(order.restaurantName)) {
+      resName = order.restaurantName;
+    }
+    if (resName === "Cafe Monarch") return "Café Monarch";
+    return resName || "—";
   }
 
   if (orders.length === 0) {
@@ -305,7 +310,7 @@ export default function OrdersTable({
                 )}
                 {visibleColumns.restaurant && (
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-medium text-slate-700">{formatRestaurantName(order.restaurant)}</span>
+                    <span className="text-sm font-medium text-slate-700">{formatRestaurantName(order.restaurant, order)}</span>
                   </td>
                 )}
                 {visibleColumns.hotel && (

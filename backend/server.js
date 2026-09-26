@@ -474,6 +474,8 @@ const corsOptions = {
     'Authorization',
     'X-Requested-With',
     'x-refresh-token',
+    'Cache-Control',
+    'Pragma',
   ]
 };
 
