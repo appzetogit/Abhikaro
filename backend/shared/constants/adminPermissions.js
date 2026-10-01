@@ -428,11 +428,13 @@ export const getDefaultAdminPermissions = (role = "admin") => {
 
 // Equivalence mapping for permissions (Legacy IDs <-> New Page IDs)
 export const PERMISSIONS_ALIASES = {
-  "orders.view": ["page.orders_list", "menu.orders"],
-  "page.orders_list": ["orders.view", "menu.orders"],
-  "menu.orders": ["orders.view", "page.orders_list", "page.order_detect_delivery", "page.payment_history"],
-  "page.order_detect_delivery": ["menu.orders", "orders.view"],
-  "page.payment_history": ["menu.orders", "orders.view"],
+  "orders.view": ["page.orders_list", "menu.orders", "order_manage"],
+  "orders.edit": ["page.orders_list", "menu.orders", "order_manage"],
+  "orders.approve_offline_payment": ["page.orders_list", "menu.orders", "order_manage"],
+  "page.orders_list": ["orders.view", "orders.edit", "menu.orders", "order_manage"],
+  "menu.orders": ["orders.view", "orders.edit", "page.orders_list", "page.order_detect_delivery", "page.payment_history", "order_manage"],
+  "page.order_detect_delivery": ["menu.orders", "orders.view", "orders.edit"],
+  "page.payment_history": ["menu.orders", "orders.view", "orders.edit"],
 
   "menu.food_management": ["page.food_approval", "page.foods_list", "page.addons_list", "page.categories"],
   "page.food_approval": ["menu.food_management"],

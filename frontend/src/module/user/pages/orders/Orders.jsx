@@ -5,6 +5,7 @@ import { orderAPI, api, API_ENDPOINTS } from "@/lib/api"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
 import { API_BASE_URL } from "@/lib/api/config"
+import io from "socket.io-client"
 
 const RATING_POPUP_STORAGE_KEY = "ratedOrdersForFeedback"
 const GLOBAL_RATING_DISMISSED_KEY = "global_rating_popup_dismissed"
@@ -448,12 +449,57 @@ export default function Orders() {
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
+    // Realtime Socket.IO listener for instant 0ms status updates
+    let socket = null
+    try {
+      const backendOrigin = (import.meta.env.VITE_BACKEND_URL || window.location.origin).replace(/\/api\/?$/, "")
+      socket = io(backendOrigin, {
+        path: "/socket.io/",
+        transports: ["websocket", "polling"],
+      })
+
+      socket.on("order_status_update", (data) => {
+        console.log("📢 Realtime order status update in user Orders page:", data)
+        if (!data) return
+        const targetId = String(data.orderMongoId || data.orderId || data.id || data._id || "")
+        if (!targetId) return
+
+        const s = String(data.status || "").toLowerCase().trim()
+        const isCancelled = s === "cancelled" || s === "canceled"
+
+        setOrders((prev) =>
+          prev.map((o) => {
+            const oId = String(o.id || o.orderId || o.mongoId || o._id || "")
+            if (oId === targetId || String(o.orderId) === targetId || String(o.mongoId) === targetId) {
+              return {
+                ...o,
+                status: isCancelled ? "restaurant_cancelled" : getOrderStatus({ ...o, status: data.status }),
+                originalStatus: data.status,
+                cancellationReason: isCancelled ? (data.cancellationReason || o.cancellationReason) : null,
+                isRestaurantCancelled: isCancelled,
+                isUserCancelled: isCancelled && data.cancelledBy === "user",
+              }
+            }
+            return o
+          })
+        )
+
+        // Also fetch fresh full list in background
+        fetchOrders()
+      })
+    } catch (socketErr) {
+      console.warn("Socket connection in user Orders page warning:", socketErr)
+    }
+
     return () => {
       if (activeController) {
         activeController.abort()
       }
       clearInterval(pollInterval)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (socket) {
+        socket.disconnect()
+      }
     }
   }, [])
 

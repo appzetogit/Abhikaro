@@ -1,8 +1,24 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import https from "node:https";
+import dns from "node:dns";
 
 // Load environment variables if not already loaded
 dotenv.config();
+
+// Ensure Node resolves IPv4 first for external gateways
+try {
+  if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder("ipv4first");
+  }
+} catch (_) {}
+
+// Dedicated IPv4 HTTPS agent to eliminate IPv6 network blackholing/timeouts on Windows/ISPs
+const msg91HttpsAgent = new https.Agent({
+  family: 4, // Force IPv4
+  keepAlive: true,
+  timeout: 8000,
+});
 
 /**
  * MSG91 SMS & OTP Service for Abhikaro
@@ -115,7 +131,7 @@ class MSG91Service {
         ],
       };
 
-      console.log(`📱 Sending OTP via MSG91 to ${normalizedPhone} (purpose: ${purpose})...`);
+      console.log(`📱 Sending OTP via MSG91 to ${normalizedPhone} (purpose: ${purpose}, OTP: ${otp})...`);
 
       const response = await axios.post(this.flowUrl, payload, {
         headers: {
@@ -123,7 +139,8 @@ class MSG91Service {
           "content-type": "application/json",
           accept: "application/json",
         },
-        timeout: 15000,
+        httpsAgent: msg91HttpsAgent,
+        timeout: 8000,
       });
 
       console.log("📱 MSG91 Response Status:", response.status);
@@ -168,6 +185,8 @@ class MSG91Service {
         throw new Error("MSG91 authentication failed. Please check MSG91_AUTH_KEY.");
       } else if (error.response?.status === 400) {
         throw new Error(`MSG91 invalid request: ${errorMsg}`);
+      } else if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
+        throw new Error("SMS service timed out. Please try again in a few moments.");
       }
 
       throw new Error(`Failed to send OTP via MSG91: ${error.message}`);

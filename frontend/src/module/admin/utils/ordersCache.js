@@ -127,3 +127,59 @@ export function clearOrdersCache(prefix = "") {
     })
   } catch {}
 }
+
+/**
+ * Optimistically update a single order across all cached admin order lists
+ * @param {string} orderId Target order ID (Mongo _id or orderId string)
+ * @param {Object} patch Partial order fields to update
+ */
+export function updateOrderInCache(orderId, patch) {
+  if (!orderId || !patch) return
+
+  const targetIdStr = String(orderId)
+
+  // 1. Update in memoryCache
+  for (const [key, entry] of memoryCache.entries()) {
+    if (key.startsWith("admin_orders_") && Array.isArray(entry?.data)) {
+      let changed = false
+      const updatedList = entry.data.map(o => {
+        const oId = String(o._id || o.id || o.orderId || "")
+        const oOrderId = String(o.orderId || "")
+        if (oId === targetIdStr || oOrderId === targetIdStr || (patch.orderId && oOrderId === String(patch.orderId))) {
+          changed = true
+          return { ...o, ...patch }
+        }
+        return o
+      })
+      if (changed) {
+        setOrdersCache(key, updatedList)
+      }
+    }
+  }
+
+  // 2. Also check and update localStorage
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith("cache_admin_orders_")) {
+        const cleanKey = k.replace(/^cache_/, "")
+        const cached = getOrdersCache(cleanKey)
+        if (Array.isArray(cached)) {
+          let changed = false
+          const updated = cached.map(o => {
+            const oId = String(o._id || o.id || o.orderId || "")
+            const oOrderId = String(o.orderId || "")
+            if (oId === targetIdStr || oOrderId === targetIdStr || (patch.orderId && oOrderId === String(patch.orderId))) {
+              changed = true
+              return { ...o, ...patch }
+            }
+            return o
+          })
+          if (changed) {
+            setOrdersCache(cleanKey, updated)
+          }
+        }
+      }
+    }
+  } catch {}
+}

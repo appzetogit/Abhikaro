@@ -8,6 +8,7 @@ const getStatusColor = (orderStatus) => {
     "Scheduled": "bg-blue-100 text-blue-700",
     "Accepted": "bg-green-100 text-green-700",
     "Processing": "bg-orange-100 text-orange-700",
+    "Ready": "bg-purple-100 text-purple-700",
     "Food On The Way": "bg-yellow-100 text-yellow-700",
     "Canceled": "bg-rose-100 text-rose-700",
     "Cancelled by Restaurant": "bg-red-100 text-red-700",

@@ -1,5 +1,13 @@
 // Load .env before any other local imports (ESM hoists imports; dotenv must run first)
 import "dotenv/config";
+import dns from "node:dns";
+
+// Force IPv4-first DNS resolution to avoid IPv6 blackhole timeouts on outbound APIs (MSG91, Razorpay, Cloudinary, Maps)
+try {
+  if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder("ipv4first");
+  }
+} catch (_) {}
 
 // Redis is currently unstable/misconfigured in deployment and is not required for core functionality.
 // Force-disable Redis so Bull/Redis adapter/rate-limit Redis client never connect.

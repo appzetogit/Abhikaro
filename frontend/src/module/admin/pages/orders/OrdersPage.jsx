@@ -8,8 +8,9 @@ import FilterPanel from "../../components/orders/FilterPanel"
 import ViewOrderDialog from "../../components/orders/ViewOrderDialog"
 import SettingsDialog from "../../components/orders/SettingsDialog"
 import RefundModal from "../../components/orders/RefundModal"
+import io from "socket.io-client"
 import { useOrdersManagement } from "../../components/orders/useOrdersManagement"
-import { getOrdersCache, setOrdersCache, clearOrdersCache } from "../../utils/ordersCache"
+import { getOrdersCache, setOrdersCache, clearOrdersCache, updateOrderInCache } from "../../utils/ordersCache"
 
 // Skeleton for cold loading
 function OrdersPageSkeleton({ title = "Orders" }) {
@@ -83,16 +84,37 @@ export default function OrdersPage({ statusKey = "all" }) {
     if (Array.isArray(allCache) && allCache.length > 0) {
       if (statusKey === "all") return allCache
       const filtered = allCache.filter(o => {
-        const s = (o.status || o.orderStatus || "").toLowerCase()
-        if (statusKey === "pending") return s === "pending"
-        if (statusKey === "accepted") return s === "confirmed" || s === "accepted"
-        if (statusKey === "processing") return s === "preparing" || s === "processing"
-        if (statusKey === "food-on-the-way") return s === "out_for_delivery" || s.includes("way")
-        if (statusKey === "delivered") return s === "delivered"
-        if (statusKey === "canceled") return s === "cancelled" || s === "canceled"
+        const rawStatus = (o.status || "").toLowerCase()
+        const displayStatus = (o.orderStatus || "").toLowerCase()
+        const isCancelled =
+          rawStatus === "cancelled" ||
+          displayStatus.includes("cancel") ||
+          Boolean(o.cancelledAt) ||
+          Boolean(o.cancelledBy) ||
+          Boolean(o.cancellationReason)
+
+        const isDelivered = rawStatus === "delivered" || displayStatus === "delivered"
+        const isActuallyAccepted =
+          !isCancelled &&
+          !isDelivered &&
+          (rawStatus === "preparing" ||
+            o.acceptedByAdmin === true ||
+            o.adminAccepted === true ||
+            o.tracking?.preparing?.status === true)
+
+        if (statusKey === "pending") {
+          return !isCancelled && !isDelivered && (rawStatus === "pending" || (rawStatus === "confirmed" && !isActuallyAccepted))
+        }
+        if (statusKey === "accepted") {
+          return isActuallyAccepted
+        }
+        if (statusKey === "processing") return !isCancelled && (rawStatus === "preparing" || displayStatus === "processing")
+        if (statusKey === "food-on-the-way") return !isCancelled && (rawStatus === "out_for_delivery" || displayStatus.includes("way"))
+        if (statusKey === "delivered") return isDelivered
+        if (statusKey === "canceled") return isCancelled
         if (statusKey === "restaurant-cancelled") return o.cancelledBy === "restaurant" || (o.cancellationReason && /restaurant/i.test(o.cancellationReason))
-        if (statusKey === "scheduled") return s === "scheduled"
-        if (statusKey === "payment-failed") return s === "pending" && (o.paymentStatus === "Failed" || o.payment?.status === "failed")
+        if (statusKey === "scheduled") return rawStatus === "scheduled" || displayStatus === "scheduled"
+        if (statusKey === "payment-failed") return !isCancelled && (o.paymentStatus === "Failed" || o.payment?.status === "failed")
         if (statusKey === "refunded") return Boolean(o.refundStatus)
         if (statusKey === "offline-payments") return o.paymentType === "Cash on Delivery" || o.payment?.method === "cash" || o.payment?.method === "cod"
         return false
@@ -156,6 +178,98 @@ export default function OrdersPage({ statusKey = "all" }) {
       setIsRefreshing(false)
     }
   }
+
+  // 0ms Optimistic local state + cache updater for instant response
+  const handleOrderOptimisticUpdate = (orderId, patch) => {
+    if (!orderId || !patch) return
+    const targetId = String(orderId)
+
+    // 1. Instant 0ms update to orders list in state
+    setOrders((prev) =>
+      prev.map((o) => {
+        const id = String(o._id || o.id || o.orderId || "")
+        const oOrderId = String(o.orderId || "")
+        if (id === targetId || oOrderId === targetId || (patch.orderId && oOrderId === String(patch.orderId))) {
+          return { ...o, ...patch }
+        }
+        return o
+      })
+    )
+
+    // 2. Also update selectedOrder so if modal stays open or reopens, it's fresh
+    setSelectedOrder((prev) => {
+      if (!prev) return prev
+      const id = String(prev._id || prev.id || prev.orderId || "")
+      const oOrderId = String(prev.orderId || "")
+      if (id === targetId || oOrderId === targetId || (patch.orderId && oOrderId === String(patch.orderId))) {
+        return { ...prev, ...patch }
+      }
+      return prev
+    })
+
+    // 3. Update orders cache across storage/memory
+    updateOrderInCache(orderId, patch)
+  }
+
+  // Connect to realtime Socket.IO to receive live updates from backend/restaurant/delivery
+  useEffect(() => {
+    let socket = null
+    try {
+      const backendOrigin = (import.meta.env.VITE_BACKEND_URL || window.location.origin).replace(/\/api\/?$/, "")
+      socket = io(backendOrigin, {
+        path: "/socket.io/",
+        transports: ["websocket", "polling"],
+      })
+
+      const handleSocketUpdate = (data) => {
+        if (!data) return
+        const targetId = data.orderMongoId || data.orderId || data.id || data._id
+        if (!targetId) return
+
+        const orderStatusMap = {
+          pending: "Pending",
+          confirmed: "Accepted",
+          preparing: "Accepted", // same label the list API returns for an accepted (preparing) order
+          ready: "Ready",
+          out_for_delivery: "Food On The Way",
+          delivered: "Delivered",
+          cancelled: "Canceled",
+        }
+        const paymentStatusMap = {
+          completed: "Paid",
+          pending: "Pending",
+          processing: "Processing",
+          failed: "Failed",
+          refunded: "Refunded",
+        }
+
+        const patch = {
+          ...(data.status ? { 
+            status: data.status, 
+            orderStatus: orderStatusMap[data.status] || data.status 
+          } : {}),
+          ...(data.paymentStatus ? { 
+            paymentStatus: paymentStatusMap[data.paymentStatus] || data.paymentStatus 
+          } : {}),
+        }
+
+        handleOrderOptimisticUpdate(targetId, patch)
+      }
+
+      socket.on("admin_order_updated", handleSocketUpdate)
+      socket.on("order_status_update", handleSocketUpdate)
+    } catch (e) {
+      console.warn("Admin socket connection error:", e?.message || e)
+    }
+
+    return () => {
+      if (socket) {
+        socket.off("admin_order_updated")
+        socket.off("order_status_update")
+        socket.disconnect()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const currentCached = resolveInitialOrders()
@@ -338,6 +452,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     isViewOrderOpen,
     setIsViewOrderOpen,
     selectedOrder,
+    setSelectedOrder,
     filters,
     setFilters,
     visibleColumns,
@@ -505,6 +620,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         onOpenChange={setIsViewOrderOpen}
         order={selectedOrder}
         onPaymentApproved={() => setRefreshTrigger((t) => t + 1)}
+        onOrderUpdated={handleOrderOptimisticUpdate}
       />
       <RefundModal
         isOpen={refundModalOpen}

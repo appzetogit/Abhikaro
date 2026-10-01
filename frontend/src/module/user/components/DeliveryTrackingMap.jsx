@@ -1107,9 +1107,12 @@ const DeliveryTrackingMap = ({
 
       // Trigger custom event so OrderTracking component can handle notification
       // This avoids circular dependencies and keeps notification logic in OrderTracking
-      if (window.dispatchEvent && data.message) {
+      if (window.dispatchEvent && data) {
         window.dispatchEvent(new CustomEvent('orderStatusNotification', {
-          detail: data
+          detail: {
+            ...data,
+            message: data.message || (data.status ? `Order status: ${data.status}` : '')
+          }
         }));
       }
     });

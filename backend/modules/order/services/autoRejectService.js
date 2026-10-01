@@ -14,10 +14,12 @@ export async function processAutoRejectOrders() {
     const ACCEPT_TIME_LIMIT_MS = ACCEPT_TIME_LIMIT_SECONDS * 1000;
 
     // Find all orders with status 'pending' or 'confirmed' that haven't been accepted yet
-    // These are orders waiting for restaurant to accept
+    // Skip orders that have been accepted by Admin
     const validPendingOrders = await Order.find({
       status: { $in: ["pending", "confirmed"] },
       "payment.method": { $ne: "pay_at_hotel" },
+      acceptedByAdmin: { $ne: true },
+      adminAccepted: { $ne: true },
     }).lean();
 
     if (validPendingOrders.length === 0) {
@@ -45,8 +47,8 @@ export async function processAutoRejectOrders() {
             continue; // Order was deleted
           }
 
-          // Only reject if still in pending/confirmed status
-          if (!["pending", "confirmed"].includes(currentOrder.status)) {
+          // Only reject if still in pending/confirmed status and not accepted by Admin
+          if (!["pending", "confirmed"].includes(currentOrder.status) || currentOrder.acceptedByAdmin || currentOrder.adminAccepted) {
             continue; // Order was already accepted/rejected
           }
 

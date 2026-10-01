@@ -215,11 +215,28 @@ export async function calculateRouteDijkstra(startLat, startLng, endLat, endLng,
  */
 export async function calculateRoute(startLat, startLng, endLat, endLng, options = {}) {
   const { useDijkstra = false, waypoints = [] } = options;
-  
+
   if (useDijkstra && waypoints.length > 0) {
-    return await calculateRouteDijkstra(startLat, startLng, endLat, endLng, waypoints);
+    return capRoutePoints(await calculateRouteDijkstra(startLat, startLng, endLat, endLng, waypoints));
   } else {
-    return await calculateRouteOSRM(startLat, startLng, endLat, endLng);
+    return capRoutePoints(await calculateRouteOSRM(startLat, startLng, endLat, endLng));
   }
+}
+
+// Routes are stored on the order and sent to the apps. OSRM returns every road vertex, so one
+// wrong GPS fix (a rider phone reporting another continent, a customer pinned in another city)
+// produced a 99,690-point, 3.3 MB route that made every list containing that order take over a
+// minute. A delivery leg never needs more than a few hundred points to draw.
+// ponytail: even downsampling, keeps first/last point. Use Douglas-Peucker if map detail matters.
+const MAX_ROUTE_POINTS = 500;
+
+export function capRoutePoints(route) {
+  const points = route?.coordinates;
+  if (!Array.isArray(points) || points.length <= MAX_ROUTE_POINTS) return route;
+  const step = (points.length - 1) / (MAX_ROUTE_POINTS - 1);
+  return {
+    ...route,
+    coordinates: Array.from({ length: MAX_ROUTE_POINTS }, (_, i) => points[Math.round(i * step)]),
+  };
 }
 

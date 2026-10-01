@@ -17,10 +17,12 @@ const getStatusColor = (orderStatus) => {
     "Scheduled": "bg-blue-100 text-blue-700",
     "Accepted": "bg-green-100 text-green-700",
     "Processing": "bg-orange-100 text-orange-700",
+    "Ready": "bg-purple-100 text-purple-700",
     "Food On The Way": "bg-yellow-100 text-yellow-700",
     "Canceled": "bg-rose-100 text-rose-700",
     "Cancelled by Restaurant": "bg-red-100 text-red-700",
     "Cancelled by User": "bg-orange-100 text-orange-700",
+    "Cancelled by System": "bg-slate-100 text-slate-700",
     "Payment Failed": "bg-red-100 text-red-700",
     "Refunded": "bg-sky-100 text-sky-700",
     "Dine In": "bg-indigo-100 text-indigo-700",
@@ -43,7 +45,7 @@ const formatMoney = (n) => {
 
 const isGenericRestaurantName = (name) => !name || /^restaurant\s*\d+$/i.test(String(name).trim())
 
-export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp, onPaymentApproved }) {
+export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp, onPaymentApproved, onOrderUpdated }) {
   const [approvingPayment, setApprovingPayment] = useState(false)
   const [reassigning, setReassigning] = useState(false)
   const [resending, setResending] = useState(false)
@@ -99,13 +101,28 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
     !!order?.cancelledBy ||
     !!order?.cancellationReason
 
+  const isActuallyAccepted =
+    order?.status === "preparing" ||
+    order?.acceptedByAdmin === true ||
+    order?.adminAccepted === true ||
+    order?.tracking?.preparing?.status === true
+
   const effectiveOrderStatus = isEffectivelyCancelled
     ? (order?.cancelledBy === "restaurant"
         ? "Cancelled by Restaurant"
         : order?.cancelledBy === "user"
         ? "Cancelled by User"
         : "Canceled")
-    : order?.orderStatus
+    : (
+        order?.status === "confirmed" ? (isActuallyAccepted ? "Accepted" : "Pending") :
+        order?.status === "preparing" ? "Accepted" :
+        (order?.orderStatus || (
+          order?.status === "ready" ? "Ready" :
+          order?.status === "out_for_delivery" ? "Food On The Way" :
+          order?.status === "delivered" ? "Delivered" :
+          "Pending"
+        ))
+      )
 
   const isOfflinePayment =
     order?.paymentType === "Cash on Delivery" ||
@@ -185,12 +202,14 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
     }
   }
 
-  // Backend: restaurant "accept" sets status `preparing`, not `confirmed` (`confirmed` = paid / awaiting restaurant tap).
+  // Status lifecycle:
+  // confirmed = Accepted (Paid / verified order, ready for kitchen processing)
+  // preparing = Processing (Kitchen is actively preparing food)
   const statusOptions = useMemo(
     () => [
       { value: "pending", label: "Pending" },
-      { value: "confirmed", label: "Awaiting restaurant (paid)" },
-      { value: "preparing", label: "Accepted" },
+      { value: "confirmed", label: "Accepted" },
+      { value: "preparing", label: "Processing" },
       { value: "ready", label: "Ready" },
       { value: "out_for_delivery", label: "Food On The Way" },
       { value: "delivered", label: "Delivered" },
@@ -212,13 +231,25 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
 
   const initialOrderStatusValue = useMemo(() => {
     const raw = (order?.status || "").toString().toLowerCase()
+    const isActuallyAccepted =
+      raw === "preparing" ||
+      order?.acceptedByAdmin === true ||
+      order?.adminAccepted === true ||
+      order?.tracking?.preparing?.status === true
+    if (raw === "confirmed" && !isActuallyAccepted) {
+      return "pending"
+    }
     return raw || "pending"
-  }, [order?.status])
+  }, [order?.status, order?.acceptedByAdmin, order?.adminAccepted, order?.tracking?.preparing?.status])
 
   const initialPaymentStatusValue = useMemo(() => {
     const raw = (order?.payment?.status || "").toString().toLowerCase()
-    return raw || "pending"
-  }, [order?.payment?.status])
+    if (raw) return raw
+    if (order?.paymentStatus === "Paid") return "completed"
+    if (order?.paymentStatus === "Failed") return "failed"
+    if (order?.paymentStatus === "Refunded") return "refunded"
+    return "pending"
+  }, [order?.payment?.status, order?.paymentStatus])
 
   const [editOrderStatus, setEditOrderStatus] = useState("pending")
   const [editPaymentStatus, setEditPaymentStatus] = useState("pending")
@@ -235,22 +266,90 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
 
   const handleUpdateStatuses = async () => {
     if (!orderIdToUse) return
+    const prevFullOrder = fullOrder || orderProp
+
+    const orderStatusLabels = {
+      pending: "Pending",
+      confirmed: "Accepted",
+      preparing: "Processing",
+      ready: "Ready",
+      out_for_delivery: "Food On The Way",
+      delivered: "Delivered",
+      cancelled: "Canceled",
+    }
+    const paymentStatusLabels = {
+      pending: "Pending",
+      processing: "Processing",
+      completed: "Paid",
+      failed: "Failed",
+      refunded: "Refunded",
+    }
+
+    const optimisticDisplayOrderStatus = orderStatusLabels[editOrderStatus] || editOrderStatus
+    const optimisticDisplayPaymentStatus = paymentStatusLabels[editPaymentStatus] || editPaymentStatus
+    const isNowCancelled = editOrderStatus === "cancelled"
+
+    const patch = {
+      status: editOrderStatus,
+      orderStatus: optimisticDisplayOrderStatus,
+      payment: {
+        ...(prevFullOrder?.payment || {}),
+        status: editPaymentStatus,
+      },
+      paymentStatus: optimisticDisplayPaymentStatus,
+      paymentCollectionStatus:
+        editOrderStatus === "delivered" || editPaymentStatus === "completed"
+          ? "Collected"
+          : (prevFullOrder?.paymentCollectionStatus || "Not Collected"),
+      cancelledAt: isNowCancelled ? (prevFullOrder?.cancelledAt || new Date().toISOString()) : null,
+      cancelledBy: isNowCancelled ? (prevFullOrder?.cancelledBy || "admin") : null,
+      cancellationReason: isNowCancelled ? (prevFullOrder?.cancellationReason || "Updated by admin") : null,
+      acceptedByAdmin: !isNowCancelled && editOrderStatus !== "pending",
+      adminAccepted: !isNowCancelled && editOrderStatus !== "pending",
+    }
+
+    // 1. INSTANT 0ms Optimistic UI update in the modal itself
+    setFullOrder((prev) => ({
+      ...(prev || orderProp || {}),
+      ...patch,
+    }))
+
+    // 2. INSTANT 0ms Optimistic UI update to parent table and cache
+    onOrderUpdated?.(orderIdToUse, patch)
+
+    // If the server rejects the update, the table and cache must go back too. Otherwise the UI
+    // shows a status that was never saved and "reverts" on the next page refresh.
+    const rollback = () => {
+      if (prevFullOrder) setFullOrder(prevFullOrder)
+      onOrderUpdated?.(
+        orderIdToUse,
+        Object.fromEntries(Object.keys(patch).map((k) => [k, prevFullOrder?.[k] ?? null])),
+      )
+    }
+
     try {
       setUpdatingStatus(true)
+      // Send only what the admin actually changed: the dropdown shows an unaccepted "confirmed"
+      // order as "Pending", so always sending it would silently downgrade confirmed -> pending.
       const resp = await adminAPI.updateOrderStatusAndPaymentStatus(orderIdToUse, {
-        orderStatus: editOrderStatus,
-        paymentStatus: editPaymentStatus,
+        ...(editOrderStatus !== initialOrderStatusValue && { orderStatus: editOrderStatus }),
+        ...(editPaymentStatus !== initialPaymentStatusValue && { paymentStatus: editPaymentStatus }),
       })
       if (resp?.data?.success) {
-        toast.success("Order updated")
-        onPaymentApproved?.() // refresh orders list
-        onOpenChange(false)
+        toast.success("Order status updated successfully")
+        onPaymentApproved?.()
+        // Smooth close so user sees the instant status change
+        setTimeout(() => {
+          onOpenChange(false)
+        }, 300)
       } else {
         toast.error(resp?.data?.message || "Failed to update order")
+        rollback()
       }
     } catch (err) {
       console.error("Error updating statuses:", err)
       toast.error(err?.response?.data?.message || "Failed to update order")
+      rollback()
     } finally {
       setUpdatingStatus(false)
     }

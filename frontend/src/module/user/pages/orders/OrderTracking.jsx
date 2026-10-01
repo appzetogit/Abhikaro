@@ -31,6 +31,7 @@ import { useProfile } from "../../context/ProfileContext"
 import DeliveryTrackingMap from "../../components/DeliveryTrackingMap"
 import api, { orderAPI, restaurantAPI } from "@/lib/api"
 import { preloadGoogleMaps } from "@/utils/mapsPreload"
+import io from "socket.io-client"
 
 // Animated checkmark component
 const AnimatedCheckmark = ({ delay = 0 }) => (
@@ -1092,6 +1093,63 @@ export default function OrderTracking() {
     return () => clearInterval(timer)
   }, [orderCreatedAt, order?.eta?.min, order?.estimatedDeliveryTime])
 
+  // Persistent page-level socket: stays connected even when order was cancelled,
+  // ensuring admin revives / status updates are received in real-time instantly.
+  useEffect(() => {
+    if (!orderId) return;
+
+    let socket = null;
+    try {
+      const backendOrigin = (import.meta.env.VITE_BACKEND_URL || window.location.origin).replace(/\/api\/?$/, "");
+      socket = io(backendOrigin, {
+        path: "/socket.io/",
+        transports: ["websocket", "polling"],
+        reconnection: true,
+      });
+
+      const joinRooms = () => {
+        const ids = [orderId, order?._id, order?.orderId].filter(Boolean).map(String);
+        [...new Set(ids)].forEach((id) => {
+          socket.emit('join-order-tracking', id);
+        });
+        const uid = order?.userId?._id || order?.userId || profile?._id || profile?.id;
+        if (uid) {
+          socket.emit('join-user', String(uid));
+        }
+      };
+
+      socket.on('connect', () => {
+        console.log('✅ Page-level persistent socket connected in OrderTracking for order:', orderId);
+        joinRooms();
+      });
+
+      if (socket.connected) {
+        joinRooms();
+      }
+
+      socket.on('order_status_update', (data) => {
+        console.log('📢 Direct socket order_status_update received in OrderTracking:', data);
+        if (!data) return;
+        if (window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('orderStatusNotification', {
+            detail: {
+              ...data,
+              message: data.message || (data.status ? `Order status: ${data.status}` : '')
+            }
+          }));
+        }
+      });
+    } catch (err) {
+      console.warn('Socket connection warning in OrderTracking:', err?.message || err);
+    }
+
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, [orderId, order?._id, order?.orderId, profile?._id, profile?.id]);
+
   // Listen for order status updates from socket (e.g., "Delivery partner on the way")
   useEffect(() => {
     const handleOrderStatusNotification = (event) => {
@@ -1105,6 +1163,9 @@ export default function OrderTracking() {
 
       console.log('📢 Order status notification received:', { message, status });
 
+      const s = String(status || '').trim().toLowerCase().replace(/\s+/g, "_");
+      const isCancelled = ["cancelled", "canceled"].includes(s);
+
       // High-fidelity fetch to ensure rider info and route update instantly
       if (orderId) {
         orderAPI.getOrderDetails(orderId).then((response) => {
@@ -1116,7 +1177,9 @@ export default function OrderTracking() {
                 restaurantLocation: prev?.restaurantLocation || (apiOrder.restaurantId?.location?.coordinates ? {
                   coordinates: apiOrder.restaurantId.location.coordinates
                 } : null),
-                cancellationReason: apiOrder?.cancellationReason || apiOrder?.cancellation_reason || prev?.cancellationReason || null,
+                cancellationReason: apiOrder.status === 'cancelled'
+                  ? (apiOrder?.cancellationReason || apiOrder?.cancellation_reason || null)
+                  : null,
                 deliveryPartner: apiOrder.deliveryPartnerId ? {
                   name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
                   avatar: null,
@@ -1130,6 +1193,15 @@ export default function OrderTracking() {
               };
               return transformedOrder;
             });
+
+            // Recalculate ETA if revived
+            if (apiOrder.status !== 'cancelled' && apiOrder.status !== 'delivered') {
+              const createdAt = new Date(apiOrder.createdAt);
+              const elapsedMinutes = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60));
+              const maxETA = apiOrder.eta?.max || apiOrder.estimatedDeliveryTime || 30;
+              const remainingMinutes = Math.max(1, (maxETA > 90 ? 45 : maxETA) - elapsedMinutes);
+              setEstimatedTime(remainingMinutes);
+            }
           }
         }).catch(err => console.error('Error fetching fresh order details on socket status notification:', err));
       }
@@ -1137,26 +1209,30 @@ export default function OrderTracking() {
       // Keep local order object in sync so UI reacts immediately (e.g. hide cancel once READY)
       if (status) {
         setOrder((prev) => {
-          if (!prev) return prev
-          const next = { ...prev, status }
-          const s = String(status || '').trim().toLowerCase().replace(/\s+/g, "_")
-          if (["cancelled", "canceled"].includes(s)) {
+          if (!prev) return prev;
+          const next = { ...prev, status };
+          if (isCancelled) {
             next.cancellationReason =
               incomingCancellationReason ||
               prev.cancellationReason ||
-              null
+              null;
+          } else {
+            next.cancellationReason = null;
           }
-          return next
+          return next;
         });
       }
 
       // Update order status in UI
-      const s = String(status || "").trim().toLowerCase().replace(/\s+/g, "_")
-      if (["cancelled", "canceled"].includes(s)) setOrderStatus("cancelled")
-      else if (["delivered", "completed"].includes(s)) setOrderStatus("delivered")
-      else if (["picked_up", "pickedup"].includes(s)) setOrderStatus("picked_up")
-      else if (["ready", "packed"].includes(s)) setOrderStatus("pickup")
-      else if (
+      if (isCancelled) {
+        setOrderStatus("cancelled");
+      } else if (["delivered", "completed"].includes(s)) {
+        setOrderStatus("delivered");
+      } else if (["picked_up", "pickedup"].includes(s)) {
+        setOrderStatus("picked_up");
+      } else if (["ready", "packed"].includes(s)) {
+        setOrderStatus("pickup");
+      } else if (
         [
           "out_for_delivery",
           "outfordelivery",
@@ -1165,20 +1241,20 @@ export default function OrderTracking() {
           "dispatched",
         ].includes(s)
       ) {
-        setOrderStatus("on_way")
+        setOrderStatus("on_way");
       } else if (s === "reached_delivery" || s === "arrived") {
-        setOrderStatus("arrived")
+        setOrderStatus("arrived");
       } else if (["preparing", "processing", "cooking", "confirmed", "accepted"].includes(s)) {
-        setOrderStatus("preparing")
+        setOrderStatus("preparing");
       } else if (s) {
-        setOrderStatus("placed")
+        setOrderStatus("placed");
       }
 
       // Show notification toast
       if (message) {
         toast.success(message, {
           duration: 5000,
-          icon: '🏍️',
+          icon: isCancelled ? '❌' : '🎉',
           position: 'top-center',
           description: estimatedDeliveryTime
             ? `Estimated delivery in ${Math.round(estimatedDeliveryTime / 60)} minutes`

@@ -19,6 +19,7 @@ import { toast } from "sonner"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { getCompanyNameAsync } from "@/lib/utils/businessSettings"
+import io from "socket.io-client"
 
 export default function UserOrderDetails() {
   const navigate = useNavigate()
@@ -73,7 +74,40 @@ export default function UserOrderDetails() {
     }
 
     fetchOrderDetails()
-  }, [orderId, navigate])
+
+    // Realtime Socket.IO listener for instant 0ms status updates on order details screen
+    let socket = null
+    try {
+      const backendOrigin = (import.meta.env.VITE_BACKEND_URL || window.location.origin).replace(/\/api\/?$/, "")
+      socket = io(backendOrigin, {
+        path: "/socket.io/",
+        transports: ["websocket", "polling"],
+      })
+
+      socket.on("connect", () => {
+        if (orderId) {
+          socket.emit("join-order-tracking", orderId)
+        }
+      })
+
+      socket.on("order_status_update", (data) => {
+        console.log("📢 Realtime order status update in UserOrderDetails:", data)
+        if (!data) return
+        const targetId = String(data.orderMongoId || data.orderId || data.id || data._id || "")
+        if (targetId && (targetId === String(orderId) || targetId === String(order?._id) || targetId === String(order?.orderId))) {
+          fetchOrderDetails()
+        }
+      })
+    } catch (socketErr) {
+      console.warn("Socket connection in UserOrderDetails warning:", socketErr)
+    }
+
+    return () => {
+      if (socket) {
+        socket.disconnect()
+      }
+    }
+  }, [orderId, navigate, order?._id, order?.orderId])
 
   // Clear checkout drafts on mount
   useEffect(() => {

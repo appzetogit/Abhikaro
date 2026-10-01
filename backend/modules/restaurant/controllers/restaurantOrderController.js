@@ -37,6 +37,10 @@ async function getIOInstance() {
   return getIO ? getIO() : null;
 }
 
+// Rider route polylines can be several MB per order and the restaurant app never reads them.
+// Returning them made the orders list for some restaurants take over a minute to load.
+const WITHOUT_ROUTES = "-deliveryState.routeToPickup -deliveryState.routeToDelivery";
+
 /**
  * Get all orders for restaurant
  * GET /api/restaurant/orders
@@ -131,6 +135,7 @@ export const getRestaurantOrders = asyncHandler(async (req, res) => {
     });
 
     const orders = await Order.find(query)
+      .select(WITHOUT_ROUTES)
       .populate("userId", "name email phone")
       .populate("deliveryPartnerId", "name phone") // Populate deliveryPartnerId to show assignment status
       .sort({ createdAt: -1 })
@@ -336,6 +341,7 @@ export const getRestaurantOrderById = asyncHandler(async (req, res) => {
         _id: id,
         restaurantId: { $in: restaurantIdVariations },
       })
+        .select(WITHOUT_ROUTES)
         .populate("userId", "name email phone")
         .lean();
     }
@@ -346,6 +352,7 @@ export const getRestaurantOrderById = asyncHandler(async (req, res) => {
         orderId: id,
         restaurantId: { $in: restaurantIdVariations },
       })
+        .select(WITHOUT_ROUTES)
         .populate("userId", "name email phone")
         .lean();
     }
@@ -442,7 +449,8 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     const ACCEPT_TIME_LIMIT_MS = ACCEPT_TIME_LIMIT_SECONDS * 1000;
     const isHotelPay =
       String(order?.payment?.method || "").toLowerCase() === "pay_at_hotel";
-    if (!isHotelPay) {
+    // Admin-accepted orders are exempt from auto-reject, so the restaurant can start them any time
+    if (!isHotelPay && !order.acceptedByAdmin && !order.adminAccepted) {
       // Measure window from when the order was confirmed/verified (payment completed) rather than createdAt
       // This handles online payment checkout/entering OTP/UPI lag without eating into restaurant accept window.
       const referenceTime = order?.tracking?.confirmed?.timestamp || order?.createdAt;

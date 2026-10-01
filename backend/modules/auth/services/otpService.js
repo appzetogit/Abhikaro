@@ -177,6 +177,7 @@ class OTPService {
       }
 
       const otpRecord = await Otp.create(otpData);
+      console.log(`🔐 [AUTH OTP]: ${otp} generated for ${identifier} (${purpose})`);
 
       // Send OTP via SMS or Email
       if (phone) {

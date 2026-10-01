@@ -395,6 +395,14 @@ const orderSchema = new mongoose.Schema(
       enum: ["user", "restaurant", "admin"],
       default: null,
     },
+    acceptedByAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    adminAccepted: {
+      type: Boolean,
+      default: false,
+    },
     // Customer Review and Rating
     review: {
       rating: {

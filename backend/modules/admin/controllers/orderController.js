@@ -19,6 +19,7 @@ import {
   updateSettlementOnStatusChange,
 } from '../../order/services/orderSettlementService.js';
 import { releaseEscrow } from '../../order/services/escrowWalletService.js';
+import { invalidateCachePattern } from '../../../shared/utils/cache.js';
 
 const WALLET_HISTORY_CUTOFF_DATE = new Date('2026-07-05T00:40:00+05:30');
 
@@ -78,24 +79,44 @@ export const getOrders = asyncHandler(async (req, res) => {
 
     // Status filter
     if (status && status !== 'all') {
-      // Map frontend status keys to backend status values
-      const statusMap = {
-        'scheduled': 'scheduled',
-        'pending': 'pending',
-        'accepted': 'confirmed',
-        'processing': 'preparing',
-        'food-on-the-way': 'out_for_delivery',
-        'delivered': 'delivered',
-        'canceled': 'cancelled',
-        'restaurant-cancelled': 'cancelled', // Restaurant cancelled orders
-        'payment-failed': 'pending', // Payment failed orders have pending status
-        'refunded': 'cancelled', // Refunded orders might be cancelled
-        'dine-in': 'dine_in',
-        'offline-payments': 'pending' // Offline payment orders
-      };
-      
-      const mappedStatus = statusMap[status] || status;
-      query.status = mappedStatus;
+      if (status === 'pending') {
+        // Pending tab includes BOTH pending (COD) and unaccepted confirmed (paid, awaiting restaurant acceptance)
+        query.$or = [
+          { status: 'pending' },
+          { 
+            status: 'confirmed', 
+            acceptedByAdmin: { $ne: true }, 
+            adminAccepted: { $ne: true }, 
+            'tracking.preparing.status': { $ne: true } 
+          }
+        ];
+      } else if (status === 'accepted') {
+        // Accepted tab includes orders actually accepted by restaurant or admin
+        query.$or = [
+          { status: 'confirmed', acceptedByAdmin: true },
+          { status: 'confirmed', adminAccepted: true },
+          { status: 'preparing' },
+          { status: 'accepted' }
+        ];
+      } else if (status === 'processing') {
+        query.status = 'preparing';
+      } else {
+        // Map frontend status keys to backend status values
+        const statusMap = {
+          'scheduled': 'scheduled',
+          'food-on-the-way': 'out_for_delivery',
+          'delivered': 'delivered',
+          'canceled': 'cancelled',
+          'restaurant-cancelled': 'cancelled', // Restaurant cancelled orders
+          'payment-failed': 'pending', // Payment failed orders have pending status
+          'refunded': 'cancelled', // Refunded orders might be cancelled
+          'dine-in': 'dine_in',
+          'offline-payments': 'pending' // Offline payment orders
+        };
+        
+        const mappedStatus = statusMap[status] || status;
+        query.status = mappedStatus;
+      }
       
       // If restaurant-cancelled, filter by cancelledBy or cancellation reason (covers new and old orders)
       if (status === 'restaurant-cancelled') {
@@ -477,19 +498,27 @@ export const getOrders = asyncHandler(async (req, res) => {
           orderStatusDisplay = isRestaurantCancelled ? 'Cancelled by Restaurant' : 'Cancelled by User';
         }
       } else {
-        const statusMap = {
-          'pending': 'Pending',
-          // 'confirmed' means payment verified, NOT restaurant acceptance.
-          // Show as 'Pending' until restaurant actually accepts and moves to 'preparing'.
-          'confirmed': 'Pending',
-          'preparing': 'Processing',
-          'ready': 'Ready',
-          'out_for_delivery': 'Food On The Way',
-          'delivered': 'Delivered',
-          'scheduled': 'Scheduled',
-          'dine_in': 'Dine In'
-        };
-        orderStatusDisplay = statusMap[order.status] || order.status;
+        const isActuallyAccepted =
+          order.status === 'preparing' ||
+          order.acceptedByAdmin === true ||
+          order.adminAccepted === true ||
+          order.tracking?.preparing?.status === true;
+
+        if (order.status === 'confirmed') {
+          orderStatusDisplay = isActuallyAccepted ? 'Accepted' : 'Pending';
+        } else if (order.status === 'preparing') {
+          orderStatusDisplay = 'Accepted';
+        } else {
+          const statusMap = {
+            'pending': 'Pending',
+            'ready': 'Ready',
+            'out_for_delivery': 'Food On The Way',
+            'delivered': 'Delivered',
+            'scheduled': 'Scheduled',
+            'dine_in': 'Dine In'
+          };
+          orderStatusDisplay = statusMap[order.status] || order.status;
+        }
       }
 
       // Determine delivery type
@@ -751,6 +780,7 @@ export const getOrders = asyncHandler(async (req, res) => {
         totalAmount: orderAmount,
         // Original fields
         paymentStatus: paymentStatusDisplay,
+        payment: order.payment || null,
         paymentType: (() => {
           const paymentMethod = order.payment?.method;
 
@@ -805,6 +835,8 @@ export const getOrders = asyncHandler(async (req, res) => {
         cancellationReason: order.cancellationReason || null,
         cancelledAt: order.cancelledAt || null,
         cancelledBy: order.cancelledBy || null,
+        acceptedByAdmin: Boolean(order.acceptedByAdmin || order.adminAccepted),
+        adminAccepted: Boolean(order.adminAccepted || order.acceptedByAdmin),
         tracking: order.tracking || {},
         deliveryState: order.deliveryState || {},
         billImageUrl: order.billImageUrl || null, // Bill image captured by delivery boy
@@ -1123,6 +1155,8 @@ export const getOrderById = asyncHandler(async (req, res) => {
     order.customerName = order.userId?.name || order.userName || 'Unknown';
     order.customerPhone = order.userId?.phone || order.userPhone || 'N/A';
     order.customerEmail = order.userId?.email || order.userEmail || '';
+    order.acceptedByAdmin = Boolean(order.acceptedByAdmin || order.adminAccepted);
+    order.adminAccepted = order.acceptedByAdmin;
 
     // Fetch payment record to check status
     let paymentRecordStatus = null;
@@ -1151,6 +1185,49 @@ export const getOrderById = asyncHandler(async (req, res) => {
     }
     
     order.paymentStatus = paymentStatusMap[effectivePaymentStatus] || 'Pending';
+
+    // Map orderStatus for details dialog
+    const isEffectivelyCancelled =
+      order.status === 'cancelled' ||
+      !!order.cancelledAt ||
+      !!order.cancelledBy ||
+      !!order.cancellationReason;
+
+    if (isEffectivelyCancelled) {
+      if (order.cancelledBy === 'restaurant') {
+        order.orderStatus = 'Cancelled by Restaurant';
+      } else if (order.cancelledBy === 'user') {
+        order.orderStatus = 'Cancelled by User';
+      } else if (order.cancelledBy === 'admin') {
+        order.orderStatus = 'Cancelled by System';
+      } else {
+        const cancellationReason = order.cancellationReason || '';
+        const isRestaurantCancelled = /rejected by restaurant|restaurant rejected|restaurant cancelled|restaurant is too busy|item not available|outside delivery area|kitchen closing|technical issue/i.test(cancellationReason);
+        order.orderStatus = isRestaurantCancelled ? 'Cancelled by Restaurant' : 'Cancelled by User';
+      }
+    } else {
+      const isActuallyAccepted =
+        order.status === 'preparing' ||
+        order.acceptedByAdmin === true ||
+        order.adminAccepted === true ||
+        order.tracking?.preparing?.status === true;
+
+      if (order.status === 'confirmed') {
+        order.orderStatus = isActuallyAccepted ? 'Accepted' : 'Pending';
+      } else if (order.status === 'preparing') {
+        order.orderStatus = 'Accepted';
+      } else {
+        const statusMap = {
+          'pending': 'Pending',
+          'ready': 'Ready',
+          'out_for_delivery': 'Food On The Way',
+          'delivered': 'Delivered',
+          'scheduled': 'Scheduled',
+          'dine_in': 'Dine In',
+        };
+        order.orderStatus = statusMap[order.status] || order.status;
+      }
+    }
 
     // Map payment collection status
     order.paymentCollectionStatus = (() => {
@@ -1584,20 +1661,39 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
       "refunded",
     ]);
 
-    let shouldNotifyRestaurantPreparing = false;
     let didChangeOrderStatus = false;
     let shouldRunDeliverySettlement = false;
+    let nextStatus = prevStatus;
+    const wasCancelled = prevStatus === "cancelled";
+    const now = new Date();
 
     if (typeof orderStatus === "string" && orderStatus.trim().length > 0) {
-      const next = orderStatus.trim().toLowerCase();
-      if (!allowedOrderStatuses.has(next)) {
+      nextStatus = orderStatus.trim().toLowerCase();
+      if (!allowedOrderStatuses.has(nextStatus)) {
         return errorResponse(res, 400, "Invalid order status");
       }
 
-      const wasCancelled = prevStatus === "cancelled";
-      order.status = next;
-      didChangeOrderStatus = next !== prevStatus;
-      if (next === "cancelled") {
+      // Admin "Accepted" is a real accept on the restaurant's behalf, so it must land in the same
+      // state the restaurant's own accept produces (preparing). A bare `confirmed` is still "waiting
+      // for the restaurant" everywhere else: the kitchen never lists it and no rider is called.
+      if (nextStatus === "confirmed") nextStatus = "preparing";
+
+      // Reopening an order whose refund already went out would deliver it for free
+      if (wasCancelled && nextStatus !== "cancelled") {
+        const refundCheck = await OrderSettlement.findOne({ orderId: order._id })
+          .select("cancellationDetails.refundStatus")
+          .lean();
+        if (["initiated", "processed"].includes(refundCheck?.cancellationDetails?.refundStatus)) {
+          return errorResponse(res, 400, "Refund already processed for this order, it cannot be reopened");
+        }
+      }
+
+      order.status = nextStatus;
+      didChangeOrderStatus = nextStatus !== prevStatus;
+
+      if (!order.tracking) order.tracking = {};
+
+      if (nextStatus === "cancelled") {
         order.cancelledAt = order.cancelledAt || new Date();
         order.cancelledBy = order.cancelledBy || "admin";
         const reason =
@@ -1606,47 +1702,75 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
             : "";
         order.cancellationReason =
           reason || order.cancellationReason || "Updated by admin";
-      } else if (wasCancelled) {
-        // Admin reopened the order: clear cancellation so listings and flows treat it as active
+      } else {
+        // Admin set an active non-cancelled status: clear all cancellation metadata
         order.cancelledAt = null;
         order.cancelledBy = null;
         order.cancellationReason = null;
-      }
-
-      // Match restaurant accept flow: `preparing` is the accepted/in-kitchen state
-      if (next === "preparing" && prevStatus !== "preparing") {
-        if (!order.tracking) order.tracking = {};
-        if (prevStatus === "pending" && !order.tracking.confirmed?.status) {
-          order.tracking.confirmed = { status: true, timestamp: new Date() };
+        if (nextStatus === "pending") {
+          order.acceptedByAdmin = false;
+          order.adminAccepted = false;
+        } else {
+          // If Admin sets to confirmed, preparing, ready, out_for_delivery, delivered:
+          // it is explicitly accepted by Admin!
+          order.acceptedByAdmin = true;
+          order.adminAccepted = true;
         }
-        shouldNotifyRestaurantPreparing = true;
       }
 
-      // Mark delivered timestamp/tracking and trigger settlement release
-      if (next === 'delivered' && prevStatus !== 'delivered') {
-        if (!order.tracking) order.tracking = {};
-        order.tracking.delivered = order.tracking.delivered || {
-          status: true,
-          timestamp: new Date(),
-        };
-        order.deliveredAt = order.deliveredAt || new Date();
-        shouldRunDeliverySettlement = true;
+      // Tracking timeline: stages up to the new status are done, later stages are undone
+      // (a cancelled order keeps its timeline, the refund stage is derived from it)
+      if (nextStatus !== "cancelled") {
+        const stages = ["confirmed", "preparing", "ready", "outForDelivery", "delivered"];
+        const reached = ["confirmed", "preparing", "ready", "out_for_delivery", "delivered"].indexOf(nextStatus); // pending = -1
+        stages.forEach((stage, i) => {
+          if (i > reached) {
+            order.tracking[stage] = { status: false };
+          } else if (!order.tracking[stage]?.status || (i === reached && didChangeOrderStatus)) {
+            order.tracking[stage] = { status: true, timestamp: now };
+          }
+        });
+
+        if (nextStatus === "delivered") {
+          order.deliveredAt = order.deliveredAt || now;
+          shouldRunDeliverySettlement = prevStatus !== "delivered";
+        } else {
+          order.deliveredAt = null;
+        }
+
+        if (didChangeOrderStatus) {
+          // Restart the automation timers from now, otherwise the auto-reject / auto-cancel crons
+          // (which measure from the old timestamps) undo the admin's status on their next run.
+          if (nextStatus === "pending") {
+            order.tracking.confirmed = { status: false, timestamp: now };
+          }
+          if (order.deliveryState?.acceptedAt) {
+            order.deliveryState.acceptedAt = now;
+          }
+          if (wasCancelled) {
+            // Same as reassignOrderToRestaurant: restaurant app treats it as a fresh order
+            if (!order.assignmentInfo) order.assignmentInfo = {};
+            order.assignmentInfo.assignedBy = "admin_manual_resend";
+            order.assignmentInfo.assignedAt = now;
+            order.assignmentInfo.resendVersion = (order.assignmentInfo.resendVersion || 0) + 1;
+          }
+        }
       }
     }
 
     if (typeof paymentStatus === "string" && paymentStatus.trim().length > 0) {
-      const next = paymentStatus.trim().toLowerCase();
-      if (!allowedPaymentStatuses.has(next)) {
+      const nextPayment = paymentStatus.trim().toLowerCase();
+      if (!allowedPaymentStatuses.has(nextPayment)) {
         return errorResponse(res, 400, "Invalid payment status");
       }
 
       if (!order.payment) order.payment = {};
-      order.payment.status = next;
+      order.payment.status = nextPayment;
 
       // Keep Payment collection in sync when present
       const paymentRecord = await Payment.findOne({ orderId: order._id });
       if (paymentRecord) {
-        paymentRecord.status = next;
+        paymentRecord.status = nextPayment;
         await paymentRecord.save();
       }
     }
@@ -1654,19 +1778,171 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
     await order.save();
     invalidateAdminOrdersCache();
 
-    if (shouldNotifyRestaurantPreparing) {
+    // Admin accepted an order the restaurant had not (or that was auto-cancelled)
+    const justAccepted =
+      didChangeOrderStatus &&
+      nextStatus === "preparing" &&
+      ["pending", "confirmed", "cancelled"].includes(prevStatus);
+
+    // Keep settlement in sync with the admin's status (non-blocking, same as the cron cancel flows)
+    if (didChangeOrderStatus && (wasCancelled || nextStatus === "cancelled" || justAccepted)) {
       try {
-        await notifyRestaurantOrderUpdate(order._id.toString(), "preparing");
-      } catch (notifyErr) {
-        console.error(
-          "Admin status update: failed to notify restaurant socket clients:",
-          notifyErr,
-        );
+        if (nextStatus === "cancelled") {
+          const { calculateCancellationRefund } = await import("../../order/services/cancellationRefundService.js");
+          await calculateCancellationRefund(order._id, order.cancellationReason);
+        } else {
+          // Same as restaurant accept; on a reopen this also resets earnings to pending,
+          // after which the stale pending refund is dropped
+          await calculateOrderSettlement(order._id);
+          if (wasCancelled) {
+            await OrderSettlement.updateOne({ orderId: order._id }, { $unset: { cancellationDetails: "" } });
+          }
+        }
+      } catch (e) {
+        console.warn("Admin status update: settlement sync failed (non-blocking):", e?.message || e);
       }
     }
 
+    // Invalidate user tracking cache so client gets updated active order immediately
+    try {
+      const oid = order.orderId || null;
+      const mongoId = order._id?.toString?.() || null;
+      await invalidateCachePattern(`order-details:*${orderId}*`);
+      if (oid) await invalidateCachePattern(`order-details:*${oid}*`);
+      if (mongoId) await invalidateCachePattern(`order-details:*${mongoId}*`);
+      if (order.userId) await invalidateCachePattern(`order-details:*${order.userId.toString()}*`);
+    } catch (cacheErr) {
+      console.warn("Could not invalidate user order cache:", cacheErr?.message || cacheErr);
+    }
+
+    // Human-friendly title and message for realtime notifications
+    const statusMessages = {
+      pending: "Order placed and pending",
+      confirmed: "Order accepted by admin",
+      preparing: "Restaurant is preparing your food",
+      ready: "Food is ready for pickup/delivery",
+      out_for_delivery: "Delivery partner is on the way with your food",
+      delivered: "Order has been delivered successfully",
+      cancelled: "Order has been cancelled",
+    };
+
+    // Broadcast Real-Time WebSockets end-to-end
+    (async () => {
+      try {
+        const { getIO } = await import("../../../server.js");
+        const io = getIO ? getIO() : null;
+
+        if (io) {
+          const payload = {
+            orderId: order.orderId,
+            orderMongoId: order._id.toString(),
+            status: order.status,
+            orderStatus: order.status === 'confirmed' ? 'Accepted' : order.status === 'preparing' ? 'Processing' : order.status,
+            paymentStatus: order.payment?.status || null,
+            title: order.status === 'confirmed' ? "Order Accepted" : "Order Update",
+            message: statusMessages[order.status] || `Order status updated to ${order.status}`,
+            cancellationReason: order.status === 'cancelled' ? order.cancellationReason : null,
+            acceptedByAdmin: Boolean(order.acceptedByAdmin || order.adminAccepted),
+            updatedAt: new Date(),
+          };
+
+          // 1. Notify Customer Tracking Rooms (both MongoDB _id and custom orderId)
+          const orderRooms = [
+            order._id.toString(),
+            order.orderId,
+          ].filter(Boolean);
+
+          [...new Set(orderRooms)].forEach((rid) => {
+            io.to(`order:${rid}`).emit("order_status_update", payload);
+          });
+
+          // 2. Notify Customer direct user room
+          if (order.userId) {
+            const userRoom = `user:${order.userId.toString()}`;
+            io.to(userRoom).emit("order_status_update", payload);
+          }
+
+          // 3. Notify Restaurant Namespace & Rooms for all statuses
+          try {
+            await notifyRestaurantOrderUpdate(order._id.toString(), order.status);
+          } catch (rErr) {
+            console.error("Admin status update: restaurant socket notification error:", rErr?.message || rErr);
+          }
+
+          // If previously cancelled and now active, send new order notification so kitchen displays it
+          if (wasCancelled && nextStatus !== 'cancelled') {
+            try {
+              const restaurantId =
+                order.restaurantId?._id?.toString?.() || order.restaurantId?.toString?.() || order.restaurantId;
+              if (restaurantId) {
+                await notifyRestaurantNewOrder(order, restaurantId, order.payment?.method);
+              }
+            } catch (rNotifErr) {
+              console.warn("Could not notify restaurant of revived order:", rNotifErr?.message || rNotifErr);
+            }
+          }
+
+          // 4. Notify Delivery Partner (if assigned)
+          if (order.deliveryPartnerId) {
+            const dpId = order.deliveryPartnerId.toString();
+            io.of("/delivery").to(`delivery:${dpId}`).emit("order_status_update", payload);
+            io.to(`delivery:${dpId}`).emit("order_status_update", payload);
+          }
+
+          // 5. Broadcast to Admin Panel (all connected admin clients)
+          // (customers already got "order_status_update" via their own rooms above; a global emit
+          // of that event would pop this order's notification on every other customer's tracking page)
+          io.emit("admin_order_updated", {
+            ...payload,
+            orderStatus: order.status,
+          });
+
+          // 6. Admin accepted on the restaurant's behalf: same follow-ups as the restaurant's own accept
+          if (justAccepted) {
+            try {
+              const etaEventService = (await import("../../order/services/etaEventService.js")).default;
+              await etaEventService.handleRestaurantAccepted(order._id.toString(), new Date());
+            } catch (etaErr) {
+              console.warn("Admin accept: ETA update failed (non-blocking):", etaErr?.message || etaErr);
+            }
+            try {
+              const { notifyUserRestaurantAccepted } = await import("../../fcm/services/pushNotificationService.js");
+              await notifyUserRestaurantAccepted(order);
+            } catch (pushErr) {
+              console.warn("Admin accept: user push failed (non-blocking):", pushErr?.message || pushErr);
+            }
+          }
+
+          // In the kitchen / ready with no rider yet: call riders (zone first, then nearest)
+          // ponytail: notifies once; restaurant accept also runs a 30s resend loop. If riders miss it,
+          // admin has "Resend delivery notification". Extract that loop into a service if this isn't enough.
+          if (didChangeOrderStatus && ["preparing", "ready"].includes(nextStatus) && !order.deliveryPartnerId) {
+            try {
+              const result = await notifyRidersForOrder(order);
+              if (result.error) {
+                console.warn(`Admin status update: riders not notified for ${order.orderId}: ${result.error[1]}`);
+              } else {
+                console.log(`📢 Admin set ${nextStatus}: notified ${result.notifiedCount} riders for order ${order.orderId}`);
+              }
+            } catch (dispatchErr) {
+              console.warn("Admin status update: rider notification failed (non-blocking):", dispatchErr?.message || dispatchErr);
+            }
+          }
+
+          // 7. Handle ETA update if applicable
+          if (nextStatus === "ready") {
+            try {
+              const etaEventService = (await import("../../order/services/etaEventService.js")).default;
+              await etaEventService.handleFoodReady(order._id.toString());
+            } catch (_) {}
+          }
+        }
+      } catch (socketErr) {
+        console.error("Admin status update: Error broadcasting socket events:", socketErr?.message || socketErr);
+      }
+    })();
+
     // CRITICAL: When admin marks an order as delivered, make sure settlement + wallet credits run
-    // (same as delivery-partner delivered flow). This fixes QR hotel commission missing on admin delivery.
     if (shouldRunDeliverySettlement) {
       try {
         await calculateOrderSettlement(order._id);
@@ -1689,7 +1965,6 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
       try {
         await releaseEscrow(order._id);
       } catch (e) {
-        // For COD / pay_at_hotel orders escrow may not be held; don't block admin action.
         console.warn(
           'Admin delivered update: escrow release failed (non-blocking):',
           e?.message || e,
@@ -1701,10 +1976,12 @@ export const updateOrderAndPaymentStatus = asyncHandler(async (req, res) => {
       orderId: order.orderId,
       status: order.status,
       paymentStatus: order.payment?.status || null,
+      tracking: order.tracking,
+      updatedAt: order.updatedAt,
     });
   } catch (error) {
     console.error("Error updating order/payment status:", error);
-    return errorResponse(res, 500, "Failed to update order");
+    return errorResponse(res, 500, error.message || "Failed to update order");
   }
 });
 
@@ -3389,162 +3666,174 @@ export const resendDeliveryNotification = asyncHandler(async (req, res) => {
       return errorResponse(res, 400, 'Order already has a delivery partner assigned');
     }
 
-    // Get restaurant location from restaurant doc or fall back to order.restaurantLocation
-    const restaurantId = order.restaurantId;
-    let restaurantDoc = null;
-    const restaurantIdStr = restaurantId?.toString?.() || restaurantId;
-    if (mongoose.Types.ObjectId.isValid(restaurantIdStr) && String(restaurantIdStr).length === 24) {
-      restaurantDoc = await Restaurant.findById(new mongoose.Types.ObjectId(restaurantIdStr))
-        .select('location')
-        .lean();
-    }
-    if (!restaurantDoc) {
-      const restaurantOr = [{ restaurantId: restaurantIdStr }];
-      // Only include _id lookup when it is a valid ObjectId, otherwise Mongoose throws CastError
-      if (mongoose.Types.ObjectId.isValid(restaurantIdStr) && String(restaurantIdStr).length === 24) {
-        restaurantOr.push({ _id: new mongoose.Types.ObjectId(restaurantIdStr) });
-      }
-      restaurantDoc = await Restaurant.findOne({ $or: restaurantOr })
-        .select('location')
-        .lean();
-    }
-
-    // Build effective location
-    const fallbackRestaurantLocation =
-      order.restaurantLocation && (order.restaurantLocation.latitude || order.restaurantLocation.longitude)
-        ? {
-            type: 'Point',
-            coordinates: [
-              Number(order.restaurantLocation.longitude) || 0,
-              Number(order.restaurantLocation.latitude) || 0,
-            ],
-          }
-        : null;
-    const effectiveRestaurantLocation =
-      restaurantDoc?.location?.coordinates?.length ? restaurantDoc.location : fallbackRestaurantLocation;
-
-    if (!effectiveRestaurantLocation || !effectiveRestaurantLocation.coordinates) {
-      return errorResponse(res, 400, 'Restaurant location not found. Please update restaurant location.');
-    }
-
-    const [restaurantLng, restaurantLat] = effectiveRestaurantLocation.coordinates;
-
-    // Prefer notifying ALL online delivery partners in the restaurant's zone.
-    // This matches "all delivery boys in that zone should receive the request".
-    // Manual assignment is no longer supported.
-    const assignmentMode = 'automatic';
-
-    const Zone = (await import('../models/Zone.js')).default;
-    const Delivery = (await import('../../delivery/models/Delivery.js')).default;
-
-    let deliveryPartnerIds = [];
-
-    // Resolve zone by restaurantId (Zone.restaurantId is Restaurant ObjectId).
-    // order.restaurantId may be ObjectId or legacy string.
-    let zone = null;
-    if (mongoose.Types.ObjectId.isValid(restaurantId?.toString?.() || restaurantId)) {
-      zone = await Zone.findOne({
-        restaurantId: new mongoose.Types.ObjectId(restaurantId),
-        isActive: true,
-      }).select('_id name').lean();
-    }
-    if (!zone) {
-      // Fallback: try to resolve restaurant by business restaurantId string
-      const restaurantOr = [{ restaurantId: restaurantId }];
-      // Only include _id lookup when it is a valid ObjectId, otherwise Mongoose throws CastError
-      if (mongoose.Types.ObjectId.isValid(restaurantId?.toString?.() || restaurantId)) {
-        restaurantOr.push({ _id: new mongoose.Types.ObjectId(restaurantId) });
-      }
-      const restaurantDoc = await Restaurant.findOne({ $or: restaurantOr })
-        .select('_id')
-        .lean();
-      if (restaurantDoc?._id) {
-        zone = await Zone.findOne({
-          restaurantId: restaurantDoc._id,
-          isActive: true,
-        }).select('_id name').lean();
-      }
-    }
-
-    if (zone?._id) {
-      const zonePartners = await Delivery.find({
-        'availability.isOnline': true,
-        status: { $in: ['approved', 'active'] },
-        isActive: true,
-        'availability.zones': zone._id,
-      }).select('_id').lean();
-
-      deliveryPartnerIds = (zonePartners || []).map((p) => p._id.toString());
-      console.log(
-        `📣 Admin resend: notifying ${deliveryPartnerIds.length} partners in zone ${zone.name} (${zone._id}) (mode=${assignmentMode})`,
-      );
-    }
-
-    // Fallback: if zone is missing or no partners in zone, use distance-based nearest logic.
-    if (!deliveryPartnerIds || deliveryPartnerIds.length === 0) {
-      const priorityDeliveryBoys = (
-        await findNearestDeliveryBoys(
-          restaurantLat,
-          restaurantLng,
-          restaurantId,
-          20, // 20km radius for priority
-        )
-      ).slice(0, 10); // Top 10 nearest
-
-      let deliveryBoysToNotify = priorityDeliveryBoys;
-      if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
-        deliveryBoysToNotify = (
-          await findNearestDeliveryBoys(
-            restaurantLat,
-            restaurantLng,
-            restaurantId,
-            50, // 50km radius
-          )
-        ).slice(0, 20); // Top 20 nearest
-      }
-
-      if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
-        return errorResponse(res, 404, 'No delivery partners available in your area');
-      }
-
-      deliveryPartnerIds = deliveryBoysToNotify.map((db) => db.deliveryPartnerId);
-    }
-
-    // Populate order for notification payload
-    const populatedOrder = await Order.findById(order._id)
-      .populate('userId', 'name phone')
-      .populate('restaurantId', 'name location address phone ownerPhone')
-      .lean();
-
-    if (!populatedOrder) {
-      return errorResponse(res, 500, 'Failed to load order for notification');
-    }
-
-    // Update assignment info for tracking
-    await Order.findByIdAndUpdate(order._id, {
-      $set: {
-        'assignmentInfo.priorityDeliveryPartnerIds': deliveryPartnerIds,
-        'assignmentInfo.assignedBy': 'admin_manual_resend',
-        'assignmentInfo.assignedAt': new Date(),
-      },
-      $inc: {
-        'assignmentInfo.resendVersion': 1,
-      },
-    });
-
-    await notifyMultipleDeliveryBoys(populatedOrder, deliveryPartnerIds, 'priority');
+    const result = await notifyRidersForOrder(order);
+    if (result.error) return errorResponse(res, result.error[0], result.error[1]);
 
     return successResponse(
       res,
       200,
-      `Notification sent to ${deliveryPartnerIds.length} delivery partners`,
-      { notifiedCount: deliveryPartnerIds.length },
+      `Notification sent to ${result.notifiedCount} delivery partners`,
+      { notifiedCount: result.notifiedCount },
     );
   } catch (error) {
     console.error('Error resending delivery notification (admin):', error);
     return errorResponse(res, 500, `Failed to resend notification: ${error.message}`);
   }
 });
+
+/**
+ * Notify riders about an unassigned order: all online partners in the restaurant's zone,
+ * falling back to the nearest ones. Shared by the resend endpoint and admin status updates.
+ * Returns { notifiedCount } or { error: [httpCode, message] }.
+ */
+async function notifyRidersForOrder(order) {
+  // Get restaurant location from restaurant doc or fall back to order.restaurantLocation
+  const restaurantId = order.restaurantId;
+  let restaurantDoc = null;
+  const restaurantIdStr = restaurantId?.toString?.() || restaurantId;
+  if (mongoose.Types.ObjectId.isValid(restaurantIdStr) && String(restaurantIdStr).length === 24) {
+    restaurantDoc = await Restaurant.findById(new mongoose.Types.ObjectId(restaurantIdStr))
+      .select('location')
+      .lean();
+  }
+  if (!restaurantDoc) {
+    const restaurantOr = [{ restaurantId: restaurantIdStr }];
+    // Only include _id lookup when it is a valid ObjectId, otherwise Mongoose throws CastError
+    if (mongoose.Types.ObjectId.isValid(restaurantIdStr) && String(restaurantIdStr).length === 24) {
+      restaurantOr.push({ _id: new mongoose.Types.ObjectId(restaurantIdStr) });
+    }
+    restaurantDoc = await Restaurant.findOne({ $or: restaurantOr })
+      .select('location')
+      .lean();
+  }
+
+  // Build effective location
+  const fallbackRestaurantLocation =
+    order.restaurantLocation && (order.restaurantLocation.latitude || order.restaurantLocation.longitude)
+      ? {
+          type: 'Point',
+          coordinates: [
+            Number(order.restaurantLocation.longitude) || 0,
+            Number(order.restaurantLocation.latitude) || 0,
+          ],
+        }
+      : null;
+  const effectiveRestaurantLocation =
+    restaurantDoc?.location?.coordinates?.length ? restaurantDoc.location : fallbackRestaurantLocation;
+
+  if (!effectiveRestaurantLocation || !effectiveRestaurantLocation.coordinates) {
+    return { error: [400, 'Restaurant location not found. Please update restaurant location.'] };
+  }
+
+  const [restaurantLng, restaurantLat] = effectiveRestaurantLocation.coordinates;
+
+  // Prefer notifying ALL online delivery partners in the restaurant's zone.
+  // This matches "all delivery boys in that zone should receive the request".
+  // Manual assignment is no longer supported.
+  const assignmentMode = 'automatic';
+
+  const Zone = (await import('../models/Zone.js')).default;
+  const Delivery = (await import('../../delivery/models/Delivery.js')).default;
+
+  let deliveryPartnerIds = [];
+
+  // Resolve zone by restaurantId (Zone.restaurantId is Restaurant ObjectId).
+  // order.restaurantId may be ObjectId or legacy string.
+  let zone = null;
+  if (mongoose.Types.ObjectId.isValid(restaurantId?.toString?.() || restaurantId)) {
+    zone = await Zone.findOne({
+      restaurantId: new mongoose.Types.ObjectId(restaurantId),
+      isActive: true,
+    }).select('_id name').lean();
+  }
+  if (!zone) {
+    // Fallback: try to resolve restaurant by business restaurantId string
+    const restaurantOr = [{ restaurantId: restaurantId }];
+    // Only include _id lookup when it is a valid ObjectId, otherwise Mongoose throws CastError
+    if (mongoose.Types.ObjectId.isValid(restaurantId?.toString?.() || restaurantId)) {
+      restaurantOr.push({ _id: new mongoose.Types.ObjectId(restaurantId) });
+    }
+    const restaurantDoc = await Restaurant.findOne({ $or: restaurantOr })
+      .select('_id')
+      .lean();
+    if (restaurantDoc?._id) {
+      zone = await Zone.findOne({
+        restaurantId: restaurantDoc._id,
+        isActive: true,
+      }).select('_id name').lean();
+    }
+  }
+
+  if (zone?._id) {
+    const zonePartners = await Delivery.find({
+      'availability.isOnline': true,
+      status: { $in: ['approved', 'active'] },
+      isActive: true,
+      'availability.zones': zone._id,
+    }).select('_id').lean();
+
+    deliveryPartnerIds = (zonePartners || []).map((p) => p._id.toString());
+    console.log(
+      `📣 Admin resend: notifying ${deliveryPartnerIds.length} partners in zone ${zone.name} (${zone._id}) (mode=${assignmentMode})`,
+    );
+  }
+
+  // Fallback: if zone is missing or no partners in zone, use distance-based nearest logic.
+  if (!deliveryPartnerIds || deliveryPartnerIds.length === 0) {
+    const priorityDeliveryBoys = (
+      await findNearestDeliveryBoys(
+        restaurantLat,
+        restaurantLng,
+        restaurantId,
+        20, // 20km radius for priority
+      )
+    ).slice(0, 10); // Top 10 nearest
+
+    let deliveryBoysToNotify = priorityDeliveryBoys;
+    if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
+      deliveryBoysToNotify = (
+        await findNearestDeliveryBoys(
+          restaurantLat,
+          restaurantLng,
+          restaurantId,
+          50, // 50km radius
+        )
+      ).slice(0, 20); // Top 20 nearest
+    }
+
+    if (!deliveryBoysToNotify || deliveryBoysToNotify.length === 0) {
+      return { error: [404, 'No delivery partners available in your area'] };
+    }
+
+    deliveryPartnerIds = deliveryBoysToNotify.map((db) => db.deliveryPartnerId);
+  }
+
+  // Populate order for notification payload
+  const populatedOrder = await Order.findById(order._id)
+    .populate('userId', 'name phone')
+    .populate('restaurantId', 'name location address phone ownerPhone')
+    .lean();
+
+  if (!populatedOrder) {
+    return { error: [500, 'Failed to load order for notification'] };
+  }
+
+  // Update assignment info for tracking
+  await Order.findByIdAndUpdate(order._id, {
+    $set: {
+      'assignmentInfo.priorityDeliveryPartnerIds': deliveryPartnerIds,
+      'assignmentInfo.assignedBy': 'admin_manual_resend',
+      'assignmentInfo.assignedAt': new Date(),
+    },
+    $inc: {
+      'assignmentInfo.resendVersion': 1,
+    },
+  });
+
+  await notifyMultipleDeliveryBoys(populatedOrder, deliveryPartnerIds, 'priority');
+
+  return { notifiedCount: deliveryPartnerIds.length };
+}
 
 /**
  * Backfill restaurantLocation for online (razorpay) orders created in the last N days
@@ -3670,6 +3959,10 @@ export const reassignOrderToRestaurant = asyncHandler(async (req, res) => {
     order.cancelledAt = null;
     order.cancellationReason = null;
     order.cancelledBy = null;
+    // Restart the accept window: auto-reject and restaurant accept both measure from this timestamp,
+    // so with the old one the order is re-cancelled within 30s and the restaurant cannot accept it
+    if (!order.tracking) order.tracking = {};
+    order.tracking.confirmed = { status: true, timestamp: new Date() };
 
     // Bump resend version and mark who triggered it
     if (!order.assignmentInfo) order.assignmentInfo = {};
