@@ -2635,6 +2635,9 @@ export const adminAPI = {
   togglePromoCodeStatus: (id) => {
     return apiClient.patch(`/admin/promo-codes/${id}/status`);
   },
+  togglePromoCodeHide: (id) => {
+    return apiClient.patch(`/admin/promo-codes/${id}/hide`);
+  },
   deletePromoCode: (id) => {
     return apiClient.delete(`/admin/promo-codes/${id}`);
   },

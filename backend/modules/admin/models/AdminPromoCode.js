@@ -80,6 +80,11 @@ const adminPromoCodeSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    hideFromUsers: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     applicableType: {
       type: String,
       enum: ["all", "specific_restaurants"],

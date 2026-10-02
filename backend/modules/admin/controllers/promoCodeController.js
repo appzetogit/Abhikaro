@@ -135,6 +135,7 @@ export const createPromoCode = asyncHandler(async (req, res) => {
     usageLimitPerUser = 1,
     totalUsageLimit = 0,
     isActive = true,
+    hideFromUsers = false,
     applicableType = "all",
     applicableRestaurants = [],
   } = req.body;
@@ -214,6 +215,7 @@ export const createPromoCode = asyncHandler(async (req, res) => {
     usageLimitPerUser: Number(usageLimitPerUser ?? 1),
     totalUsageLimit: Number(totalUsageLimit || 0),
     isActive: Boolean(isActive),
+    hideFromUsers: Boolean(hideFromUsers),
     applicableType,
     applicableRestaurants: Array.isArray(applicableRestaurants) ? applicableRestaurants : [],
     createdBy: req.admin?._id || req.user?._id || null,
@@ -255,6 +257,7 @@ export const updatePromoCode = asyncHandler(async (req, res) => {
     usageLimitPerUser,
     totalUsageLimit,
     isActive,
+    hideFromUsers,
     applicableType,
     applicableRestaurants,
   } = req.body;
@@ -308,6 +311,7 @@ export const updatePromoCode = asyncHandler(async (req, res) => {
   if (usageLimitPerUser !== undefined) promoCode.usageLimitPerUser = Number(usageLimitPerUser);
   if (totalUsageLimit !== undefined) promoCode.totalUsageLimit = Number(totalUsageLimit);
   if (isActive !== undefined) promoCode.isActive = Boolean(isActive);
+  if (hideFromUsers !== undefined) promoCode.hideFromUsers = Boolean(hideFromUsers);
   if (applicableType) promoCode.applicableType = applicableType;
   if (applicableRestaurants !== undefined) {
     promoCode.applicableRestaurants = Array.isArray(applicableRestaurants)
@@ -345,6 +349,31 @@ export const togglePromoCodeStatus = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: `Promo code ${promoCode.isActive ? "activated" : "deactivated"} successfully`,
+    data: { promoCode },
+  });
+});
+
+/**
+ * @desc    Toggle promo code hidden from users status (Admin)
+ * @route   PATCH /api/admin/promo-codes/:id/hide
+ * @access  Private (Admin)
+ */
+export const togglePromoCodeHide = asyncHandler(async (req, res) => {
+  const promoCode = await AdminPromoCode.findById(req.params.id);
+
+  if (!promoCode) {
+    return res.status(404).json({
+      success: false,
+      message: "Promo code not found",
+    });
+  }
+
+  promoCode.hideFromUsers = !promoCode.hideFromUsers;
+  await promoCode.save();
+
+  res.status(200).json({
+    success: true,
+    message: `Promo code is now ${promoCode.hideFromUsers ? "hidden from users" : "visible to users"}`,
     data: { promoCode },
   });
 });
@@ -394,14 +423,15 @@ export const getActivePublicPromoCodes = asyncHandler(async (req, res) => {
   ];
   const todayName = dayNames[now.getDay()];
 
-  // Find promo codes that are active, within date range
+  // Find promo codes that are active, within date range, and not hidden from user list
   const promoCodes = await AdminPromoCode.find({
     isActive: true,
+    hideFromUsers: { $ne: true },
     startDate: { $lte: endOfToday },
     endDate: { $gte: startOfToday },
   })
     .select(
-      "code title description discountType discountValue maxDiscount minOrderAmount startDate endDate validDays usageLimitPerUser applicableType"
+      "code title description discountType discountValue maxDiscount minOrderAmount startDate endDate validDays usageLimitPerUser applicableType hideFromUsers"
     )
     .sort({ discountValue: -1 })
     .lean();

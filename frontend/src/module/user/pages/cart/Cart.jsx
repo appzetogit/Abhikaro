@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Truck, Leaf, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, AlertCircle, Pencil } from "lucide-react"
+import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Truck, Leaf, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, AlertCircle, Pencil, Info } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import confetti from "canvas-confetti"
 
@@ -94,8 +94,35 @@ export default function Cart() {
   const { location: currentLocation, zoneId, requestLocation, isManualOverrideEnabled } = useSharedLocation() // Get live location address, zone, and manual override state
 
   const [showCoupons, setShowCoupons] = useState(false)
+  const [showCouponsPage, setShowCouponsPage] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponCode, setCouponCode] = useState("")
+
+  // Handle browser back button and body scroll lock for Coupons screen
+  useEffect(() => {
+    if (showCouponsPage) {
+      document.body.style.overflow = "hidden"
+      window.history.pushState({ modal: "coupons" }, "")
+      const handlePopState = () => {
+        setShowCouponsPage(false)
+      }
+      window.addEventListener("popstate", handlePopState)
+      return () => {
+        document.body.style.overflow = ""
+        window.removeEventListener("popstate", handlePopState)
+      }
+    } else {
+      document.body.style.overflow = ""
+    }
+  }, [showCouponsPage])
+
+  const closeCouponsModal = () => {
+    if (window.history.state?.modal === "coupons") {
+      window.history.back()
+    } else {
+      setShowCouponsPage(false)
+    }
+  }
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("razorpay") // razorpay | wallet | pay_at_hotel (COD disabled)
   const [hasHotelReference, setHasHotelReference] = useState(false) // Track if hotel reference exists
   const [isHotelOrder, setIsHotelOrder] = useState(false) // Track if this is a hotel order
@@ -208,19 +235,19 @@ export default function Cart() {
   useEffect(() => {
     try {
       sessionStorage.setItem("checkout_additional_address", additionalAddress || "")
-    } catch {}
+    } catch { }
   }, [additionalAddress])
 
   useEffect(() => {
     try {
       sessionStorage.setItem("checkout_note", note || "")
-    } catch {}
+    } catch { }
   }, [note])
 
   useEffect(() => {
     try {
       sessionStorage.setItem("checkout_room_number", roomNumber || "")
-    } catch {}
+    } catch { }
   }, [roomNumber])
 
   const clearCheckoutDrafts = () => {
@@ -881,7 +908,8 @@ export default function Cart() {
       try {
         const res = await adminAPI.getPublicActivePromoCodes();
         if (res?.data?.success && res.data.data?.promoCodes) {
-          setAdminPromoCodes(res.data.data.promoCodes);
+          const visibleCodes = res.data.data.promoCodes.filter((p) => !p.hideFromUsers);
+          setAdminPromoCodes(visibleCodes);
         }
       } catch (err) {
         // silent fail
@@ -986,13 +1014,13 @@ export default function Cart() {
     if (feeSettings.deliveryFeeRanges && Array.isArray(feeSettings.deliveryFeeRanges) && feeSettings.deliveryFeeRanges.length > 0) {
       // Sort ranges by min value to ensure proper checking
       const sortedRanges = [...feeSettings.deliveryFeeRanges].sort((a, b) => a.min - b.min)
-      
+
       // Find matching range (orderValue >= min && orderValue < max)
       // For the last range, we check orderValue >= min && orderValue <= max
       for (let i = 0; i < sortedRanges.length; i++) {
         const range = sortedRanges[i]
         const isLastRange = i === sortedRanges.length - 1
-        
+
         if (isLastRange) {
           // Last range: include max value
           if (orderValue >= range.min && orderValue <= range.max) {
@@ -1111,10 +1139,13 @@ export default function Cart() {
   }
 
   const handleApplyCoupon = async (coupon) => {
-    if (subtotal >= coupon.minOrder) {
+    if (subtotal >= (coupon.minOrder || 0)) {
       setAppliedCoupon(coupon)
       setCouponCode(coupon.code)
       setShowCoupons(false)
+      closeCouponsModal()
+      triggerOfferConfetti()
+      toast.success(`Coupon '${coupon.code}' applied!`)
 
       // Recalculate pricing with new coupon
       if (cart.length > 0 && checkoutDeliveryAddress) {
@@ -1146,15 +1177,32 @@ export default function Cart() {
           // Error recalculating pricing
         }
       }
+    } else {
+      toast.error(`Add eligible items worth ₹${Math.ceil((coupon.minOrder || 0) - subtotal)} more to unlock this coupon`)
     }
   }
 
   const handleApplyCustomPromo = async (codeToApply = null) => {
     const code = (codeToApply || promoInput || "").trim().toUpperCase();
     if (!code) {
-      toast.error("Please enter a promo code");
+      toast.error("Please enter a coupon or promo code");
       return;
     }
+
+    // Check if code matches an available restaurant coupon first
+    const matchedRestaurantCoupon = availableCoupons.find(
+      (c) => c.code?.toUpperCase() === code
+    );
+    if (matchedRestaurantCoupon) {
+      if (subtotal < (matchedRestaurantCoupon.minOrder || 0)) {
+        toast.error(
+          `Add eligible items worth ₹${Math.ceil((matchedRestaurantCoupon.minOrder || 0) - subtotal)} more to unlock '${code}'`
+        );
+        return;
+      }
+      return handleApplyCoupon(matchedRestaurantCoupon);
+    }
+
     try {
       setIsValidatingPromo(true);
       const res = await adminAPI.validatePromoCode({
@@ -1179,6 +1227,7 @@ export default function Cart() {
         setCouponCode(promo.code);
         setPromoInput("");
         setShowCoupons(false);
+        closeCouponsModal();
         triggerOfferConfetti();
         toast.success(res.data.message || `Promo code '${promo.code}' applied!`);
       } else {
@@ -1310,7 +1359,7 @@ export default function Cart() {
         }
       } catch (err) {
         toast.dismiss(toastId)
-        
+
         // If fresh location fetch throws an error, but the existing checkoutDeliveryAddress is valid,
         // we gracefully fall back to the existing one!
         const existingCoords = checkoutDeliveryAddress?.location?.coordinates;
@@ -1419,8 +1468,8 @@ export default function Cart() {
       }
 
       // FIXED: Validate restaurant location before placing order
-      const hasRestaurantLocation = restaurantData?.location && 
-        restaurantData.location.coordinates && 
+      const hasRestaurantLocation = restaurantData?.location &&
+        restaurantData.location.coordinates &&
         Array.isArray(restaurantData.location.coordinates) &&
         restaurantData.location.coordinates.length >= 2 &&
         restaurantData.location.coordinates[0] !== 0 &&
@@ -1762,13 +1811,13 @@ export default function Cart() {
         clearCheckoutDrafts()
         // Notify home screen tracking card to refresh active orders
         window.dispatchEvent(new Event('orderStatusUpdated'))
-        
+
         // Clear cart and checkout-specific address overrides
         clearCart()
         sessionStorage.removeItem("checkout_delivery_address")
         sessionStorage.removeItem("checkout_delivery_address_manual")
         setHasManuallySelectedDeliveryAddress(false)
-        
+
         setIsPlacingOrder(false)
         navigate(`/thankyou?orderId=${finalOrderId}`, {
           state: {
@@ -1804,13 +1853,13 @@ export default function Cart() {
         clearCheckoutDrafts()
         // Notify home screen tracking card to refresh active orders
         window.dispatchEvent(new Event('orderStatusUpdated'))
-        
+
         // Clear cart and checkout-specific address overrides
         clearCart()
         sessionStorage.removeItem("checkout_delivery_address")
         sessionStorage.removeItem("checkout_delivery_address_manual")
         setHasManuallySelectedDeliveryAddress(false)
-        
+
         setIsPlacingOrder(false)
         // Refresh wallet balance
         try {
@@ -1955,7 +2004,7 @@ export default function Cart() {
       else if (error.response) {
         // Server responded with error status
         const backendMessage = error.response.data?.message || `Server error: ${error.response.status}`
-        
+
         // FIXED: Handle restaurant location error specifically with user-friendly message
         if (backendMessage.includes('location') && (backendMessage.includes('not set') || backendMessage.includes('not found'))) {
           errorMessage = "This restaurant's location is not configured. Please contact support or try ordering from another restaurant."
@@ -2050,16 +2099,16 @@ export default function Cart() {
 
   const scrollContainerStyle = isHotelOrder
     ? {
-        WebkitOverflowScrolling: "touch",
-        paddingTop: "64px", // Header height
-        paddingBottom: "75px", // Space for sticky payment + button (reduced more)
-      }
+      WebkitOverflowScrolling: "touch",
+      paddingTop: "64px", // Header height
+      paddingBottom: "75px", // Space for sticky payment + button (reduced more)
+    }
     : {
-        height: "100vh",
-        WebkitOverflowScrolling: "touch",
-        paddingTop: "64px", // Header height
-        paddingBottom: "200px", // Bottom button height + extra space
-      }
+      height: "100vh",
+      WebkitOverflowScrolling: "touch",
+      paddingTop: "64px", // Header height
+      paddingBottom: "200px", // Bottom button height + extra space
+    }
 
   // Empty cart state - but don't show if placing order modal is active
   if (cart.length === 0 && !showPlacingOrder) {
@@ -2119,42 +2168,31 @@ export default function Cart() {
         style={scrollContainerStyle}
       >
         {/* FIXED: Restaurant Location Missing Alert */}
-        {restaurantData && (!restaurantData.location || 
-          !restaurantData.location.coordinates || 
+        {restaurantData && (!restaurantData.location ||
+          !restaurantData.location.coordinates ||
           !Array.isArray(restaurantData.location.coordinates) ||
           restaurantData.location.coordinates.length < 2 ||
           restaurantData.location.coordinates[0] === 0 ||
           restaurantData.location.coordinates[1] === 0) && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="mx-4 mt-4 mb-4 rounded-lg px-4 py-3 bg-red-50 border border-red-200"
-          >
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-red-800 mb-1">
-                  Restaurant location is not set
-                </p>
-                <p className="text-xs text-red-700">
-                  This restaurant's location is not configured. Please contact support or try ordering from another restaurant.
-                </p>
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="mx-4 mt-4 mb-4 rounded-lg px-4 py-3 bg-red-50 border border-red-200"
+            >
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-red-800 mb-1">
+                    Restaurant location is not set
+                  </p>
+                  <p className="text-xs text-red-700">
+                    This restaurant's location is not configured. Please contact support or try ordering from another restaurant.
+                  </p>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Savings Banner */}
-        {savings > 0 && (
-          <div className="bg-blue-100 dark:bg-blue-900/20 px-4 md:px-6 py-2 md:py-3 flex-shrink-0">
-            <div className="max-w-7xl mx-auto">
-              <p className="text-sm md:text-base font-medium text-blue-800 dark:text-blue-200">
-                🎉 You saved ₹{savings} on this order
-              </p>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
 
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 px-4 md:px-6 py-4 md:py-6">
@@ -2252,6 +2290,60 @@ export default function Cart() {
                 </div>
               )}
 
+              {/* View all coupons field - Directly below Add a note for the restaurant (Image 2) */}
+              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3.5 md:py-4 rounded-lg md:rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 rounded-lg md:rounded-xl p-3 md:p-3.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center text-emerald-700 dark:text-emerald-300 flex-shrink-0">
+                        <Percent className="w-3.5 h-3.5 stroke-[2.5]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-mono font-bold text-xs md:text-sm text-emerald-800 dark:text-emerald-200 truncate">
+                          '{appliedCoupon.code}' applied
+                        </p>
+                        <p className="text-[11px] md:text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                          You save ₹{(appliedCoupon.isAdminPromo ? adminPromoDiscount : baseDiscount).toFixed(0)} on this order
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowCouponsPage(true)}
+                        className="text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:underline"
+                      >
+                        Change
+                      </button>
+                      <span className="text-gray-300 dark:text-gray-600">|</span>
+                      <button
+                        type="button"
+                        onClick={handleRemoveCoupon}
+                        className="text-xs font-semibold text-red-500 hover:text-red-700 dark:text-red-400"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowCouponsPage(true)}
+                    className="w-full flex items-center justify-between text-gray-800 dark:text-gray-200 hover:text-orange-600 dark:hover:text-orange-400 transition-colors group text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 rounded-full border border-gray-400 dark:border-gray-500 flex items-center justify-center text-gray-700 dark:text-gray-300 group-hover:border-orange-500 group-hover:text-orange-600 transition-colors">
+                        <Percent className="w-3 h-3 stroke-[2.5]" />
+                      </div>
+                      <span className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-100">
+                        View all coupons
+                      </span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 md:w-5 md:h-5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200 group-hover:translate-x-0.5 transition-all" />
+                  </button>
+                )}
+              </div>
+
               {/* Complete your meal section - Approved Addons */}
               {addons.length > 0 && (
                 <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
@@ -2330,185 +2422,7 @@ export default function Cart() {
                 </div>
               )}
 
-              {/* Coupon & Promo Code Section */}
-              <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-4 md:py-5 rounded-lg md:rounded-xl border border-gray-100 dark:border-gray-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Tag className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                    <h3 className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">
-                      Offers & Promo Codes
-                    </h3>
-                  </div>
-                </div>
 
-                {appliedCoupon ? (
-                  <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg md:rounded-xl p-3 md:p-4">
-                    <div className="flex items-center gap-2 md:gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-800/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                        <Tag className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-sm md:text-base text-emerald-700 dark:text-emerald-300">
-                            '{appliedCoupon.code}'
-                          </span>
-                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200">
-                            {appliedCoupon.isAdminPromo ? "Platform Promo" : "Coupon"} Applied
-                          </span>
-                        </div>
-                        <p className="text-xs md:text-sm text-emerald-600 dark:text-emerald-400 mt-0.5">
-                          You save ₹{(appliedCoupon.isAdminPromo ? adminPromoDiscount : baseDiscount).toFixed(0)} on this order
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleRemoveCoupon}
-                      className="text-red-500 hover:text-red-700 dark:text-red-400 text-xs md:text-sm font-semibold px-2 py-1"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Promo Code Input Box */}
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="text"
-                          placeholder="Enter Promo or Coupon Code"
-                          value={promoInput}
-                          onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleApplyCustomPromo();
-                            }
-                          }}
-                          className="w-full px-3 py-2 text-xs md:text-sm uppercase font-mono font-bold rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all placeholder:font-sans placeholder:font-normal placeholder:normal-case"
-                        />
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => handleApplyCustomPromo()}
-                        disabled={!promoInput.trim() || isValidatingPromo}
-                        className="bg-orange-600 hover:bg-orange-700 text-white text-xs md:text-sm font-semibold px-4 h-9 min-w-[75px]"
-                      >
-                        {isValidatingPromo ? "..." : "APPLY"}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Expanded Promo & Coupon List */}
-                {showCoupons && !appliedCoupon && (
-                  <div className="mt-3 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
-                    {/* Admin Platform Promo Codes */}
-                    {adminPromoCodes.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                          Platform Promo Codes
-                        </p>
-                        <div className="space-y-2">
-                          {adminPromoCodes.map((promo) => {
-                            const isEligible = subtotal >= (promo.minOrderAmount || 0);
-                            return (
-                              <div
-                                key={promo._id}
-                                className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
-                                  isEligible
-                                    ? "bg-slate-50 dark:bg-gray-800/40 border-slate-200 dark:border-gray-700"
-                                    : "bg-gray-50/60 dark:bg-gray-800/20 border-gray-200 dark:border-gray-800 opacity-60"
-                                }`}
-                              >
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`font-mono font-bold text-sm ${
-                                        isEligible
-                                          ? "text-slate-900 dark:text-white"
-                                          : "text-gray-500 dark:text-gray-400"
-                                      }`}
-                                    >
-                                      {promo.code}
-                                    </span>
-                                    <span
-                                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                        isEligible
-                                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                                          : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
-                                      }`}
-                                    >
-                                      {promo.discountType === "percentage"
-                                        ? `${promo.discountValue}% OFF`
-                                        : `₹${promo.discountValue} OFF`}
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 font-medium">
-                                    {promo.title}
-                                  </p>
-                                  {promo.minOrderAmount > 0 && (
-                                    <p className="text-[11px] text-gray-400 mt-0.5">
-                                      Minimum order amount: ₹{promo.minOrderAmount}
-                                    </p>
-                                  )}
-                                </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className={`h-8 text-xs font-semibold ${
-                                    isEligible
-                                      ? "border-orange-600 text-orange-600 hover:bg-orange-600 hover:text-white"
-                                      : "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:border-gray-700 dark:text-gray-500"
-                                  }`}
-                                  onClick={() => handleApplyCustomPromo(promo.code)}
-                                  disabled={!isEligible}
-                                >
-                                  {isEligible ? "APPLY" : `Min ₹${promo.minOrderAmount}`}
-                                </Button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Restaurant Dish Coupons */}
-                    {availableCoupons.length > 0 && (
-                      <div className="space-y-2 pt-2">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                          Restaurant Offers
-                        </p>
-                        <div className="space-y-2">
-                          {availableCoupons.map((coupon) => (
-                            <div
-                              key={coupon.code}
-                              className="flex items-center justify-between p-3 bg-slate-50 dark:bg-gray-800/40 border border-slate-200 dark:border-gray-700 rounded-lg"
-                            >
-                              <div>
-                                <p className="font-mono font-bold text-sm text-slate-900 dark:text-white">
-                                  {coupon.code}
-                                </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                  {coupon.description}
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 text-xs border-orange-600 text-orange-600 hover:bg-orange-600 hover:text-white"
-                                onClick={() => handleApplyCoupon(coupon)}
-                                disabled={subtotal < coupon.minOrder}
-                              >
-                                {subtotal < coupon.minOrder ? `Min ₹${coupon.minOrder}` : "APPLY"}
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
 
               {/* Delivery Time */}
               <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl">
@@ -2537,10 +2451,10 @@ export default function Cart() {
                         {["Live", "Home", "Office", "Other"].map((label) => {
                           const isLive = label === "Live"
                           const addressExists = isLive || addresses.some(addr => addr.label === label)
-                          const isSelected = isLive 
-                            ? !hasManuallySelectedDeliveryAddress 
+                          const isSelected = isLive
+                            ? !hasManuallySelectedDeliveryAddress
                             : hasManuallySelectedDeliveryAddress && String(checkoutDeliveryAddress?.label || "").toLowerCase() === String(label).toLowerCase()
-                          
+
                           return (
                             <button
                               key={label}
@@ -2550,15 +2464,14 @@ export default function Cart() {
                                 handleSelectAddressByLabel(label)
                               }}
                               disabled={!addressExists}
-                              className={`text-xs md:text-sm px-2 md:px-3 py-1 md:py-1.5 rounded-md border transition-all ${
-                                !addressExists
+                              className={`text-xs md:text-sm px-2 md:px-3 py-1 md:py-1.5 rounded-md border transition-all ${!addressExists
                                   ? 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50'
                                   : isSelected
-                                    ? isLive 
+                                    ? isLive
                                       ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
                                       : 'border-green-600 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
                                     : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 bg-white dark:bg-[#1a1a1a]'
-                              } ${isLive && !isSelected ? 'border-blue-200 text-blue-500' : ''}`}
+                                } ${isLive && !isSelected ? 'border-blue-200 text-blue-500' : ''}`}
                             >
                               {isLive ? "📍 Live" : label}
                             </button>
@@ -2768,9 +2681,8 @@ export default function Cart() {
 
       {/* Bottom Sticky - Place Order (hotel QR orders use sticky, others use fixed) */}
       <div
-        className={`bg-white dark:bg-[#1a1a1a] border-t dark:border-gray-800 shadow-lg z-30 flex-shrink-0 ${
-          isHotelOrder ? "sticky bottom-0" : "fixed bottom-0 left-0 right-0"
-        }`}
+        className={`bg-white dark:bg-[#1a1a1a] border-t dark:border-gray-800 shadow-lg z-30 flex-shrink-0 ${isHotelOrder ? "sticky bottom-0" : "fixed bottom-0 left-0 right-0"
+          }`}
       >
         <div className="max-w-7xl mx-auto">
           <div className="px-4 md:px-6 py-3 md:py-4">
@@ -2786,22 +2698,20 @@ export default function Cart() {
                           <button
                             type="button"
                             onClick={() => setSelectedPaymentMethod("razorpay")}
-                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
-                              selectedPaymentMethod === "razorpay"
+                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${selectedPaymentMethod === "razorpay"
                                 ? "bg-orange-600 border-orange-600 text-white"
                                 : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
-                            }`}
+                              }`}
                           >
                             💰 Online Payment
                           </button>
                           <button
                             type="button"
                             onClick={() => setSelectedPaymentMethod("pay_at_hotel")}
-                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
-                              selectedPaymentMethod === "pay_at_hotel"
+                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${selectedPaymentMethod === "pay_at_hotel"
                                 ? "bg-orange-600 border-orange-600 text-white"
                                 : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
-                            }`}
+                              }`}
                           >
                             💳 Pay at Hotel
                           </button>
@@ -2811,11 +2721,10 @@ export default function Cart() {
                           <button
                             type="button"
                             onClick={() => setSelectedPaymentMethod("razorpay")}
-                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
-                              selectedPaymentMethod === "razorpay"
+                            className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${selectedPaymentMethod === "razorpay"
                                 ? "bg-orange-600 border-orange-600 text-white"
                                 : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
-                            }`}
+                              }`}
                           >
                             💰 Online Payment
                           </button>
@@ -2827,22 +2736,20 @@ export default function Cart() {
                         <button
                           type="button"
                           onClick={() => setSelectedPaymentMethod("razorpay")}
-                          className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
-                            selectedPaymentMethod === "razorpay"
+                          className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${selectedPaymentMethod === "razorpay"
                               ? "bg-orange-600 border-orange-600 text-white"
                               : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
-                          }`}
+                            }`}
                         >
                           💰 Online
                         </button>
                         <button
                           type="button"
                           onClick={() => setSelectedPaymentMethod("wallet")}
-                          className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${
-                            selectedPaymentMethod === "wallet"
+                          className={`w-full px-3 py-3 rounded-lg border text-sm font-semibold transition-colors ${selectedPaymentMethod === "wallet"
                               ? "bg-orange-600 border-orange-600 text-white"
                               : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:border-orange-400"
-                          }`}
+                            }`}
                         >
                           👛 Wallet{isLoadingWallet ? " (Loading...)" : ` (₹${walletBalance || 0})`}
                         </button>
@@ -2876,7 +2783,7 @@ export default function Cart() {
                           <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded uppercase">Missing</span>
                           Please enter room number
                         </p>
-                      )}   
+                      )}
                       {isHotelOrder && hotelName && (
                         <p className="mt-1 text-xs font-medium text-orange-600 dark:text-orange-400">
                           📍 Ordering from: {hotelName}
@@ -3083,6 +2990,324 @@ export default function Cart() {
           </div>
         </div>
       )}
+
+      {/* Full-Screen Coupons Page (Matching Image 3) */}
+      <AnimatePresence>
+        {showCouponsPage && (
+          <motion.div
+            initial={{ opacity: 0, x: "100%" }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 280 }}
+            className="fixed inset-0 z-[100] bg-[#f8f9fa] dark:bg-[#121212] overflow-y-auto"
+          >
+            {/* Header */}
+            <div className="sticky top-0 z-30 bg-white dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-gray-800 shadow-sm">
+              <div className="max-w-2xl mx-auto px-4 py-3.5 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={closeCouponsModal}
+                  className="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors"
+                  aria-label="Back to Cart"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Coupons
+                </h1>
+              </div>
+            </div>
+
+            <div className="max-w-2xl mx-auto px-4 py-4 space-y-5 pb-16">
+              {/* Promo Code Input Box - Matching Image 3 */}
+              <div className="bg-white dark:bg-[#1a1a1a] rounded-xl p-2.5 sm:p-3 border border-gray-200 dark:border-gray-800 shadow-sm flex items-center gap-2">
+                <input
+                  type="text"
+                  value={promoInput}
+                  onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleApplyCustomPromo();
+                    }
+                  }}
+                  placeholder="Have a coupon code? Type here"
+                  className="flex-1 bg-transparent px-2 sm:px-3 py-1.5 text-sm md:text-base font-medium text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none uppercase font-mono"
+                />
+                <button
+                  type="button"
+                  disabled={!promoInput.trim() || isValidatingPromo}
+                  onClick={() => handleApplyCustomPromo()}
+                  className={`px-4 sm:px-5 py-2 rounded-lg text-xs md:text-sm font-bold tracking-wider uppercase transition-all ${
+                    promoInput.trim() && !isValidatingPromo
+                      ? "bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                  }`}
+                >
+                  {isValidatingPromo ? "..." : "APPLY"}
+                </button>
+              </div>
+
+
+
+              {/* Section: Restaurant Coupons */}
+              <div className="space-y-3">
+                <h2 className="text-base font-bold text-gray-900 dark:text-white px-1">
+                  Restaurant coupons
+                </h2>
+
+                {loadingCoupons ? (
+                  <div className="space-y-3">
+                    {[1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="bg-white dark:bg-[#1a1a1a] rounded-xl p-4 border border-gray-100 dark:border-gray-800 animate-pulse space-y-2.5"
+                      >
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3" />
+                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-2/3" />
+                        <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-24 mt-2" />
+                      </div>
+                    ))}
+                  </div>
+                ) : availableCoupons.length > 0 ? (
+                  <div className="space-y-3">
+                    {availableCoupons.map((coupon) => {
+                      const minOrder = Number(coupon.minOrder) || 0;
+                      const isEligible = subtotal >= minOrder;
+                      const isApplied = appliedCoupon?.code?.toUpperCase() === coupon.code?.toUpperCase();
+                      const amountNeeded = Math.ceil(minOrder - subtotal);
+
+                      return (
+                        <div
+                          key={coupon.code}
+                          onClick={() => {
+                            if (isEligible) {
+                              if (isApplied) {
+                                handleRemoveCoupon();
+                              } else {
+                                handleApplyCoupon(coupon);
+                              }
+                            } else {
+                              toast.error(`Add eligible items worth ₹${amountNeeded.toFixed(0)} more to unlock this coupon`);
+                            }
+                          }}
+                          className={`bg-white dark:bg-[#1a1a1a] rounded-xl p-4 sm:p-5 border transition-all ${
+                            isApplied
+                              ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-md cursor-pointer"
+                              : isEligible
+                              ? "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 cursor-pointer shadow-sm hover:shadow"
+                              : "border-gray-200/70 dark:border-gray-800 opacity-80 cursor-not-allowed bg-gray-50/50 dark:bg-[#161616]"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              {/* Title with percent icon & (i) */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                    isEligible
+                                      ? "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"
+                                      : "bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                                  }`}
+                                >
+                                  <Percent className="w-3.5 h-3.5 stroke-[2.5]" />
+                                </div>
+                                <span
+                                  className={`text-sm sm:text-base font-bold ${
+                                    isEligible
+                                      ? "text-gray-900 dark:text-white"
+                                      : "text-gray-600 dark:text-gray-400"
+                                  }`}
+                                >
+                                  {coupon.discountPercentage
+                                    ? `${coupon.discountPercentage}% OFF`
+                                    : `Flat ₹${coupon.discount} OFF`}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast.info(
+                                      `Terms: ${coupon.description || `Valid on orders above ₹${minOrder}`}`
+                                    );
+                                  }}
+                                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                >
+                                  <Info className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              {/* Eligibility text */}
+                              {isEligible ? (
+                                <p className="text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                  Save ₹{coupon.discount || coupon.discountedPrice || "0"} with this code
+                                </p>
+                              ) : (
+                                <p className="text-xs sm:text-sm font-medium text-orange-600 dark:text-orange-400">
+                                  Add eligible items worth ₹{amountNeeded.toFixed(2)} more to unlock
+                                </p>
+                              )}
+
+                              {/* Code Badge */}
+                              <div className="pt-1">
+                                <span className="inline-block font-mono font-bold text-xs uppercase px-2.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 text-gray-800 dark:text-gray-200">
+                                  {coupon.code}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Right radio button / check / applied status */}
+                            <div className="flex-shrink-0 pt-0.5">
+                              {isApplied ? (
+                                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  <span>APPLIED</span>
+                                </div>
+                              ) : isEligible ? (
+                                <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600 hover:border-orange-500 transition-colors flex items-center justify-center">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-transparent" />
+                                </div>
+                              ) : (
+                                <div className="w-6 h-6 rounded-full border-2 border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-850" />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="bg-white dark:bg-[#1a1a1a] rounded-xl p-4 text-center text-xs md:text-sm text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-gray-800">
+                    No specific restaurant dish coupons right now. Check payment coupons below!
+                  </div>
+                )}
+              </div>
+
+              {/* Section: Payment & Platform Coupons */}
+              <div className="space-y-3 pt-2">
+                <h2 className="text-base font-bold text-gray-900 dark:text-white px-1">
+                  Payment coupons
+                </h2>
+
+                {adminPromoCodes.length > 0 ? (
+                  <div className="space-y-3">
+                    {adminPromoCodes.map((promo) => {
+                      const minOrder = Number(promo.minOrderAmount) || 0;
+                      const isEligible = subtotal >= minOrder;
+                      const isApplied = appliedCoupon?.code?.toUpperCase() === promo.code?.toUpperCase();
+                      const amountNeeded = Math.ceil(minOrder - subtotal);
+
+                      return (
+                        <div
+                          key={promo._id || promo.code}
+                          onClick={() => {
+                            if (isEligible) {
+                              if (isApplied) {
+                                handleRemoveCoupon();
+                              } else {
+                                handleApplyCustomPromo(promo.code);
+                              }
+                            } else {
+                              toast.error(`Add eligible items worth ₹${amountNeeded.toFixed(0)} more to unlock this coupon`);
+                            }
+                          }}
+                          className={`bg-white dark:bg-[#1a1a1a] rounded-xl p-4 sm:p-5 border transition-all ${
+                            isApplied
+                              ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-md cursor-pointer"
+                              : isEligible
+                              ? "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 cursor-pointer shadow-sm hover:shadow"
+                              : "border-gray-200/70 dark:border-gray-800 opacity-80 cursor-not-allowed bg-gray-50/50 dark:bg-[#161616]"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              {/* Title with percent icon & (i) */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                    isEligible
+                                      ? "bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400"
+                                      : "bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                                  }`}
+                                >
+                                  <Percent className="w-3.5 h-3.5 stroke-[2.5]" />
+                                </div>
+                                <span
+                                  className={`text-sm sm:text-base font-bold ${
+                                    isEligible
+                                      ? "text-gray-900 dark:text-white"
+                                      : "text-gray-600 dark:text-gray-400"
+                                  }`}
+                                >
+                                  {promo.discountType === "percentage"
+                                    ? `${promo.discountValue}% OFF`
+                                    : `Flat ₹${promo.discountValue} OFF`}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast.info(
+                                      `Terms: ${promo.title || "Platform Offer"}${
+                                        minOrder > 0 ? ` • Min order ₹${minOrder}` : ""
+                                      }`
+                                    );
+                                  }}
+                                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                >
+                                  <Info className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              {/* Eligibility text */}
+                              {isEligible ? (
+                                <p className="text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                  {promo.title ? `${promo.title} • Valid for this order` : `Get discount with this code`}
+                                </p>
+                              ) : (
+                                <p className="text-xs sm:text-sm font-medium text-orange-600 dark:text-orange-400">
+                                  Add eligible items worth ₹{amountNeeded.toFixed(2)} more to unlock
+                                </p>
+                              )}
+
+                              {/* Code Badge */}
+                              <div className="pt-1">
+                                <span className="inline-block font-mono font-bold text-xs uppercase px-2.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 text-gray-800 dark:text-gray-200">
+                                  {promo.code}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Right radio button / check / applied status */}
+                            <div className="flex-shrink-0 pt-0.5">
+                              {isApplied ? (
+                                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  <span>APPLIED</span>
+                                </div>
+                              ) : isEligible ? (
+                                <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600 hover:border-orange-500 transition-colors flex items-center justify-center">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-transparent" />
+                                </div>
+                              ) : (
+                                <div className="w-6 h-6 rounded-full border-2 border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-850" />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="bg-white dark:bg-[#1a1a1a] rounded-xl p-4 text-center text-xs md:text-sm text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-gray-800">
+                    No payment coupons available right now.
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Animation Styles */}
       <style>{`

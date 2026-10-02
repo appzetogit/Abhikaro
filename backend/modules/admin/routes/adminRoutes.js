@@ -345,6 +345,7 @@ import {
   createPromoCode,
   updatePromoCode,
   togglePromoCodeStatus,
+  togglePromoCodeHide,
   deletePromoCode,
 } from "../controllers/promoCodeController.js";
 import { authenticateAdmin, authorizeAdmin } from "../middleware/adminAuth.js";
@@ -1083,6 +1084,7 @@ router.get("/promo-codes/:id", requirePermissions("page.promo_codes"), getPromoC
 router.post("/promo-codes", requirePermissions("page.promo_codes"), createPromoCode);
 router.put("/promo-codes/:id", requirePermissions("page.promo_codes"), updatePromoCode);
 router.patch("/promo-codes/:id/status", requirePermissions("page.promo_codes"), togglePromoCodeStatus);
+router.patch("/promo-codes/:id/hide", requirePermissions("page.promo_codes"), togglePromoCodeHide);
 router.delete("/promo-codes/:id", requirePermissions("page.promo_codes"), deletePromoCode);
 
 export default router;

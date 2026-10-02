@@ -17,6 +17,8 @@ import {
   Loader2,
   Copy,
   Check,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { adminAPI } from "@/lib/api";
 import { toast } from "sonner";
@@ -69,6 +71,7 @@ export default function AdminPromoCodes() {
     usageLimitPerUser: "1",
     totalUsageLimit: "0",
     isActive: true,
+    hideFromUsers: false,
   });
 
   const fetchPromoCodes = async () => {
@@ -120,6 +123,7 @@ export default function AdminPromoCodes() {
       usageLimitPerUser: "1",
       totalUsageLimit: "0",
       isActive: true,
+      hideFromUsers: false,
     });
     setIsDialogOpen(true);
   };
@@ -139,6 +143,7 @@ export default function AdminPromoCodes() {
       usageLimitPerUser: String(promo.usageLimitPerUser ?? 1),
       totalUsageLimit: String(promo.totalUsageLimit ?? 0),
       isActive: promo.isActive !== false,
+      hideFromUsers: Boolean(promo.hideFromUsers),
     });
     setIsDialogOpen(true);
   };
@@ -200,6 +205,7 @@ export default function AdminPromoCodes() {
         usageLimitPerUser: Number(formData.usageLimitPerUser || 0),
         totalUsageLimit: Number(formData.totalUsageLimit || 0),
         isActive: formData.isActive,
+        hideFromUsers: Boolean(formData.hideFromUsers),
       };
 
       if (editingPromo) {
@@ -228,6 +234,22 @@ export default function AdminPromoCodes() {
       );
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update status");
+    }
+  };
+
+  const handleToggleHide = async (id, currentHide) => {
+    try {
+      await adminAPI.togglePromoCodeHide(id);
+      toast.success(
+        !currentHide
+          ? "Promo code is now hidden from users list"
+          : "Promo code is now visible in users list"
+      );
+      setPromoCodes((prev) =>
+        prev.map((item) => (item._id === id ? { ...item, hideFromUsers: !currentHide } : item))
+      );
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to update visibility");
     }
   };
 
@@ -403,7 +425,7 @@ export default function AdminPromoCodes() {
                         <td className="px-6 py-4">
                           <div className="flex items-start gap-3">
                             <div className="mt-0.5">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="px-2.5 py-1 bg-orange-50 text-orange-700 font-mono font-bold text-xs rounded border border-orange-200 flex items-center gap-1">
                                   {promo.code}
                                   <button
@@ -418,6 +440,15 @@ export default function AdminPromoCodes() {
                                     )}
                                   </button>
                                 </span>
+                                {promo.hideFromUsers && (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200"
+                                    title="Hidden from user list (can be applied manually via coupon input)"
+                                  >
+                                    <EyeOff className="w-2.5 h-2.5" />
+                                    Hidden from Users
+                                  </span>
+                                )}
                               </div>
                               <p className="font-semibold text-slate-900 mt-1">{promo.title}</p>
                               {promo.description && (
@@ -538,7 +569,26 @@ export default function AdminPromoCodes() {
 
                         {/* Actions */}
                         <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleToggleHide(promo._id, promo.hideFromUsers)}
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                promo.hideFromUsers
+                                  ? "text-purple-600 hover:bg-purple-100/70 bg-purple-50"
+                                  : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                              }`}
+                              title={
+                                promo.hideFromUsers
+                                  ? "Hidden from users (Click to show in user list)"
+                                  : "Visible to users (Click to hide from user list)"
+                              }
+                            >
+                              {promo.hideFromUsers ? (
+                                <EyeOff className="w-4 h-4" />
+                              ) : (
+                                <Eye className="w-4 h-4" />
+                              )}
+                            </button>
                             <button
                               onClick={() => handleOpenEditModal(promo)}
                               className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -786,12 +836,31 @@ export default function AdminPromoCodes() {
               <div>
                 <p className="text-sm font-semibold text-slate-900">Enable Promo Code</p>
                 <p className="text-xs text-slate-500">
-                  Allow users to see and redeem this promo code in their cart
+                  Allow this promo code to be activated on the platform
                 </p>
               </div>
               <Switch
                 checked={formData.isActive}
                 onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+              />
+            </div>
+
+            {/* User Hide Toggle Switch */}
+            <div className="flex items-center justify-between p-3.5 bg-gradient-to-r from-purple-50/50 to-slate-50 rounded-xl border border-purple-200/80">
+              <div className="space-y-0.5 pr-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded bg-purple-100 text-purple-700">
+                    <EyeOff className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900">User Hide (Hide from List)</p>
+                </div>
+                <p className="text-xs text-slate-500 pl-6">
+                  Coupon user coupons list mein show nahi hoga, lekin user &apos;Have a coupon code?&apos; mein enter karke apply kar payega.
+                </p>
+              </div>
+              <Switch
+                checked={formData.hideFromUsers}
+                onCheckedChange={(checked) => setFormData({ ...formData, hideFromUsers: checked })}
               />
             </div>
 
