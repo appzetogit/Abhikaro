@@ -61,7 +61,9 @@ export function useSharedLocation() {
       isInService: false,
       isOutOfService: false,
       zoneLoading: false,
-      refreshZone: () => {}
+      refreshZone: () => {},
+      detectZone: async () => null,
+      setZoneDirectly: () => {}
     }
   }
   

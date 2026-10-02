@@ -1149,9 +1149,9 @@ export default function Home() {
       if (location?.latitude && location?.longitude) {
         params.latitude = location.latitude
         params.longitude = location.longitude
-        // Default maxDistance is 5km (can be overridden by filters)
+        // Default maxDistance is 25km to cover full delivery zones (can be overridden by explicit distance filters)
         if (!params.maxDistance) {
-          params.maxDistance = 5
+          params.maxDistance = 25
         }
       }
       // Note: We show all restaurants regardless of zone, but apply grayscale styling if user is out of service
@@ -1406,7 +1406,7 @@ export default function Home() {
       if (controller.signal.aborted) return
       setLoadingRestaurants(false)
     }
-  }, [zoneId])
+  }, [zoneId, location?.latitude, location?.longitude])
 
   // Sync activeFilters, sortBy, and selectedCuisine to appliedFilters
   useEffect(() => {
@@ -1417,14 +1417,14 @@ export default function Home() {
     })
   }, [activeFilters, sortBy, selectedCuisine])
 
-  // Fetch restaurants when appliedFilters change
+  // Fetch restaurants when appliedFilters or zone/location change
   useEffect(() => {
     // In Android WebView "in-app refresh", zone can briefly be null while re-detecting.
     // Avoid firing a fetch that would clear the list during that window; refetch once ready.
     if (zoneLoading || loading) return
     if (!zoneId) return
     fetchRestaurants(appliedFilters)
-  }, [appliedFilters, fetchRestaurants, zoneId, zoneLoading, loading])
+  }, [appliedFilters, fetchRestaurants, zoneId, zoneLoading, loading, location?.latitude, location?.longitude])
 
   // Android WebView "in-app refresh" / BFCache restore: UserLayout emits `app:refresh` on foreground.
   // Refetch hero, landing, and categories (silent) so banners/icons do not stay blank; then restaurants.

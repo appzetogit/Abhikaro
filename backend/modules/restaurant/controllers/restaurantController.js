@@ -103,7 +103,7 @@ export const getRestaurants = async (req, res) => {
       cuisine,
       minRating,
       maxDeliveryTime,
-      maxDistance = 5, // Default 5km radius (replaces Google Places API radius)
+      maxDistance = 25, // Default 25km radius (covers full delivery zones)
       maxPrice,
       hasOffers,
       zoneId, // User's zone ID (optional)

@@ -413,11 +413,16 @@ export const getUserAddresses = asyncHandler(async (req, res) => {
       return errorResponse(res, 404, "User not found");
     }
 
-    // Add _id to each address for frontend compatibility
-    const addresses = (user.addresses || []).map((addr) => ({
-      ...addr,
-      id: addr._id ? addr._id.toString() : null,
-    }));
+    // Add _id, latitude, and longitude to each address for frontend compatibility
+    const addresses = (user.addresses || []).map((addr) => {
+      const coords = addr.location?.coordinates || [];
+      return {
+        ...addr,
+        id: addr._id ? addr._id.toString() : null,
+        latitude: coords[1] ?? null,
+        longitude: coords[0] ?? null,
+      };
+    });
 
     const responseData = {
       addresses,
@@ -498,11 +503,14 @@ export const addUserAddress = asyncHandler(async (req, res) => {
     // Invalidate user addresses cache
     await invalidateCachePattern(`userAddresses:${req.user._id.toString()}`);
 
-    // Get the added address with _id
+    // Get the added address with _id and explicit coordinates
     const addedAddress = user.addresses[user.addresses.length - 1];
+    const addedCoords = addedAddress.location?.coordinates || [];
     const addressResponse = {
       ...addedAddress.toObject(),
       id: addedAddress._id.toString(),
+      latitude: addedCoords[1] ?? null,
+      longitude: addedCoords[0] ?? null,
     };
 
     logger.info(`Address added for user: ${user._id}`, {
@@ -592,9 +600,12 @@ export const updateUserAddress = asyncHandler(async (req, res) => {
     // Invalidate user addresses cache
     await invalidateCachePattern(`userAddresses:${req.user._id.toString()}`);
 
+    const updatedCoords = address.location?.coordinates || [];
     const addressResponse = {
       ...address.toObject(),
       id: address._id.toString(),
+      latitude: updatedCoords[1] ?? null,
+      longitude: updatedCoords[0] ?? null,
     };
 
     logger.info(`Address updated for user: ${user._id}`, {

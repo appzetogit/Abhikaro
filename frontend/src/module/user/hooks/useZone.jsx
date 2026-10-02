@@ -53,6 +53,7 @@ export function useZone(location) {
     try {
       isRequestInProgress.current = true
       setLoading(true)
+      setZoneStatus('loading')
       setError(null)
 
       const response = await zoneAPI.detectZone(lat, lng)
@@ -76,13 +77,14 @@ export function useZone(location) {
           localStorage.removeItem('userZoneId')
           localStorage.removeItem('userZone')
         }
+        return data
       } else {
         throw new Error(response.data?.message || 'Failed to detect zone')
       }
     } catch (err) {
       if (isAbortLikeError(err)) {
         // Ignore abort/cancel noise from transient polling/navigation races.
-        return
+        return null
       }
       console.error('Error detecting zone:', err)
       const serverMessage = err.response?.data?.message
@@ -101,9 +103,27 @@ export function useZone(location) {
         setZone(cachedZone ? JSON.parse(cachedZone) : null)
         setZoneStatus('IN_SERVICE')
       }
+      return null
     } finally {
       isRequestInProgress.current = false
       setLoading(false)
+    }
+  }, [])
+
+  // Direct helper to set zone state (useful when address selection resolves zone upfront)
+  const setZoneDirectly = useCallback((data) => {
+    if (data?.status === 'IN_SERVICE' && data?.zoneId) {
+      setZoneId(data.zoneId)
+      setZone(data.zone || null)
+      setZoneStatus('IN_SERVICE')
+      localStorage.setItem('userZoneId', data.zoneId)
+      if (data.zone) localStorage.setItem('userZone', JSON.stringify(data.zone))
+    } else {
+      setZoneId(null)
+      setZone(null)
+      setZoneStatus('OUT_OF_SERVICE')
+      localStorage.removeItem('userZoneId')
+      localStorage.removeItem('userZone')
     }
   }, [])
 
@@ -151,7 +171,7 @@ export function useZone(location) {
     const lng = location?.longitude
     const hasCoords = lat != null && lng != null && !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng))
     if (hasCoords) {
-      detectZone(lat, lng)
+      return detectZone(lat, lng)
     }
   }, [location?.latitude, location?.longitude, detectZone])
 
@@ -163,6 +183,8 @@ export function useZone(location) {
     error,
     isInService: zoneStatus === 'IN_SERVICE',
     isOutOfService: zoneStatus === 'OUT_OF_SERVICE',
-    refreshZone
+    refreshZone,
+    detectZone,
+    setZoneDirectly
   }
 }

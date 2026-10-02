@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useProfile } from "../context/ProfileContext"
 import { toast } from "sonner"
-import { locationAPI, userAPI } from "@/lib/api"
+import { locationAPI, userAPI, zoneAPI } from "@/lib/api"
 import { Loader } from '@googlemaps/js-api-loader'
 import { useSharedLocation } from "@/lib/context/LocationContext"
 
@@ -44,7 +44,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   const navigate = useNavigate()
   const inputRef = useRef(null)
   const [searchValue, setSearchValue] = useState("")
-  const { location, loading, requestLocation, setManualLocation } = useSharedLocation()
+  const { location, loading, requestLocation, setManualLocation, setZoneDirectly } = useSharedLocation()
   const { addresses = [], addAddress, updateAddress, userProfile, isAuthenticated } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [editingAddressId, setEditingAddressId] = useState(null)
@@ -1105,6 +1105,29 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         } catch {}
       }
     } catch {}
+
+    // Detect zone immediately for this location so Home page has valid zone ready
+    try {
+      const zoneRes = await zoneAPI.detectZone(lat, lng)
+      if (zoneRes?.data?.success && zoneRes?.data?.data) {
+        const zoneData = zoneRes.data.data
+        if (zoneData.status === 'IN_SERVICE' && zoneData.zoneId) {
+          localStorage.setItem('userZoneId', zoneData.zoneId)
+          localStorage.setItem('userZone', JSON.stringify(zoneData.zone))
+          if (typeof setZoneDirectly === 'function') {
+            setZoneDirectly(zoneData)
+          }
+        } else {
+          localStorage.removeItem('userZoneId')
+          localStorage.removeItem('userZone')
+          if (typeof setZoneDirectly === 'function') {
+            setZoneDirectly(null)
+          }
+        }
+      }
+    } catch (zoneErr) {
+      console.warn("Direct zone detection failed in handleSelectPlace:", zoneErr)
+    }
 
     await handleMapMoveEnd(lat, lng)
     toast.success("Location selected")
@@ -2176,40 +2199,110 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
 
   const handleSelectSavedAddress = async (address) => {
     try {
-      // Get coordinates from address location
+      // Get coordinates from address location with all fallbacks
       const coordinates = address.location?.coordinates || []
-      const longitude = coordinates[0]
-      const latitude = coordinates[1]
+      const rawLng = coordinates[0] ?? address.longitude ?? address.lng
+      const rawLat = coordinates[1] ?? address.latitude ?? address.lat
+      let longitude = Number(rawLng)
+      let latitude = Number(rawLat)
 
-      if (latitude && longitude) {
-        // Update location in backend
+      // If coordinates are invalid or [0, 0], attempt geocoding fallback from address text
+      if ((!Number.isFinite(latitude) || !Number.isFinite(longitude) || (latitude === 0 && longitude === 0)) && window.google?.maps?.Geocoder) {
+        const fullAddress = [
+          address.additionalDetails,
+          address.street,
+          address.city,
+          address.state,
+          address.zipCode
+        ].filter(Boolean).join(", ")
+        
+        if (fullAddress) {
+          try {
+            const geocoder = new window.google.maps.Geocoder()
+            const geoResult = await new Promise((resolve) => {
+              geocoder.geocode({ address: fullAddress }, (results, status) => {
+                if (status === "OK" && results?.[0]?.geometry?.location) {
+                  resolve({
+                    lat: results[0].geometry.location.lat(),
+                    lng: results[0].geometry.location.lng()
+                  })
+                } else {
+                  resolve(null)
+                }
+              })
+            })
+            if (geoResult) {
+              latitude = geoResult.lat
+              longitude = geoResult.lng
+            }
+          } catch (geoErr) {
+            console.warn("Geocoding saved address fallback failed:", geoErr)
+          }
+        }
+      }
+
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || (latitude === 0 && longitude === 0)) {
+        toast.error("Address coordinates not found. Please edit address on map.")
+        handleEditAddress(address)
+        return
+      }
+
+      // Update location in backend
+      try {
         await userAPI.updateLocation({
           latitude,
           longitude,
-          address: `${address.street}, ${address.city}`,
-          city: address.city,
-          state: address.state,
+          address: `${address.street || ""}, ${address.city || ""}`.trim().replace(/^,\s*/, ""),
+          city: address.city || "",
+          state: address.state || "",
           area: address.additionalDetails || "",
-          formattedAddress: `${address.street}, ${address.city}, ${address.state}`
+          formattedAddress: `${address.street || ""}, ${address.city || ""}, ${address.state || ""}`.trim().replace(/^,\s*/, "")
         })
+      } catch (e) {
+        // Backend update is best-effort
       }
 
       // Update the location in localStorage with this address
       const locationData = {
-        city: address.city,
-        state: address.state,
-        address: `${address.street}, ${address.city}`,
+        city: address.city || "",
+        state: address.state || "",
+        address: `${address.street || ""}, ${address.city || ""}`.trim().replace(/^,\s*/, ""),
         area: address.additionalDetails || "",
-        zipCode: address.zipCode,
+        zipCode: address.zipCode || "",
         latitude,
         longitude,
-        formattedAddress: `${address.street}, ${address.city}, ${address.state}`
+        formattedAddress: `${address.street || ""}, ${address.city || ""}, ${address.state || ""}`.trim().replace(/^,\s*/, "")
       }
       
+      // 1. Update shared location
       if (typeof setManualLocation === "function") {
         await setManualLocation(locationData, { updateDB: true, pauseWatchMs: 2500 })
       } else {
         localStorage.setItem("userLocation", JSON.stringify(locationData))
+      }
+
+      // 2. CRITICAL: Detect zone for the selected address immediately BEFORE navigating!
+      // This ensures zoneId and zoneStatus are set so Home.jsx doesn't render Out-of-zone or 0 restaurants.
+      try {
+        const zoneRes = await zoneAPI.detectZone(latitude, longitude)
+        if (zoneRes?.data?.success && zoneRes?.data?.data) {
+          const zoneData = zoneRes.data.data
+          if (zoneData.status === 'IN_SERVICE' && zoneData.zoneId) {
+            localStorage.setItem('userZoneId', zoneData.zoneId)
+            localStorage.setItem('userZone', JSON.stringify(zoneData.zone))
+            if (typeof setZoneDirectly === 'function') {
+              setZoneDirectly(zoneData)
+            }
+          } else {
+            localStorage.removeItem('userZoneId')
+            localStorage.removeItem('userZone')
+            if (typeof setZoneDirectly === 'function') {
+              setZoneDirectly(null)
+            }
+          }
+        }
+      } catch (zoneErr) {
+        console.warn("Direct zone detection failed during saved address selection:", zoneErr)
       }
 
       // Update map position to show selected address
@@ -2226,30 +2319,17 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         phone: address.phone || "",
       })
 
-      // Update Google Maps to show selected address
+      // Update Google Maps if available
       if (googleMapRef.current && window.google && window.google.maps) {
         try {
           googleMapRef.current.panTo({ lat: latitude, lng: longitude })
           googleMapRef.current.setZoom(17)
-
-          /* Green marker position update removed - center-aligned pin used instead */
-
-          // Fetch and update address details
-          setTimeout(async () => {
-            await handleMapMoveEnd(latitude, longitude)
-            toast.success("Location updated!", { id: "saved-address" })
-          }, 500)
         } catch (mapError) {
-          console.error("Error updating map:", mapError)
-          toast.success("Location updated!", { id: "saved-address" })
+          // Non-critical
         }
-      } else {
-        // Map not initialized yet, just fetch address
-        setTimeout(async () => {
-          await handleMapMoveEnd(latitude, longitude)
-          toast.success("Location updated!", { id: "saved-address" })
-        }, 300)
       }
+
+      toast.success("Location updated!", { id: "saved-address" })
 
       // Close overlay and redirect to home page so user immediately sees updated location
       onClose()
