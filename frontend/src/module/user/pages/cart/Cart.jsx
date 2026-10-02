@@ -3003,7 +3003,7 @@ export default function Cart() {
           >
             {/* Header */}
             <div className="sticky top-0 z-30 bg-white dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-gray-800 shadow-sm">
-              <div className="max-w-2xl mx-auto px-4 py-3.5 flex items-center gap-3">
+              <div className="max-w-2xl mx-auto px-4 pt-10 pb-3 md:pt-8 md:pb-3.5 flex items-center gap-3">
                 <button
                   type="button"
                   onClick={closeCouponsModal}
