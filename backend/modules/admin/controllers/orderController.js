@@ -48,7 +48,7 @@ export const getOrders = asyncHandler(async (req, res) => {
     const { 
       status, 
       page = 1, 
-      limit = 10000,
+      limit = 20,
       search,
       fromDate,
       toDate,
@@ -63,9 +63,13 @@ export const getOrders = asyncHandler(async (req, res) => {
 
     // Build query
     const query = {
-      orderId: { $not: /^ORD-TEST/i },
       isDeleted: { $ne: true }
     };
+
+    // Exclude test orders unless explicitly searched
+    if (!search || !/^ORD-TEST/i.test(String(search).trim())) {
+      query.orderId = { $not: /^ORD-TEST/i };
+    }
 
     // Delivery partner filter
     // Supports ObjectId and legacy string values
@@ -210,10 +214,12 @@ export const getOrders = asyncHandler(async (req, res) => {
       query.userId = new mongoose.Types.ObjectId(userId);
     }
 
-    // Search filter (orderId, customer name, customer phone) - optimized with batch query
-    if (search) {
-      query.$or = [
-        { orderId: { $regex: search, $options: 'i' } }
+    // Search filter (orderId, customer name, customer phone, restaurant name) - optimized with batch query
+    if (search && String(search).trim()) {
+      const trimmedSearch = String(search).trim();
+      const searchOrConditions = [
+        { orderId: { $regex: trimmedSearch, $options: 'i' } },
+        { restaurantName: { $regex: trimmedSearch, $options: 'i' } }
       ];
 
       // Batch all user searches into a single query for better performance
@@ -222,16 +228,18 @@ export const getOrders = asyncHandler(async (req, res) => {
       
       // If search looks like a phone number, search in customer data
       const phoneRegex = /[\d\s\+\-()]+/;
-      if (phoneRegex.test(search)) {
-        const cleanSearch = search.replace(/\D/g, '');
-        userSearchConditions.push({ phone: { $regex: cleanSearch, $options: 'i' } });
-        if (mongoose.Types.ObjectId.isValid(search)) {
-          userSearchConditions.push({ _id: new mongoose.Types.ObjectId(search) });
+      if (phoneRegex.test(trimmedSearch)) {
+        const cleanSearch = trimmedSearch.replace(/\D/g, '');
+        if (cleanSearch) {
+          userSearchConditions.push({ phone: { $regex: cleanSearch, $options: 'i' } });
+        }
+        if (mongoose.Types.ObjectId.isValid(trimmedSearch)) {
+          userSearchConditions.push({ _id: new mongoose.Types.ObjectId(trimmedSearch) });
         }
       }
 
       // Also search by customer name
-      userSearchConditions.push({ name: { $regex: search, $options: 'i' } });
+      userSearchConditions.push({ name: { $regex: trimmedSearch, $options: 'i' } });
 
       // Execute single batch query instead of multiple queries
       if (userSearchConditions.length > 0) {
@@ -240,19 +248,24 @@ export const getOrders = asyncHandler(async (req, res) => {
         }).select('_id').lean();
         const userIds = users.map(u => u._id);
         if (userIds.length > 0) {
-          query.$or.push({ userId: { $in: userIds } });
+          searchOrConditions.push({ userId: { $in: userIds } });
         }
       }
 
-      // Ensure $or array is not empty
-      if (query.$or && query.$or.length === 0) {
+      if (query.$or) {
+        query.$and = [
+          { $or: query.$or },
+          { $or: searchOrConditions }
+        ];
         delete query.$or;
+      } else {
+        query.$or = searchOrConditions;
       }
     }
 
     // Calculate pagination - enforce max limit for performance
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(50000, Math.max(1, parseInt(limit || 10000))); // Max 50000 items per page
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(10000, Math.max(1, parseInt(limit) || 20)); // Default 20, max 10000 (for exports)
     const skip = (pageNum - 1) * limitNum;
 
     // Fetch orders and total count concurrently for maximum speed
@@ -260,7 +273,6 @@ export const getOrders = asyncHandler(async (req, res) => {
       Order.find(query)
         .select('-deliveryState -assignmentInfo.nearbyBoys')
         .populate('userId', 'name email phone')
-        .populate('restaurantId', 'name slug location.formattedAddress location.address location.city location.state location.zipCode location.pincode')
         .populate('deliveryPartnerId', 'name phone')
         .sort({ createdAt: -1 })
         .limit(limitNum)

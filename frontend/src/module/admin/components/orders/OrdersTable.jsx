@@ -68,6 +68,7 @@ export default function OrdersTable({
   selectedOrderIds = [],
   onToggleSelectOrder,
   onToggleSelectAllOrders,
+  pagination,
 }) {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 15
@@ -75,16 +76,25 @@ export default function OrdersTable({
   const [issueDialog, setIssueDialog] = useState({ open: false, order: null })
   const selectAllRef = useRef(null)
   
-  // Reset to page 1 when orders change
+  // Reset to page 1 when orders change (only for client-side mode)
   useEffect(() => {
-    setCurrentPage(1)
-  }, [orders.length])
+    if (!pagination) {
+      setCurrentPage(1)
+    }
+  }, [orders.length, pagination])
   
+  const isServer = Boolean(pagination)
+  const activePage = isServer ? (pagination.currentPage || 1) : currentPage
+  const activeTotalPages = isServer ? (pagination.totalPages || 1) : totalPages
+  const activeTotalCount = isServer ? (pagination.totalCount ?? orders.length) : orders.length
+  const activeLimit = isServer ? (pagination.limit || orders.length || 15) : itemsPerPage
+
   const paginatedOrders = useMemo(() => {
+    if (isServer) return orders
     const start = (currentPage - 1) * itemsPerPage
     const end = start + itemsPerPage
     return orders.slice(start, end)
-  }, [orders, currentPage])
+  }, [orders, currentPage, isServer, itemsPerPage])
 
   const getOrderKey = (order) => order?.id || order?._id || order?.orderId
   const allKeys = useMemo(() => orders.map(getOrderKey).filter(Boolean), [orders])
@@ -609,39 +619,46 @@ export default function OrdersTable({
       )}
       
       {/* Pagination */}
-      {totalPages > 1 && (
+      {activeTotalPages > 1 && (
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
           <div className="text-sm text-slate-600">
-            Showing <span className="font-semibold">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
-            <span className="font-semibold">{Math.min(currentPage * itemsPerPage, orders.length)}</span> of{" "}
-            <span className="font-semibold">{orders.length}</span> orders
+            Showing <span className="font-semibold">{(activePage - 1) * activeLimit + 1}</span> to{" "}
+            <span className="font-semibold">{Math.min(activePage * activeLimit, activeTotalCount)}</span> of{" "}
+            <span className="font-semibold">{activeTotalCount}</span> orders
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
+              onClick={() => {
+                const prevPage = Math.max(1, activePage - 1)
+                if (isServer) pagination.onPageChange?.(prevPage)
+                else setCurrentPage(prevPage)
+              }}
+              disabled={activePage === 1}
               className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Previous
             </button>
             <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              {Array.from({ length: Math.min(5, activeTotalPages) }, (_, i) => {
                 let pageNum
-                if (totalPages <= 5) {
+                if (activeTotalPages <= 5) {
                   pageNum = i + 1
-                } else if (currentPage <= 3) {
+                } else if (activePage <= 3) {
                   pageNum = i + 1
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i
+                } else if (activePage >= activeTotalPages - 2) {
+                  pageNum = activeTotalPages - 4 + i
                 } else {
-                  pageNum = currentPage - 2 + i
+                  pageNum = activePage - 2 + i
                 }
                 return (
                   <button
                     key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
+                    onClick={() => {
+                      if (isServer) pagination.onPageChange?.(pageNum)
+                      else setCurrentPage(pageNum)
+                    }}
                     className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
-                      currentPage === pageNum
+                      activePage === pageNum
                         ? "bg-emerald-500 text-white shadow-md"
                         : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                     }`}
@@ -652,8 +669,12 @@ export default function OrdersTable({
               })}
             </div>
             <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => {
+                const nextPage = Math.min(activeTotalPages, activePage + 1)
+                if (isServer) pagination.onPageChange?.(nextPage)
+                else setCurrentPage(nextPage)
+              }}
+              disabled={activePage === activeTotalPages}
               className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Next

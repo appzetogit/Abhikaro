@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { FileText, Calendar, Package } from "lucide-react"
 import { adminAPI } from "@/lib/api"
 import { toast } from "sonner"
@@ -11,6 +11,7 @@ import RefundModal from "../../components/orders/RefundModal"
 import io from "socket.io-client"
 import { useOrdersManagement } from "../../components/orders/useOrdersManagement"
 import { getOrdersCache, setOrdersCache, clearOrdersCache, updateOrderInCache } from "../../utils/ordersCache"
+import { exportToCSV, exportToExcel, exportToPDF, exportToJSON } from "../../components/orders/ordersExportUtils"
 
 // Skeleton for cold loading
 function OrdersPageSkeleton({ title = "Orders" }) {
@@ -82,7 +83,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
     const allCache = getOrdersCache("admin_orders_all")
     if (Array.isArray(allCache) && allCache.length > 0) {
-      if (statusKey === "all") return allCache
+      if (statusKey === "all") return allCache.slice(0, 20)
       const filtered = allCache.filter(o => {
         const rawStatus = (o.status || "").toLowerCase()
         const displayStatus = (o.orderStatus || "").toLowerCase()
@@ -119,14 +120,17 @@ export default function OrdersPage({ statusKey = "all" }) {
         if (statusKey === "offline-payments") return o.paymentType === "Cash on Delivery" || o.payment?.method === "cash" || o.payment?.method === "cod"
         return false
       })
-      if (filtered.length > 0) return filtered
+      if (filtered.length > 0) return filtered.slice(0, 20)
     }
     return []
   }
 
   const initialOrders = resolveInitialOrders()
   const [orders, setOrders] = useState(initialOrders)
-  const [totalCount, setTotalCount] = useState(() => initialOrders.length)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(20)
+  const [serverTotal, setServerTotal] = useState(() => initialOrders.length)
+  const [serverPages, setServerPages] = useState(1)
   const [isLoading, setIsLoading] = useState(() => initialOrders.length === 0)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedOrderIds, setSelectedOrderIds] = useState([])
@@ -134,32 +138,102 @@ export default function OrdersPage({ statusKey = "all" }) {
   const [processingRefund, setProcessingRefund] = useState(null)
   const [refundModalOpen, setRefundModalOpen] = useState(false)
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState(null)
-  
-  // Fetch orders from backend API
+  const [allRestaurantNames, setAllRestaurantNames] = useState([])
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const fetchOrders = async (isSilent = false) => {
+
+  // useOrdersManagement for UI helpers (columns, modals, filters)
+  const {
+    searchQuery,
+    setSearchQuery,
+    isFilterOpen,
+    setIsFilterOpen,
+    isSettingsOpen,
+    setIsSettingsOpen,
+    isViewOrderOpen,
+    setIsViewOrderOpen,
+    selectedOrder,
+    setSelectedOrder,
+    filters,
+    setFilters,
+    visibleColumns,
+    activeFiltersCount,
+    restaurants,
+    hotels,
+    handleApplyFilters,
+    handleResetFilters,
+    handleViewOrder,
+    handlePrintOrder,
+    toggleColumn,
+    resetColumns,
+  } = useOrdersManagement(orders, statusKey, config.title)
+
+  // Fetch all restaurant names once for the filter dropdown
+  useEffect(() => {
+    let isMounted = true
+    adminAPI.getRestaurants({ limit: 1000 })
+      .then(res => {
+        if (!isMounted) return
+        const list = res.data?.data?.restaurants || res.data?.data || []
+        const names = list.map(r => r.name || r.restaurantName).filter(Boolean)
+        if (names.length > 0) {
+          setAllRestaurantNames([...new Set(names)].sort())
+        }
+      })
+      .catch(() => {})
+    return () => { isMounted = false }
+  }, [])
+
+  // Fetch orders from backend with server-side pagination & filters
+  const fetchOrders = async (targetPage = 1, isSilent = false, searchVal = undefined, filtersVal = undefined) => {
     try {
       if (!isSilent) {
         setIsLoading(true)
       } else {
         setIsRefreshing(true)
       }
+
+      const activeSearch = searchVal !== undefined ? searchVal : searchQuery
+      const activeFilters = filtersVal !== undefined ? filtersVal : filters
+
       const params = {
-        page: 1,
-        limit: 10000,
+        page: targetPage,
+        limit: pageSize,
         status: statusKey === "all" ? undefined : 
                statusKey === "restaurant-cancelled" ? "cancelled" : statusKey,
         cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined
       }
-      
+
+      if (activeSearch && activeSearch.trim()) {
+        params.search = activeSearch.trim()
+      }
+
+      if (activeFilters?.restaurant) {
+        params.restaurant = activeFilters.restaurant
+      }
+      if (activeFilters?.fromDate) {
+        params.fromDate = activeFilters.fromDate
+      }
+      if (activeFilters?.toDate) {
+        params.toDate = activeFilters.toDate
+      }
+      if (activeFilters?.paymentStatus) {
+        params.paymentStatus = activeFilters.paymentStatus
+      }
+
       const response = await adminAPI.getOrders(params)
-      
+
       if (response.data?.success && response.data?.data?.orders) {
         const fetchedOrders = response.data.data.orders
         setOrders(fetchedOrders)
-        const serverTotal = response.data.data.pagination?.total
-        setTotalCount(typeof serverTotal === "number" ? serverTotal : fetchedOrders.length)
-        setOrdersCache(cacheKey, fetchedOrders)
+        const total = response.data.data.pagination?.total ?? fetchedOrders.length
+        const pages = response.data.data.pagination?.pages ?? Math.ceil(total / pageSize)
+        setServerTotal(total)
+        setServerPages(pages)
+        setCurrentPage(targetPage)
+
+        if (targetPage === 1 && !activeSearch && (!activeFilters || Object.values(activeFilters).every(v => !v || (Array.isArray(v) && v.length === 0)))) {
+          setOrdersCache(cacheKey, fetchedOrders)
+        }
       } else {
         if (!isSilent) {
           console.error("Failed to fetch orders:", response.data)
@@ -184,7 +258,6 @@ export default function OrdersPage({ statusKey = "all" }) {
     if (!orderId || !patch) return
     const targetId = String(orderId)
 
-    // 1. Instant 0ms update to orders list in state
     setOrders((prev) =>
       prev.map((o) => {
         const id = String(o._id || o.id || o.orderId || "")
@@ -196,7 +269,6 @@ export default function OrdersPage({ statusKey = "all" }) {
       })
     )
 
-    // 2. Also update selectedOrder so if modal stays open or reopens, it's fresh
     setSelectedOrder((prev) => {
       if (!prev) return prev
       const id = String(prev._id || prev.id || prev.orderId || "")
@@ -207,11 +279,10 @@ export default function OrdersPage({ statusKey = "all" }) {
       return prev
     })
 
-    // 3. Update orders cache across storage/memory
     updateOrderInCache(orderId, patch)
   }
 
-  // Connect to realtime Socket.IO to receive live updates from backend/restaurant/delivery
+  // Connect to realtime Socket.IO to receive live updates
   useEffect(() => {
     let socket = null
     try {
@@ -229,7 +300,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         const orderStatusMap = {
           pending: "Pending",
           confirmed: "Accepted",
-          preparing: "Accepted", // same label the list API returns for an accepted (preparing) order
+          preparing: "Accepted",
           ready: "Ready",
           out_for_delivery: "Food On The Way",
           delivered: "Delivered",
@@ -271,163 +342,142 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
   }, [])
 
+  // Initial fetch and statusKey changes
   useEffect(() => {
+    setCurrentPage(1)
     const currentCached = resolveInitialOrders()
     if (currentCached.length > 0) {
       setOrders(currentCached)
       setIsLoading(false)
-      fetchOrders(true) // Silent background update
+      fetchOrders(1, true)
     } else {
       setIsLoading(true)
-      fetchOrders(false)
+      fetchOrders(1, false)
     }
   }, [statusKey, refreshTrigger])
 
-  // Clear selection when list changes (status/search/filters refresh)
+  // Debounced server-side search
+  const isInitialSearchMount = useRef(true)
+  useEffect(() => {
+    if (isInitialSearchMount.current) {
+      isInitialSearchMount.current = false
+      return
+    }
+    const timer = setTimeout(() => {
+      fetchOrders(1, true, searchQuery, filters)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Clear selection on page/filter change
   useEffect(() => {
     setSelectedOrderIds([])
-  }, [statusKey, refreshTrigger, orders.length])
+  }, [statusKey, refreshTrigger, orders.length, currentPage])
 
-  // Handle refund button click - show modal for wallet payments, confirm dialog for others
+  // Apply filter handler
+  const onApplyFilterHandler = () => {
+    handleApplyFilters()
+    fetchOrders(1, false, searchQuery, filters)
+  }
+
+  // Reset filter handler
+  const onResetFilterHandler = () => {
+    const emptyFilters = {
+      paymentStatus: "",
+      deliveryType: "",
+      minAmount: "",
+      maxAmount: "",
+      fromDate: "",
+      toDate: "",
+      restaurant: "",
+      paymentType: [],
+      hotel: "",
+    }
+    handleResetFilters()
+    fetchOrders(1, false, searchQuery, emptyFilters)
+  }
+
+  // Dedicated export handler: fetches matching records on demand without slowing down regular page load
+  const handleExportWithFetch = async (format) => {
+    const toastId = toast.loading(`Preparing ${format.toUpperCase()} export...`)
+    try {
+      const params = {
+        page: 1,
+        limit: 5000,
+        status: statusKey === "all" ? undefined : 
+               statusKey === "restaurant-cancelled" ? "cancelled" : statusKey,
+        cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined
+      }
+      if (searchQuery && searchQuery.trim()) params.search = searchQuery.trim()
+      if (filters?.restaurant) params.restaurant = filters.restaurant
+      if (filters?.fromDate) params.fromDate = filters.fromDate
+      if (filters?.toDate) params.toDate = filters.toDate
+      if (filters?.paymentStatus) params.paymentStatus = filters.paymentStatus
+
+      const res = await adminAPI.getOrders(params)
+      const exportOrders = res.data?.data?.orders || orders
+      const filename = `${config.title.toLowerCase().replace(/\s+/g, "_")}`
+
+      if (format === "csv") exportToCSV(exportOrders, filename)
+      else if (format === "excel") exportToExcel(exportOrders, filename)
+      else if (format === "pdf") exportToPDF(exportOrders, filename)
+      else if (format === "json") exportToJSON(exportOrders, filename)
+
+      toast.success(`${exportOrders.length} orders exported successfully!`, { id: toastId })
+    } catch (err) {
+      console.error("Export error:", err)
+      toast.error("Failed to export orders", { id: toastId })
+    }
+  }
+
+  // Handle refund
   const handleRefund = (order) => {
-    const isWalletPayment = order.paymentType === "Wallet" || order.payment?.method === "wallet";
+    const isWalletPayment = order.paymentType === "Wallet" || order.payment?.method === "wallet"
     
     if (isWalletPayment) {
-      // Show modal for wallet refunds
       setSelectedOrderForRefund(order)
       setRefundModalOpen(true)
     } else {
-      // For non-wallet payments, use the old confirm dialog flow
-      const confirmMessage = `Are you sure you want to process refund for order ${order.orderId}?\n\nThis will initiate a Razorpay refund to the customer's original payment method.`;
-      
-      if (!confirm(confirmMessage)) {
-        return
-      }
-      
-      processRefund(order, null) // null amount means use default
+      const confirmMessage = `Are you sure you want to process refund for order ${order.orderId}?\n\nThis will initiate a Razorpay refund to the customer's original payment method.`
+      if (!confirm(confirmMessage)) return
+      processRefund(order, null)
     }
   }
 
   // Process refund with amount
   const processRefund = async (order, refundAmount = null) => {
-    // Try using MongoDB _id first (more reliable for route matching), then fallback to orderId string
-    // Backend accepts either MongoDB ObjectId (24 chars) or orderId string
-    // Using MongoDB _id is more reliable for route matching (no dashes/special chars)
     const orderIdToUse = order.id || order._id || order.orderId
-    
     if (!orderIdToUse) {
-      console.error('❌ No orderId found in order object:', order)
-      toast.error('Order ID not found. Please refresh the page and try again.')
+      toast.error("Order ID not found. Please refresh the page and try again.")
       return
     }
-    
-    console.log('🔍 Order details for refund:', {
-      orderIdString: order.orderId,
-      mongoId: order.id,
-      orderIdToUse,
-      willUse: order.orderId ? 'orderId string' : 'MongoDB _id',
-      refundAmount
-    })
 
     try {
       setProcessingRefund(orderIdToUse)
-      
-      console.log('🔍 Processing refund for order:', {
-        orderId: order.orderId,
-        id: order.id,
-        _id: order._id,
-        orderIdToUse,
-        refundAmount,
-        url: `/api/admin/orders/${orderIdToUse}/refund`
-      })
-      
-      // Include refundAmount in request body if provided (ensure it's a number)
       const requestData = refundAmount !== null ? { refundAmount: parseFloat(refundAmount) } : {}
-      console.log('📤 Request data being sent:', requestData)
       const response = await adminAPI.processRefund(orderIdToUse, requestData)
       
       if (response.data?.success) {
-        const isWalletPayment = order.paymentType === "Wallet" || order.payment?.method === "wallet";
+        const isWalletPayment = order.paymentType === "Wallet" || order.payment?.method === "wallet"
         toast.success(response.data?.message || (isWalletPayment 
           ? `Wallet refund of ₹${refundAmount || order.totalAmount} processed successfully for order ${order.orderId}`
           : `Refund initiated successfully for order ${order.orderId}`))
-        // Update the order in the local state immediately to show "Refunded" status
+        
         setOrders(prevOrders => 
           prevOrders.map(o => 
             (o.id === order.id || o.orderId === order.orderId)
-              ? { ...o, refundStatus: 'processed' } // Wallet refunds are instant, so mark as processed
+              ? { ...o, refundStatus: "processed" }
               : o
           )
         )
-        // Refresh the orders list to get updated data
-        const params = {
-          page: 1,
-          limit: 10000,
-          status: statusKey === "all" ? undefined : 
-                 statusKey === "restaurant-cancelled" ? "cancelled" : statusKey,
-          cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined
-        }
-        const refreshResponse = await adminAPI.getOrders(params)
-        if (refreshResponse.data?.success && refreshResponse.data?.data?.orders) {
-          setOrders(refreshResponse.data.data.orders)
-          const serverTotal = refreshResponse.data.data.pagination?.total
-          setTotalCount(typeof serverTotal === "number" ? serverTotal : refreshResponse.data.data.orders.length)
-          setOrdersCache(cacheKey, refreshResponse.data.data.orders)
-          clearOrdersCache("admin_order_detect_delivery")
-        }
+        // Refresh current page
+        fetchOrders(currentPage, true)
       } else {
         toast.error(response.data?.message || "Failed to process refund")
       }
     } catch (error) {
-      console.error("❌ Error processing refund:", error)
-      
-      // Log full error details for debugging
-      const errorDetails = {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        url: error.config?.url,
-        baseURL: error.config?.baseURL,
-        fullURL: error.config?.baseURL + error.config?.url,
-        orderId: orderIdToUse,
-        refundAmount: refundAmount,
-        order: {
-          id: order.id,
-          orderId: order.orderId,
-          _id: order._id
-        },
-        stack: error.stack
-      }
-      console.error("❌ Error details:", JSON.stringify(errorDetails, null, 2))
-      
-      // Show more specific error message
-      let errorMessage = "Failed to process refund"
-      
-      if (error.response) {
-        // Server responded with error
-        if (error.response.status === 404) {
-          // Prefer backend-provided message (e.g., "Settlement not found for this order")
-          errorMessage = error.response.data?.message || `Order not found (ID: ${orderIdToUse}). Please check if the order exists.`
-        } else if (error.response.status === 400) {
-          errorMessage = error.response.data?.message || "Invalid request. Please check the refund amount."
-        } else if (error.response.status === 500) {
-          errorMessage = error.response.data?.message || "Server error. Please try again later."
-        } else if (error.response.data?.message) {
-          errorMessage = error.response.data.message
-        } else {
-          errorMessage = `Error ${error.response.status}: ${error.response.statusText || "Unknown error"}`
-        }
-      } else if (error.request) {
-        // Request was made but no response received
-        errorMessage = "Network error. Please check your internet connection and try again."
-      } else {
-        // Error in setting up the request
-        errorMessage = error.message || "Failed to process refund"
-      }
-      
-      console.error("❌ Final error message:", errorMessage)
-      toast.error(errorMessage)
+      console.error("Error processing refund:", error)
+      toast.error(error.response?.data?.message || "Failed to process refund")
     } finally {
       setProcessingRefund(null)
       setRefundModalOpen(false)
@@ -435,40 +485,11 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
   }
 
-  // Handle refund confirmation from modal
   const handleRefundConfirm = (amount) => {
     if (selectedOrderForRefund) {
       processRefund(selectedOrderForRefund, amount)
     }
   }
-
-  const {
-    searchQuery,
-    setSearchQuery,
-    isFilterOpen,
-    setIsFilterOpen,
-    isSettingsOpen,
-    setIsSettingsOpen,
-    isViewOrderOpen,
-    setIsViewOrderOpen,
-    selectedOrder,
-    setSelectedOrder,
-    filters,
-    setFilters,
-    visibleColumns,
-    filteredOrders,
-    count,
-    activeFiltersCount,
-    restaurants,
-    hotels,
-    handleApplyFilters,
-    handleResetFilters,
-    handleExport,
-    handleViewOrder,
-    handlePrintOrder,
-    toggleColumn,
-    resetColumns,
-  } = useOrdersManagement(orders, statusKey, config.title)
 
   // Handle URL query parameter for viewing order on load
   const [lastCheckedOrderId, setLastCheckedOrderId] = useState(null)
@@ -489,7 +510,6 @@ export default function OrdersPage({ statusKey = "all" }) {
         }
       }
       
-      // Load directly from backend if not currently in the fetched list
       const loadAndShowOrder = async () => {
         try {
           const res = await adminAPI.getOrderById(orderIdParam)
@@ -508,8 +528,8 @@ export default function OrdersPage({ statusKey = "all" }) {
   const getOrderKey = (order) => order?.id || order?._id || order?.orderId
 
   const allFilteredKeys = useMemo(() => {
-    return (filteredOrders || []).map(getOrderKey).filter(Boolean)
-  }, [filteredOrders])
+    return (orders || []).map(getOrderKey).filter(Boolean)
+  }, [orders])
 
   const toggleSelectOrder = (order) => {
     const key = getOrderKey(order)
@@ -543,7 +563,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         clearOrdersCache("admin_orders_")
         clearOrdersCache("admin_order_detect_delivery")
         clearSelection()
-        setRefreshTrigger((t) => t + 1)
+        fetchOrders(currentPage, false)
       } else {
         toast.error(res?.data?.message || "Failed to delete orders")
       }
@@ -564,12 +584,12 @@ export default function OrdersPage({ statusKey = "all" }) {
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen w-full max-w-full overflow-x-hidden">
       <OrdersTopbar 
         title={config.title} 
-        count={activeFiltersCount > 0 || (searchQuery && searchQuery.trim()) ? count : (totalCount || count)} 
+        count={serverTotal || orders.length} 
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onFilterClick={() => setIsFilterOpen(true)}
         activeFiltersCount={activeFiltersCount}
-        onExport={handleExport}
+        onExport={handleExportWithFetch}
         onSettingsClick={() => setIsSettingsOpen(true)}
       />
 
@@ -603,9 +623,9 @@ export default function OrdersPage({ statusKey = "all" }) {
         onClose={() => setIsFilterOpen(false)}
         filters={filters}
         setFilters={setFilters}
-        onApply={handleApplyFilters}
-        onReset={handleResetFilters}
-        restaurants={restaurants}
+        onApply={onApplyFilterHandler}
+        onReset={onResetFilterHandler}
+        restaurants={allRestaurantNames.length > 0 ? allRestaurantNames : restaurants}
         hotels={hotels}
       />
       <SettingsDialog
@@ -630,7 +650,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         isProcessing={processingRefund !== null}
       />
       <OrdersTable 
-        orders={filteredOrders} 
+        orders={orders} 
         visibleColumns={visibleColumns}
         onViewOrder={handleViewOrder}
         onPrintOrder={handlePrintOrder}
@@ -638,6 +658,13 @@ export default function OrdersPage({ statusKey = "all" }) {
         selectedOrderIds={selectedOrderIds}
         onToggleSelectOrder={toggleSelectOrder}
         onToggleSelectAllOrders={toggleSelectAllFiltered}
+        pagination={{
+          currentPage,
+          totalPages: serverPages,
+          totalCount: serverTotal,
+          limit: pageSize,
+          onPageChange: (newPage) => fetchOrders(newPage, false)
+        }}
       />
     </div>
   )
