@@ -1,5 +1,5 @@
 /**
- * Rapido/Zomato-Style Location Processing Service
+ * abhikaro/abhikaro-Style Location Processing Service
  * 
  * Core Logic:
  * 1. Snap GPS to road (Google Roads API)
@@ -40,11 +40,11 @@ function calculateDistanceQuick(point1, point2) {
   const R = 6371000; // Earth radius in meters
   const dLat = (point2.lat - point1.lat) * Math.PI / 180;
   const dLng = (point2.lng - point1.lng) * Math.PI / 180;
-  
+
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
     Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  
+
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -65,7 +65,7 @@ export async function snapToRoad(points, riderId = null) {
     }
 
     if (!points || points.length === 0) return points;
-    
+
     // Throttle: Only allow one call per rider every SNAP_TO_ROAD_THROTTLE_MS
     if (riderId) {
       const lastCall = lastSnapToRoadCall.get(riderId);
@@ -76,50 +76,50 @@ export async function snapToRoad(points, riderId = null) {
       }
       lastSnapToRoadCall.set(riderId, now);
     }
-    
+
     // Check cache for nearby points (within 50 meters)
     const cachedResults = [];
     const uncachedPoints = [];
-    
+
     for (const point of points) {
       let foundInCache = false;
       for (const [cachedKey, cached] of snapToRoadCache.entries()) {
         const [cachedLat, cachedLng] = cachedKey.split(',').map(Number);
         const distance = calculateDistanceQuick(point, { lat: cachedLat, lng: cachedLng });
-        
+
         if (distance < SNAP_TO_ROAD_CACHE_DISTANCE_M) {
           cachedResults.push(cached.snapped);
           foundInCache = true;
           break;
         }
       }
-      
+
       if (!foundInCache) {
         uncachedPoints.push(point);
       }
     }
-    
+
     // If all points found in cache, return cached results
     if (uncachedPoints.length === 0) {
       return cachedResults.length > 0 ? cachedResults : points;
     }
-    
+
     const apiKey = await getGoogleMapsApiKey();
     if (!apiKey) {
       console.warn('⚠️ Google Maps API key not found, skipping snap to road');
       return points;
     }
-    
+
     // Google Roads API supports up to 100 points per request
     const batchSize = 100;
     const snappedPoints = [];
-    
+
     for (let i = 0; i < uncachedPoints.length; i += batchSize) {
       const batch = uncachedPoints.slice(i, i + batchSize);
-      
+
       // Format for Roads API: "lat,lng|lat,lng|..."
       const path = batch.map(p => `${p.lat},${p.lng}`).join('|');
-      
+
       try {
         const response = await axios.get(
           `https://roads.googleapis.com/v1/snapToRoads`,
@@ -132,7 +132,7 @@ export async function snapToRoad(points, riderId = null) {
             timeout: 5000 // 5 second timeout
           }
         );
-        
+
         if (response.data?.snappedPoints) {
           const snapped = response.data.snappedPoints.map((sp, idx) => {
             const originalPoint = batch[sp.originalIndex || idx];
@@ -142,14 +142,14 @@ export async function snapToRoad(points, riderId = null) {
               originalIndex: sp.originalIndex,
               placeId: sp.placeId
             };
-            
+
             // Cache the result
             const cacheKey = `${originalPoint.lat},${originalPoint.lng}`;
             snapToRoadCache.set(cacheKey, {
               snapped: snappedPoint,
               timestamp: Date.now()
             });
-            
+
             return snappedPoint;
           });
           snappedPoints.push(...snapped);
@@ -160,7 +160,7 @@ export async function snapToRoad(points, riderId = null) {
         snappedPoints.push(...batch);
       }
     }
-    
+
     // Clean old cache entries (older than 1 hour)
     const oneHourAgo = Date.now() - 3600000;
     for (const [key, value] of snapToRoadCache.entries()) {
@@ -168,7 +168,7 @@ export async function snapToRoad(points, riderId = null) {
         snapToRoadCache.delete(key);
       }
     }
-    
+
     // Combine cached and newly snapped points
     const allSnapped = [...cachedResults, ...snappedPoints];
     return allSnapped.length > 0 ? allSnapped : points;
@@ -193,7 +193,7 @@ export async function generateRoutePolyline(start, waypoint, end) {
     try {
       const { getCachedRouteFromFirebase, cacheRouteInFirebase } = await import('../../order/services/firebaseTrackingService.js');
       const cached = await getCachedRouteFromFirebase(start, end);
-      
+
       if (cached && cached.polyline) {
         console.log('✅ Using cached route polyline from Firebase');
         // Decode polyline to get points
@@ -215,24 +215,24 @@ export async function generateRoutePolyline(start, waypoint, end) {
       console.warn('ℹ️ Google Directions API disabled or key missing, skipping route generation');
       return null;
     }
-    
+
     // Round coordinates to 4 decimal places (~11 meters precision) for cache key
     // This allows caching similar routes
     const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
     const origin = `${roundCoord(start.lat)},${roundCoord(start.lng)}`;
     const destination = `${roundCoord(end.lat)},${roundCoord(end.lng)}`;
     const waypoints = waypoint ? `via:${roundCoord(waypoint.lat)},${roundCoord(waypoint.lng)}` : '';
-    
+
     // Create cache key
     const cacheKey = `${origin}|${destination}|${waypoints}`;
-    
+
     // Check local cache (in-memory)
     const cached = directionsCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < DIRECTIONS_CACHE_TTL_MS) {
       console.log('✅ Using cached route polyline (local cache)');
       return cached.route;
     }
-    
+
     const response = await axios.get(
       `https://maps.googleapis.com/maps/api/directions/json`,
       {
@@ -247,35 +247,35 @@ export async function generateRoutePolyline(start, waypoint, end) {
         timeout: 10000 // 10 second timeout
       }
     );
-    
+
     if (response.data?.routes?.[0]) {
       const route = response.data.routes[0];
       const polyline = route.overview_polyline.points;
-      
+
       // Decode polyline to get all points
       const points = decodePolyline(polyline);
-      
+
       // Calculate total distance
       let totalDistance = 0;
       for (let i = 1; i < points.length; i++) {
-        totalDistance += calculateDistance(points[i-1], points[i]);
+        totalDistance += calculateDistance(points[i - 1], points[i]);
       }
-      
+
       const duration = route.legs.reduce((sum, leg) => sum + leg.duration.value, 0) / 60; // Convert to minutes
-      
+
       const routeData = {
         points,
         totalDistance,
         polyline,
         duration
       };
-      
+
       // Cache in local memory (in-memory cache)
       directionsCache.set(cacheKey, {
         route: routeData,
         timestamp: Date.now()
       });
-      
+
       // Cache in Firebase (persistent cache)
       try {
         const { cacheRouteInFirebase } = await import('../../order/services/firebaseTrackingService.js');
@@ -283,7 +283,7 @@ export async function generateRoutePolyline(start, waypoint, end) {
       } catch (firebaseError) {
         console.warn('⚠️ Failed to cache route in Firebase:', firebaseError.message);
       }
-      
+
       // Clean old cache entries (older than cache TTL)
       const now = Date.now();
       for (const [key, value] of directionsCache.entries()) {
@@ -291,10 +291,10 @@ export async function generateRoutePolyline(start, waypoint, end) {
           directionsCache.delete(key);
         }
       }
-      
+
       return routeData;
     }
-    
+
     return null;
   } catch (error) {
     console.error('❌ Error generating route:', error.message);
@@ -312,39 +312,39 @@ function decodePolyline(encoded) {
   let index = 0;
   let lat = 0;
   let lng = 0;
-  
+
   while (index < encoded.length) {
     let shift = 0;
     let result = 0;
     let byte;
-    
+
     do {
       byte = encoded.charCodeAt(index++) - 63;
       result |= (byte & 0x1f) << shift;
       shift += 5;
     } while (byte >= 0x20);
-    
+
     const deltaLat = ((result & 1) ? ~(result >> 1) : (result >> 1));
     lat += deltaLat;
-    
+
     shift = 0;
     result = 0;
-    
+
     do {
       byte = encoded.charCodeAt(index++) - 63;
       result |= (byte & 0x1f) << shift;
       shift += 5;
     } while (byte >= 0x20);
-    
+
     const deltaLng = ((result & 1) ? ~(result >> 1) : (result >> 1));
     lng += deltaLng;
-    
+
     points.push({
       lat: lat * 1e-5,
       lng: lng * 1e-5
     });
   }
-  
+
   return points;
 }
 
@@ -358,11 +358,11 @@ function calculateDistance(point1, point2) {
   const R = 6371000; // Earth radius in meters
   const dLat = (point2.lat - point1.lat) * Math.PI / 180;
   const dLng = (point2.lng - point1.lng) * Math.PI / 180;
-  
+
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
     Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  
+
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -377,32 +377,32 @@ export function smoothLocation(riderId, location) {
   if (!locationHistory.has(riderId)) {
     locationHistory.set(riderId, []);
   }
-  
+
   const history = locationHistory.get(riderId);
   history.push({
     ...location,
     timestamp: Date.now()
   });
-  
+
   // Keep only last 5 points
   if (history.length > 5) {
     history.shift();
   }
-  
+
   // Moving average smoothing
   if (history.length < 2) {
     return location;
   }
-  
+
   const avgLat = history.reduce((sum, loc) => sum + loc.lat, 0) / history.length;
   const avgLng = history.reduce((sum, loc) => sum + loc.lng, 0) / history.length;
-  
+
   // Speed normalization (clamp between 10-45 km/h)
   const speeds = history.map(loc => loc.speed || 0).filter(s => s > 0);
-  const avgSpeed = speeds.length > 0 
+  const avgSpeed = speeds.length > 0
     ? Math.max(10, Math.min(45, speeds.reduce((sum, s) => sum + s, 0) / speeds.length))
     : 20; // Default 20 km/h
-  
+
   // Calculate bearing from last two points
   let bearing = location.bearing || 0;
   if (history.length >= 2) {
@@ -410,7 +410,7 @@ export function smoothLocation(riderId, location) {
     const prev = history[history.length - 2];
     bearing = calculateBearing(prev, last);
   }
-  
+
   return {
     lat: avgLat,
     lng: avgLng,
@@ -430,11 +430,11 @@ function calculateBearing(from, to) {
   const lat1 = from.lat * Math.PI / 180;
   const lat2 = to.lat * Math.PI / 180;
   const dLng = (to.lng - from.lng) * Math.PI / 180;
-  
+
   const y = Math.sin(dLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - 
-            Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  
+  const x = Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+
   let bearing = Math.atan2(y, x) * 180 / Math.PI;
   return (bearing + 360) % 360;
 }
@@ -455,7 +455,7 @@ function projectPointOntoLineSegment(point, lineStart, lineEnd) {
   const dot = A * C + B * D;
   const lenSq = C * C + D * D;
   let t = 0;
-  
+
   if (lenSq !== 0) {
     t = Math.max(0, Math.min(1, dot / lenSq));
   }
@@ -501,9 +501,9 @@ export function findNearestPointOnPolyline(location, polylinePoints, maxSnapDist
   for (let i = 0; i < polylinePoints.length - 1; i++) {
     const segmentStart = polylinePoints[i];
     const segmentEnd = polylinePoints[i + 1];
-    
+
     const projection = projectPointOntoLineSegment(location, segmentStart, segmentEnd);
-    
+
     if (projection.distance < minDistance) {
       minDistance = projection.distance;
       nearestIndex = i;
@@ -570,7 +570,7 @@ export async function snapLocationToRoad(rawLocation, orderId = null, maxSnapDis
 }
 
 /**
- * Calculate progress on route (Rapido core logic)
+ * Calculate progress on route (abhikaro core logic)
  * @param {string} orderId - Order ID
  * @param {Object} currentLocation - {lat, lng}
  * @returns {Object} {progress: number (0-1), nextPoint: {lat, lng}, distanceCovered: number}
@@ -580,17 +580,17 @@ export async function calculateRouteProgress(orderId, currentLocation) {
   if (!route) {
     return null;
   }
-  
+
   // Find nearest point on polyline (with projection onto segments for better accuracy)
   const nearest = findNearestPointOnPolyline(currentLocation, route.points, 50);
-  
+
   // Calculate distance covered up to nearest point
   // If point is projected onto a segment, calculate partial distance within that segment
   let distanceCovered = 0;
   for (let i = 1; i <= nearest.index; i++) {
-    distanceCovered += calculateDistance(route.points[i-1], route.points[i]);
+    distanceCovered += calculateDistance(route.points[i - 1], route.points[i]);
   }
-  
+
   // Add partial distance within the current segment if point was projected
   if (nearest.snapped && nearest.index < route.points.length - 1) {
     const segmentStart = route.points[nearest.index];
@@ -600,16 +600,16 @@ export async function calculateRouteProgress(orderId, currentLocation) {
     const segmentProgress = calculateDistance(segmentStart, nearest.point) / (segmentDistance || 1);
     distanceCovered += segmentDistance * segmentProgress;
   }
-  
+
   // Calculate progress (0 to 1)
-  const progress = route.totalDistance > 0 
+  const progress = route.totalDistance > 0
     ? Math.min(1, Math.max(0, distanceCovered / route.totalDistance))
     : 0;
-  
+
   // Get next point on route (for animation)
   const nextIndex = Math.min(nearest.index + 1, route.points.length - 1);
   const nextPoint = route.points[nextIndex];
-  
+
   return {
     progress,
     nextPoint,
@@ -634,7 +634,7 @@ export async function processLocationUpdate(riderId, orderId, rawLocation, route
     // NOTE: snapToRoads is VERY expensive - only enable if absolutely necessary
     const snappedPoints = await snapToRoad([{ lat: rawLocation.lat, lng: rawLocation.lng }], riderId);
     const snappedLocation = snappedPoints[0] || rawLocation;
-    
+
     // Step 2: Smooth location
     const smoothedLocation = smoothLocation(riderId, {
       ...snappedLocation,
@@ -642,7 +642,7 @@ export async function processLocationUpdate(riderId, orderId, rawLocation, route
       bearing: rawLocation.bearing || 0,
       accuracy: rawLocation.accuracy || 50
     });
-    
+
     // Step 3: Get or generate route polyline
     if (!routePolylines.has(orderId) && routeInfo) {
       const route = await generateRoutePolyline(
@@ -654,13 +654,13 @@ export async function processLocationUpdate(riderId, orderId, rawLocation, route
         routePolylines.set(orderId, route);
       }
     }
-    
+
     // Step 4: Calculate route progress
     const progress = await calculateRouteProgress(orderId, smoothedLocation);
-    
+
     // Step 5: Get next point on route (for smooth animation)
     const finalLocation = progress?.nextPoint || smoothedLocation;
-    
+
     return {
       lat: finalLocation.lat,
       lng: finalLocation.lng,

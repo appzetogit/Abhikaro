@@ -8,7 +8,7 @@ import { locationAPI } from "@/lib/api"
  * - HTML5 Geolocation API for user location
  * - Ola Maps Reverse Geocoding via backend API
  * - Extracts ONLY area/subLocality name (e.g., "New Palasia")
- * - Zomato-style location display
+ * - abhikaro-style location display
  * - Comprehensive error handling
  * 
  * @returns {Object} { location, loading, error, permissionGranted, requestLocation }
@@ -69,7 +69,7 @@ export function useLocationSimple() {
         }
       }
 
-      // Method 2: Extract from formatted_address (Zomato-style parsing)
+      // Method 2: Extract from formatted_address (abhikaro-style parsing)
       // Indian address format: "Area, City, State" (e.g., "New Palasia, Indore, Madhya Pradesh")
       if (result.formatted_address) {
         const addressParts = result.formatted_address

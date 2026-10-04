@@ -77,7 +77,7 @@ import homeIcon from "../../../assets/homeicon.png"
 const mockRestaurants = []
 
 // ============================================
-// STABLE TRACKING SYSTEM - RAPIDO/UBER STYLE
+// STABLE TRACKING SYSTEM - abhikaro/UBER STYLE
 // ============================================
 
 /**
@@ -148,7 +148,7 @@ function shouldAcceptLocation(position, lastValidLocation, lastLocationTime) {
 
     // Filter 2b: Ignore if calculated speed > 80 km/h (allowing for highway travel)
     if (timeDiff > 0.1) {
-      const speedKmh = (distance / timeDiff) * 3.6 
+      const speedKmh = (distance / timeDiff) * 3.6
       if (speedKmh > 80) {
         if (Math.floor(now / 1000) % 5 === 0) {
           console.warn(`[GPS] Location rejected (High Speed): ${speedKmh.toFixed(1)}km/h (Limit: 80km/h)`);
@@ -173,7 +173,7 @@ function smoothLocation(locationHistory) {
   // Exponentially Weighted Moving Average (EWMA)
   // More weight to recent points to reduce lag while filtering jitter
   const alpha = 0.6 // Smoothing factor (higher = more weight to new data, less lag)
-  
+
   let smoothedLat = locationHistory[0][0]
   let smoothedLng = locationHistory[0][1]
 
@@ -425,7 +425,7 @@ export default function DeliveryHome() {
   const routeHistoryRef = useRef(riderLocation ? [{ lat: riderLocation[0], lng: riderLocation[1] }] : []) // Store route history for traveled path
   const isOnlineRef = useRef(false) // Store online status for use in callbacks
 
-  // Stable tracking system - Rapido/Uber style
+  // Stable tracking system - abhikaro/Uber style
   const locationHistoryRef = useRef(riderLocation ? [riderLocation] : []) // Store last 5 valid GPS points for smoothing
   const lastValidLocationRef = useRef(riderLocation) // Last valid smoothed location
   const lastLocationTimeRef = useRef(riderLocation ? Date.now() : null) // Timestamp of last location update
@@ -444,7 +444,7 @@ export default function DeliveryHome() {
   const acceptedOrderIdsRef = useRef(new Set()) // Track accepted order IDs to prevent duplicate notifications
   // Live tracking polyline refs
   const liveTrackingPolylineRef = useRef(null) // Google Maps Polyline instance for live tracking
-  const liveTrackingPolylineShadowRef = useRef(null) // Shadow/outline polyline for better visibility (Zomato/Rapido style)
+  const liveTrackingPolylineShadowRef = useRef(null) // Shadow/outline polyline for better visibility (abhikaro/abhikaro style)
   const fullRoutePolylineRef = useRef([]) // Store full decoded polyline from Directions API
   const lastRiderPositionRef = useRef(null) // Last rider position for smooth animation
   const markerAnimationCancelRef = useRef(null) // Cancel function for marker animation
@@ -898,7 +898,7 @@ export default function DeliveryHome() {
     });
   };
 
-  // Google Maps marker functions - Zomato style exact location tracking
+  // Google Maps marker functions - abhikaro style exact location tracking
   const createOrUpdateBikeMarker = async (latitude, longitude, heading = null, shouldCenterMap = true) => {
     if (!window.google || !window.google.maps || !window.deliveryMapInstance) {
 
@@ -998,7 +998,7 @@ export default function DeliveryHome() {
       if (typeof latitude === 'number' && typeof longitude === 'number' &&
         !isNaN(latitude) && !isNaN(longitude) &&
         latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
-        
+
         // Use smooth animation if requested, otherwise set instantly
         if (shouldCenterMap === false) { // Assuming shouldCenterMap=false means a movement update
           animateMarkerSmoothly(bikeMarkerRef.current, position, 2000, markerAnimationRef); // Match 2s update interval
@@ -1032,7 +1032,7 @@ export default function DeliveryHome() {
       // Ensure z-index is high
       bikeMarkerRef.current.setZIndex(1000);
 
-      // Auto-center map on bike location (like Zomato) - only if user hasn't manually panned and not already centered initially
+      // Auto-center map on bike location (like abhikaro) - only if user hasn't manually panned and not already centered initially
       // After initial centering, don't auto-pan to prevent map jumping
       if (shouldCenterMap && !isUserPanningRef.current && (!hasInitiallyCenteredOnBike || isLocationCached)) {
         // Smooth pan to bike location
@@ -1215,7 +1215,7 @@ export default function DeliveryHome() {
     }
   }
 
-  // Calculate route using Google Maps Directions API (Zomato-style road-based routing)
+  // Calculate route using Google Maps Directions API (abhikaro-style road-based routing)
   // Optimized for TWO_WHEELER mode with DRIVING fallback
   // NOTE: Must be defined BEFORE the useEffect that uses it (Rules of Hooks)
   const calculateRouteWithDirectionsAPI = useCallback(async (origin, destination) => {
@@ -1328,7 +1328,7 @@ export default function DeliveryHome() {
   }, []);
 
   /**
-   * Update live tracking polyline - Rapido/Zomato style
+   * Update live tracking polyline - abhikaro/abhikaro style
    * Removes polyline points behind the rider and keeps only forward route
    * @param {Object} directionsResult - Google Maps DirectionsResult
    * @param {Array} riderPosition - [lat, lng] Current rider position
@@ -1375,7 +1375,7 @@ export default function DeliveryHome() {
         )
       ];
 
-      // Update or create live tracking polyline with Zomato/Rapido style
+      // Update or create live tracking polyline with abhikaro/abhikaro style
       if (liveTrackingPolylineRef.current) {
         // Update existing polyline path smoothly
         liveTrackingPolylineRef.current.setPath(path);
@@ -1392,17 +1392,17 @@ export default function DeliveryHome() {
         }
 
       } else {
-        // Create new polyline with professional Zomato/Rapido styling
+        // Create new polyline with professional abhikaro/abhikaro styling
         if (!window.deliveryMapInstance) {
 
           return;
         }
 
-        // Create main polyline with vibrant blue color (Zomato style)
+        // Create main polyline with vibrant blue color (abhikaro style)
         liveTrackingPolylineRef.current = new window.google.maps.Polyline({
           path: path,
           geodesic: true,
-          strokeColor: '#1E88E5', // Vibrant blue like Zomato (more visible than #4285F4)
+          strokeColor: '#1E88E5', // Vibrant blue like abhikaro (more visible than #4285F4)
           strokeOpacity: 1.0,
           strokeWeight: 6, // Optimal thickness for visibility
           zIndex: 1000, // High z-index to be above other map elements
@@ -1410,7 +1410,7 @@ export default function DeliveryHome() {
           map: window.deliveryMapInstance
         });
 
-        // Create shadow/outline polyline for better visibility (like Zomato/Rapido)
+        // Create shadow/outline polyline for better visibility (like abhikaro/abhikaro)
         // This creates a subtle outline effect for better contrast
         if (!liveTrackingPolylineShadowRef.current) {
           liveTrackingPolylineShadowRef.current = new window.google.maps.Polyline({
@@ -1430,7 +1430,7 @@ export default function DeliveryHome() {
           // Ensure legacy shadow (if any) is not visible
           try {
             liveTrackingPolylineShadowRef.current.setOptions({ strokeOpacity: 0 });
-          } catch (_) {}
+          } catch (_) { }
         }
 
       }
@@ -1812,16 +1812,16 @@ export default function DeliveryHome() {
 
         const restaurantName = (() => {
           const rawOrderName = order.restaurantName;
-          const popName = 
-            restaurant.onboarding?.step1?.restaurantName || 
-            restaurant.name || 
+          const popName =
+            restaurant.onboarding?.step1?.restaurantName ||
+            restaurant.name ||
             selectedRestaurant?.name;
-          
+
           // If order name is generic city, prefer populated restaurant name
           if (rawOrderName === "Indore" && popName && popName !== "Indore") {
             return popName;
           }
-          
+
           return rawOrderName || popName || 'Restaurant';
         })()
 
@@ -1946,9 +1946,9 @@ export default function DeliveryHome() {
 
         // Restore navigation mode based on order phase
         if (restoredRestaurant.orderStatus === 'out_for_delivery' ||
-            restoredRestaurant.deliveryPhase === 'en_route_to_delivery' ||
-            restoredRestaurant.deliveryPhase === 'picked_up' ||
-            restoredRestaurant.deliveryPhase === 'en_route_to_drop') {
+          restoredRestaurant.deliveryPhase === 'en_route_to_delivery' ||
+          restoredRestaurant.deliveryPhase === 'picked_up' ||
+          restoredRestaurant.deliveryPhase === 'en_route_to_drop') {
           setNavigationMode('customer')
         } else {
           setNavigationMode('restaurant')
@@ -2139,7 +2139,7 @@ export default function DeliveryHome() {
       // the alert audio within the user gesture, then immediately pausing.
       // This makes subsequent programmatic plays reliable when a new order arrives.
       try {
-        const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone'
+        const selectedSound = localStorage.getItem('delivery_alert_sound') || 'abhikaro_tone'
         const soundFile = selectedSound === 'original' ? originalSound : alertSound
         if (!alertAudioRef.current) {
           alertAudioRef.current = new Audio(soundFile)
@@ -2212,7 +2212,7 @@ export default function DeliveryHome() {
 
     try {
       // Get selected alert sound preference from localStorage
-      const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone'
+      const selectedSound = localStorage.getItem('delivery_alert_sound') || 'abhikaro_tone'
       const soundFile = selectedSound === 'original' ? originalSound : alertSound
 
       // Verify sound file exists
@@ -2792,7 +2792,7 @@ export default function DeliveryHome() {
         }
 
         // ============================================
-        // STABLE TRACKING FILTERING (RAPIDO STYLE)
+        // STABLE TRACKING FILTERING (abhikaro STYLE)
         // ============================================
 
         // Apply filtering: accuracy, distance jump, speed checks
@@ -2815,27 +2815,27 @@ export default function DeliveryHome() {
           // Location rejected by filter - but send to backend if it's been > 30 seconds since last update
           // This ensures admin map always shows delivery boy even with poor GPS
           if (isOnlineRef.current && lastValidLocationRef.current) {
-          const now = Date.now();
-          const lastSentTime = window.lastLocationSentTime || 0;
-          const timeSinceLastSend = now - lastSentTime;
+            const now = Date.now();
+            const lastSentTime = window.lastLocationSentTime || 0;
+            const timeSinceLastSend = now - lastSentTime;
 
-          // Fallback: Send last valid location every 30 seconds even if new location is rejected
-          if (timeSinceLastSend >= 30000) {
-            const [lat, lng] = lastValidLocationRef.current;
-            if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-              deliveryAPI.updateLocation(lat, lng, true)
-                .then(() => {
-                  window.lastLocationSentTime = now;
-                  persistLastKnownLocation([lat, lng])
+            // Fallback: Send last valid location every 30 seconds even if new location is rejected
+            if (timeSinceLastSend >= 30000) {
+              const [lat, lng] = lastValidLocationRef.current;
+              if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                deliveryAPI.updateLocation(lat, lng, true)
+                  .then(() => {
+                    window.lastLocationSentTime = now;
+                    persistLastKnownLocation([lat, lng])
 
-                })
-                .catch(error => {
-                  if (error.code !== 'ERR_NETWORK' && error.message !== 'Network Error') {
+                  })
+                  .catch(error => {
+                    if (error.code !== 'ERR_NETWORK' && error.message !== 'Network Error') {
 
-                  }
-                });
+                    }
+                  });
+              }
             }
-          }
           }
           // Keep using last valid location
           return
@@ -3096,7 +3096,7 @@ export default function DeliveryHome() {
               }
             }
           },
-          () => {},
+          () => { },
           { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
         );
       }
@@ -3222,43 +3222,43 @@ export default function DeliveryHome() {
 
           // Call backend API to accept order
           // Backend expects currentLat and currentLng
-        const response = await deliveryAPI.acceptOrder(orderId, {
-          lat: currentLocation[0], // latitude
-          lng: currentLocation[1]  // longitude
-        })
+          const response = await deliveryAPI.acceptOrder(orderId, {
+            lat: currentLocation[0], // latitude
+            lng: currentLocation[1]  // longitude
+          })
 
-        if (response.data?.success && response.data.data) {
-          // Stop audio immediately when order is successfully accepted
-          if (alertAudioRef.current) {
-            try {
-              if (alertAudioEndedHandlerRef.current) {
-                alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
-              }
-            } catch (_) { }
-            alertAudioRef.current.pause()
-            alertAudioRef.current.currentTime = 0
-            alertAudioRef.current = null
-            alertAudioEndedHandlerRef.current = null
-          }
+          if (response.data?.success && response.data.data) {
+            // Stop audio immediately when order is successfully accepted
+            if (alertAudioRef.current) {
+              try {
+                if (alertAudioEndedHandlerRef.current) {
+                  alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+                }
+              } catch (_) { }
+              alertAudioRef.current.pause()
+              alertAudioRef.current.currentTime = 0
+              alertAudioRef.current = null
+              alertAudioEndedHandlerRef.current = null
+            }
 
-          const orderData = response.data.data
-          const order = orderData.order || orderData // Backend returns { order, route }
-          const routeData = response.data.data.route
+            const orderData = response.data.data
+            const order = orderData.order || orderData // Backend returns { order, route }
+            const routeData = response.data.data.route
 
-          // Set navigation mode to restaurant initially
-          setNavigationMode('restaurant');
+            // Set navigation mode to restaurant initially
+            setNavigationMode('restaurant');
 
-          // Update selectedRestaurant with correct data from backend
-          let restaurantInfo = null;
-          if (order) {
-            // Extract restaurant location (GeoJSON format: [longitude, latitude])
-            const restaurantCoords = order.restaurantId?.location?.coordinates || []
-            const restaurantLat = restaurantCoords[1] // Latitude is second element
-            const restaurantLng = restaurantCoords[0] // Longitude is first element
+            // Update selectedRestaurant with correct data from backend
+            let restaurantInfo = null;
+            if (order) {
+              // Extract restaurant location (GeoJSON format: [longitude, latitude])
+              const restaurantCoords = order.restaurantId?.location?.coordinates || []
+              const restaurantLat = restaurantCoords[1] // Latitude is second element
+              const restaurantLng = restaurantCoords[0] // Longitude is first element
 
-            // Format restaurant address - check multiple possible locations
-            let restaurantAddress = 'Restaurant Address'
-            const restaurantLocation = order.restaurantId?.location
+              // Format restaurant address - check multiple possible locations
+              let restaurantAddress = 'Restaurant Address'
+              const restaurantLocation = order.restaurantId?.location
 
               // Priority 1: Direct address fields on restaurantId
               if (order.restaurantId?.address) {
@@ -3375,11 +3375,11 @@ export default function DeliveryHome() {
 
                 // If still fallback, try from order.restaurantAddress or order.restaurantId directly
                 if (!restaurantAddress || restaurantAddress === 'Restaurant address' || restaurantAddress === 'Restaurant Address') {
-                  restaurantAddress = 
-                    order.restaurantAddress || 
-                    order.restaurantId?.address || 
-                    order.restaurantId?.location?.formattedAddress || 
-                    order.restaurantId?.location?.address || 
+                  restaurantAddress =
+                    order.restaurantAddress ||
+                    order.restaurantId?.address ||
+                    order.restaurantId?.location?.formattedAddress ||
+                    order.restaurantId?.location?.address ||
                     'Restaurant Address'
                 }
 
@@ -3499,7 +3499,7 @@ export default function DeliveryHome() {
 
             }
 
-            // Calculate route using Google Maps Directions API (Zomato-style road-based routing)
+            // Calculate route using Google Maps Directions API (abhikaro-style road-based routing)
             // Use LIVE location from delivery boy to restaurant
             // Use restaurantInfo directly (not selectedRestaurant) since state update is async
             if (restaurantInfo && restaurantInfo.lat && restaurantInfo.lng && currentLocation) {
@@ -4801,7 +4801,7 @@ export default function DeliveryHome() {
                   customerLng
                 }
                 setSelectedRestaurant(updatedRestaurant)
-                
+
                 // Set navigation mode to customer after pickup
                 setNavigationMode('customer')
 
@@ -5307,196 +5307,196 @@ export default function DeliveryHome() {
         return;
       }
 
-    // Transform newOrder data to match selectedRestaurant format
-    // Extract restaurant address with proper priority
-    let restaurantAddress = 'Restaurant address';
-    if (newOrder.restaurantLocation?.address) {
-      restaurantAddress = newOrder.restaurantLocation.address;
-    } else if (newOrder.restaurantLocation?.formattedAddress) {
-      restaurantAddress = newOrder.restaurantLocation.formattedAddress;
-    } else if (newOrder.restaurantAddress) {
-      restaurantAddress = newOrder.restaurantAddress;
-    } else if (newOrder.restaurantId?.address) {
-      restaurantAddress = newOrder.restaurantId.address;
-    } else if (newOrder.restaurantId?.location?.formattedAddress) {
-      restaurantAddress = newOrder.restaurantId.location.formattedAddress;
-    }
-
-    // Extract earnings from notification
-    const deliveryFee = newOrder.deliveryFee ?? 0;
-    const earned = newOrder.estimatedEarnings;
-    let earnedValue = 0;
-
-    if (earned) {
-      if (typeof earned === 'object' && earned.totalEarning != null) {
-        earnedValue = Number(earned.totalEarning) || 0;
-      } else if (typeof earned === 'number') {
-        earnedValue = earned;
+      // Transform newOrder data to match selectedRestaurant format
+      // Extract restaurant address with proper priority
+      let restaurantAddress = 'Restaurant address';
+      if (newOrder.restaurantLocation?.address) {
+        restaurantAddress = newOrder.restaurantLocation.address;
+      } else if (newOrder.restaurantLocation?.formattedAddress) {
+        restaurantAddress = newOrder.restaurantLocation.formattedAddress;
+      } else if (newOrder.restaurantAddress) {
+        restaurantAddress = newOrder.restaurantAddress;
+      } else if (newOrder.restaurantId?.address) {
+        restaurantAddress = newOrder.restaurantId.address;
+      } else if (newOrder.restaurantId?.location?.formattedAddress) {
+        restaurantAddress = newOrder.restaurantId.location.formattedAddress;
       }
-    }
 
-    // Use calculated earnings if available, otherwise fallback to deliveryFee
-    const effectiveEarnings = earnedValue > 0 ? earned : (deliveryFee > 0 ? deliveryFee : 0);
+      // Extract earnings from notification
+      const deliveryFee = newOrder.deliveryFee ?? 0;
+      const earned = newOrder.estimatedEarnings;
+      let earnedValue = 0;
 
-    // Calculate pickup distance if not provided
-    let pickupDistance = newOrder.pickupDistance;
-    if ((!pickupDistance || pickupDistance === '0 km') && newOrder.assignmentInfo?.distance != null) {
-      const d = Number(newOrder.assignmentInfo.distance);
-      pickupDistance = d > 100 ? `${(d / 1000).toFixed(2)} km` : `${d.toFixed(2)} km`;
-    }
+      if (earned) {
+        if (typeof earned === 'object' && earned.totalEarning != null) {
+          earnedValue = Number(earned.totalEarning) || 0;
+        } else if (typeof earned === 'number') {
+          earnedValue = earned;
+        }
+      }
 
-    // Try to pull restaurant location from multiple possible paths in payload
-    const payloadRestaurant =
-      newOrder.restaurant ||
-      newOrder.restaurantId ||
-      (newOrder.fullOrder && (newOrder.fullOrder.restaurant || newOrder.fullOrder.restaurantId)) ||
-      {}
-    const payloadLocation =
-      payloadRestaurant?.location ||
-      newOrder.restaurantLocation ||
-      (newOrder.fullOrder && (newOrder.fullOrder.restaurantLocation || newOrder.fullOrder.restaurant?.location || newOrder.fullOrder.restaurantId?.location)) ||
-      {}
+      // Use calculated earnings if available, otherwise fallback to deliveryFee
+      const effectiveEarnings = earnedValue > 0 ? earned : (deliveryFee > 0 ? deliveryFee : 0);
 
-    let payloadLat = undefined
-    let payloadLng = undefined
-    if (Array.isArray(payloadLocation.coordinates) && payloadLocation.coordinates.length >= 2) {
-      payloadLng = Number(payloadLocation.coordinates[0])
-      payloadLat = Number(payloadLocation.coordinates[1])
-    } else {
-      if (payloadLocation.latitude != null) payloadLat = Number(payloadLocation.latitude)
-      if (payloadLocation.longitude != null) payloadLng = Number(payloadLocation.longitude)
-    }
+      // Calculate pickup distance if not provided
+      let pickupDistance = newOrder.pickupDistance;
+      if ((!pickupDistance || pickupDistance === '0 km') && newOrder.assignmentInfo?.distance != null) {
+        const d = Number(newOrder.assignmentInfo.distance);
+        pickupDistance = d > 100 ? `${(d / 1000).toFixed(2)} km` : `${d.toFixed(2)} km`;
+      }
 
-    // Fallbacks: many notification payloads send pickup/restaurant coords as flat fields
-    if ((payloadLat == null || isNaN(payloadLat)) && newOrder.pickupLat != null) {
-      payloadLat = Number(newOrder.pickupLat)
-    }
-    if ((payloadLng == null || isNaN(payloadLng)) && newOrder.pickupLng != null) {
-      payloadLng = Number(newOrder.pickupLng)
-    }
-    if ((payloadLat == null || isNaN(payloadLat)) && newOrder.restaurantLat != null) {
-      payloadLat = Number(newOrder.restaurantLat)
-    }
-    if ((payloadLng == null || isNaN(payloadLng)) && newOrder.restaurantLng != null) {
-      payloadLng = Number(newOrder.restaurantLng)
-    }
+      // Try to pull restaurant location from multiple possible paths in payload
+      const payloadRestaurant =
+        newOrder.restaurant ||
+        newOrder.restaurantId ||
+        (newOrder.fullOrder && (newOrder.fullOrder.restaurant || newOrder.fullOrder.restaurantId)) ||
+        {}
+      const payloadLocation =
+        payloadRestaurant?.location ||
+        newOrder.restaurantLocation ||
+        (newOrder.fullOrder && (newOrder.fullOrder.restaurantLocation || newOrder.fullOrder.restaurant?.location || newOrder.fullOrder.restaurantId?.location)) ||
+        {}
 
-    let mappedAddress = restaurantAddress
-    if (!mappedAddress || mappedAddress === 'Restaurant address') {
-      mappedAddress =
-        payloadRestaurant?.address ||
-        payloadLocation?.formattedAddress ||
-        payloadLocation?.address ||
-        newOrder.restaurantAddress ||
-        'Restaurant address'
-    }
+      let payloadLat = undefined
+      let payloadLng = undefined
+      if (Array.isArray(payloadLocation.coordinates) && payloadLocation.coordinates.length >= 2) {
+        payloadLng = Number(payloadLocation.coordinates[0])
+        payloadLat = Number(payloadLocation.coordinates[1])
+      } else {
+        if (payloadLocation.latitude != null) payloadLat = Number(payloadLocation.latitude)
+        if (payloadLocation.longitude != null) payloadLng = Number(payloadLocation.longitude)
+      }
 
-    const fullOrder = newOrder.fullOrder || {}
-    const rawPay =
-      newOrder.paymentMethod ??
-      fullOrder.payment?.method ??
-      newOrder.payment?.method ??
-      ''
-    const normalizedPay =
-      rawPay === 'cod' || rawPay === 'cash' ? 'cash' : (rawPay || 'razorpay')
+      // Fallbacks: many notification payloads send pickup/restaurant coords as flat fields
+      if ((payloadLat == null || isNaN(payloadLat)) && newOrder.pickupLat != null) {
+        payloadLat = Number(newOrder.pickupLat)
+      }
+      if ((payloadLng == null || isNaN(payloadLng)) && newOrder.pickupLng != null) {
+        payloadLng = Number(newOrder.pickupLng)
+      }
+      if ((payloadLat == null || isNaN(payloadLat)) && newOrder.restaurantLat != null) {
+        payloadLat = Number(newOrder.restaurantLat)
+      }
+      if ((payloadLng == null || isNaN(payloadLng)) && newOrder.restaurantLng != null) {
+        payloadLng = Number(newOrder.restaurantLng)
+      }
 
-    const restaurantData = {
-      id: newOrder.orderMongoId || newOrder.orderId,
-      orderId: newOrder.orderId,
-      name: newOrder.restaurantName || payloadRestaurant?.name || 'New Order',
-      address: mappedAddress,
-      lat: payloadLat,
-      lng: payloadLng,
-      distance: pickupDistance || 'Calculating...',
-      timeAway: (pickupDistance && pickupDistance !== 'Calculating...') ? calculateTimeAway(pickupDistance) : 'Calculating...',
-      dropDistance: newOrder.deliveryDistance || 
-        (newOrder.assignmentInfo?.routeToDelivery?.distance
-          ? `${Number(newOrder.assignmentInfo.routeToDelivery.distance).toFixed(2)} km`
-          : 'Calculating...'),
-      pickupDistance: pickupDistance || 'Calculating...',
-      estimatedEarnings: effectiveEarnings,
-      deliveryFee,
-      amount: earnedValue > 0 ? earnedValue : (deliveryFee > 0 ? deliveryFee : 0),
-      customerName: newOrder.customerName || 'Customer',
-      customerAddress: newOrder.customerLocation?.address || newOrder.deliveryAddress || 'Customer address',
-      customerLat: newOrder.customerLocation?.latitude ?? newOrder.deliveryLat,
-      customerLng: newOrder.customerLocation?.longitude ?? newOrder.deliveryLng,
-      items: newOrder.items || fullOrder.items || [],
-      total: newOrder.total ?? newOrder.totalAmount ?? fullOrder.pricing?.total ?? 0,
-      paymentMethod: normalizedPay,
-      orderType: newOrder.orderType ?? fullOrder.orderType ?? null,
-      hotelReference: newOrder.hotelReference ?? fullOrder.hotelReference ?? null,
-      hotelId:
-        newOrder.hotelId ??
-        fullOrder.hotelId?._id?.toString?.() ??
-        fullOrder.hotelId?.toString?.() ??
-        (typeof fullOrder.hotelId === 'string' ? fullOrder.hotelId : null),
-      hotelName: newOrder.hotelName ?? fullOrder.hotelName ?? null,
-      hotelCashSettled: newOrder.hotelCashSettled === true || fullOrder.hotelCashSettled === true,
-      cashCollected: newOrder.cashCollected === true || fullOrder.cashCollected === true,
-    }
+      let mappedAddress = restaurantAddress
+      if (!mappedAddress || mappedAddress === 'Restaurant address') {
+        mappedAddress =
+          payloadRestaurant?.address ||
+          payloadLocation?.formattedAddress ||
+          payloadLocation?.address ||
+          newOrder.restaurantAddress ||
+          'Restaurant address'
+      }
 
-    // SHOW POPUP IMMEDIATELY - Don't wait for background calculations
-    setSelectedRestaurant(restaurantData)
-    setShowNewOrderPopup(true)
-    setIsNewOrderPopupMinimized(false)
-    setNewOrderDragY(0)
-    setCountdownSeconds(300) // Reset countdown to 5 minutes
+      const fullOrder = newOrder.fullOrder || {}
+      const rawPay =
+        newOrder.paymentMethod ??
+        fullOrder.payment?.method ??
+        newOrder.payment?.method ??
+        ''
+      const normalizedPay =
+        rawPay === 'cod' || rawPay === 'cash' ? 'cash' : (rawPay || 'razorpay')
 
-    // Start background background enrichment (distance, missing address)
-    ;(async () => {
-      let finalUpdates = {}
-      
-      // If distance is missing, try to calculate it
-      if (!pickupDistance || pickupDistance === '0 km' || pickupDistance === 'Calculating...') {
-        let restaurantLat = payloadLat;
-        let restaurantLng = payloadLng;
+      const restaurantData = {
+        id: newOrder.orderMongoId || newOrder.orderId,
+        orderId: newOrder.orderId,
+        name: newOrder.restaurantName || payloadRestaurant?.name || 'New Order',
+        address: mappedAddress,
+        lat: payloadLat,
+        lng: payloadLng,
+        distance: pickupDistance || 'Calculating...',
+        timeAway: (pickupDistance && pickupDistance !== 'Calculating...') ? calculateTimeAway(pickupDistance) : 'Calculating...',
+        dropDistance: newOrder.deliveryDistance ||
+          (newOrder.assignmentInfo?.routeToDelivery?.distance
+            ? `${Number(newOrder.assignmentInfo.routeToDelivery.distance).toFixed(2)} km`
+            : 'Calculating...'),
+        pickupDistance: pickupDistance || 'Calculating...',
+        estimatedEarnings: effectiveEarnings,
+        deliveryFee,
+        amount: earnedValue > 0 ? earnedValue : (deliveryFee > 0 ? deliveryFee : 0),
+        customerName: newOrder.customerName || 'Customer',
+        customerAddress: newOrder.customerLocation?.address || newOrder.deliveryAddress || 'Customer address',
+        customerLat: newOrder.customerLocation?.latitude ?? newOrder.deliveryLat,
+        customerLng: newOrder.customerLocation?.longitude ?? newOrder.deliveryLng,
+        items: newOrder.items || fullOrder.items || [],
+        total: newOrder.total ?? newOrder.totalAmount ?? fullOrder.pricing?.total ?? 0,
+        paymentMethod: normalizedPay,
+        orderType: newOrder.orderType ?? fullOrder.orderType ?? null,
+        hotelReference: newOrder.hotelReference ?? fullOrder.hotelReference ?? null,
+        hotelId:
+          newOrder.hotelId ??
+          fullOrder.hotelId?._id?.toString?.() ??
+          fullOrder.hotelId?.toString?.() ??
+          (typeof fullOrder.hotelId === 'string' ? fullOrder.hotelId : null),
+        hotelName: newOrder.hotelName ?? fullOrder.hotelName ?? null,
+        hotelCashSettled: newOrder.hotelCashSettled === true || fullOrder.hotelCashSettled === true,
+        cashCollected: newOrder.cashCollected === true || fullOrder.cashCollected === true,
+      }
 
-        const needsAddress = !mappedAddress || mappedAddress === 'Restaurant address' || mappedAddress.length < 5;
-        const needsCoords = restaurantLat == null || restaurantLng == null;
+      // SHOW POPUP IMMEDIATELY - Don't wait for background calculations
+      setSelectedRestaurant(restaurantData)
+      setShowNewOrderPopup(true)
+      setIsNewOrderPopupMinimized(false)
+      setNewOrderDragY(0)
+      setCountdownSeconds(300) // Reset countdown to 5 minutes
 
-        if ((needsCoords || needsAddress) && (newOrder.restaurantId || newOrder.restaurant?._id)) {
-          try {
-            const rid = (newOrder.restaurantId?._id || newOrder.restaurantId || newOrder.restaurant?._id)?.toString();
-            if (rid) {
-              const r = await restaurantAPI.getRestaurantById(rid);
-              const rest = r?.data?.data?.restaurant || r?.data?.data;
-              if (rest) {
-                const coords = rest?.location?.coordinates;
-                if (needsCoords && Array.isArray(coords) && coords.length >= 2) {
-                  restaurantLng = coords[0];
-                  restaurantLat = coords[1];
-                  finalUpdates.lat = restaurantLat;
-                  finalUpdates.lng = restaurantLng;
-                }
-                if (needsAddress) {
-                  const fetchedAddr = rest?.location?.formattedAddress || rest?.address || rest?.location?.address;
-                  if (fetchedAddr && fetchedAddr !== 'Restaurant address') {
-                    finalUpdates.address = fetchedAddr;
-                    mappedAddress = fetchedAddr; // Update local for distance calc if needed
+        // Start background background enrichment (distance, missing address)
+        ; (async () => {
+          let finalUpdates = {}
+
+          // If distance is missing, try to calculate it
+          if (!pickupDistance || pickupDistance === '0 km' || pickupDistance === 'Calculating...') {
+            let restaurantLat = payloadLat;
+            let restaurantLng = payloadLng;
+
+            const needsAddress = !mappedAddress || mappedAddress === 'Restaurant address' || mappedAddress.length < 5;
+            const needsCoords = restaurantLat == null || restaurantLng == null;
+
+            if ((needsCoords || needsAddress) && (newOrder.restaurantId || newOrder.restaurant?._id)) {
+              try {
+                const rid = (newOrder.restaurantId?._id || newOrder.restaurantId || newOrder.restaurant?._id)?.toString();
+                if (rid) {
+                  const r = await restaurantAPI.getRestaurantById(rid);
+                  const rest = r?.data?.data?.restaurant || r?.data?.data;
+                  if (rest) {
+                    const coords = rest?.location?.coordinates;
+                    if (needsCoords && Array.isArray(coords) && coords.length >= 2) {
+                      restaurantLng = coords[0];
+                      restaurantLat = coords[1];
+                      finalUpdates.lat = restaurantLat;
+                      finalUpdates.lng = restaurantLng;
+                    }
+                    if (needsAddress) {
+                      const fetchedAddr = rest?.location?.formattedAddress || rest?.address || rest?.location?.address;
+                      if (fetchedAddr && fetchedAddr !== 'Restaurant address') {
+                        finalUpdates.address = fetchedAddr;
+                        mappedAddress = fetchedAddr; // Update local for distance calc if needed
+                      }
+                    }
                   }
                 }
-              }
+              } catch (_) { }
             }
-          } catch (_) { }
-        }
 
-        const currentLocation = riderLocation || lastLocationRef.current;
-        if (currentLocation && currentLocation.length === 2 && restaurantLat && restaurantLng) {
-          const distanceInMeters = calculateDistance(currentLocation[0], currentLocation[1], restaurantLat, restaurantLng);
-          const distanceInKm = distanceInMeters / 1000;
-          finalUpdates.distance = `${distanceInKm.toFixed(2)} km`;
-          finalUpdates.pickupDistance = finalUpdates.distance;
-          finalUpdates.timeAway = calculateTimeAway(finalUpdates.distance);
-          finalUpdates.lat = restaurantLat;
-          finalUpdates.lng = restaurantLng;
-        }
-      }
+            const currentLocation = riderLocation || lastLocationRef.current;
+            if (currentLocation && currentLocation.length === 2 && restaurantLat && restaurantLng) {
+              const distanceInMeters = calculateDistance(currentLocation[0], currentLocation[1], restaurantLat, restaurantLng);
+              const distanceInKm = distanceInMeters / 1000;
+              finalUpdates.distance = `${distanceInKm.toFixed(2)} km`;
+              finalUpdates.pickupDistance = finalUpdates.distance;
+              finalUpdates.timeAway = calculateTimeAway(finalUpdates.distance);
+              finalUpdates.lat = restaurantLat;
+              finalUpdates.lng = restaurantLng;
+            }
+          }
 
-      if (Object.keys(finalUpdates).length > 0) {
-        setSelectedRestaurant(prev => ({ ...prev, ...finalUpdates }));
-      }
-    })()
+          if (Object.keys(finalUpdates).length > 0) {
+            setSelectedRestaurant(prev => ({ ...prev, ...finalUpdates }));
+          }
+        })()
     } catch (err) {
       console.error("❌ [DeliveryHome] Error in newOrder useEffect:", err);
     }
@@ -5555,7 +5555,7 @@ export default function DeliveryHome() {
       // SHOW A MINIMAL POPUP IMMEDIATELY if we have basic data in push
       const pushRestName = data.restaurantName || data.title || "New Order"
       const pushEarnings = data.estimatedEarnings || data.amount || 0
-      
+
       const initialData = {
         id: orderId,
         orderId: orderId,
@@ -5571,7 +5571,7 @@ export default function DeliveryHome() {
         total: 0,
         paymentMethod: 'razorpay'
       }
-      
+
       setSelectedRestaurant(initialData)
       setShowNewOrderPopup(true)
       setIsNewOrderPopupMinimized(false)
@@ -5800,7 +5800,7 @@ export default function DeliveryHome() {
               if (!updates.lat || !updates.lng) {
                 console.warn('[DeliveryHome][Backfill] Missing coordinates in order details response. Raw location:', restLoc)
               }
-            } catch (_) {}
+            } catch (_) { }
 
             if (Object.keys(updates).length > 0) {
               setSelectedRestaurant(prev => ({
@@ -6882,15 +6882,15 @@ export default function DeliveryHome() {
     }
     const key = String(
       selectedRestaurant?.orderId ||
-        selectedRestaurant?.id ||
-        selectedRestaurant?._id ||
-        '',
+      selectedRestaurant?.id ||
+      selectedRestaurant?._id ||
+      '',
     )
     if (!key) return
 
     const serverBill =
       typeof selectedRestaurant?.billImageUrl === 'string' &&
-      selectedRestaurant.billImageUrl.trim()
+        selectedRestaurant.billImageUrl.trim()
         ? selectedRestaurant.billImageUrl.trim()
         : null
     if (confirmBillOrderKeyRef.current !== key) {
@@ -7436,7 +7436,7 @@ export default function DeliveryHome() {
   }, [selectedRestaurant?.lat, selectedRestaurant?.lng, selectedRestaurant?.customerLat, selectedRestaurant?.customerLng, selectedRestaurant?.name, navigationMode, updateDeliveryMarkers])
 
 
-  // Initialize Directions Map with Google Maps Directions API (Zomato-style)
+  // Initialize Directions Map with Google Maps Directions API (abhikaro-style)
   useEffect(() => {
     if (!showDirectionsMap || !selectedRestaurant) {
       setDirectionsMapLoading(false)
@@ -7754,7 +7754,7 @@ export default function DeliveryHome() {
         );
       }
 
-      // Optional: Auto-center map on bike (like Zomato) - smooth pan
+      // Optional: Auto-center map on bike (like abhikaro) - smooth pan
       // Uncomment if you want map to follow bike movement
       // directionsMapInstanceRef.current.panTo(newPosition);
 
@@ -8005,24 +8005,24 @@ export default function DeliveryHome() {
 
     let cancelled = false
 
-    ;(async () => {
-      try {
-        const result = await calculateRouteWithDirectionsAPI(
-          currentRiderLocation,
-          { lat: restLat, lng: restLng }
-        )
+      ; (async () => {
+        try {
+          const result = await calculateRouteWithDirectionsAPI(
+            currentRiderLocation,
+            { lat: restLat, lng: restLng }
+          )
 
-        if (cancelled || !result) return
+          if (cancelled || !result) return
 
-        setDirectionsResponse(result)
-        directionsResponseRef.current = result
+          setDirectionsResponse(result)
+          directionsResponseRef.current = result
 
-        // Draw immediately if map is ready; otherwise existing effects will handle it.
-        updateLiveTrackingPolyline(result, currentRiderLocation)
-      } catch (e) {
-        // Silent: fallback polyline render will be attempted elsewhere (OSRM / straight-line).
-      }
-    })()
+          // Draw immediately if map is ready; otherwise existing effects will handle it.
+          updateLiveTrackingPolyline(result, currentRiderLocation)
+        } catch (e) {
+          // Silent: fallback polyline render will be attempted elsewhere (OSRM / straight-line).
+        }
+      })()
 
     return () => {
       cancelled = true
@@ -8059,7 +8059,7 @@ export default function DeliveryHome() {
         liveTrackingPolylineRef.current.setMap(null)
         liveTrackingPolylineRef.current = null
       }
-    } catch {}
+    } catch { }
 
     const currentRiderLocation = riderLocation || lastLocationRef.current
     if (!currentRiderLocation || currentRiderLocation.length !== 2) return
@@ -8070,39 +8070,39 @@ export default function DeliveryHome() {
 
     let cancelled = false
 
-    ;(async () => {
-      try {
-        // Priority 1: If we have customer coords, compute route rider->customer.
-        if (hasCustomerCoords && !directionsResponseRef.current) {
-          const result = await calculateRouteWithDirectionsAPI(
-            currentRiderLocation,
-            { lat: custLat, lng: custLng }
-          )
-          if (!cancelled && result) {
-            setDirectionsResponse(result)
-            directionsResponseRef.current = result
-            updateLiveTrackingPolyline(result, currentRiderLocation)
-            return
+      ; (async () => {
+        try {
+          // Priority 1: If we have customer coords, compute route rider->customer.
+          if (hasCustomerCoords && !directionsResponseRef.current) {
+            const result = await calculateRouteWithDirectionsAPI(
+              currentRiderLocation,
+              { lat: custLat, lng: custLng }
+            )
+            if (!cancelled && result) {
+              setDirectionsResponse(result)
+              directionsResponseRef.current = result
+              updateLiveTrackingPolyline(result, currentRiderLocation)
+              return
+            }
           }
-        }
 
-        // Priority 2: Use Firebase encoded polyline (restaurant->customer) as fallback.
-        if (!directionsResponseRef.current) {
-          const { getOrderTrackingFromFirebase } = await import('@/lib/firebaseRealtime.js')
-          const orderId = selectedRestaurant.id || selectedRestaurant.orderId
-          const tracking = orderId ? await getOrderTrackingFromFirebase(orderId) : null
-          const encoded = String(tracking?.polyline || '').trim()
-          if (!cancelled && encoded) {
-            const fakeDirectionsResult = { routes: [{ overview_polyline: { points: encoded } }] }
-            setDirectionsResponse(fakeDirectionsResult)
-            directionsResponseRef.current = fakeDirectionsResult
-            updateLiveTrackingPolyline(fakeDirectionsResult, currentRiderLocation)
+          // Priority 2: Use Firebase encoded polyline (restaurant->customer) as fallback.
+          if (!directionsResponseRef.current) {
+            const { getOrderTrackingFromFirebase } = await import('@/lib/firebaseRealtime.js')
+            const orderId = selectedRestaurant.id || selectedRestaurant.orderId
+            const tracking = orderId ? await getOrderTrackingFromFirebase(orderId) : null
+            const encoded = String(tracking?.polyline || '').trim()
+            if (!cancelled && encoded) {
+              const fakeDirectionsResult = { routes: [{ overview_polyline: { points: encoded } }] }
+              setDirectionsResponse(fakeDirectionsResult)
+              directionsResponseRef.current = fakeDirectionsResult
+              updateLiveTrackingPolyline(fakeDirectionsResult, currentRiderLocation)
+            }
           }
+        } catch {
+          // silent
         }
-      } catch {
-        // silent
-      }
-    })()
+      })()
 
     return () => {
       cancelled = true
@@ -8477,8 +8477,8 @@ export default function DeliveryHome() {
         const response = await deliveryAPI.getOrderDetails(orderId)
 
         if (response.data?.success && response.data.data) {
-        const orderData = response.data.data
-        const order = orderData.order || orderData
+          const orderData = response.data.data
+          const order = orderData.order || orderData
 
           // Extract restaurant address with multiple fallbacks
           let restaurantAddress = selectedRestaurant?.address || 'Restaurant Address'
@@ -9163,9 +9163,9 @@ export default function DeliveryHome() {
           const a =
             Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(toRad(restLat)) *
-              Math.cos(toRad(custLat)) *
-              Math.sin(dLng / 2) *
-              Math.sin(dLng / 2)
+            Math.cos(toRad(custLat)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2)
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
           const meters = R * c
 
@@ -10355,7 +10355,7 @@ export default function DeliveryHome() {
                   // Update bike marker (only if online - blue dot नहीं, bike icon)
                   if (window.deliveryMapInstance) {
                     // Always show bike marker on map (both offline and online)
-                    // Center map automatically (Zomato style) unless user is panning
+                    // Center map automatically (abhikaro style) unless user is panning
                     createOrUpdateBikeMarker(latitude, longitude, heading, !isUserPanningRef.current)
                     updateRoutePolyline()
                   }
@@ -10427,7 +10427,7 @@ export default function DeliveryHome() {
                 }
               }}
             >
-            <TargetIcon
+              <TargetIcon
                 className={`w-6 h-6 transition-colors duration-500 ease-in-out ${isRefreshingLocation ? 'text-blue-600' : 'text-gray-700'
                   }`}
               />
@@ -10610,126 +10610,126 @@ export default function DeliveryHome() {
             >
               {/* Earnings Guarantee Card - Only show when there's an active earning addon offer */}
               {activeEarningAddon && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.25 }}
-                className="w-full rounded-xl overflow-hidden shadow-lg bg-white"
-              >
-                {/* Header */}
-                <div className="border-b  border-gray-100">
-                  <div className="flex p-2 px-3 items-center justify-between bg-black">
-                    <div className="flex-1">
-                      <h2 className="text-lg font-bold text-white mb-1">Earnings Guarantee</h2>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-white">Valid till {weekEndDate}</span>
-                        {isOfferLive && (
-                          <div className="flex items-center gap-1">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span className="text-sm text-green-600 font-medium">Live</span>
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.25 }}
+                  className="w-full rounded-xl overflow-hidden shadow-lg bg-white"
+                >
+                  {/* Header */}
+                  <div className="border-b  border-gray-100">
+                    <div className="flex p-2 px-3 items-center justify-between bg-black">
+                      <div className="flex-1">
+                        <h2 className="text-lg font-bold text-white mb-1">Earnings Guarantee</h2>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-white">Valid till {weekEndDate}</span>
+                          {isOfferLive && (
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                              <span className="text-sm text-green-600 font-medium">Live</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Summary Box */}
+                      <div className="bg-black text-white px-4 py-3 rounded-lg text-center min-w-[80px]">
+                        <div className="text-2xl font-bold">₹{earningsGuaranteeTarget.toFixed(0)}</div>
+                        <div className="text-xs text-white/80 mt-1">{earningsGuaranteeOrdersTarget} orders</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Progress Circles */}
+                  <div className="px-6 py-6">
+                    <div className="flex items-center justify-around gap-6">
+                      {/* Orders Progress Circle */}
+                      <motion.div
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: 0.4, duration: 0.5, type: "spring" }}
+                        className="flex flex-col items-center"
+                      >
+                        <div className="relative w-32 h-32">
+                          <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
+                            {/* Background circle */}
+                            <circle
+                              cx="60"
+                              cy="60"
+                              r="50"
+                              fill="none"
+                              stroke="#e5e7eb"
+                              strokeWidth="8"
+                            />
+                            {/* Progress circle */}
+                            <motion.circle
+                              cx="60"
+                              cy="60"
+                              r="50"
+                              fill="none"
+                              stroke="#000000"
+                              strokeWidth="8"
+                              strokeLinecap="round"
+                              initial={{ pathLength: 0 }}
+                              animate={{ pathLength: ordersProgress }}
+                              transition={{ delay: 0.6, duration: 1, ease: "easeOut" }}
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-xl font-bold text-gray-900">{earningsGuaranteeCurrentOrders} of {earningsGuaranteeOrdersTarget || 0}</span>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                    {/* Summary Box */}
-                    <div className="bg-black text-white px-4 py-3 rounded-lg text-center min-w-[80px]">
-                      <div className="text-2xl font-bold">₹{earningsGuaranteeTarget.toFixed(0)}</div>
-                      <div className="text-xs text-white/80 mt-1">{earningsGuaranteeOrdersTarget} orders</div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-3">
+                          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="text-sm font-medium text-gray-700">Orders</span>
+                        </div>
+                      </motion.div>
+
+                      {/* Earnings Progress Circle */}
+                      <motion.div
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: 0.5, duration: 0.5, type: "spring" }}
+                        className="flex flex-col items-center"
+                      >
+                        <div className="relative w-32 h-32">
+                          <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
+                            {/* Background circle */}
+                            <circle
+                              cx="60"
+                              cy="60"
+                              r="50"
+                              fill="none"
+                              stroke="#e5e7eb"
+                              strokeWidth="8"
+                            />
+                            {/* Progress circle */}
+                            <motion.circle
+                              cx="60"
+                              cy="60"
+                              r="50"
+                              fill="none"
+                              stroke="#000000"
+                              strokeWidth="8"
+                              strokeLinecap="round"
+                              initial={{ pathLength: 0 }}
+                              animate={{ pathLength: earningsProgress }}
+                              transition={{ delay: 0.7, duration: 1, ease: "easeOut" }}
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-lg font-bold text-gray-900">₹{earningsGuaranteeCurrentEarnings.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-3">
+                          <IndianRupee className="w-5 h-5 text-gray-700" />
+                          <span className="text-sm font-medium text-gray-700">Earnings</span>
+                        </div>
+                      </motion.div>
                     </div>
                   </div>
-                </div>
-
-                {/* Progress Circles */}
-                <div className="px-6 py-6">
-                  <div className="flex items-center justify-around gap-6">
-                    {/* Orders Progress Circle */}
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: 0.4, duration: 0.5, type: "spring" }}
-                      className="flex flex-col items-center"
-                    >
-                      <div className="relative w-32 h-32">
-                        <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
-                          {/* Background circle */}
-                          <circle
-                            cx="60"
-                            cy="60"
-                            r="50"
-                            fill="none"
-                            stroke="#e5e7eb"
-                            strokeWidth="8"
-                          />
-                          {/* Progress circle */}
-                          <motion.circle
-                            cx="60"
-                            cy="60"
-                            r="50"
-                            fill="none"
-                            stroke="#000000"
-                            strokeWidth="8"
-                            strokeLinecap="round"
-                            initial={{ pathLength: 0 }}
-                            animate={{ pathLength: ordersProgress }}
-                            transition={{ delay: 0.6, duration: 1, ease: "easeOut" }}
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-xl font-bold text-gray-900">{earningsGuaranteeCurrentOrders} of {earningsGuaranteeOrdersTarget || 0}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 mt-3">
-                        <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <span className="text-sm font-medium text-gray-700">Orders</span>
-                      </div>
-                    </motion.div>
-
-                    {/* Earnings Progress Circle */}
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: 0.5, duration: 0.5, type: "spring" }}
-                      className="flex flex-col items-center"
-                    >
-                      <div className="relative w-32 h-32">
-                        <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
-                          {/* Background circle */}
-                          <circle
-                            cx="60"
-                            cy="60"
-                            r="50"
-                            fill="none"
-                            stroke="#e5e7eb"
-                            strokeWidth="8"
-                          />
-                          {/* Progress circle */}
-                          <motion.circle
-                            cx="60"
-                            cy="60"
-                            r="50"
-                            fill="none"
-                            stroke="#000000"
-                            strokeWidth="8"
-                            strokeLinecap="round"
-                            initial={{ pathLength: 0 }}
-                            animate={{ pathLength: earningsProgress }}
-                            transition={{ delay: 0.7, duration: 1, ease: "easeOut" }}
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-lg font-bold text-gray-900">₹{earningsGuaranteeCurrentEarnings.toFixed(2)}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 mt-3">
-                        <IndianRupee className="w-5 h-5 text-gray-700" />
-                        <span className="text-sm font-medium text-gray-700">Earnings</span>
-                      </div>
-                    </motion.div>
-                  </div>
-                </div>
-              </motion.div>
+                </motion.div>
               )}
 
               {/* Today's Progress Card (disabled as per request) */}
@@ -11961,10 +11961,10 @@ export default function DeliveryHome() {
                     if (order) {
                       // Customer phone is in order.userId.phone
                       customerPhone = order.userPhone ||
-                                     order.userId?.phone || 
-                                     order.userId?.mobile || 
-                                     order.customerPhone || 
-                                     null;
+                        order.userId?.phone ||
+                        order.userId?.mobile ||
+                        order.customerPhone ||
+                        null;
 
                       // Update selectedRestaurant for future use
                       if (customerPhone && selectedRestaurant) {
@@ -12081,12 +12081,12 @@ export default function DeliveryHome() {
                   // Fallback to web URL after a short delay (in case app is not installed)
                   setTimeout(() => {
                     const webUrl = `https://maps.google.com/?daddr=${customerLat},${customerLng}&directionsmode=bicycling`;
-        openExternalUrl(webUrl);
+                    openExternalUrl(webUrl);
                   }, 500);
                 } else {
                   // Web/Desktop: Use web URL with navigation
                   mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${customerLat},${customerLng}&travelmode=bicycling`;
-      openExternalUrl(mapsUrl);
+                  openExternalUrl(mapsUrl);
                 }
 
                 // Show success message
@@ -12234,26 +12234,26 @@ export default function DeliveryHome() {
             const containerClasses = isCod
               ? "bg-amber-50 border border-amber-200"
               : isPayAtHotel
-              ? "bg-orange-50 border border-orange-200"
-              : "bg-emerald-50 border border-emerald-200"
+                ? "bg-orange-50 border border-orange-200"
+                : "bg-emerald-50 border border-emerald-200"
 
             const iconColor = isCod
               ? "text-amber-600"
               : isPayAtHotel
-              ? "text-orange-600"
-              : "text-emerald-600"
+                ? "text-orange-600"
+                : "text-emerald-600"
 
             const textColor = isCod
               ? "text-amber-800"
               : isPayAtHotel
-              ? "text-orange-800"
-              : "text-emerald-800"
+                ? "text-orange-800"
+                : "text-emerald-800"
 
             const amountColor = isCod
               ? "text-amber-700"
               : isPayAtHotel
-              ? "text-orange-700"
-              : "text-emerald-700"
+                ? "text-orange-700"
+                : "text-emerald-700"
 
             const label = getDeliveryPaymentLabel(payKind)
 
@@ -12280,43 +12280,42 @@ export default function DeliveryHome() {
                 {/* For Pay at Hotel orders, show a clear Cash Collected indicator (for delivery partner) */}
                 {isPayAtHotel &&
                   (selectedRestaurant?.orderId || selectedRestaurant?.id) && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (hotelCashConfirmed) return
-                      try {
-                        const oid =
-                          selectedRestaurant.orderId || selectedRestaurant.id
-                        const response = await deliveryAPI.markHotelCashSettled(
-                          oid,
-                        )
-                        if (response?.data?.success) {
-                          setHotelCashConfirmed(true)
-                          setSelectedRestaurant((prev) =>
-                            prev
-                              ? {
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (hotelCashConfirmed) return
+                        try {
+                          const oid =
+                            selectedRestaurant.orderId || selectedRestaurant.id
+                          const response = await deliveryAPI.markHotelCashSettled(
+                            oid,
+                          )
+                          if (response?.data?.success) {
+                            setHotelCashConfirmed(true)
+                            setSelectedRestaurant((prev) =>
+                              prev
+                                ? {
                                   ...prev,
                                   hotelCashSettled: true,
                                   cashCollected: true,
                                 }
-                              : prev,
-                          )
-                        }
-                      } catch (error) {
+                                : prev,
+                            )
+                          }
+                        } catch (error) {
 
-                      }
-                    }}
-                    className={`w-full py-3 rounded-full text-sm font-semibold shadow-sm transition-colors ${
-                      hotelCashConfirmed
-                        ? "bg-emerald-600 text-white"
-                        : "bg-orange-500 text-white"
-                    }`}
-                  >
-                    {hotelCashConfirmed
-                      ? "Cash Collected (Verified)"
-                      : "Cash Collected at Hotel"}
-                  </button>
-                )}
+                        }
+                      }}
+                      className={`w-full py-3 rounded-full text-sm font-semibold shadow-sm transition-colors ${hotelCashConfirmed
+                          ? "bg-emerald-600 text-white"
+                          : "bg-orange-500 text-white"
+                        }`}
+                    >
+                      {hotelCashConfirmed
+                        ? "Cash Collected (Verified)"
+                        : "Cash Collected at Hotel"}
+                    </button>
+                  )}
               </div>
             )
           })()}
@@ -12325,8 +12324,7 @@ export default function DeliveryHome() {
           <div className="relative w-full">
             <motion.div
               ref={orderDeliveredButtonRef}
-              className={`relative w-full rounded-full overflow-hidden shadow-xl ${
-                ((() => {
+              className={`relative w-full rounded-full overflow-hidden shadow-xl ${((() => {
                   const disabled =
                     getDeliveryPaymentKind(selectedRestaurant) === "pay_at_hotel" &&
                     !hotelCashConfirmed
@@ -12334,7 +12332,7 @@ export default function DeliveryHome() {
                 })())
                   ? 'bg-gray-300 cursor-not-allowed opacity-70'
                   : 'bg-green-600'
-              }`}
+                }`}
               style={{ touchAction: 'pan-x' }} // Prevent vertical scrolling, allow horizontal pan
               onTouchStart={handleOrderDeliveredTouchStart}
               onTouchMove={handleOrderDeliveredTouchMove}
@@ -12572,7 +12570,7 @@ export default function DeliveryHome() {
                       if (orderEarningsBreakdown?.basePayout != null) {
                         return Number(orderEarningsBreakdown.basePayout).toFixed(2)
                       }
-                      
+
                       // Calculate from total if breakdown missing
                       const total = orderEarnings > 0 ? orderEarnings : 0;
                       // With new rules, if total is >= 20, base is likely 20

@@ -90,7 +90,7 @@ export default function FinanceDetailsPage() {
     taxDeductions: financeData?.taxDeductions || {
       gstOnServiceFees: 500.00,
       tds194O: 200.00,
-      gstPaidByZomato: 150.00,
+      gstPaidByabhikaro: 150.00,
       total: 850.00
     },
     investmentsInGrowth: financeData?.investmentsInGrowth || {
@@ -452,11 +452,11 @@ export default function FinanceDetailsPage() {
                               </div>
                               <div className="flex items-center justify-between py-2 border-t border-dashed border-gray-200">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-sm text-gray-700">GST paid by Zomato on behalf of the restaurant u/s 9(5) of GST</span>
+                                  <span className="text-sm text-gray-700">GST paid by abhikaro on behalf of the restaurant u/s 9(5) of GST</span>
                                   <Info className="w-3.5 h-3.5 text-gray-400" />
                                 </div>
                                 <span className="text-sm font-medium text-gray-900">
-                                  ₹{(settlementData.taxDeductions?.gstPaidByZomato || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                  ₹{(settlementData.taxDeductions?.gstPaidByabhikaro || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                 </span>
                               </div>
                             </div>

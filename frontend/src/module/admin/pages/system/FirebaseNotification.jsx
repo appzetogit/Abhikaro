@@ -108,11 +108,10 @@ function ToggleSwitch({ enabled, onToggle }) {
     <button
       type="button"
       onClick={onToggle}
-      className={`inline-flex items-center w-11 h-6 rounded-full border transition-all ${
-        enabled
+      className={`inline-flex items-center w-11 h-6 rounded-full border transition-all ${enabled
           ? "bg-blue-600 border-blue-600 justify-end"
           : "bg-slate-200 border-slate-300 justify-start"
-      }`}
+        }`}
     >
       <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
     </button>
@@ -126,22 +125,22 @@ export default function FirebaseNotification() {
   const [firebaseConfig, setFirebaseConfig] = useState({
     serviceFileContent: "",
     apiKey: "AIzaSyC_TqpDR7LNHxFEPd8cGjl_ka_Rj0ebECA",
-    fcmProjectId: "zomato-607fa",
+    fcmProjectId: "abhikaro-607fa",
     messagingSenderId: "1065631021082",
-    authDomain: "zomato-607fa.firebaseapp.com",
+    authDomain: "abhikaro-607fa.firebaseapp.com",
     appId: "1:1065631021082:web:7424afd0ad2054ed6879a3",
-    storageBucket: "zomato-607fa.firebasestorage.app",
+    storageBucket: "abhikaro-607fa.firebasestorage.app",
     measurementId: "G-7JJV7JYVRX"
   })
 
   const handleMessageToggle = (id) => {
-    setMessages(prev => prev.map(msg => 
+    setMessages(prev => prev.map(msg =>
       msg.id === id ? { ...msg, enabled: !msg.enabled } : msg
     ))
   }
 
   const handleMessageChange = (id, value) => {
-    setMessages(prev => prev.map(msg => 
+    setMessages(prev => prev.map(msg =>
       msg.id === id ? { ...msg, defaultText: value } : msg
     ))
   }
@@ -161,11 +160,11 @@ export default function FirebaseNotification() {
     setFirebaseConfig({
       serviceFileContent: "",
       apiKey: "AIzaSyC_TqpDR7LNHxFEPd8cGjl_ka_Rj0ebECA",
-      fcmProjectId: "zomato-607fa",
+      fcmProjectId: "abhikaro-607fa",
       messagingSenderId: "1065631021082",
-      authDomain: "zomato-607fa.firebaseapp.com",
+      authDomain: "abhikaro-607fa.firebaseapp.com",
       appId: "1:1065631021082:web:7424afd0ad2054ed6879a3",
-      storageBucket: "zomato-607fa.firebasestorage.app",
+      storageBucket: "abhikaro-607fa.firebasestorage.app",
       measurementId: "G-7JJV7JYVRX"
     })
   }
@@ -208,22 +207,20 @@ export default function FirebaseNotification() {
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab("push-notification")}
-              className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
-                activeTab === "push-notification"
+              className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${activeTab === "push-notification"
                   ? "bg-blue-600 text-white"
                   : "text-slate-600 hover:bg-slate-100"
-              }`}
+                }`}
             >
               <Settings className="w-3.5 h-3.5" />
               <span>Push Notification</span>
             </button>
             <button
               onClick={() => setActiveTab("firebase-configuration")}
-              className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
-                activeTab === "firebase-configuration"
+              className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${activeTab === "firebase-configuration"
                   ? "bg-blue-600 text-white"
                   : "text-slate-600 hover:bg-slate-100"
-              }`}
+                }`}
             >
               <Cloud className="w-3.5 h-3.5" />
               <Settings className="w-3.5 h-3.5" />
@@ -242,11 +239,10 @@ export default function FirebaseNotification() {
                   <button
                     key={tab.key}
                     onClick={() => setActiveLanguage(tab.key)}
-                    className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-                      activeLanguage === tab.key
+                    className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${activeLanguage === tab.key
                         ? "border-blue-600 text-blue-600"
                         : "border-transparent text-slate-600 hover:text-slate-900"
-                    }`}
+                      }`}
                   >
                     {tab.label}
                   </button>

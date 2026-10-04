@@ -1,7 +1,7 @@
 /**
  * Enhanced Map Matching & GPS Drift Correction
  * 
- * Provides hyper-smooth, Rapido/Uber-like tracking experience:
+ * Provides hyper-smooth, abhikaro/Uber-like tracking experience:
  * - Snaps GPS coordinates to route polyline (map matching)
  * - Interpolates movement along polyline segments (not straight lines)
  * - Detects off-route scenarios and triggers re-routing
@@ -25,7 +25,7 @@ export function projectPointOntoLineSegment(point, lineStart, lineEnd) {
 
   const dot = A * C + B * D;
   const lenSq = C * C + D * D;
-  
+
   let t = 0;
   if (lenSq !== 0) {
     t = Math.max(0, Math.min(1, dot / lenSq));

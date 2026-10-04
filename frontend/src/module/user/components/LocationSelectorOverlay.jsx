@@ -458,7 +458,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     location?.accuracy ?? null
   ])
 
-  // Initialize Google Maps with Loader (ZOMATO-STYLE)
+  // Initialize Google Maps with Loader (abhikaro-STYLE)
   useEffect(() => {
     if (!showAddressForm || !mapContainerRef.current || !GOOGLE_MAPS_API_KEY) {
       return
@@ -496,7 +496,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           center: initialLocation,
           zoom: 15,
           mapTypeId: google.maps.MapTypeId?.ROADMAP || 'roadmap',
-          disableDefaultUI: true, // Zomato-style clean look
+          disableDefaultUI: true, // abhikaro-style clean look
           zoomControl: true,
           mapTypeControl: false,
           streetViewControl: false,

@@ -5,12 +5,17 @@
  * @returns {string|null} - Normalized phone number or null if invalid
  */
 export const normalizePhoneNumber = (phone) => {
-  if (!phone || typeof phone !== 'string') {
+  if (phone === null || phone === undefined) {
+    return null;
+  }
+  
+  const phoneStr = String(phone).trim();
+  if (!phoneStr) {
     return null;
   }
   
   // Remove all non-digit characters (including +)
-  const digitsOnly = phone.trim().replace(/\D/g, '');
+  const digitsOnly = phoneStr.replace(/\D/g, '');
   
   // If it's empty after cleaning, return null
   if (!digitsOnly) {

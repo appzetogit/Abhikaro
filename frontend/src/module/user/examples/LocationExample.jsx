@@ -2,7 +2,7 @@
  * Location Integration Example
  * 
  * This file demonstrates how to use the Ola Maps location integration
- * to display area/subLocality names in a Zomato-style UI.
+ * to display area/subLocality names in a abhikaro-style UI.
  * 
  * Copy these examples into your components to get started!
  */
@@ -49,10 +49,10 @@ export function Example1_BasicHook() {
 }
 
 // ============================================================================
-// Example 2: Zomato-Style "Delivering to" Display
+// Example 2: abhikaro-Style "Delivering to" Display
 // ============================================================================
 
-export function Example2_ZomatoStyle() {
+export function Example2_abhikaroStyle() {
   const { location, loading } = useLocationSimple()
 
   // Extract area name (primary) or city (fallback)
@@ -258,6 +258,6 @@ export function Example7_AreaOnly() {
  * KEY FIELD: location.area
  * - This contains the subLocality/neighborhood name (e.g., "New Palasia")
  * - Falls back to location.city if area is not available
- * - Always use location.area for the primary display (Zomato-style)
+ * - Always use location.area for the primary display (abhikaro-style)
  */
 

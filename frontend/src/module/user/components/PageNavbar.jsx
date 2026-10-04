@@ -183,7 +183,7 @@ export default function PageNavbar({
       return coordPattern.test(str.trim())
     }
 
-    // Priority 0: Use mainTitle (ZOMATO-STYLE) - Exact building/cafe name
+    // Priority 0: Use mainTitle (abhikaro-STYLE) - Exact building/cafe name
     // This is the most accurate - directly from Google Maps components
     // If mainTitle is available, show it with area if area is different
     if (location?.mainTitle && location.mainTitle.trim() !== "" && location.mainTitle !== "Location Found") {

@@ -37,8 +37,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [showAlertSoundPopup, setShowAlertSoundPopup] = useState(false)
   const [selectedAlertSound, setSelectedAlertSound] = useState(() => {
-    // Load from localStorage, default to "zomato_tone"
-    return localStorage.getItem('delivery_alert_sound') || 'zomato_tone'
+    // Load from localStorage, default to "abhikaro_tone"
+    return localStorage.getItem('delivery_alert_sound') || 'abhikaro_tone'
   })
   const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
@@ -454,14 +454,14 @@ export default function ProfilePage() {
                   />
                 </label>
 
-                {/* Zomato Tone Option */}
+                {/* abhikaro Tone Option */}
                 <label className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 rounded-lg transition-colors">
-                  <span className="text-base font-medium">Zomato Tone</span>
+                  <span className="text-base font-medium">abhikaro Tone</span>
                   <input
                     type="radio"
                     name="alertSound"
-                    value="zomato_tone"
-                    checked={selectedAlertSound === 'zomato_tone'}
+                    value="abhikaro_tone"
+                    checked={selectedAlertSound === 'abhikaro_tone'}
                     onChange={(e) => {
                       setSelectedAlertSound(e.target.value)
                       localStorage.setItem('delivery_alert_sound', e.target.value)

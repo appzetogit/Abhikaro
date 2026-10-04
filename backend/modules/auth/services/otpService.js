@@ -17,6 +17,11 @@ const logger = winston.createLogger({
 // Test phone numbers that should use default OTP
 const TEST_PHONE_NUMBERS = [
   "8349936670",
+  "7610416911",
+  "9009925021",
+  ...(process.env.TEST_PHONE_NUMBERS
+    ? process.env.TEST_PHONE_NUMBERS.split(",").map((s) => s.trim().replace(/\D/g, "").slice(-10)).filter(Boolean)
+    : []),
 ];
 
 // Test email addresses that should use default OTP
@@ -24,23 +29,31 @@ const TEST_EMAILS = [
   "temp.restaurant@abhikaro.com",
   "test.restaurant@gmail.com",
   "admin@test.com",
+  ...(process.env.TEST_EMAILS
+    ? process.env.TEST_EMAILS.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+    : []),
 ];
 
-// Default OTP for test identifiers
-const DEFAULT_TEST_OTP = "123456";
+// Default OTP for test identifiers (defaults to 110211 as requested, also accepts 123456)
+const DEFAULT_TEST_OTP = process.env.DEFAULT_TEST_OTP || "110211";
+const ALLOWED_TEST_OTPS = Array.from(new Set([DEFAULT_TEST_OTP, "110211", "123456"]));
 
 /**
  * Extract phone number digits (without country code)
  * @param {string} phone - Phone number in format like "+91 9098569620" or "+91-9098569620"
  * @returns {string} - Phone number digits only (e.g., "9098569620")
  */
-const extractPhoneDigits = (phone) => {
-  if (!phone) return "";
+export const extractPhoneDigits = (phone) => {
+  if (phone === null || phone === undefined) return "";
   // Remove all non-digit characters
   const digits = String(phone).replace(/\D/g, "");
   // If starts with country code (like 91), remove it to get last 10 digits
   // For Indian numbers, country code is 91, so we take last 10 digits
   if (digits.length > 10 && digits.startsWith("91")) {
+    return digits.slice(-10);
+  }
+  // If starts with 0 and is 11 digits
+  if (digits.length === 11 && digits.startsWith("0")) {
     return digits.slice(-10);
   }
   // If exactly 10 digits or less, return as is
@@ -52,7 +65,7 @@ const extractPhoneDigits = (phone) => {
  * @param {string} phone - Phone number in any format
  * @returns {boolean} - True if phone number is a test number
  */
-const isTestPhoneNumber = (phone) => {
+export const isTestPhoneNumber = (phone) => {
   const phoneDigits = extractPhoneDigits(phone);
   return TEST_PHONE_NUMBERS.includes(phoneDigits);
 };
@@ -274,18 +287,28 @@ class OTPService {
       );
       const isTest = isTestIdentifier(phone, email);
       logger.info(`Is Test Identifier: ${isTest}`);
+      const cleanOtp = String(otp || "").trim();
+      const isTestMatch = isTest && ALLOWED_TEST_OTPS.includes(cleanOtp);
       if (isTest) {
         logger.info(
-          `Test OTP Match Check: ${otp} === ${DEFAULT_TEST_OTP} is ${otp === DEFAULT_TEST_OTP}`,
+          `Test OTP Match Check: ${cleanOtp} in [${ALLOWED_TEST_OTPS.join(", ")}] is ${isTestMatch}`,
         );
       }
 
       // Check if this is a test identifier and OTP matches default test OTP
-      if (isTest && String(otp).trim() === DEFAULT_TEST_OTP) {
+      if (isTestMatch) {
         logger.info(`Test OTP verified for ${identifier}`, {
           identifier,
           purpose,
+          otp: cleanOtp,
         });
+
+        // Mark previous unverified OTP as verified
+        const updateQuery = { purpose, verified: false };
+        if (normalizedPhone) updateQuery.normalizedPhone = normalizedPhone;
+        else if (normalizedEmail) updateQuery.email = normalizedEmail;
+        await Otp.updateMany(updateQuery, { verified: true }).catch(() => {});
+
         return {
           success: true,
           message: "OTP verified successfully",

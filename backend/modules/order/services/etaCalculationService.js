@@ -7,7 +7,7 @@ import ETALog from '../models/ETALog.js';
 
 /**
  * ETA Calculation Service
- * Implements Zomato/Swiggy-like ETA calculation with real-time updates
+ * Implements abhikaro/abhikaro-like ETA calculation with real-time updates
  */
 class ETACalculationService {
   // Constants for ETA calculation
@@ -52,15 +52,15 @@ class ETACalculationService {
 
       // 2. Calculate restaurant preparation time
       // Use provided maxPreparationTime if available, otherwise fallback to restaurant default
-      const restaurantPrepTime = maxPreparationTime !== null 
-        ? maxPreparationTime 
+      const restaurantPrepTime = maxPreparationTime !== null
+        ? maxPreparationTime
         : await this.getRestaurantPrepTime(restaurantId);
-      
+
       // 3. Calculate restaurant load delay (pending orders)
       const restaurantLoadDelay = await this.getRestaurantLoadDelay(restaurantId);
 
       // 4. Calculate rider assignment time
-      const riderAssignmentTime = riderLocation 
+      const riderAssignmentTime = riderLocation
         ? 0 // Already assigned
         : this.getRiderAssignmentTime();
 
@@ -85,10 +85,10 @@ class ETACalculationService {
         );
         travelTimeRestaurantToUser = restaurantToUser.duration;
         totalDistance = riderToRestaurant.distance + restaurantToUser.distance;
-        
+
         // Update traffic level if restaurant-to-user has higher traffic
-        if (restaurantToUser.trafficLevel === 'high' || 
-            (restaurantToUser.trafficLevel === 'medium' && trafficLevel === 'low')) {
+        if (restaurantToUser.trafficLevel === 'high' ||
+          (restaurantToUser.trafficLevel === 'medium' && trafficLevel === 'low')) {
           trafficLevel = restaurantToUser.trafficLevel;
         }
       } else {
@@ -100,7 +100,7 @@ class ETACalculationService {
         travelTimeRestaurantToUser = estimatedTravel.duration;
         totalDistance = estimatedTravel.distance;
         trafficLevel = estimatedTravel.trafficLevel;
-        
+
         // Estimate rider to restaurant time (assume nearby rider)
         travelTimeRiderToRestaurant = Math.ceil(estimatedTravel.duration * 0.3); // 30% of total
       }
@@ -112,12 +112,12 @@ class ETACalculationService {
       );
 
       // 7. Calculate buffer time based on distance
-      const bufferTime = totalDistance >= 5 
+      const bufferTime = totalDistance >= 5
         ? ETACalculationService.BUFFER_TIMES.long
         : ETACalculationService.BUFFER_TIMES.short;
 
       // 8. Calculate total ETA
-      const totalETA = 
+      const totalETA =
         restaurantPrepTime +
         restaurantLoadDelay +
         riderAssignmentTime +
@@ -272,11 +272,11 @@ class ETACalculationService {
               latitude: order.address.location.coordinates[1],
               longitude: order.address.location.coordinates[0]
             },
-            riderLocation: order.deliveryPartnerId?.availability?.currentLocation 
+            riderLocation: order.deliveryPartnerId?.availability?.currentLocation
               ? {
-                  latitude: order.deliveryPartnerId.availability.currentLocation.coordinates[1],
-                  longitude: order.deliveryPartnerId.availability.currentLocation.coordinates[0]
-                }
+                latitude: order.deliveryPartnerId.availability.currentLocation.coordinates[1],
+                longitude: order.deliveryPartnerId.availability.currentLocation.coordinates[0]
+              }
               : null
           });
           reason = 'MANUAL_UPDATE';
@@ -291,7 +291,7 @@ class ETACalculationService {
       if (['RIDER_REACHED_RESTAURANT', 'RIDER_STARTED_DELIVERY', 'TRAFFIC_UPDATE', 'RIDER_NEARING_DROP', 'FOOD_READY'].includes(eventType) || reason?.includes('PICKUP') || reason?.includes('DELIVERY')) {
         const remainingMin = newETA.minETA || newETA.min;
         const remainingMax = newETA.maxETA || newETA.max;
-        
+
         newETA = {
           min: elapsedMinutes + remainingMin,
           max: elapsedMinutes + remainingMax,
@@ -351,12 +351,12 @@ class ETACalculationService {
    * Recalculate ETA with actual rider location
    */
   async recalculateWithRider(order, eventData) {
-    const riderLocation = eventData.riderLocation || 
-      (order.deliveryPartnerId?.availability?.currentLocation 
+    const riderLocation = eventData.riderLocation ||
+      (order.deliveryPartnerId?.availability?.currentLocation
         ? {
-            latitude: order.deliveryPartnerId.availability.currentLocation.coordinates[1],
-            longitude: order.deliveryPartnerId.availability.currentLocation.coordinates[0]
-          }
+          latitude: order.deliveryPartnerId.availability.currentLocation.coordinates[1],
+          longitude: order.deliveryPartnerId.availability.currentLocation.coordinates[0]
+        }
         : null);
 
     if (!riderLocation) {
@@ -395,11 +395,11 @@ class ETACalculationService {
     };
 
     // Get rider's current location (should be at restaurant)
-    const riderLocation = order.deliveryPartnerId?.availability?.currentLocation 
+    const riderLocation = order.deliveryPartnerId?.availability?.currentLocation
       ? {
-          latitude: order.deliveryPartnerId.availability.currentLocation.coordinates[1],
-          longitude: order.deliveryPartnerId.availability.currentLocation.coordinates[0]
-        }
+        latitude: order.deliveryPartnerId.availability.currentLocation.coordinates[1],
+        longitude: order.deliveryPartnerId.availability.currentLocation.coordinates[0]
+      }
       : restaurantLocation; // Assume at restaurant
 
     // Calculate only restaurant to user time
@@ -408,7 +408,7 @@ class ETACalculationService {
       userLocation
     );
 
-    const bufferTime = travelTime.distance >= 5 
+    const bufferTime = travelTime.distance >= 5
       ? ETACalculationService.BUFFER_TIMES.long
       : ETACalculationService.BUFFER_TIMES.short;
 
@@ -452,7 +452,7 @@ class ETACalculationService {
     );
 
     const adjustedTravelTime = Math.ceil(travelTime.duration * trafficMultiplier);
-    const bufferTime = travelTime.distance >= 5 
+    const bufferTime = travelTime.distance >= 5
       ? ETACalculationService.BUFFER_TIMES.long
       : ETACalculationService.BUFFER_TIMES.short;
 
@@ -478,11 +478,11 @@ class ETACalculationService {
    */
   async recalculateNearingDrop(order, eventData) {
     const distanceToDrop = eventData.distanceToDrop || 0.5; // km
-    
+
     // Estimate remaining time based on distance
     // Assume average speed of 30 km/h in city
     const remainingTime = Math.ceil((distanceToDrop / 30) * 60); // minutes
-    
+
     const minETA = Math.max(1, remainingTime - 1);
     const maxETA = remainingTime + 2;
 
@@ -522,7 +522,7 @@ class ETACalculationService {
 
     // Average prep time per order (assume 15 minutes)
     const avgPrepPerOrder = 15;
-    
+
     // Calculate delay: pending orders * avg prep time / number of parallel orders
     // Assume restaurant can prepare 2-3 orders in parallel
     const parallelCapacity = 2.5;

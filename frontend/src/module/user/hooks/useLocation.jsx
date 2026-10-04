@@ -406,7 +406,7 @@ export function useLocation() {
 
       let data;
       try {
-        // ZOMATO-STYLE: Use Geocoding API with proper parameters for EXACT location
+        // abhikaro-STYLE: Use Geocoding API with proper parameters for EXACT location
         // language=en for English, region=in for India (helps with better results)
         // result_type: prioritize premise > street_address > establishment > point_of_interest for exact location
         const response = await fetch(
@@ -458,7 +458,7 @@ export function useLocation() {
         throw new Error(`Invalid response from Google Maps API: ${data.status} - ${data.error_message || "No results"}`);
       }
 
-      // ZOMATO-STYLE: Find the MOST PRECISE result with POI/premise
+      // abhikaro-STYLE: Find the MOST PRECISE result with POI/premise
       // Filter India results first, then find most specific
       let exactResult = null;
       let bestResultIndex = 0;
@@ -519,7 +519,7 @@ export function useLocation() {
 
 
 
-      // Extract address components with priority order (Zomato style - EXACT LOCATION)
+      // Extract address components with priority order (abhikaro style - EXACT LOCATION)
       let city = "";
       let state = "";
       let area = "";
@@ -599,7 +599,7 @@ export function useLocation() {
       // Restaurant listing now uses MongoDB geospatial queries instead
       // Geocoding is only used for manual address add/edit operations
 
-      // ZOMATO-STYLE: Extract exact building/cafe name (Mama Loca Cafe, Princess Center)
+      // abhikaro-STYLE: Extract exact building/cafe name (Mama Loca Cafe, Princess Center)
       // Priority: point_of_interest > premise > sublocality_level_1
       let mainTitle = "";
 
@@ -617,10 +617,10 @@ export function useLocation() {
         mainTitle = "Location Found";
       }
 
-      // Use mainTitle as mainLocation (Zomato-style)
+      // Use mainTitle as mainLocation (abhikaro-style)
       let mainLocation = mainTitle;
 
-      // Set area from main location (Zomato priority order)
+      // Set area from main location (abhikaro priority order)
       if (mainLocation && mainLocation !== "Location Found") {
         area = mainLocation;
       } else if (pointOfInterest) {
@@ -703,12 +703,12 @@ export function useLocation() {
         completeFormattedAddress = formattedAddress; // Use what we have
       }
 
-      // Build display address (for navbar) - ZOMATO-STYLE: Show exact landmark first
+      // Build display address (for navbar) - abhikaro-STYLE: Show exact landmark first
       // Format: "Mama Loca Cafe, 501 Princess Center, 5th Floor, New Palasia"
       let displayAddressParts = [];
 
-      // Priority 1: Use mainTitle/mainLocation (building/cafe name) - ZOMATO-STYLE
-      // This is the exact Zomato approach - show "Mama Loca Cafe" as the main title
+      // Priority 1: Use mainTitle/mainLocation (building/cafe name) - abhikaro-STYLE
+      // This is the exact abhikaro approach - show "Mama Loca Cafe" as the main title
       if (mainLocation && mainLocation.trim() !== "" && mainLocation !== "Location Found") {
         displayAddressParts.push(mainLocation);
       } else if (pointOfInterest && pointOfInterest.trim() !== "") {
@@ -740,7 +740,7 @@ export function useLocation() {
         displayAddressParts.push(sublocalityLevel1);
       }
 
-      // If we couldn't build from components, extract from formatted_address (ZOMATO-STYLE)
+      // If we couldn't build from components, extract from formatted_address (abhikaro-STYLE)
       // formatted_address from results[0] usually has: "Mama Loca Cafe, 501 Princess Center, 5th Floor, New Palasia, Indore, Madhya Pradesh 452001"
       if (displayAddressParts.length === 0 && formattedAddress) {
         const parts = formattedAddress.split(',').map(p => p.trim()).filter(p => p.length > 0);
@@ -808,7 +808,7 @@ export function useLocation() {
 
 
 
-      // Return location object with ZOMATO-STYLE exact location (NO Google Places API)
+      // Return location object with abhikaro-STYLE exact location (NO Google Places API)
       const locationResult = {
         city: city || "",
         state: state || "",
@@ -818,7 +818,7 @@ export function useLocation() {
         street: street || "",
         streetNumber: streetNumber || "",
         postalCode: postalCode || "",
-        // ZOMATO-STYLE: Add mainTitle for exact building/cafe name
+        // abhikaro-STYLE: Add mainTitle for exact building/cafe name
         mainTitle: mainTitle !== "Location Found" ? mainTitle : null,
         pointOfInterest: pointOfInterest || null,
         premise: premise || null
@@ -974,7 +974,7 @@ export function useLocation() {
         const addressParts = formattedAddress.split(',').map(part => part.trim()).filter(part => part.length > 0)
 
 
-        // ZOMATO-STYLE: If we have 3+ parts, first part is ALWAYS the area/locality
+        // abhikaro-STYLE: If we have 3+ parts, first part is ALWAYS the area/locality
         // Format: "New Palasia, Indore, Madhya Pradesh" -> area = "New Palasia"
         if (addressParts.length >= 3) {
           const firstPart = addressParts[0]
@@ -1102,7 +1102,7 @@ export function useLocation() {
       }
 
       // FINAL FALLBACK: If area is still empty, force extract from formatted_address
-      // This is the last resort - be very aggressive (ZOMATO-STYLE)
+      // This is the last resort - be very aggressive (abhikaro-STYLE)
       // Even if formatted_address only has 2 parts (City, State), try to extract area
       if (!area && formattedAddress) {
         const parts = formattedAddress.split(',').map(p => p.trim()).filter(p => p.length > 0)
@@ -1135,7 +1135,7 @@ export function useLocation() {
 
         // If we have 3+ parts, extract area from first part
         if (parts.length >= 3) {
-          // ZOMATO PATTERN: "New Palasia, Indore, Madhya Pradesh"
+          // abhikaro PATTERN: "New Palasia, Indore, Madhya Pradesh"
           // First part = Area, Second = City, Third = State
           const potentialArea = parts[0]
           // Validate it's not state, city, or generic names

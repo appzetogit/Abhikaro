@@ -200,6 +200,19 @@ export const tieredUserRateLimit = async (req, res, next) => {
  * Strict rate limiter for sensitive endpoints (OTP, login, etc.)
  */
 export const strictRateLimit = async (req, res, next) => {
+  // Allow test phone numbers and test emails to bypass strict rate limit
+  const phone = req.body?.phone;
+  const email = req.body?.email;
+  if (phone) {
+    const digits = String(phone).replace(/\D/g, '').slice(-10);
+    if (['8349936670', '7610416911', '9009925021'].includes(digits)) {
+      return next();
+    }
+  }
+  if (email && ['temp.restaurant@abhikaro.com', 'test.restaurant@gmail.com', 'admin@test.com'].includes(String(email).toLowerCase().trim())) {
+    return next();
+  }
+
   const clientIp = getClientIp(req);
   const path = req.path || '';
   

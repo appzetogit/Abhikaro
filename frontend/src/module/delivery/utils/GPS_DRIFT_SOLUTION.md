@@ -2,7 +2,7 @@
 
 ## Overview
 
-This solution provides **hyper-smooth, Rapido/Uber-like tracking** by eliminating GPS drift issues. The marker **never cuts through buildings** and always stays on the road polyline.
+This solution provides **hyper-smooth, abhikaro/Uber-like tracking** by eliminating GPS drift issues. The marker **never cuts through buildings** and always stays on the road polyline.
 
 ## Key Features
 

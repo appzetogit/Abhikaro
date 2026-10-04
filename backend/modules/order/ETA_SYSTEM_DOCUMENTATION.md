@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a comprehensive ETA (Estimated Time of Arrival) calculation system for the food delivery platform, similar to Zomato/Swiggy. It provides real-time ETA updates based on various factors including restaurant preparation time, rider assignment, traffic conditions, and more.
+This is a comprehensive ETA (Estimated Time of Arrival) calculation system for the food delivery platform, similar to abhikaro/abhikaro. It provides real-time ETA updates based on various factors including restaurant preparation time, rider assignment, traffic conditions, and more.
 
 ## Architecture
 

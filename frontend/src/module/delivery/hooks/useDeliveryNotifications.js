@@ -162,7 +162,7 @@ export const useDeliveryNotifications = () => {
   const playNotificationSound = useCallback((dedupeKey = null) => {
     try {
       // Get current selected sound preference from localStorage
-      const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone';
+      const selectedSound = localStorage.getItem('delivery_alert_sound') || 'abhikaro_tone';
       const soundFile = selectedSound === 'original' ? originalSound : alertSound;
       
       // Update audio source if preference changed or initialize if not exists
@@ -226,7 +226,7 @@ export const useDeliveryNotifications = () => {
   // Initialize audio on mount - use selected preference from localStorage
   useEffect(() => {
     // Get selected alert sound preference from localStorage
-    const selectedSound = localStorage.getItem('delivery_alert_sound') || 'zomato_tone';
+    const selectedSound = localStorage.getItem('delivery_alert_sound') || 'abhikaro_tone';
     const soundFile = selectedSound === 'original' ? originalSound : alertSound;
     
     if (!audioRef.current) {

@@ -49,7 +49,7 @@ const zoneSchema = new mongoose.Schema(
       type: [coordinateSchema],
       required: true,
       validate: {
-        validator: function(coords) {
+        validator: function (coords) {
           return coords.length >= 3; // Minimum 3 points for a polygon
         },
         message: 'Zone must have at least 3 coordinates'
@@ -67,7 +67,7 @@ const zoneSchema = new mongoose.Schema(
         required: false // Will be created by pre-save hook
       }
     },
-    // Peak Zone Settings (like Zomato)
+    // Peak Zone Settings (like abhikaro)
     peakZoneRideCount: {
       type: Number,
       default: 0,
@@ -118,13 +118,13 @@ zoneSchema.index({ boundary: '2dsphere' }); // For spatial queries
 zoneSchema.index({ serviceLocation: 'text', name: 'text' }); // For text search
 
 // Pre-save middleware to create GeoJSON boundary
-zoneSchema.pre('save', function(next) {
+zoneSchema.pre('save', function (next) {
   if (this.coordinates && this.coordinates.length >= 3) {
     // Convert coordinates to GeoJSON format: [[[lng, lat], [lng, lat], ...]]
     const geoJsonCoords = this.coordinates.map(coord => [coord.longitude, coord.latitude]);
     // Close the polygon by adding the first point at the end
     geoJsonCoords.push(geoJsonCoords[0]);
-    
+
     this.boundary = {
       type: 'Polygon',
       coordinates: [geoJsonCoords]
@@ -134,25 +134,25 @@ zoneSchema.pre('save', function(next) {
 });
 
 // Method to check if a point is within the zone
-zoneSchema.methods.containsPoint = function(latitude, longitude) {
+zoneSchema.methods.containsPoint = function (latitude, longitude) {
   if (!this.boundary || !this.boundary.coordinates) {
     return false;
   }
-  
+
   // Simple point-in-polygon check using ray casting algorithm
   const coords = this.boundary.coordinates[0];
   let inside = false;
-  
+
   for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
     const xi = coords[i][0], yi = coords[i][1];
     const xj = coords[j][0], yj = coords[j][1];
-    
+
     const intersect = ((yi > longitude) !== (yj > longitude)) &&
       (longitude < (xj - xi) * (longitude - yi) / (yj - yi) + xi);
-    
+
     if (intersect) inside = !inside;
   }
-  
+
   return inside;
 };
 

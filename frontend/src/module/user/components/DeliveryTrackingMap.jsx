@@ -154,20 +154,20 @@ const DeliveryTrackingMap = ({
     const now = Date.now();
     const target = normalizeBearing(bearing);
     const prev = normalizeBearing(lastBearingRef.current);
-    
+
     // Calculate shortest path for rotation
     let diff = ((target - prev + 540) % 360) - 180;
-    
+
     // Increased responsiveness: max rotation speed from 35 to 180 degrees per second
     const dt = Math.max(16, now - (lastBearingTsRef.current || now));
-    const maxStep = (180 * dt) / 1000; 
-    
+    const maxStep = (180 * dt) / 1000;
+
     if (Math.abs(diff) > maxStep) diff = Math.sign(diff) * maxStep;
-    
+
     const next = normalizeBearing(prev + diff);
     lastBearingRef.current = next;
     lastBearingTsRef.current = now;
-    
+
     // Use the optimized rotation utility
     updateMarkerIconRotation(bikeMarkerRef.current, next);
   }, [normalizeBearing]);
@@ -179,9 +179,9 @@ const DeliveryTrackingMap = ({
     }
     try {
       if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return;
-      
+
       let calculatedBearing = heading;
-      
+
       // If heading is missing or 0, calculate from movement history
       if ((calculatedBearing === null || calculatedBearing === undefined || calculatedBearing === 0) && previousLocationRef.current) {
         const d = calculateHaversineDistance(previousLocationRef.current.lat, previousLocationRef.current.lng, lat, lng);
@@ -191,8 +191,8 @@ const DeliveryTrackingMap = ({
         } else {
           calculatedBearing = lastBearingRef.current;
         }
-      } 
-      
+      }
+
       // If still 0 (no history), use destination as a hint so marker doesn't just point North
       if (!calculatedBearing || calculatedBearing === 0) {
         const dest = isPickedUp ? customerCoords : restaurantCoords;
@@ -208,18 +208,18 @@ const DeliveryTrackingMap = ({
           bikeMarkerRef.current = new window.google.maps.Marker({
             position,
             map: mapInstance.current,
-            icon: { 
-              url: bikeLogo, 
-              scaledSize: new window.google.maps.Size(46, 46), 
-              anchor: new window.google.maps.Point(23, 23), 
-              rotation: 0 
+            icon: {
+              url: bikeLogo,
+              scaledSize: new window.google.maps.Size(46, 46),
+              anchor: new window.google.maps.Point(23, 23),
+              rotation: 0
             },
-            optimized: false, 
-            zIndex: 999999, 
-            title: 'Delivery Partner', 
+            optimized: false,
+            zIndex: 999999,
+            title: 'Delivery Partner',
             visible: true
           });
-          
+
           // Set initial rotation and store it
           updateMarkerIconRotation(bikeMarkerRef.current, targetBearing);
           lastBearingRef.current = targetBearing;
@@ -247,13 +247,13 @@ const DeliveryTrackingMap = ({
           if (restaurantCoords) bounds.extend({ lat: Number(restaurantCoords.lat), lng: Number(restaurantCoords.lng) });
           if (customerCoords) bounds.extend({ lat: Number(customerCoords.lat), lng: Number(customerCoords.lng) });
           bounds.extend({ lat, lng }); // Current rider position
-          
+
           isProgrammaticChangeRef.current = true;
-          mapInstance.current.fitBounds(bounds, { 
-            top: 80, 
-            bottom: 80, 
-            left: 80, 
-            right: 80 
+          mapInstance.current.fitBounds(bounds, {
+            top: 80,
+            bottom: 80,
+            left: 80,
+            right: 80
           });
           setTimeout(() => { isProgrammaticChangeRef.current = false; }, 500);
         } catch (err) { console.error('Auto-fit failed:', err); }
@@ -274,10 +274,10 @@ const DeliveryTrackingMap = ({
 
     // Curvature: 0.18 for a more pronounced "proper" arc
     // Direction: Use positive offset to curve "up" (Northwards/Rainbow style)
-    const curvature = 0.22 * dist; 
-    const cp = { 
-      lat: mid.lat - (-dx / dist) * curvature, 
-      lng: mid.lng - (dy / dist) * curvature 
+    const curvature = 0.22 * dist;
+    const cp = {
+      lat: mid.lat - (-dx / dist) * curvature,
+      lng: mid.lng - (dy / dist) * curvature
     };
 
     // Generate 30 points for a smooth curve (Quadratic Bezier)
@@ -338,9 +338,9 @@ const DeliveryTrackingMap = ({
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data && data.lat && data.lng && Number(Date.now() - (data.ts || 0)) < 30 * 60 * 1000) {
-        const loc = { 
-          lat: Number(data.lat), 
-          lng: Number(data.lng), 
+        const loc = {
+          lat: Number(data.lat),
+          lng: Number(data.lng),
           heading: Number(data.heading || 0),
           isRestored: true,
           ts: Number(data.ts)
@@ -365,16 +365,16 @@ const DeliveryTrackingMap = ({
   // Initialize delivery boy location from order data if available
   useEffect(() => {
     const avail = order?.deliveryPartnerId?.availability || order?.deliveryPartner?.availability;
-    
+
     if (avail && !deliveryBoyLocation) {
       const lat = avail.latitude || (avail.currentLocation?.coordinates && avail.currentLocation.coordinates[1]);
       const lng = avail.longitude || (avail.currentLocation?.coordinates && avail.currentLocation.coordinates[0]);
-      
+
       if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
         console.log("📍 Initializing bike location from order data:", { lat, lng });
-        const initialLoc = { 
-          lat, 
-          lng, 
+        const initialLoc = {
+          lat,
+          lng,
           heading: avail.heading || 0,
         };
         setDeliveryBoyLocation(initialLoc);
@@ -443,18 +443,18 @@ const DeliveryTrackingMap = ({
       const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(err => {
         return null;
       });
-      
+
       if (cacheModule) {
         const { getCached, shouldMakeApiCall } = cacheModule;
         const cachedResult = getCached('directions', start, end);
-        
+
         if (cachedResult) {
           if (lastDirectionsRef.current !== cachedResult) {
             directionsRendererRef.current.setOptions({ preserveViewport: true });
             directionsRendererRef.current.setDirections(cachedResult);
             lastDirectionsRef.current = cachedResult;
           }
-          
+
           // Also update local cache
           const roundCoord = (coord) => Math.round(coord * 10000) / 10000;
           const cacheKey = `${roundCoord(startLat)},${roundCoord(startLng)}|${roundCoord(endLat)},${roundCoord(endLng)}`;
@@ -462,7 +462,7 @@ const DeliveryTrackingMap = ({
             result: cachedResult,
             timestamp: Date.now()
           });
-          
+
           // Extract polyline and update animation
           const polylinePoints = extractPolylineFromDirections(cachedResult);
           if (polylinePoints && polylinePoints.length > 0) {
@@ -474,7 +474,7 @@ const DeliveryTrackingMap = ({
               );
             }
           }
-          
+
           if (cachedResult.routes && cachedResult.routes[0] && cachedResult.routes[0].overview_path) {
             if (routePolylineRef.current) {
               routePolylineRef.current.setMap(null);
@@ -483,7 +483,7 @@ const DeliveryTrackingMap = ({
           }
           return;
         }
-        
+
         // Check rate limit
         if (!shouldMakeApiCall('directions')) {
           console.warn('⚠️ Directions API rate limit reached, using local cache if available');
@@ -534,16 +534,16 @@ const DeliveryTrackingMap = ({
                 updateMarkerIconRotation(bikeMarkerRef.current, bearing);
               }
             );
-            
+
             lastProgressRef.current = 0;
-            
+
             if (!animationControllerRef.current) {
               animationControllerRef.current = new RouteBasedAnimationController(
                 bikeMarkerRef.current,
                 polylinePoints
               );
             }
-            
+
             console.log('✅ Strict polyline controller initialized from cache');
           }
         }
@@ -588,7 +588,7 @@ const DeliveryTrackingMap = ({
             result: result,
             timestamp: Date.now()
           });
-          
+
           // Also cache in global cache
           try {
             const cacheModule = await import('@/lib/utils/googleMapsApiCache.js').catch(() => null);
@@ -613,7 +613,7 @@ const DeliveryTrackingMap = ({
           directionsRendererRef.current.setDirections(result);
           lastDirectionsRef.current = result;
 
-          // Extract polyline points for route-based animation (Rapido style)
+          // Extract polyline points for route-based animation (abhikaro style)
           const polylinePoints = extractPolylineFromDirections(result);
           if (polylinePoints && polylinePoints.length > 0) {
             routePolylinePointsRef.current = polylinePoints;
@@ -630,7 +630,7 @@ const DeliveryTrackingMap = ({
                   (bearing) => stableRotateBike(bearing)
                 );
               }
-              
+
               // Reset progress when route changes significantly
               lastProgressRef.current = 0;
               console.log('✅ Strict polyline controller updated/initialized');
@@ -757,9 +757,9 @@ const DeliveryTrackingMap = ({
     const orderStatus = String(order.status || '').toLowerCase();
 
     return (
-      currentPhase === 'en_route_to_delivery' || 
+      currentPhase === 'en_route_to_delivery' ||
       currentPhase === 'at_delivery' ||
-      status === 'en_route_to_delivery' || 
+      status === 'en_route_to_delivery' ||
       status === 'order_confirmed' ||
       status === 'picked_up' ||
       status === 'pickedup' ||
@@ -828,14 +828,14 @@ const DeliveryTrackingMap = ({
 
     return route;
   }, [
-    order?.deliveryState?.currentPhase, 
-    order?.deliveryState?.status, 
-    order?.status, 
-    deliveryBoyLocation?.lat, 
-    deliveryBoyLocation?.lng, 
-    restaurantCoords?.lat, 
-    restaurantCoords?.lng, 
-    customerCoords?.lat, 
+    order?.deliveryState?.currentPhase,
+    order?.deliveryState?.status,
+    order?.status,
+    deliveryBoyLocation?.lat,
+    deliveryBoyLocation?.lng,
+    restaurantCoords?.lat,
+    restaurantCoords?.lng,
+    customerCoords?.lat,
     customerCoords?.lng,
     isPickedUp
   ]);
@@ -908,7 +908,7 @@ const DeliveryTrackingMap = ({
       try {
         socketRef.current?.removeAllListeners?.()
         socketRef.current?.disconnect?.()
-      } catch {}
+      } catch { }
       socketRef.current = connectWithCandidate(nextIdx)
     })
 
@@ -959,7 +959,7 @@ const DeliveryTrackingMap = ({
         try {
           const key = `tracking:lastRiderLoc:${String(orderId)}`;
           localStorage.setItem(key, JSON.stringify({ lat: location.lat, lng: location.lng, heading: location.heading || 0, ts: Date.now() }));
-        } catch {}
+        } catch { }
 
         // STRICT POLYLINE TRACKING: Marker always on polyline center
         if (isMapLoaded && mapInstance.current) {
@@ -974,7 +974,7 @@ const DeliveryTrackingMap = ({
 
           // Use strict polyline controller (marker always on polyline center)
           if (strictPolylineControllerRef.current && routePolylinePointsRef.current && routePolylinePointsRef.current.length > 0) {
-            strictPolylineControllerRef.current.updateFromGPS({ lat: norm.lat, lng: norm.lng }, 2000); 
+            strictPolylineControllerRef.current.updateFromGPS({ lat: norm.lat, lng: norm.lng }, 2000);
           }
           // Fallback to moveBikeSmoothly
           else {
@@ -1048,7 +1048,7 @@ const DeliveryTrackingMap = ({
         try {
           const key = `tracking:lastRiderLoc:${String(orderId)}`;
           localStorage.setItem(key, JSON.stringify({ lat: location.lat, lng: location.lng, heading: location.heading || 0, ts: Date.now() }));
-        } catch {}
+        } catch { }
       }
     }
 
@@ -1056,7 +1056,7 @@ const DeliveryTrackingMap = ({
       console.log(`📡 Attaching listeners for tracking ID: ${id}`);
       socketRef.current.on(`location-receive-${id}`, handleLocationReceive);
       socketRef.current.on(`current-location-${id}`, handleCurrentLocation);
-      
+
       // Ensure rooms are joined and location requested if socket is already connected
       if (socketRef.current && socketRef.current.connected) {
         socketRef.current.emit('join-order-tracking', id);
@@ -1077,9 +1077,9 @@ const DeliveryTrackingMap = ({
             data.points,
             (bearing) => stableRotateBike(bearing) // Use smoothed rotation
           );
-          
+
           lastProgressRef.current = 0;
-          
+
           // Also initialize legacy controller for backward compatibility
           if (!animationControllerRef.current) {
             animationControllerRef.current = new RouteBasedAnimationController(
@@ -1090,12 +1090,12 @@ const DeliveryTrackingMap = ({
             // Update existing controller with new polyline
             animationControllerRef.current.updatePolyline(data.points);
           }
-          
+
           // Update strict controller polyline
           if (strictPolylineControllerRef.current) {
             strictPolylineControllerRef.current.updatePolyline(data.points);
           }
-          
+
           console.log('✅ Strict polyline controller initialized from backend route');
         }
       }
@@ -1140,7 +1140,7 @@ const DeliveryTrackingMap = ({
         socketRef.current.off('order_status_update');
         socketRef.current.disconnect();
       }
-      
+
       // Cleanup strict polyline controller
       if (strictPolylineControllerRef.current) {
         strictPolylineControllerRef.current.cancel();
@@ -1257,7 +1257,7 @@ const DeliveryTrackingMap = ({
         // Initialize map
         mapInstance.current = new window.google.maps.Map(mapRef.current, {
           center: { lat: centerLat, lng: centerLng },
-          zoom: 14, 
+          zoom: 14,
           minZoom: 12,
           maxZoom: 18,
           mapTypeId: mapTypeId,
@@ -1344,16 +1344,16 @@ const DeliveryTrackingMap = ({
             const bounds = new window.google.maps.LatLngBounds();
             bounds.extend({ lat: Number(restaurantCoords.lat), lng: Number(restaurantCoords.lng) });
             bounds.extend({ lat: Number(customerCoords.lat), lng: Number(customerCoords.lng) });
-            
+
             // Wait a tiny bit for map to be ready for fitBounds
             setTimeout(() => {
               if (mapInstance.current && isMountedRef.current) {
                 isProgrammaticChangeRef.current = true;
-                mapInstance.current.fitBounds(bounds, { 
-                  top: 80, 
-                  bottom: 80, 
-                  left: 80, 
-                  right: 80 
+                mapInstance.current.fitBounds(bounds, {
+                  top: 80,
+                  bottom: 80,
+                  left: 80,
+                  right: 80
                 });
                 setTimeout(() => { isProgrammaticChangeRef.current = false; }, 500);
               }
@@ -1539,11 +1539,11 @@ const DeliveryTrackingMap = ({
                 rrLng <= 180
               const distanceToRestaurant = hasRestaurant
                 ? calculateHaversineDistance(
-                    customerCoords.lat,
-                    customerCoords.lng,
-                    rrLat,
-                    rrLng,
-                  )
+                  customerCoords.lat,
+                  customerCoords.lng,
+                  rrLat,
+                  rrLng,
+                )
                 : 0
 
               isProgrammaticChangeRef.current = true;
@@ -1655,11 +1655,11 @@ const DeliveryTrackingMap = ({
     // Only draw if coordinates changed meaningfully (approx > 5 meters)
     // We reduced sensitivity here to prevent flickering during minor GPS jitter
     const last = lastRouteRequestRef.current;
-    const startChanged = !last.start || 
-      Math.abs(last.start.lat - route.start.lat) > 0.0005 || 
+    const startChanged = !last.start ||
+      Math.abs(last.start.lat - route.start.lat) > 0.0005 ||
       Math.abs(last.start.lng - route.start.lng) > 0.0005;
-    const endChanged = !last.end || 
-      Math.abs(last.end.lat - route.end.lat) > 0.00005 || 
+    const endChanged = !last.end ||
+      Math.abs(last.end.lat - route.end.lat) > 0.00005 ||
       Math.abs(last.end.lng - route.end.lng) > 0.00005;
 
     const lastPhase = lastRouteRequestRef.current.phase;
@@ -1668,44 +1668,44 @@ const DeliveryTrackingMap = ({
     if (startChanged || endChanged || lastPhase !== currentRoutePhase) {
       const lastApiCall = lastRouteRequestRef.current.timestamp;
       const forceRedraw = lastPhase !== currentRoutePhase;
-      
-      if (now - lastApiCall > 10000 || startChanged || forceRedraw) {
-         lastRouteUpdateRef.current = now;
-         lastRouteRequestRef.current.phase = currentRoutePhase;
-         
-         // 1. Manage Symbolic Arc (Restaurant -> Customer)
-         // Always show it if the order hasn't been picked up yet
-         if (!isPickedUp && restaurantCoords && customerCoords) {
-            drawSymbolicArc(restaurantCoords, customerCoords);
-         } else {
-            // Remove arc if picked up
-            if (symbolicArcRef.current) {
-              symbolicArcRef.current.setMap(null);
-              symbolicArcRef.current = null;
-            }
-         }
 
-         // 2. Manage Active Directions Route (Rider movement)
-         if (route && route.type === 'directions') {
-           drawRoute(route.start, route.end);
-         } else if (!route || route.type === 'symbolic') {
-           // Clear directions if we are only showing symbolic arc
-           if (directionsRendererRef.current) {
-             directionsRendererRef.current.setDirections({ routes: [] });
-             lastDirectionsRef.current = null;
-           }
-         }
+      if (now - lastApiCall > 10000 || startChanged || forceRedraw) {
+        lastRouteUpdateRef.current = now;
+        lastRouteRequestRef.current.phase = currentRoutePhase;
+
+        // 1. Manage Symbolic Arc (Restaurant -> Customer)
+        // Always show it if the order hasn't been picked up yet
+        if (!isPickedUp && restaurantCoords && customerCoords) {
+          drawSymbolicArc(restaurantCoords, customerCoords);
+        } else {
+          // Remove arc if picked up
+          if (symbolicArcRef.current) {
+            symbolicArcRef.current.setMap(null);
+            symbolicArcRef.current = null;
+          }
+        }
+
+        // 2. Manage Active Directions Route (Rider movement)
+        if (route && route.type === 'directions') {
+          drawRoute(route.start, route.end);
+        } else if (!route || route.type === 'symbolic') {
+          // Clear directions if we are only showing symbolic arc
+          if (directionsRendererRef.current) {
+            directionsRendererRef.current.setDirections({ routes: [] });
+            lastDirectionsRef.current = null;
+          }
+        }
       }
     }
   }, [
-    isMapLoaded, 
-    order?.deliveryState?.currentPhase, 
-    order?.deliveryState?.status, 
-    restaurantLat, 
-    restaurantLng, 
-    customerCoords?.lat, 
-    customerCoords?.lng, 
-    drawRoute, 
+    isMapLoaded,
+    order?.deliveryState?.currentPhase,
+    order?.deliveryState?.status,
+    restaurantLat,
+    restaurantLng,
+    customerCoords?.lat,
+    customerCoords?.lng,
+    drawRoute,
     deliveryBoyLat,
     deliveryBoyLng,
     hasDeliveryPartner,
@@ -1721,7 +1721,7 @@ const DeliveryTrackingMap = ({
       // Fresh restored locations (less than 30 mins) are allowed to skip the phase-check
       // to ensure the bike is visible IMMEDIATELY after refresh.
       const isFreshRestored = currentLocation.isRestored && (Date.now() - (currentLocation.ts || 0) < 30 * 60 * 1000);
-      
+
       if (!hasLivePushRef.current && !allowPulledLocationForBike && !isFreshRestored) return;
 
       console.log('🚴 Creating bike marker from stored/current location on map load:', currentLocation);
@@ -1843,7 +1843,7 @@ const DeliveryTrackingMap = ({
           if (bikeMarkerRef.current.getMap() == null) {
             bikeMarkerRef.current.setMap(mapInstance.current);
           }
-        } catch {}
+        } catch { }
       }
     }
   }, [
@@ -1961,7 +1961,7 @@ const DeliveryTrackingMap = ({
           origin: new window.google.maps.Point(0, 0)
         });
       }
-    } catch {}
+    } catch { }
 
     try {
       if (customerCircleRef.current) {
@@ -1979,7 +1979,7 @@ const DeliveryTrackingMap = ({
           zIndex: window.google.maps.Marker.MAX_ZINDEX + 1
         });
       }
-    } catch {}
+    } catch { }
   }, [isMapLoaded, customerCoords?.lat, customerCoords?.lng]);
 
   // Keep restaurant marker position in sync when coordinates change (and ensure it exists after refresh)
@@ -1996,7 +1996,7 @@ const DeliveryTrackingMap = ({
       if (restaurantCircleRef.current) {
         restaurantCircleRef.current.setVisible(!isOrderDelivered)
       }
-    } catch {}
+    } catch { }
 
     const lat = Number(restaurantCoords.lat)
     const lng = Number(restaurantCoords.lng)
@@ -2033,7 +2033,7 @@ const DeliveryTrackingMap = ({
           radius: 55,
           zIndex: window.google.maps.Marker.MAX_ZINDEX
         })
-      } catch {}
+      } catch { }
       return
     }
 
@@ -2063,7 +2063,7 @@ const DeliveryTrackingMap = ({
           zIndex: window.google.maps.Marker.MAX_ZINDEX
         })
       }
-    } catch {}
+    } catch { }
   }, [isMapLoaded, isOrderDelivered, restaurantCoords?.lat, restaurantCoords?.lng]);
 
   // Periodic check to ensure bike marker is created if it should be visible
@@ -2156,7 +2156,7 @@ const DeliveryTrackingMap = ({
       )}
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Recenter / Follow button (Zomato-like) */}
+      {/* Recenter / Follow button (abhikaro-like) */}
       {isMapLoaded && (
         <button
           type="button"
@@ -2170,7 +2170,7 @@ const DeliveryTrackingMap = ({
               if (customerCoords) bounds.extend({ lat: Number(customerCoords.lat), lng: Number(customerCoords.lng) });
               const p = bikeMarkerRef.current?.getPosition();
               if (p) bounds.extend(p);
-              
+
               if (mapInstance.current) {
                 isProgrammaticChangeRef.current = true;
                 mapInstance.current.fitBounds(bounds, { top: 80, bottom: 80, left: 80, right: 80 });
