@@ -142,7 +142,7 @@ function BookingDetailsModal({ booking, onClose, onBookingUpdate }) {
                         <div className="bg-slate-50 rounded-xl p-3">
                             <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Status</p>
                             <p className="mt-0.5">
-                                <Badge className={`${booking?.status === 'confirmed' ? 'bg-[#FD0134]/15 text-[#FD0134]' :
+                                <Badge className={`${booking?.status === 'confirmed' ? 'bg-[#86002B]/15 text-[#86002B]' :
                                     booking?.status === 'checked-in' ? 'bg-orange-100 text-orange-700' :
                                         booking?.status === 'completed' ? 'bg-blue-100 text-blue-700' :
                                             booking?.status === 'dining_completed' ? 'bg-violet-100 text-violet-700' :
@@ -163,7 +163,7 @@ function BookingDetailsModal({ booking, onClose, onBookingUpdate }) {
                             </div>
                             {booking?.paymentStatus === "paid" ? (
                                 <div className="flex flex-col gap-1">
-                                    <p className="text-sm font-medium text-[#FD0134]">Paid ₹{(booking?.finalAmount ?? 0).toFixed(2)}</p>
+                                    <p className="text-sm font-medium text-[#86002B]">Paid ₹{(booking?.finalAmount ?? 0).toFixed(2)}</p>
                                     {booking?.paidAt && (
                                         <p className="text-xs text-slate-500">Paid on {new Date(booking.paidAt).toLocaleString()}</p>
                                     )}
@@ -175,7 +175,7 @@ function BookingDetailsModal({ booking, onClose, onBookingUpdate }) {
                                         <span className="font-semibold">₹{(booking?.billAmount ?? 0).toFixed(2)}</span>
                                     </div>
                                     {booking?.discountAmount > 0 && (
-                                        <div className="flex justify-between text-sm text-[#FD0134]">
+                                        <div className="flex justify-between text-sm text-[#86002B]">
                                             <span>Discount</span>
                                             <span>- ₹{(booking?.discountAmount ?? 0).toFixed(2)}</span>
                                         </div>
@@ -530,7 +530,7 @@ export default function MyBookings() {
                                     <div className="flex-1 min-w-0 flex flex-col">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <h3 className="font-bold text-gray-900 dark:text-white break-words text-sm sm:text-base">{restaurantName}</h3>
-                                            <Badge className={`shrink-0 ${booking.status === 'confirmed' ? 'bg-[#FD0134]/15 text-[#FD0134]' :
+                                            <Badge className={`shrink-0 ${booking.status === 'confirmed' ? 'bg-[#86002B]/15 text-[#86002B]' :
                                                 booking.status === 'checked-in' ? 'bg-orange-100 text-orange-700' :
                                                     booking.status === 'completed' ? 'bg-blue-100 text-blue-700' :
                                                         booking.status === 'dining_completed' ? 'bg-violet-100 text-violet-700' :
@@ -542,7 +542,7 @@ export default function MyBookings() {
                                                 <span className="text-[10px] text-amber-600 font-medium shrink-0">Bill pending</span>
                                             )}
                                             {booking.paymentStatus === "paid" && (
-                                                <span className="text-[10px] text-[#FD0134] font-medium shrink-0">Paid</span>
+                                                <span className="text-[10px] text-[#86002B] font-medium shrink-0">Paid</span>
                                             )}
                                         </div>
                                         <p className="text-xs text-gray-500 dark:text-gray-400 flex items-start gap-1 mt-1 break-words line-clamp-2">

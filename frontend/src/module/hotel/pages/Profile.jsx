@@ -649,7 +649,7 @@ export default function HotelProfile() {
       // Top white section me hotel ka naam - proper formatting with bold
       ctx.textAlign = "center"
       ctx.textBaseline = "middle"
-      ctx.fillStyle = "#DC2626"
+      ctx.fillStyle = "#86002B"
 
       // Auto-fit helper: largest font size that fits within maxWidth for all lines
       const getFittedFontSize = ({

@@ -208,7 +208,7 @@ export default function DiningCoupons() {
                           {togglingId === c._id ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
                           ) : c.isActive ? (
-                            <ToggleRight className="w-6 h-6 text-[#FD0134]" title="Active" />
+                            <ToggleRight className="w-6 h-6 text-[#86002B]" title="Active" />
                           ) : (
                             <ToggleLeft className="w-6 h-6 text-slate-400" title="Inactive" />
                           )}

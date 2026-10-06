@@ -266,7 +266,7 @@ export default function HotelDashboard() {
       ctx.drawImage(templateImage, 0, 0, posterWidth, posterHeight)
       ctx.textAlign = "center"
       ctx.textBaseline = "middle"
-      ctx.fillStyle = "#DC2626"
+      ctx.fillStyle = "#86002B"
 
       const getFittedFontSize = ({ lines, maxWidth, fontFamily = "Arial, sans-serif", fontWeight = "bold", maxFontSize, minFontSize }) => {
         const safeLines = Array.isArray(lines) ? lines.filter(Boolean) : []

@@ -377,7 +377,7 @@ export default function DiningList() {
                                                                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${restaurant.diningSettings?.isEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
                                                             </button>
                                                             {restaurant.diningSettings?.isEnabled ? (
-                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FD0134]/10 text-[#FD0134] border border-[#FD0134]/30">
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#86002B]/10 text-[#86002B] border border-[#86002B]/30">
                                                                     Enabled
                                                                 </span>
                                                             ) : restaurant.diningSettings?.requestStatus === "pending" ? (
@@ -415,7 +415,7 @@ export default function DiningList() {
                                                         <span className="text-sm font-medium text-slate-700">{restaurant.diningCommissionPercentage ?? 0}%</span>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${restaurant.status ? "bg-[#FD0134]/15 text-[#FD0134]" : "bg-red-100 text-red-700"}`}>
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${restaurant.status ? "bg-[#86002B]/15 text-[#86002B]" : "bg-red-100 text-red-700"}`}>
                                                             {restaurant.status ? "Active" : "Inactive"}
                                                         </span>
                                                     </td>

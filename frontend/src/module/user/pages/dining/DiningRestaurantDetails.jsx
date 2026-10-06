@@ -430,7 +430,7 @@ export default function DiningRestaurantDetails() {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             {isOpen ? (
-                                <div className="flex items-center gap-1.5 text-[#FD0134] text-xs font-semibold uppercase tracking-wide">
+                                <div className="flex items-center gap-1.5 text-[#86002B] text-xs font-semibold uppercase tracking-wide">
                                     <CheckCircle2 className="w-4 h-4" />
                                     <span>Open now | {displayOpening} to {displayClosing}</span>
                                 </div>
@@ -500,7 +500,7 @@ export default function DiningRestaurantDetails() {
 
                     {/* Decorative Elements */}
                     <div className="absolute top-0 left-0 w-8 h-8 bg-purple-500/20 -rotate-45 transform -translate-x-4 -translate-y-4"></div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 bg-[#FD0134]/20 rotate-45 transform translate-x-4 translate-y-4"></div>
+                    <div className="absolute bottom-0 right-0 w-8 h-8 bg-[#86002B]/20 rotate-45 transform translate-x-4 translate-y-4"></div>
                 </div>
             </div>
 

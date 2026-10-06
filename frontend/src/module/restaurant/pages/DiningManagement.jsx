@@ -302,7 +302,7 @@ export default function DiningManagement() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#FD0134]" />
+        <Loader2 className="w-8 h-8 animate-spin text-[#86002B]" />
       </div>
     )
   }
@@ -335,7 +335,7 @@ export default function DiningManagement() {
                 </Button>
               )}
             </div>
-            <Button onClick={saveDiningConfig} disabled={saving} className="bg-[#FD0134] hover:bg-[#FD0134]/90">
+            <Button onClick={saveDiningConfig} disabled={saving} className="bg-[#86002B] hover:bg-[#86002B]/90">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               <span className="ml-2">Save</span>
             </Button>
@@ -359,7 +359,7 @@ export default function DiningManagement() {
                 Dining status (Admin)
               </span>
               {adminControls.isEnabledByAdmin ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FD0134]/10 text-[#FD0134] border border-[#FD0134]/30">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#86002B]/10 text-[#86002B] border border-[#86002B]/30">
                   Enabled
                 </span>
               ) : adminControls.requestStatus === "pending" ? (
@@ -379,7 +379,7 @@ export default function DiningManagement() {
                 variant="outline"
                 onClick={handleRequestEnable}
                 disabled={saving}
-                className="text-[#FD0134] border-[#FD0134]/40 hover:bg-[#FD0134]/10"
+                className="text-[#86002B] border-[#86002B]/40 hover:bg-[#86002B]/10"
               >
                 {saving ? (
                   <>
@@ -416,7 +416,7 @@ export default function DiningManagement() {
               !adminControls.isEnabledByAdmin
                 ? "bg-slate-200 cursor-not-allowed opacity-60"
                 : form.enabled
-                ? "bg-[#FD0134]"
+                ? "bg-[#86002B]"
                 : "bg-slate-300"
             }`}
           >
@@ -487,7 +487,7 @@ export default function DiningManagement() {
             <div>
               <label className="block text-sm font-medium text-slate-700">Cover image</label>
               <p className="text-xs text-slate-500 mt-1 mb-2">Upload a cover image for your dining page.</p>
-              <input type="file" accept="image/*" onChange={handleCoverUpload} disabled={uploadingCover} className="block w-full max-w-md text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#FD0134]/10 file:text-[#FD0134] file:font-medium hover:file:bg-[#FD0134]/20" />
+              <input type="file" accept="image/*" onChange={handleCoverUpload} disabled={uploadingCover} className="block w-full max-w-md text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#86002B]/10 file:text-[#86002B] file:font-medium hover:file:bg-[#86002B]/20" />
               {uploadingCover && <p className="text-sm text-slate-500 mt-1">Uploading…</p>}
             </div>
             {form.coverImage?.url && (
@@ -498,7 +498,7 @@ export default function DiningManagement() {
             <div>
               <label className="block text-sm font-medium text-slate-700">Gallery images</label>
               <p className="text-xs text-slate-500 mt-1 mb-2">Upload one or more images for the gallery.</p>
-              <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} disabled={uploadingGallery} className="block w-full max-w-md text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#FD0134]/10 file:text-[#FD0134] file:font-medium hover:file:bg-[#FD0134]/20" />
+              <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} disabled={uploadingGallery} className="block w-full max-w-md text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#86002B]/10 file:text-[#86002B] file:font-medium hover:file:bg-[#86002B]/20" />
               {uploadingGallery && <p className="text-sm text-slate-500 mt-1">Uploading…</p>}
             </div>
             {(form.gallery || []).length > 0 && (
@@ -559,7 +559,7 @@ export default function DiningManagement() {
             <div className="space-y-3">
               <p className="text-sm text-slate-600 mb-1">Select the category that best describes your dining experience.</p>
               {recommendedCategoryName && (
-                <p className="text-xs font-semibold text-[#FD0134]">
+                <p className="text-xs font-semibold text-[#86002B]">
                   Recommended by admin: <span className="underline">{recommendedCategoryName}</span>
                 </p>
               )}
@@ -577,16 +577,16 @@ export default function DiningManagement() {
                         type="button"
                         onClick={() => toggleCategory(category._id)}
                         className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${isSelected
-                          ? "border-[#FD0134] bg-[#FD0134]/10 ring-1 ring-[#FD0134]"
-                          : "border-slate-200 hover:border-[#FD0134]/40 hover:bg-slate-50"
+                          ? "border-[#86002B] bg-[#86002B]/10 ring-1 ring-[#86002B]"
+                          : "border-slate-200 hover:border-[#86002B]/40 hover:bg-slate-50"
                           }`}
                       >
-                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${isSelected ? "bg-[#FD0134] border-[#FD0134]" : "bg-white border-slate-300"
+                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${isSelected ? "bg-[#86002B] border-[#86002B]" : "bg-white border-slate-300"
                           }`}>
                           {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
                         </div>
                         <div>
-                          <p className={`text-sm font-semibold ${isSelected ? "text-[#FD0134]" : "text-slate-700"}`}>
+                          <p className={`text-sm font-semibold ${isSelected ? "text-[#86002B]" : "text-slate-700"}`}>
                             {category.name}
                           </p>
                         </div>

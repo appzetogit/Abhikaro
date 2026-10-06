@@ -477,7 +477,7 @@ export default function DiningCategory() {
                   setSortBy(null)
                   setSelectedCuisine(null)
                 }}
-                className="text-[#FD0134] font-bold text-sm hover:bg-[#FD0134]/10 px-3 py-1 rounded-lg transition-colors"
+                className="text-[#86002B] font-bold text-sm hover:bg-[#86002B]/10 px-3 py-1 rounded-lg transition-colors"
               >
                 Clear all
               </button>

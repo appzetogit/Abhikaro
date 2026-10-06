@@ -102,7 +102,7 @@ export default function DiningEarnings() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 bg-[#FD0134]/10 rounded-xl text-[#FD0134]">
+                    <div className="p-3 bg-[#86002B]/10 rounded-xl text-[#86002B]">
                       <IndianRupee className="w-6 h-6" />
                     </div>
                     <div>

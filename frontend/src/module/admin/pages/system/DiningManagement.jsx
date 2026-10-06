@@ -322,7 +322,7 @@ export default function DiningManagement() {
                 </div>
 
                 {/* Messages */}
-                {success && <div className="mb-6 bg-[#FD0134]/10 border border-[#FD0134]/30 text-[#FD0134] px-4 py-3 rounded-lg flex items-center gap-2 max-w-2xl"><CheckCircle2 className="w-5 h-5" />{success}</div>}
+                {success && <div className="mb-6 bg-[#86002B]/10 border border-[#86002B]/30 text-[#86002B] px-4 py-3 rounded-lg flex items-center gap-2 max-w-2xl"><CheckCircle2 className="w-5 h-5" />{success}</div>}
                 {error && <div className="mb-6 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center gap-2 max-w-2xl"><AlertCircle className="w-5 h-5" />{error}</div>}
 
                 {/* Content */}

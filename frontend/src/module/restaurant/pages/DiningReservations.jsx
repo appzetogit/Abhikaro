@@ -207,7 +207,7 @@ export default function DiningReservations() {
                                             <button
                                                 type="button"
                                                 onClick={() => setTodayOnly((prev) => !prev)}
-                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${todayOnly ? "bg-[#FD0134]" : "bg-slate-200"
+                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${todayOnly ? "bg-[#86002B]" : "bg-slate-200"
                                                     }`}
                                             >
                                                 <span
@@ -240,7 +240,7 @@ export default function DiningReservations() {
                     </div>
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <div className="flex items-center gap-4">
-                            <div className="bg-[#FD0134]/10 p-3 rounded-xl text-[#FD0134]">
+                            <div className="bg-[#86002B]/10 p-3 rounded-xl text-[#86002B]">
                                 <CheckCircle2 className="w-6 h-6" />
                             </div>
                             <div>
@@ -323,7 +323,7 @@ export default function DiningReservations() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <Badge className={`rounded-lg px-2.5 py-1 w-fit ${booking.status === 'confirmed' ? 'bg-[#FD0134]/15 text-[#FD0134]' :
+                                                    <Badge className={`rounded-lg px-2.5 py-1 w-fit ${booking.status === 'confirmed' ? 'bg-[#86002B]/15 text-[#86002B]' :
                                                         booking.status === 'checked-in' ? 'bg-orange-100 text-orange-700' :
                                                             booking.status === 'completed' ? 'bg-blue-100 text-blue-700' :
                                                                 booking.status === 'dining_completed' ? 'bg-violet-100 text-violet-700' :
@@ -335,7 +335,7 @@ export default function DiningReservations() {
                                                         <span className="text-[10px] text-amber-600 font-medium">Bill sent</span>
                                                     )}
                                                     {booking.paymentStatus === 'paid' && (
-                                                        <span className="text-[10px] text-[#FD0134] font-medium">Paid</span>
+                                                        <span className="text-[10px] text-[#86002B] font-medium">Paid</span>
                                                     )}
                                                 </div>
                                             </td>
@@ -344,7 +344,7 @@ export default function DiningReservations() {
                                                     {booking.status === 'confirmed' && (
                                                         <button
                                                             onClick={() => handleStatusUpdate(booking._id, 'checked-in')}
-                                                            className="px-3 py-1.5 bg-[#FD0134] text-white text-xs font-bold rounded-lg hover:bg-[#FD0134]/90 transition-colors"
+                                                            className="px-3 py-1.5 bg-[#86002B] text-white text-xs font-bold rounded-lg hover:bg-[#86002B]/90 transition-colors"
                                                         >
                                                             Check-in
                                                         </button>

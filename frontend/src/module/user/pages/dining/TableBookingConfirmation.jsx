@@ -252,7 +252,7 @@ export default function TableBookingConfirmation() {
                             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center justify-between hover:bg-slate-50 active:scale-[0.99] transition-all text-left"
                         >
                             <div className="flex items-start gap-3">
-                                <div className="text-[#FD0134] mt-1">
+                                <div className="text-[#86002B] mt-1">
                                     <Edit2 className="w-5 h-5" />
                                 </div>
                                 <div>
