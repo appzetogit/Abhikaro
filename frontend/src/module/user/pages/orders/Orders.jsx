@@ -1104,7 +1104,7 @@ Order again from this restaurant in the ${companyName} app.`
                   {isDelivered && !paymentFailed && (
                     <button 
                       onClick={() => handleReorder(order)}
-                      className="bg-[#E23744] hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm transition-colors"
+                      className="bg-[#86002B] hover:bg-[#700024] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm transition-colors"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       Reorder
@@ -1127,7 +1127,7 @@ Order again from this restaurant in the ${companyName} app.`
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             {/* Header with gradient */}
-            <div className="bg-gradient-to-r from-[#E23744] to-red-600 px-6 py-5">
+            <div className="bg-gradient-to-r from-[#86002B] to-[#55001b] px-6 py-5">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   <Star className="w-5 h-5 fill-white" />
@@ -1198,7 +1198,7 @@ Order again from this restaurant in the ${companyName} app.`
                   rows={4}
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
-                  className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E23744] focus:border-[#E23744] resize-none transition-all"
+                  className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#86002B] focus:border-[#86002B] resize-none transition-all"
                   placeholder="What did you like or dislike about this order? Share your experience..."
                 />
                 <p className="text-xs text-gray-400 mt-1">Your feedback helps us improve our service</p>
@@ -1209,7 +1209,7 @@ Order again from this restaurant in the ${companyName} app.`
                 type="button"
                 disabled={submittingRating || selectedRating === null}
                 onClick={handleSubmitRating}
-                className="w-full rounded-xl bg-gradient-to-r from-[#E23744] to-red-600 text-white text-base font-bold py-3.5 hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-red-500/30 flex items-center justify-center gap-2"
+                className="w-full rounded-xl bg-gradient-to-r from-[#86002B] to-[#700024] text-white text-base font-bold py-3.5 hover:from-[#700024] hover:to-[#55001b] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#86002B]/30 flex items-center justify-center gap-2"
               >
                 {submittingRating ? (
                   <>

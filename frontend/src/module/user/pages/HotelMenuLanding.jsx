@@ -157,7 +157,7 @@ export default function HotelMenuLanding() {
                     <p className="text-gray-600 mb-6">{error}</p>
                     <button
                         onClick={() => navigate('/')}
-                        className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-3 rounded-lg font-semibold hover:from-orange-600 hover:to-red-600 transition-all"
+                        className="w-full bg-[#86002B] hover:bg-[#700024] text-white py-3 rounded-lg font-semibold transition-all"
                     >
                         Go to Home
                     </button>
@@ -186,7 +186,7 @@ export default function HotelMenuLanding() {
                     <button
                         onClick={handleGetCurrentLocation}
                         disabled={gettingLocation}
-                        className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-3 rounded-lg font-semibold hover:from-orange-600 hover:to-red-600 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full bg-[#86002B] hover:bg-[#700024] text-white py-3 rounded-lg font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                         {gettingLocation ? (
                             <>

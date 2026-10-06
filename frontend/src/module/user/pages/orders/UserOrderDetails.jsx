@@ -147,7 +147,7 @@ export default function UserOrderDetails() {
           <p className="text-gray-700 text-sm font-medium">Order not found</p>
           <button
             onClick={() => navigate("/user/orders")}
-            className="px-4 py-2 rounded-lg bg-[#E23744] text-white text-sm font-semibold"
+            className="px-4 py-2 rounded-lg bg-[#86002B] text-white text-sm font-semibold"
           >
             Back to Orders
           </button>
@@ -606,7 +606,7 @@ export default function UserOrderDetails() {
             <button
               type="button"
               onClick={handleCallRestaurant}
-              className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-[#E23744] hover:bg-red-50"
+              className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-[#86002B] hover:bg-[#86002B]/10"
             >
               <Phone className="w-4 h-4" />
             </button>
@@ -659,7 +659,7 @@ export default function UserOrderDetails() {
             <button
               type="button"
               onClick={handleDownloadSummary}
-              className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-[#E23744] hover:bg-red-100"
+              className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-[#86002B] hover:bg-red-100"
             >
               <Download className="w-4 h-4" />
             </button>
@@ -863,7 +863,7 @@ export default function UserOrderDetails() {
             // User router uses `/restaurants/:slug`
             navigate(`/restaurants/${encodeURIComponent(restaurantKeyForNav)}`)
           }}
-          className="flex-1 bg-[#E23744] text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-red-600 transition-colors"
+          className="flex-1 bg-[#86002B] text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#700024] transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
           Reorder
@@ -872,7 +872,7 @@ export default function UserOrderDetails() {
         <button
           type="button"
           onClick={handleDownloadSummary}
-          className="flex-1 bg-white border border-[#E23744] text-[#E23744] py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"
+          className="flex-1 bg-white border border-[#86002B] text-[#86002B] py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#86002B]/10 transition-colors"
         >
           <Download className="w-4 h-4" />
           Invoice

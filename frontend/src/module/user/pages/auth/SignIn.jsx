@@ -15,7 +15,7 @@ import {
 import { authAPI } from "@/lib/api"
 import { firebaseAuth, googleProvider, ensureFirebaseInitialized } from "@/lib/firebase"
 import { setAuthData } from "@/lib/utils/auth"
-import loginBanner from "@/assets/loginbanner.png"
+import loginBanner from "@/assets/loginbanner.jpg"
 
 // Common country codes
 const countryCodes = [
@@ -576,6 +576,8 @@ export default function SignIn() {
         <img
           src={loginBanner}
           alt="Food Banner"
+          loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover object-center"
         />
       </div>
@@ -584,6 +586,8 @@ export default function SignIn() {
         <img
           src={loginBanner}
           alt="Food Banner"
+          loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover object-center"
         />
         {/* Overlay gradient for better text readability on desktop */}
@@ -592,20 +596,21 @@ export default function SignIn() {
 
       {/* Mobile: Bottom Section - White Login Form */}
       {/* Desktop: Right Section - Login Form */}
-      <div className="bg-white dark:bg-[#1a1a1a] p-3 sm:p-4 md:p-6 lg:p-8 xl:p-10 overflow-hidden md:overflow-y-auto md:w-1/2 md:flex md:items-center md:justify-center md:h-screen">
-        <div className="max-w-md lg:max-w-lg xl:max-w-xl mx-auto space-y-4 md:space-y-8 lg:space-y-10 w-full">
-          {/* Heading */}
-          <div className="text-center space-y-2 md:space-y-3">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-black dark:text-white leading-tight">
-             Food Delivery and Dining App
-            </h2>
-            <p className="text-sm sm:text-base md:text-lg text-gray-600 dark:text-gray-400">
-              Log in or sign up
-            </p>
-          </div>
+      <div className="bg-white dark:bg-[#1a1a1a] p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10 overflow-y-auto flex-1 flex flex-col md:w-1/2 md:justify-center md:h-screen">
+        <div className="max-w-md lg:max-w-lg xl:max-w-xl mx-auto w-full flex-1 flex flex-col justify-between">
+          <div className="space-y-4 md:space-y-6">
+            {/* Heading */}
+            <div className="text-center space-y-2 md:space-y-3">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-black dark:text-white leading-tight">
+               Food Delivery and Dining App
+              </h2>
+              <p className="text-sm sm:text-base md:text-lg text-gray-600 dark:text-gray-400">
+                Log in or sign up
+              </p>
+            </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
             {/* Name field for sign up - hidden by default, shown only when needed */}
             {isSignUp && (
               <div className="space-y-2">
@@ -718,7 +723,7 @@ export default function SignIn() {
                     setAuthMethod("phone")
                     setApiError("")
                   }}
-                  className="text-xs text-[#E23744] hover:underline text-left"
+                  className="text-xs text-[#86002B] hover:underline text-left"
                 >
                   Use phone instead
                 </button>
@@ -733,7 +738,7 @@ export default function SignIn() {
                 onCheckedChange={(checked) =>
                   setFormData({ ...formData, rememberMe: checked })
                 }
-                className="w-4 h-4 border-2 border-gray-300 rounded data-[state=checked]:bg-[#E23744] data-[state=checked]:border-[#E23744] flex items-center justify-center"
+                className="w-4 h-4 border-2 border-gray-300 rounded data-[state=checked]:bg-[#86002B] data-[state=checked]:border-[#86002B] flex items-center justify-center"
               />
               <label
                 htmlFor="rememberMe"
@@ -746,7 +751,7 @@ export default function SignIn() {
             {/* Continue Button */}
             <Button
               type="submit"
-              className="w-full h-12 md:h-14 bg-[#D32F2F] hover:bg-[#b71c1c] text-white font-bold text-base md:text-lg rounded-lg transition-all hover:shadow-lg active:scale-[0.98]"
+              className="w-full h-12 md:h-14 bg-[#86002B] hover:bg-[#700024] text-white font-bold text-base md:text-lg rounded-lg transition-all hover:shadow-lg active:scale-[0.98]"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -759,34 +764,33 @@ export default function SignIn() {
               )}
             </Button>
           </form>
+        </div>
 
-
-
-          {/* Legal Disclaimer */}
-          <div className="text-center text-xs md:text-sm text-gray-500 dark:text-gray-400 pt-12 md:pt-13">
-            <p className="mb-1 md:mb-2">
-              By continuing, you agree to our
-            </p>
-            <div className="flex justify-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => navigate("/user/terms")}
-                className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-              >
-                Terms of Service
-              </button>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => navigate("/user/privacy")}
-                className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-              >
-                Privacy Policy
-              </button>
-            </div>
+        {/* Legal Disclaimer */}
+        <div className="text-center text-xs md:text-sm text-gray-500 dark:text-gray-400 mt-auto pt-8 pb-3 md:pt-14 md:pb-4">
+          <p className="mb-1 md:mb-2">
+            By continuing, you agree to our
+          </p>
+          <div className="flex justify-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => navigate("/user/terms")}
+              className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              Terms of Service
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => navigate("/user/privacy")}
+              className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              Privacy Policy
+            </button>
           </div>
         </div>
       </div>
-    </AnimatedPage>
+    </div>
+  </AnimatedPage>
   )
 }
