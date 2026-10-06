@@ -297,7 +297,7 @@ export default function Checkout() {
                   </div>
 
                   <Button
-                    className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white mt-4 md:mt-6 h-11 md:h-12 text-sm md:text-base shadow-lg active:scale-95 transition-all"
+                    className="w-full bg-[#86002B] hover:bg-[#700024] text-white mt-4 md:mt-6 h-11 md:h-12 text-sm md:text-base shadow-lg active:scale-95 transition-all"
                     onClick={handlePlaceOrder}
                     disabled={isPlacingOrder || !selectedAddress || !selectedPayment}
                   >

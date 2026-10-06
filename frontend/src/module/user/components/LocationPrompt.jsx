@@ -81,7 +81,7 @@ export default function LocationPrompt() {
             className="w-full max-w-md"
           >
             <Card className="border-none shadow-[0_20px_50px_rgba(0,0,0,0.3)] bg-white/95 dark:bg-zinc-900/95 overflow-hidden rounded-[2rem]">
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary-orange via-orange-400 to-primary-orange" />
+              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary-orange via-[#a00034] to-primary-orange" />
               
               <CardHeader className="pt-10 pb-6 text-center space-y-4">
                 <div className="mx-auto relative">
@@ -89,9 +89,9 @@ export default function LocationPrompt() {
                     animate={{ 
                       scale: [1, 1.1, 1],
                       boxShadow: [
-                        "0 0 0 0px rgba(255, 110, 0, 0.4)",
-                        "0 0 0 20px rgba(255, 110, 0, 0)",
-                        "0 0 0 0px rgba(255, 110, 0, 0)"
+                        "0 0 0 0px rgba(134, 0, 43, 0.4)",
+                        "0 0 0 20px rgba(134, 0, 43, 0)",
+                        "0 0 0 0px rgba(134, 0, 43, 0)"
                       ]
                     }}
                     transition={{ repeat: Infinity, duration: 2 }}
@@ -130,7 +130,7 @@ export default function LocationPrompt() {
                   <Button
                     onClick={handleAllow}
                     disabled={loading}
-                    className="w-full h-14 bg-primary-orange hover:bg-orange-600 text-white text-lg font-bold rounded-2xl shadow-[0_10px_20px_rgba(255,110,0,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:hover:scale-100"
+                    className="w-full h-14 bg-primary-orange hover:bg-[#700024] text-white text-lg font-bold rounded-2xl shadow-[0_10px_20px_rgba(134,0,43,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:hover:scale-100"
                   >
                     {loading ? (
                       <div className="flex items-center gap-3">
