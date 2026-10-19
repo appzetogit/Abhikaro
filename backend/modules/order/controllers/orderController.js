@@ -22,6 +22,7 @@ import UserWallet from "../../user/models/UserWallet.js";
 import OrderSettlement from "../models/OrderSettlement.js";
 import { distributeCommissions } from "../services/commissionDistributionService.js";
 import { getCache, setCache, generateCacheKey, CACHE_TTL, invalidateCachePattern } from "../../../shared/utils/cache.js";
+import { validateOrderDeliveryAndZone } from "../../../shared/utils/orderZoneValidator.js";
 
 const logger = winston.createLogger({
   level: "info",
@@ -359,127 +360,39 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // CRITICAL: Validate that restaurant's location (pin) is within an active zone
-    const restaurantLat =
-      restaurant.location?.latitude || restaurant.location?.coordinates?.[1];
-    const restaurantLng =
-      restaurant.location?.longitude || restaurant.location?.coordinates?.[0];
+    // CRITICAL: Validate restaurant active status, zone membership, delivery address polygon, and max distance
+    const { zoneId: userZoneId } = req.body;
+    const zoneCheck = await validateOrderDeliveryAndZone({
+      restaurantId: assignedRestaurantId || restaurantId,
+      deliveryAddress: address,
+      clientZoneId: userZoneId,
+      hotelReference: hotelReference,
+    });
 
-    if (!restaurantLat || !restaurantLng) {
-      logger.error("❌ Restaurant location not found:", {
-        restaurantId: restaurant._id?.toString() || restaurant.restaurantId,
-        restaurantName: restaurant.name,
+    if (!zoneCheck.isValid) {
+      logger.warn(`🚫 Order creation rejected by zone validator: ${zoneCheck.message}`, {
+        restaurantId,
+        userLat: zoneCheck.userLat,
+        userLng: zoneCheck.userLng,
+        distanceKm: zoneCheck.distanceKm,
       });
-      return res.status(400).json({
+      return res.status(zoneCheck.statusCode || 403).json({
         success: false,
-        message: "Restaurant location is not set. Please contact support.",
+        message: zoneCheck.message,
       });
     }
 
-    // Check if restaurant is within any active zone
-    const activeZones = await Zone.find({ isActive: true }).lean();
-    let restaurantInZone = false;
-    let restaurantZone = null;
+    const restaurantZone = zoneCheck.restaurantZone;
+    const restaurantLat = zoneCheck.restaurantLat;
+    const restaurantLng = zoneCheck.restaurantLng;
 
-    for (const zone of activeZones) {
-      if (!zone.coordinates || zone.coordinates.length < 3) continue;
-
-      let isInZone = false;
-      if (typeof zone.containsPoint === "function") {
-        isInZone = zone.containsPoint(restaurantLat, restaurantLng);
-      } else {
-        // Ray casting algorithm
-        let inside = false;
-        for (
-          let i = 0, j = zone.coordinates.length - 1;
-          i < zone.coordinates.length;
-          j = i++
-        ) {
-          const coordI = zone.coordinates[i];
-          const coordJ = zone.coordinates[j];
-          const xi =
-            typeof coordI === "object" ? coordI.latitude || coordI.lat : null;
-          const yi =
-            typeof coordI === "object" ? coordI.longitude || coordI.lng : null;
-          const xj =
-            typeof coordJ === "object" ? coordJ.latitude || coordJ.lat : null;
-          const yj =
-            typeof coordJ === "object" ? coordJ.longitude || coordJ.lng : null;
-
-          if (xi === null || yi === null || xj === null || yj === null)
-            continue;
-
-          const intersect =
-            yi > restaurantLng !== yj > restaurantLng &&
-            restaurantLat < ((xj - xi) * (restaurantLng - yi)) / (yj - yi) + xi;
-          if (intersect) inside = !inside;
-        }
-        isInZone = inside;
-      }
-
-      if (isInZone) {
-        restaurantInZone = true;
-        restaurantZone = zone;
-        break;
-      }
-    }
-
-    if (!restaurantInZone) {
-      logger.warn("⚠️ Restaurant location is not within any active zone:", {
-        restaurantId: restaurant._id?.toString() || restaurant.restaurantId,
-        restaurantName: restaurant.name,
-        restaurantLat,
-        restaurantLng,
-      });
-      return res.status(403).json({
-        success: false,
-        message:
-          "This restaurant is not available in your area. Only restaurants within active delivery zones can receive orders.",
-      });
-    }
-
-    logger.info("✅ Restaurant validated - location is within active zone:", {
+    logger.info("✅ Order delivery and zone successfully validated:", {
       restaurantId: restaurant._id?.toString() || restaurant.restaurantId,
       restaurantName: restaurant.name,
       zoneId: restaurantZone?._id?.toString(),
       zoneName: restaurantZone?.name || restaurantZone?.zoneName,
+      distanceKm: zoneCheck.distanceKm?.toFixed(2),
     });
-
-    // CRITICAL: Validate user's zone matches restaurant's zone (strict zone matching)
-    const { zoneId: userZoneId } = req.body; // User's zone ID from frontend
-
-    if (userZoneId) {
-      const restaurantZoneId = restaurantZone._id.toString();
-
-      if (restaurantZoneId !== userZoneId) {
-        logger.warn(
-          "⚠️ Zone mismatch - user and restaurant are in different zones:",
-          {
-            userZoneId,
-            restaurantZoneId,
-            restaurantId: restaurant._id?.toString() || restaurant.restaurantId,
-            restaurantName: restaurant.name,
-          },
-        );
-        return res.status(403).json({
-          success: false,
-          message:
-            "This restaurant is not available in your zone. Please select a restaurant from your current delivery zone.",
-        });
-      }
-
-      logger.info(
-        "✅ Zone match validated - user and restaurant are in the same zone:",
-        {
-          zoneId: userZoneId,
-          restaurantId: restaurant._id?.toString() || restaurant.restaurantId,
-        },
-      );
-    } else {
-      logger.warn(
-        "⚠️ User zoneId not provided in order request - zone validation skipped",
-      );
-    }
 
     assignedRestaurantId =
       restaurant._id?.toString() || restaurant.restaurantId;
@@ -772,6 +685,8 @@ export const createOrder = async (req, res) => {
         ...pricing,
         couponCode: pricing.couponCode || null,
       },
+      zoneId: restaurantZone?._id || null,
+      zoneName: restaurantZone?.name || restaurantZone?.zoneName || null,
       // Save commission data
       commissionBreakdown,
       commissionPercentages,

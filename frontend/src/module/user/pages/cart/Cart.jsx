@@ -90,8 +90,7 @@ export default function Cart() {
 
   const { cart, updateQuantity, addToCart, getCartCount, clearCart, cleanCartForRestaurant } = cartContext;
   const { getDefaultAddress, getDefaultPaymentMethod, addresses, paymentMethods, userProfile } = useProfile()
-  const { createOrder } = useOrders()
-  const { location: currentLocation, zoneId, requestLocation, isManualOverrideEnabled } = useSharedLocation() // Get live location address, zone, and manual override state
+  const { location: currentLocation, zoneId, requestLocation, isManualOverrideEnabled, isOutOfService, isInService } = useSharedLocation() // Get live location address, zone, and manual override state
 
   const [showCoupons, setShowCoupons] = useState(false)
   const [showCouponsPage, setShowCouponsPage] = useState(false)
@@ -443,6 +442,45 @@ export default function Cart() {
       // ignore storage failures
     }
   }, [checkoutDeliveryAddress, hasManuallySelectedDeliveryAddress])
+
+  // Calculate delivery distance between restaurant and checkout delivery address
+  const deliveryDistanceKm = useMemo(() => {
+    const restLat = Number(
+      restaurantData?.location?.latitude ??
+      (Array.isArray(restaurantData?.location?.coordinates) ? restaurantData.location.coordinates[1] : null)
+    );
+    const restLng = Number(
+      restaurantData?.location?.longitude ??
+      (Array.isArray(restaurantData?.location?.coordinates) ? restaurantData.location.coordinates[0] : null)
+    );
+    const userLat = Number(
+      checkoutDeliveryAddress?.location?.coordinates?.[1] ??
+      checkoutDeliveryAddress?.latitude
+    );
+    const userLng = Number(
+      checkoutDeliveryAddress?.location?.coordinates?.[0] ??
+      checkoutDeliveryAddress?.longitude
+    );
+
+    if (!restLat || !restLng || !userLat || !userLng || isNaN(restLat) || isNaN(restLng) || isNaN(userLat) || isNaN(userLng)) {
+      return null;
+    }
+
+    const R = 6371; // km
+    const dLat = ((userLat - restLat) * Math.PI) / 180;
+    const dLng = ((userLng - restLng) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((restLat * Math.PI) / 180) *
+        Math.cos((userLat * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }, [restaurantData, checkoutDeliveryAddress]);
+
+  const isTooFar = !isHotelOrder && deliveryDistanceKm !== null && deliveryDistanceKm > 25;
+  const isOutsideZone = !isHotelOrder && (isOutOfService || !zoneId || isTooFar);
 
   // Get restaurant ID from cart or restaurant data
   // Priority: restaurantData > cart[0].restaurantId
@@ -1398,6 +1436,17 @@ export default function Cart() {
 
     // Clear delivery address error if it was set
     if (deliveryAddressError) setDeliveryAddressError(false)
+
+    // 4. CRITICAL: Check zone status and out-of-service
+    if (!isHotelOrder && (isOutOfService || !zoneId || isTooFar)) {
+      setDeliveryAddressError(true);
+      const errorMsg = isTooFar
+        ? `Delivery address is too far from the restaurant (${deliveryDistanceKm.toFixed(1)} km). Maximum delivery radius is 25 km.`
+        : "Your selected delivery address is outside our delivery zone. We cannot deliver to this location.";
+      toast.error(errorMsg);
+      setIsPlacingOrder(false);
+      return;
+    }
 
     // Use API_BASE_URL from config (supports both dev and production)
 
@@ -2801,13 +2850,24 @@ export default function Cart() {
                 </div>
               )}
 
+              {isOutsideZone && (
+                <div className="mb-3 p-3 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 rounded-xl text-xs md:text-sm text-red-700 dark:text-red-300 font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-600 dark:text-red-400" />
+                  <span>
+                    {isTooFar
+                      ? `Delivery location is too far (${deliveryDistanceKm.toFixed(1)} km). Maximum delivery radius is 25 km.`
+                      : "Delivery Not Available: Your delivery address is outside our delivery zone."}
+                  </span>
+                </div>
+              )}
+
               <Button
                 size="lg"
                 onClick={handlePlaceOrder}
-                disabled={isPlacingOrder || (selectedPaymentMethod === "wallet" && walletBalance < total) || isBelowMinOrderAmount}
+                disabled={isPlacingOrder || isOutsideZone || (selectedPaymentMethod === "wallet" && walletBalance < total) || isBelowMinOrderAmount}
                 className="w-full bg-green-700 hover:bg-green-800 dark:bg-green-600 dark:hover:bg-green-700 text-white px-6 md:px-10 h-14 md:h-16 rounded-lg md:rounded-xl text-base md:text-lg font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet") && !isBelowMinOrderAmount && (
+                {(selectedPaymentMethod === "razorpay" || selectedPaymentMethod === "wallet") && !isBelowMinOrderAmount && !isOutsideZone && (
                   <div className="text-left mr-3 md:mr-4">
                     <p className="text-sm md:text-base opacity-90">₹{total.toFixed(2)}</p>
                     <p className="text-xs md:text-sm opacity-75">TOTAL</p>
@@ -2816,17 +2876,21 @@ export default function Cart() {
                 <span className="font-bold text-base md:text-lg">
                   {isPlacingOrder
                     ? "Processing..."
-                    : isBelowMinOrderAmount
-                      ? `Minimum Order ₹${MIN_ORDER_AMOUNT} Required`
-                      : selectedPaymentMethod === "razorpay"
-                        ? "Place Order"
-                        : selectedPaymentMethod === "wallet"
-                          ? walletBalance >= total
-                            ? "Place Order"
-                            : "Insufficient Balance"
-                          : selectedPaymentMethod === "pay_at_hotel"
-                            ? "Place Order (Pay at Hotel)"
-                            : "Place Order"}
+                    : isOutsideZone
+                      ? isTooFar
+                        ? "Delivery Location Too Far"
+                        : "Location Outside Delivery Zone"
+                      : isBelowMinOrderAmount
+                        ? `Minimum Order ₹${MIN_ORDER_AMOUNT} Required`
+                        : selectedPaymentMethod === "razorpay"
+                          ? "Place Order"
+                          : selectedPaymentMethod === "wallet"
+                            ? walletBalance >= total
+                              ? "Place Order"
+                              : "Insufficient Balance"
+                            : selectedPaymentMethod === "pay_at_hotel"
+                              ? "Place Order (Pay at Hotel)"
+                              : "Place Order"}
                 </span>
                 <ChevronRight className="h-5 w-5 md:h-6 md:w-6 ml-2" />
               </Button>

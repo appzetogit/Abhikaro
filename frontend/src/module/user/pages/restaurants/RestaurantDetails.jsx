@@ -488,6 +488,25 @@ export default function RestaurantDetails() {
     }
   }, [userLocation?.latitude, userLocation?.longitude, restaurantLat, restaurantLng])
 
+  // Check if current user is outside delivery zone or exceeds 25km radius
+  const isOutOfZoneOrDistance = useMemo(() => {
+    if (isOutOfService || !zoneId) return true;
+    if (userLocation?.latitude && userLocation?.longitude && restaurantLat && restaurantLng) {
+      const R = 6371;
+      const dLat = ((userLocation.latitude - restaurantLat) * Math.PI) / 180;
+      const dLng = ((userLocation.longitude - restaurantLng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((restaurantLat * Math.PI) / 180) *
+          Math.cos((userLocation.latitude * Math.PI) / 180) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return (R * c) > 25;
+    }
+    return false;
+  }, [isOutOfService, zoneId, userLocation?.latitude, userLocation?.longitude, restaurantLat, restaurantLng]);
+
   // Sync quantities from cart on mount and when restaurant changes
   // For variant items: key by cartItemId (productId__variantId); for non-variant: key by productId
   useEffect(() => {
@@ -532,8 +551,8 @@ export default function RestaurantDetails() {
       return
     }
 
-    if (isOutOfService) {
-      toast.error('You are outside the service zone. Please select a location within the service area.');
+    if (isOutOfZoneOrDistance) {
+      toast.error('Delivery not available: This restaurant is outside your delivery area (max radius 25 km).');
       return;
     }
 
@@ -1463,6 +1482,16 @@ export default function RestaurantDetails() {
               </div>
             </div>
           </div>
+
+          {/* Out of delivery area warning banner */}
+          {isOutOfZoneOrDistance && (
+            <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-xs sm:text-sm text-red-700 dark:text-red-300 font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-600 dark:text-red-400" />
+              <span>
+                Delivery not available: Your location is outside the active delivery zone for this restaurant.
+              </span>
+            </div>
+          )}
 
           {/* Filter/Category Buttons */}
           <div className="border-y border-gray-200 py-3 -mx-4 px-4 overflow-x-auto scrollbar-hide">

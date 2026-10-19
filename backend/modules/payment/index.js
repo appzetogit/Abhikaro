@@ -7,6 +7,7 @@ import { getRazorpayCredentials } from '../../shared/utils/envService.js';
 import Order from '../order/models/Order.js';
 import OrderSettlement from '../order/models/OrderSettlement.js';
 import mongoose from 'mongoose';
+import { validateOrderDeliveryAndZone } from '../../shared/utils/orderZoneValidator.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -48,6 +49,43 @@ router.post('/razorpay/order', authenticate, async (req, res) => {
     }
     if (!payload?.pricing || typeof payload.pricing?.total !== 'number' || payload.pricing.total <= 0) {
       return res.status(400).json({ success: false, message: 'Order total is required' });
+    }
+
+    // CRITICAL: Strict delivery zone, restaurant active status, and max distance validation
+    const zoneCheck = await validateOrderDeliveryAndZone({
+      restaurantId: payload.restaurantId,
+      deliveryAddress: payload.address,
+      clientZoneId: payload.zoneId,
+      hotelReference: payload.hotelReference,
+    });
+
+    if (!zoneCheck.isValid) {
+      logger.warn(`🚫 Rejected Razorpay order init outside delivery zone: ${zoneCheck.message}`, {
+        restaurantId: payload.restaurantId,
+        userLat: zoneCheck.userLat,
+        userLng: zoneCheck.userLng,
+        distanceKm: zoneCheck.distanceKm
+      });
+      return res.status(zoneCheck.statusCode || 403).json({
+        success: false,
+        message: zoneCheck.message,
+      });
+    }
+
+    // Attach resolved zone information to payload
+    payload.zoneId = zoneCheck.restaurantZone?._id?.toString() || payload.zoneId;
+    payload.zoneName = zoneCheck.restaurantZone?.name || zoneCheck.restaurantZone?.zoneName || null;
+    if (zoneCheck.restaurantLat && zoneCheck.restaurantLng && !payload.restaurantLocation) {
+      payload.restaurantLocation = {
+        latitude: zoneCheck.restaurantLat,
+        longitude: zoneCheck.restaurantLng,
+        location: {
+          type: 'Point',
+          coordinates: [zoneCheck.restaurantLng, zoneCheck.restaurantLat],
+        },
+        formattedAddress: zoneCheck.restaurant?.location?.formattedAddress || zoneCheck.restaurant?.address || null,
+        address: zoneCheck.restaurant?.location?.address || zoneCheck.restaurant?.address || null,
+      };
     }
 
     const amountPaise = Math.round(Number(payload.pricing.total) * 100);
@@ -269,6 +307,8 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
           note: payload.note || '',
           sendCutlery: payload.sendCutlery !== false,
           status: 'confirmed',
+          zoneId: payload.zoneId || null,
+          zoneName: payload.zoneName || null,
           // Preserve hotel/QR metadata for orders placed via hotel QR flow
           hotelReference: payload.hotelReference || null,
           hotelId: resolvedHotelMongoId,

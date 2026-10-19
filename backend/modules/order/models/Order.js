@@ -162,6 +162,17 @@ const orderSchema = new mongoose.Schema(
         },
       },
     },
+    // Zone where the order and restaurant belong
+    zoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Zone',
+      default: null,
+      index: true,
+    },
+    zoneName: {
+      type: String,
+      default: null,
+    },
     pricing: {
       subtotal: {
         type: Number,
