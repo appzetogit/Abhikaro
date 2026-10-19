@@ -2,7 +2,7 @@ import { useSearchParams, Link, useNavigate } from "react-router-dom"
 import React, { useRef, useEffect, useState, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom"
 import Lenis from "lenis"
-import { Star, Clock, MapPin, Heart, Search, Tag, Flame, ShoppingBag, ShoppingCart, SlidersHorizontal, CheckCircle2, Bookmark, BadgePercent, X, ArrowDownUp, Timer, CalendarClock, ShieldCheck, IndianRupee, UtensilsCrossed, Leaf, AlertCircle, Loader2, Plus, Check, Share2 } from "lucide-react"
+import { Star, Clock, MapPin, Heart, Search, Tag, Flame, ShoppingBag, ShoppingCart, SlidersHorizontal, CheckCircle2, Bookmark, BadgePercent, X, ArrowDownUp, Timer, CalendarClock, ShieldCheck, IndianRupee, UtensilsCrossed, Leaf, AlertCircle, Loader2, Plus, Check, Share2, Pin } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import Footer from "../components/Footer"
@@ -1299,12 +1299,17 @@ export default function Home() {
             location: restaurant.location, // Store location for distance recalculation
             isActive: restaurant.isActive !== false, // Default to true if not specified
             isAcceptingOrders: restaurant.isAcceptingOrders === false || restaurant.isAcceptingOrders === 0 ? false : (restaurant.isAcceptingOrders !== undefined ? restaurant.isAcceptingOrders : true), // Preserve false/0, default to true if undefined
+            isPinned: Boolean(restaurant.isPinned),
           }
         })
 
         // Sort restaurants by distance (nearby first) - only if user location is available
         if (userLat && userLng) {
           transformedRestaurants.sort((a, b) => {
+            // Pinned restaurant for this zone ALWAYS comes first!
+            if (a.isPinned && !b.isPinned) return -1
+            if (!a.isPinned && b.isPinned) return 1
+
             // Available restaurants first, then unavailable
             const aAvailable = a.isActive && (a.isAcceptingOrders !== false && a.isAcceptingOrders !== 0)
             const bAvailable = b.isActive && (b.isAcceptingOrders !== false && b.isAcceptingOrders !== 0)
@@ -1649,6 +1654,13 @@ export default function Home() {
         return aDistance - bDistance
       })
     }
+
+    // Ensure pinned restaurant always stays at the absolute top (index 0)
+    filtered.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1
+      if (!a.isPinned && b.isPinned) return 1
+      return 0
+    })
 
     return filtered
   }, [restaurantsData, activeFilters, selectedCuisine, sortBy])
@@ -2388,8 +2400,13 @@ export default function Home() {
                               </div>
                             )}
 
-                            {/* Featured Dish Badge - Top Left */}
-                            <div className="absolute top-3 left-3 md:top-4 md:left-4 flex items-center z-10 transform transition-transform duration-300 group-hover:scale-105 group-hover:-translate-y-0.5">
+                            {/* Badges - Top Left */}
+                            <div className="absolute top-3 left-3 md:top-4 md:left-4 flex items-center gap-1.5 z-10 transform transition-transform duration-300 group-hover:scale-105 group-hover:-translate-y-0.5">
+                              {restaurant.isPinned && (
+                                <div className="h-6 w-6 md:h-7 md:w-7 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-md ring-1 ring-white/30" title="Pinned">
+                                  <Pin className="w-3.5 h-3.5 fill-white" />
+                                </div>
+                              )}
                               <div className="bg-gray-800/90 backdrop-blur-sm text-white px-2 py-1 md:px-4 md:py-1.5 rounded-md text-xs font-medium flex items-center shadow-lg">
                                 {restaurant.featuredDish} · ₹{restaurant.featuredPrice}
                               </div>
@@ -2474,8 +2491,13 @@ export default function Home() {
                                 menuOnly
                               />
 
-                              {/* Featured Dish Badge - Top Left */}
-                              <div className="absolute top-3 left-3 md:top-4 md:left-4 flex items-center z-10 transform transition-transform duration-300 group-hover:scale-105 group-hover:-translate-y-0.5">
+                              {/* Badges - Top Left */}
+                              <div className="absolute top-3 left-3 md:top-4 md:left-4 flex items-center gap-1.5 z-10 transform transition-transform duration-300 group-hover:scale-105 group-hover:-translate-y-0.5">
+                                {restaurant.isPinned && (
+                                  <div className="h-6 w-6 md:h-7 md:w-7 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-md ring-1 ring-white/30" title="Pinned">
+                                    <Pin className="w-3.5 h-3.5 fill-white" />
+                                  </div>
+                                )}
                                 <div className="bg-gray-800/90 backdrop-blur-sm text-white px-2 py-1 md:px-4 md:py-1.5 rounded-md text-xs font-medium flex items-center shadow-lg">
                                   {restaurant.featuredDish} · ₹{restaurant.featuredPrice}
                                 </div>

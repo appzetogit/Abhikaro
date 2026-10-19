@@ -179,6 +179,18 @@ export const getRestaurants = async (req, res) => {
           userCoordinates: null
         });
       }
+    } else if (latitude && longitude) {
+      const uLat = parseFloat(latitude);
+      const uLng = parseFloat(longitude);
+      if (!isNaN(uLat) && !isNaN(uLng)) {
+        const activeZones = await Zone.find({ isActive: true }).lean();
+        for (const z of activeZones) {
+          if (z.coordinates && z.coordinates.length >= 3 && isPointInZone(uLat, uLng, z.coordinates)) {
+            userZone = z;
+            break;
+          }
+        }
+      }
     }
     
     // Dining category filter - if diningCategory is provided, filter restaurants by linked restaurants
@@ -705,6 +717,25 @@ export const getRestaurants = async (req, res) => {
         return timeMatch && parseInt(timeMatch[1]) <= maxTime;
       });
     }
+
+    // Pin handling: mark isPinned based on userZone.pinnedRestaurantId and place at top
+    const pinnedRestId = userZone?.pinnedRestaurantId ? String(userZone.pinnedRestaurantId) : null;
+
+    restaurants = restaurants.map(restaurant => {
+      const restId = restaurant._id ? String(restaurant._id) : null;
+      restaurant.isPinned = Boolean(
+        (pinnedRestId && restId === pinnedRestId) ||
+        (restaurant.isPinned && (!userZone || String(restaurant.pinnedZoneId) === String(userZone._id)))
+      );
+      return restaurant;
+    });
+
+    // Pinned restaurant for this zone ALWAYS comes first at the very top (index 0)
+    restaurants.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return 0;
+    });
     
     // Get total count
     const totalQuery = { ...query };

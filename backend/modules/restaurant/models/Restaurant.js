@@ -362,6 +362,15 @@ const restaurantSchema = new mongoose.Schema(
         default: null,
       },
     },
+    isPinned: {
+      type: Boolean,
+      default: false,
+    },
+    pinnedZoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Zone",
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -381,6 +390,7 @@ restaurantSchema.index({ ownerPhone: 1 }, { unique: true, sparse: true });
 restaurantSchema.index({ 'location.geoLocation': '2dsphere' });
 // Additional indexes for scalability
 restaurantSchema.index({ isActive: 1, zoneId: 1 }); // For filtering active restaurants by zone
+restaurantSchema.index({ isPinned: 1, pinnedZoneId: 1 });
 restaurantSchema.index({ isActive: 1, isAcceptingOrders: 1 }); // For active and accepting orders
 restaurantSchema.index({ createdAt: -1 }); // For sorting by creation date
 // Basic index to speed up name-based lookups (search suggestions)

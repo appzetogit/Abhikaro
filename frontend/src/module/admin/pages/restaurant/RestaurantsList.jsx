@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, RefreshCw, Edit, Check, ChevronLeft, ChevronRight, MessageSquare, Filter, Utensils } from "lucide-react"
+import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, RefreshCw, Edit, Check, ChevronLeft, ChevronRight, MessageSquare, Filter, Utensils, Pin } from "lucide-react"
 import { adminAPI, restaurantAPI } from "../../../../lib/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -32,6 +32,8 @@ export default function RestaurantsList() {
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState(null) // { restaurant }
   const [deletePassword, setDeletePassword] = useState("")
   const [deleting, setDeleting] = useState(false)
+  const [pinConfirmDialog, setPinConfirmDialog] = useState(null) // { restaurant, currentPinnedRestaurant, targetZone }
+  const [pinning, setPinning] = useState(false)
   const [editingZone, setEditingZone] = useState(false) // { restaurantId, zone: string }
   const [zoneInput, setZoneInput] = useState("")
   const [updatingZone, setUpdatingZone] = useState(false)
@@ -192,10 +194,13 @@ export default function RestaurantsList() {
               restaurant.contactEmail ||
               "",
             zone:
+              restaurant.zone ||
               restaurant.location?.area ||
               restaurant.location?.city ||
-              restaurant.zone ||
               "N/A",
+            zoneId: restaurant.zoneId || null,
+            isPinned: Boolean(restaurant.isPinned),
+            pinnedZoneId: restaurant.pinnedZoneId || null,
             cuisine:
               Array.isArray(restaurant.cuisines) &&
               restaurant.cuisines.length > 0
@@ -1003,6 +1008,65 @@ export default function RestaurantsList() {
     }
   }
 
+  // Handle toggling pinned restaurant for zone
+  const handleTogglePinRestaurant = async (restaurant, force = false) => {
+    try {
+      setPinning(true)
+      const restaurantId = restaurant._id || restaurant.id
+      const response = await adminAPI.togglePinRestaurant(restaurantId, { force, zoneId: restaurant.zoneId })
+
+      if (response.data?.success) {
+        const data = response.data.data
+        // If confirmation is required because another restaurant is already pinned in the zone
+        if (data?.requiresConfirmation) {
+          setPinConfirmDialog({
+            restaurant,
+            currentPinnedRestaurant: data.currentPinnedRestaurant,
+            targetZone: data.targetZone,
+          })
+          return
+        }
+
+        // Close dialog if open
+        setPinConfirmDialog(null)
+
+        const targetZoneName = data.zoneName || restaurant.zone
+
+        // Update restaurants state
+        setRestaurants(prevRestaurants =>
+          prevRestaurants.map(r => {
+            const rId = r._id || r.id
+            // If this was the restaurant being pinned/unpinned
+            if (rId === restaurantId) {
+              return {
+                ...r,
+                isPinned: data.isPinned,
+                pinnedZoneId: data.pinnedZoneId,
+                zone: targetZoneName || r.zone,
+              }
+            }
+            // If this restaurant was in the same zone and was replaced by pinning a new one
+            if (data.isPinned && r.zone === targetZoneName) {
+              return {
+                ...r,
+                isPinned: false,
+                pinnedZoneId: null,
+              }
+            }
+            return r
+          })
+        )
+
+        toast.success(response.data.message || (data.isPinned ? "Restaurant pinned to top" : "Restaurant unpinned"))
+      }
+    } catch (error) {
+      console.error("Error toggling pin:", error)
+      toast.error(error?.response?.data?.message || "Failed to update pin status")
+    } finally {
+      setPinning(false)
+    }
+  }
+
   // Handle export functionality
   const handleExport = () => {
     const dataToExport = filteredRestaurants.length > 0 ? filteredRestaurants : restaurants
@@ -1276,7 +1340,15 @@ export default function RestaurantsList() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-slate-700">{restaurant.zone}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm text-slate-700">{restaurant.zone}</span>
+                            {restaurant.isPinned && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                                <Pin className="w-2.5 h-2.5 fill-amber-600 text-amber-600" />
+                                Top Pinned
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm text-slate-700">{restaurant.cuisine}</span>
@@ -1310,6 +1382,22 @@ export default function RestaurantsList() {
                               title="View Customer Reviews & Ratings"
                             >
                               <Star className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleTogglePinRestaurant(restaurant)}
+                              disabled={pinning}
+                              className={`p-1.5 rounded transition-all ${
+                                restaurant.isPinned
+                                  ? "text-amber-600 bg-amber-50 hover:bg-amber-100 ring-1 ring-amber-300 shadow-sm"
+                                  : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+                              }`}
+                              title={
+                                restaurant.isPinned
+                                  ? `Pinned to top of ${restaurant.zone} - Click to unpin`
+                                  : `Pin to top of ${restaurant.zone && restaurant.zone !== "N/A" ? restaurant.zone : "zone"}`
+                              }
+                            >
+                              <Pin className={`w-4 h-4 ${restaurant.isPinned ? "fill-amber-500 text-amber-600" : ""}`} />
                             </button>
                             <button
                               onClick={() =>
@@ -2253,6 +2341,58 @@ export default function RestaurantsList() {
                   ) : (
                     banConfirmDialog.action === 'ban' ? 'Ban Restaurant' : 'Unban Restaurant'
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pin Replace Confirmation Dialog */}
+      {pinConfirmDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setPinConfirmDialog(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                  <Pin className="w-6 h-6 text-amber-600 fill-amber-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Replace Pinned Restaurant?</h3>
+                  <p className="text-sm text-slate-600">
+                    Zone: {pinConfirmDialog.targetZone?.name || pinConfirmDialog.restaurant?.zone}
+                  </p>
+                </div>
+              </div>
+              
+              <p className="text-sm text-slate-700 mb-3">
+                This zone already has a restaurant pinned to the top:
+              </p>
+
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 mb-4 text-sm font-medium text-amber-900 flex items-center gap-2">
+                <Pin className="w-4 h-4 fill-amber-600 text-amber-600 shrink-0" />
+                <span>Currently Pinned: <strong>{pinConfirmDialog.currentPinnedRestaurant?.name}</strong></span>
+              </div>
+
+              <p className="text-sm text-slate-600 mb-6">
+                Pinning <strong>{pinConfirmDialog.restaurant?.name}</strong> will unpin the current restaurant. Only <strong>1 restaurant</strong> can be pinned per zone.
+              </p>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setPinConfirmDialog(null)}
+                  disabled={pinning}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleTogglePinRestaurant(pinConfirmDialog.restaurant, true)}
+                  disabled={pinning}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {pinning && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>Replace & Pin</span>
                 </button>
               </div>
             </div>

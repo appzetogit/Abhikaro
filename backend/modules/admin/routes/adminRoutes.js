@@ -25,6 +25,7 @@ import {
   updateRestaurant,
   updateRestaurantStatus,
   updateRestaurantLocation,
+  toggleRestaurantPin,
   sendRestaurantEmail,
   getRestaurantJoinRequests,
   approveRestaurant,
@@ -507,6 +508,11 @@ router.put(
   "/restaurants/:id/location",
   requirePermissions("menu.restaurants"),
   updateRestaurantLocation,
+);
+router.put(
+  "/restaurants/:id/pin",
+  requirePermissions("menu.restaurants"),
+  toggleRestaurantPin,
 );
 router.post(
   "/restaurants/:id/send-email",

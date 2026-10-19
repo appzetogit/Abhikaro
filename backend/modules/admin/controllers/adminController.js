@@ -13,6 +13,7 @@ import Delivery from "../../delivery/models/Delivery.js";
 import Menu from "../../restaurant/models/Menu.js";
 import Hotel from "../../hotel/models/Hotel.js";
 import Zone from "../models/Zone.js";
+import { isPointInZone } from "../../../shared/utils/zoneUtils.js";
 import {
   successResponse,
   errorResponse,
@@ -2177,13 +2178,50 @@ export const getRestaurants = asyncHandler(async (req, res) => {
       .limit(parseInt(limit))
       .lean();
 
-    // Fix restaurant names: Prefer onboarding.step1.restaurantName if available
+    // Fetch active zones to populate zone names and pin status accurately
+    const activeZones = await Zone.find({ isActive: true }).lean();
+
+    // Fix restaurant names and populate zone & pin details
     restaurants.forEach(restaurant => {
       if (restaurant.onboarding?.step1?.restaurantName) {
         restaurant.name = restaurant.onboarding.step1.restaurantName;
       }
       if (restaurant.onboarding?.step1?.ownerName) {
         restaurant.ownerName = restaurant.onboarding.step1.ownerName;
+      }
+
+      // Resolve matched zone
+      let matchedZone = null;
+      if (restaurant.pinnedZoneId) {
+        matchedZone = activeZones.find(z => String(z._id) === String(restaurant.pinnedZoneId));
+      }
+
+      const lat = restaurant.location?.latitude || (restaurant.location?.coordinates ? restaurant.location.coordinates[1] : null);
+      const lng = restaurant.location?.longitude || (restaurant.location?.coordinates ? restaurant.location.coordinates[0] : null);
+
+      if (!matchedZone && lat && lng) {
+        for (const z of activeZones) {
+          if (z.coordinates && z.coordinates.length >= 3 && isPointInZone(lat, lng, z.coordinates)) {
+            matchedZone = z;
+            break;
+          }
+        }
+      }
+
+      if (!matchedZone && (restaurant.location?.area || restaurant.location?.city || restaurant.zone)) {
+        const areaName = String(restaurant.location?.area || restaurant.location?.city || restaurant.zone || "").trim().toLowerCase();
+        matchedZone = activeZones.find(z => (z.name && z.name.toLowerCase() === areaName) || (z.zoneName && z.zoneName.toLowerCase() === areaName));
+      }
+
+      if (matchedZone) {
+        restaurant.zone = matchedZone.name || matchedZone.zoneName;
+        restaurant.zoneId = matchedZone._id.toString();
+        // Check if this restaurant is the pinned one in this zone
+        restaurant.isPinned = Boolean(matchedZone.pinnedRestaurantId && String(matchedZone.pinnedRestaurantId) === String(restaurant._id));
+        restaurant.pinnedZoneId = matchedZone._id.toString();
+      } else {
+        restaurant.zone = restaurant.location?.area || restaurant.location?.city || restaurant.zone || "N/A";
+        restaurant.isPinned = false;
       }
     });
 
@@ -2658,6 +2696,135 @@ export const updateRestaurantLocation = asyncHandler(async (req, res) => {
       error: error.stack,
     });
     return errorResponse(res, 500, "Failed to update restaurant location");
+  }
+});
+
+/**
+ * Toggle Pin Restaurant in its Delivery Zone
+ * PUT /api/admin/restaurants/:id/pin
+ * Body: { force?: boolean, zoneId?: string }
+ */
+export const toggleRestaurantPin = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { force = false, zoneId = null } = req.body || {};
+
+    if (!id) {
+      return errorResponse(res, 400, "Restaurant ID is required");
+    }
+
+    const restaurant = await Restaurant.findById(id);
+    if (!restaurant) {
+      return errorResponse(res, 404, "Restaurant not found");
+    }
+
+    // Active zones list for zone matching
+    const activeZones = await Zone.find({ isActive: true });
+
+    // If currently pinned -> Unpin it
+    if (restaurant.isPinned) {
+      let zone = null;
+      if (restaurant.pinnedZoneId) {
+        zone = await Zone.findById(restaurant.pinnedZoneId);
+      }
+      if (!zone) {
+        zone = await Zone.findOne({ pinnedRestaurantId: restaurant._id });
+      }
+
+      if (zone && String(zone.pinnedRestaurantId) === String(restaurant._id)) {
+        zone.pinnedRestaurantId = null;
+        await zone.save();
+      }
+
+      restaurant.isPinned = false;
+      restaurant.pinnedZoneId = null;
+      await restaurant.save();
+
+      await invalidateCachePattern("restaurant*");
+      await invalidateCachePattern("zone*");
+
+      return successResponse(res, 200, `${restaurant.name} unpinned successfully`, {
+        isPinned: false,
+        pinnedZoneId: null,
+        zoneName: zone ? (zone.name || zone.zoneName) : null,
+      });
+    }
+
+    // Otherwise -> Pin this restaurant to its zone
+    let targetZone = null;
+    if (zoneId && mongoose.Types.ObjectId.isValid(zoneId)) {
+      targetZone = await Zone.findById(zoneId);
+    }
+
+    if (!targetZone) {
+      const lat = restaurant.location?.latitude || (restaurant.location?.coordinates ? restaurant.location.coordinates[1] : null);
+      const lng = restaurant.location?.longitude || (restaurant.location?.coordinates ? restaurant.location.coordinates[0] : null);
+
+      if (lat && lng) {
+        for (const z of activeZones) {
+          if (z.coordinates && z.coordinates.length >= 3 && isPointInZone(lat, lng, z.coordinates)) {
+            targetZone = z;
+            break;
+          }
+        }
+      }
+
+      if (!targetZone && (restaurant.location?.area || restaurant.location?.city || restaurant.zone)) {
+        const areaName = String(restaurant.location?.area || restaurant.location?.city || restaurant.zone || "").trim().toLowerCase();
+        targetZone = activeZones.find(z => (z.name && z.name.toLowerCase() === areaName) || (z.zoneName && z.zoneName.toLowerCase() === areaName));
+      }
+    }
+
+    if (!targetZone) {
+      return errorResponse(res, 400, "This restaurant is not located within any active delivery zone. Please configure coordinates or area first.");
+    }
+
+    // Check if another restaurant is already pinned in this zone
+    if (targetZone.pinnedRestaurantId && String(targetZone.pinnedRestaurantId) !== String(restaurant._id)) {
+      const currentPinnedRestaurant = await Restaurant.findById(targetZone.pinnedRestaurantId).select("name").lean();
+      
+      if (!force) {
+        return successResponse(res, 200, "Zone already has a pinned restaurant", {
+          requiresConfirmation: true,
+          currentPinnedRestaurant: {
+            id: targetZone.pinnedRestaurantId,
+            name: currentPinnedRestaurant?.name || "Another restaurant",
+          },
+          targetZone: {
+            id: targetZone._id,
+            name: targetZone.name || targetZone.zoneName,
+          },
+        });
+      }
+
+      // If force is true, unpin the previous restaurant
+      await Restaurant.findByIdAndUpdate(targetZone.pinnedRestaurantId, {
+        isPinned: false,
+        pinnedZoneId: null,
+      });
+    }
+
+    // Pin this restaurant to targetZone
+    targetZone.pinnedRestaurantId = restaurant._id;
+    await targetZone.save();
+
+    restaurant.isPinned = true;
+    restaurant.pinnedZoneId = targetZone._id;
+    await restaurant.save();
+
+    await invalidateCachePattern("restaurant*");
+    await invalidateCachePattern("zone*");
+
+    return successResponse(res, 200, `${restaurant.name} is now pinned to the top of ${targetZone.name || targetZone.zoneName}`, {
+      isPinned: true,
+      pinnedZoneId: targetZone._id,
+      zoneName: targetZone.name || targetZone.zoneName,
+    });
+  } catch (error) {
+    logger.error(`Error toggling restaurant pin: ${error.message}`, {
+      error: error.stack,
+    });
+    return errorResponse(res, 500, "Failed to toggle restaurant pin");
   }
 });
 

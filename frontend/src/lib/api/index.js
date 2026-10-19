@@ -1530,6 +1530,11 @@ export const adminAPI = {
     );
   },
 
+  // Toggle pin restaurant in its zone
+  togglePinRestaurant: (id, data = {}) => {
+    return apiClient.put(`/admin/restaurants/${id}/pin`, data);
+  },
+
   // Send email to restaurant owner (Admin)
   sendRestaurantEmail: (id, subject, message) => {
     return apiClient.post(`/admin/restaurants/${id}/send-email`, {
