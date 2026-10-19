@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
-import loginBg from "@/assets/loginbanner.png"
+import loginBg from "@/assets/loginbanner.jpg"
 import { restaurantAPI } from "@/lib/api"
 import { useCompanyName } from "@/lib/hooks/useCompanyName"
 
