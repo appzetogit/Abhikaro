@@ -320,6 +320,7 @@ export const creditDeliveryWallet = async (
     const DeliveryWallet = (
       await import("../../delivery/models/DeliveryWallet.js")
     ).default;
+    let wallet = await DeliveryWallet.findOrCreateByDeliveryId(deliveryId);
     const orderIdStr = orderId?.toString ? orderId.toString() : String(orderId);
     const existingTransaction = (wallet.transactions || []).find(
       (t) =>

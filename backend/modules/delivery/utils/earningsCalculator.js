@@ -49,11 +49,8 @@ export async function calculateEstimatedEarnings(deliveryDistance) {
 
     // Create breakdown text
     let breakdownText = `Base payout: ₹${basePayout}`;
-    if (distance > commissionResult.rule.minDistance) {
-      const extraDistance = distance - commissionResult.rule.minDistance;
-      breakdownText += ` + Extra Distance (${extraDistance.toFixed(1)} km × ₹${commissionPerKm}/km) = ₹${distanceCommission.toFixed(0)}`;
-    } else {
-      breakdownText += ` (Distance ${distance.toFixed(1)} km ≤ ${commissionResult.rule.minDistance} km, per km not applicable)`;
+    if (distance > 0 && commissionPerKm > 0) {
+      breakdownText += ` + Distance (${distance.toFixed(1)} km × ₹${commissionPerKm}/km) = ₹${distanceCommission.toFixed(0)}`;
     }
     breakdownText += ` = ₹${totalEarning.toFixed(0)}`;
 
@@ -71,12 +68,10 @@ export async function calculateEstimatedEarnings(deliveryDistance) {
   } catch (error) {
     console.error('Error calculating estimated earnings:', error);
     // Fallback to default calculation
-    const fallbackBase = 10;
-    const fallbackRate = 5;
-    const fallbackMinDist = 4;
+    const fallbackBase = 35;
+    const fallbackRate = 8;
     const dist = deliveryDistance || 0;
-    const extraDist = Math.max(0, dist - fallbackMinDist);
-    const distComm = extraDist * fallbackRate;
+    const distComm = dist * fallbackRate;
     const total = fallbackBase + distComm;
 
     return {
@@ -86,7 +81,7 @@ export async function calculateEstimatedEarnings(deliveryDistance) {
       distanceCommission: distComm,
       totalEarning: total,
       breakdown: 'Default calculation',
-      minDistance: fallbackMinDist,
+      minDistance: 0,
       maxDistance: null
     };
   }

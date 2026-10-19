@@ -313,7 +313,7 @@ export const getOrders = asyncHandler(async (req, res) => {
     ] = await Promise.allSettled([
       orderIds.length > 0
         ? OrderSettlement.find({ orderId: { $in: orderIds } })
-            .select('orderId deliveryPartnerId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
+            .select('orderId deliveryPartnerId userPayment.platformFee cancellationDetails.refundStatus adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning deliveryPartnerEarning.distance hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
             .lean()
         : Promise.resolve([]),
       restaurantIds.length > 0
@@ -383,6 +383,7 @@ export const getOrders = asyncHandler(async (req, res) => {
           adminEarning: Number(s.adminEarning?.totalEarning || 0),
           restaurantEarning: Number(s.restaurantEarning?.netEarning || 0),
           deliveryEarning: Number(s.deliveryPartnerEarning?.totalEarning || 0),
+          deliveryDistance: Number(s.deliveryPartnerEarning?.distance || 0),
           hotelEarning: Number(s.hotelEarning?.commission || 0)
         });
       }
@@ -860,12 +861,14 @@ export const getOrders = asyncHandler(async (req, res) => {
         zoneName: order.assignmentInfo?.zoneName || null,
         // Refund status from settlement
         refundStatus: refundStatusMap.get(order._id.toString()) || null,
+        deliveryDistance: Number(settlementEarnings?.deliveryDistance || order.tracking?.deliveryDistance || 0),
         // Earnings breakdown (for detailed order views like Order Detect Delivery)
         earnings: {
           orderTotal: orderAmount,
           restaurantEarning,
           deliveryEarning,
           adminEarning,
+          deliveryDistance: Number(settlementEarnings?.deliveryDistance || order.tracking?.deliveryDistance || 0),
           // Include hotel earning for QR / hotel-origin orders so admin UI can display it
           hotelEarning: Math.round(Number(hotelCommissionAmount || 0) * 100) / 100,
         }
@@ -1283,7 +1286,7 @@ export const getOrderById = asyncHandler(async (req, res) => {
     try {
       const OrderSettlement = (await import('../../order/models/OrderSettlement.js')).default;
       const settlement = await OrderSettlement.findOne({ orderId: order._id })
-        .select('deliveryPartnerId adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
+        .select('deliveryPartnerId adminEarning.totalEarning restaurantEarning.netEarning deliveryPartnerEarning.totalEarning deliveryPartnerEarning.distance hotelEarning.commission hotelEarning.hotelName hotelEarning.hotelId')
         .lean();
 
       // Resolve hotel details if missing on the order document but exist in settlement
@@ -1467,13 +1470,76 @@ export const getOrderById = asyncHandler(async (req, res) => {
         }
       }
 
+      // Resolve delivery distance
+      let deliveryDistance =
+        Number(settlement?.deliveryPartnerEarning?.distance || 0) ||
+        Number(order?.assignmentInfo?.distance || 0) ||
+        Number(order?.deliveryState?.routeToDelivery?.distance || 0) ||
+        Number(order?.deliveryDistance || 0);
+
+      const isDeliveryOrder =
+        order?.deliveryType !== 'takeaway' &&
+        order?.deliveryType !== 'dine_in' &&
+        order?.orderType !== 'DINE_IN';
+
+      if (deliveryDistance <= 0 && isDeliveryOrder) {
+        try {
+          const { calculateHaversineDistance } = await import('../../delivery/utils/earningsCalculator.js');
+          let restCoords =
+            order.restaurantId?.location?.geoLocation?.coordinates ||
+            order.restaurantId?.location?.coordinates ||
+            order.restaurantLocation?.coordinates;
+
+          if (!restCoords && order.restaurantId) {
+            const Restaurant = (await import('../../restaurant/models/Restaurant.js')).default;
+            const rawRid = typeof order.restaurantId === 'string' ? order.restaurantId : order.restaurantId?._id;
+            if (rawRid) {
+              const rDoc = await Restaurant.findOne({
+                $or: [
+                  { restaurantId: rawRid },
+                  ...(mongoose.Types.ObjectId.isValid(rawRid) ? [{ _id: new mongoose.Types.ObjectId(rawRid) }] : []),
+                  { slug: rawRid }
+                ]
+              }).select('location').lean();
+              restCoords = rDoc?.location?.geoLocation?.coordinates || rDoc?.location?.coordinates;
+            }
+          }
+
+          const custCoords = order.address?.location?.coordinates;
+          if (restCoords && custCoords && restCoords.length === 2 && custCoords.length === 2) {
+            const [rlng, rlat] = restCoords;
+            const [clng, clat] = custCoords;
+            deliveryDistance = calculateHaversineDistance(rlat, rlng, clat, clng);
+          }
+        } catch (_) {}
+      }
+
+      // If deliveryEarning is 0 and it's a delivery order, calculate from commission rules
+      if (deliveryEarning <= 0 && isDeliveryOrder && deliveryDistance > 0) {
+        try {
+          const DeliveryBoyCommission = (await import('../../admin/models/DeliveryBoyCommission.js')).default;
+          const commResult = await DeliveryBoyCommission.calculateCommission(deliveryDistance);
+          deliveryEarning = commResult.commission;
+          if (!order.estimatedEarnings) {
+            order.estimatedEarnings = commResult;
+          }
+        } catch (_) {}
+      }
+
+      // Balance admin earning so split adds up correctly to orderAmount: total = restaurant + delivery + admin + hotel
+      if (deliveryEarning > 0 && restaurantEarning > 0) {
+        adminEarning = Math.max(0, Math.round((orderAmount - restaurantEarning - deliveryEarning - hotelEarning) * 100) / 100);
+      }
+
       order.earnings = {
         orderTotal: orderAmount,
         restaurantEarning: Math.round(Number(restaurantEarning || 0) * 100) / 100,
         deliveryEarning: Math.round(Number(deliveryEarning || 0) * 100) / 100,
+        deliveryDistance: deliveryDistance > 0 ? Math.round(deliveryDistance * 100) / 100 : 0,
         adminEarning: Math.round(Number(adminEarning || 0) * 100) / 100,
         hotelEarning: Math.round(Number(hotelEarning || 0) * 100) / 100,
       };
+      order.deliveryDistance = deliveryDistance > 0 ? Math.round(deliveryDistance * 100) / 100 : 0;
     } catch (_) {
       // Non-blocking: order details can still render without earnings.
     }

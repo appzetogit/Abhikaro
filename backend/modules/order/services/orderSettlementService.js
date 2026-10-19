@@ -283,13 +283,21 @@ export const calculateOrderSettlement = async (orderId) => {
       status: "pending",
     };
 
-    if (order.deliveryPartnerId) {
+    const isDeliveryOrder =
+      order.deliveryType !== "takeaway" &&
+      order.deliveryType !== "dine_in" &&
+      order.orderType !== "DINE_IN";
+
+    if (isDeliveryOrder) {
       // Get distance: Food delivery earnings are based on pickup (restaurant) to drop (customer) distance.
       // Priority 1: Direct Restaurant to Customer distance (Haversine from coordinates)
       let distance = 0;
       const restCoords =
-        order.restaurantId?.location?.coordinates ||
-        order.restaurantLocation?.coordinates;
+        restaurant?.location?.geoLocation?.coordinates?.length
+          ? restaurant.location.geoLocation.coordinates
+          : restaurant?.location?.coordinates ||
+            order.restaurantId?.location?.coordinates ||
+            order.restaurantLocation?.coordinates;
       const custCoords = order.address?.location?.coordinates;
 
       if (restCoords && custCoords) {
@@ -366,11 +374,15 @@ export const calculateOrderSettlement = async (orderId) => {
     const adminDeliveryFee = Math.round(userPayment.deliveryFee * 100) / 100;
     const adminGST = Math.round(userPayment.gst * 100) / 100;
 
-    const adminTotal =
+    // Admin total: Total collected from user minus restaurant earning, delivery partner earning, and hotel earning
+    const hotelAmount = Number(hotelEarning?.commission || 0);
+    const adminTotal = Math.max(
+      0,
       Math.round(
-        (netAdminCommission + adminPlatformFee + adminDeliveryFee + adminGST) *
-          100,
-      ) / 100;
+        (userPayment.total - restaurantEarning.netEarning - deliveryPartnerEarning.totalEarning - hotelAmount) *
+          100
+      ) / 100
+    );
 
     // Determine if this is a QR order
     const isQR = !!(hotelEarning && hotelEarning.hotelId);

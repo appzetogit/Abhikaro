@@ -422,6 +422,13 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
     }
     return 0
   })()
+  const deliveryDistanceVal =
+    Number(rawEarnings.deliveryDistance || 0) ||
+    Number(viewOrder?.deliveryDistance || 0) ||
+    Number(viewOrder?.assignmentInfo?.distance || 0) ||
+    Number(viewOrder?.deliveryState?.routeToDelivery?.distance || 0) ||
+    (typeof estimated === "object" ? Number(estimated?.distance ?? estimated?.breakdown?.distance ?? 0) : 0) ||
+    0
   const earnings = {
     orderTotal: Number(rawEarnings.orderTotal ?? total ?? 0) || 0,
     restaurantEarning:
@@ -898,8 +905,14 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
                   <span className="text-slate-600">Restaurant</span>
                   <span className="font-semibold text-slate-900">{formatMoney(earnings.restaurantEarning)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Delivery boy </span>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">
+                    Delivery boy {deliveryDistanceVal > 0 ? (
+                      <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded ml-1">
+                        ({deliveryDistanceVal.toFixed(2)} km)
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="font-semibold text-slate-900">{formatMoney(earnings.deliveryEarning)}</span>
                 </div>
                 <div className="flex justify-between">

@@ -1353,15 +1353,37 @@ export const acceptOrder = asyncHandler(async (req, res) => {
 
     // Calculate delivery distance (restaurant to customer) for earnings calculation
     let deliveryDistance = 0;
-    if (
-      updatedOrder.restaurantId?.location?.coordinates &&
-      updatedOrder.address?.location?.coordinates
-    ) {
-      const [restaurantLng, restaurantLat] =
-        updatedOrder.restaurantId.location.coordinates;
-      const [customerLng, customerLat] =
-        updatedOrder.address.location.coordinates;
+    let restCoords =
+      updatedOrder.restaurantId?.location?.geoLocation?.coordinates ||
+      updatedOrder.restaurantId?.location?.coordinates;
 
+    if (!restCoords && updatedOrder.restaurantId) {
+      try {
+        const rawRid = typeof updatedOrder.restaurantId === "string" 
+          ? updatedOrder.restaurantId 
+          : updatedOrder.restaurantId?._id || updatedOrder.restaurantId?.restaurantId;
+        if (rawRid) {
+          const restDoc = await Restaurant.findOne({
+            $or: [
+              { restaurantId: rawRid },
+              ...(mongoose.Types.ObjectId.isValid(rawRid) && String(rawRid).length === 24 ? [{ _id: new mongoose.Types.ObjectId(rawRid) }] : []),
+              { slug: rawRid }
+            ]
+          }).select("location address").lean();
+          restCoords =
+            restDoc?.location?.geoLocation?.coordinates?.length
+              ? restDoc.location.geoLocation.coordinates
+              : restDoc?.location?.coordinates;
+        }
+      } catch (rErr) {
+        console.warn("⚠️ Failed to resolve restaurant coords in acceptOrder:", rErr.message);
+      }
+    }
+
+    const custCoords = updatedOrder.address?.location?.coordinates;
+    if (restCoords && custCoords && restCoords.length === 2 && custCoords.length === 2) {
+      const [restaurantLng, restaurantLat] = restCoords;
+      const [customerLng, customerLat] = custCoords;
       deliveryDistance = calculateHaversineDistance(restaurantLat, restaurantLng, customerLat, customerLng);
     }
 
@@ -2451,9 +2473,32 @@ export const completeDelivery = asyncHandler(async (req, res) => {
         } else {
           // Calculate earnings even if order is already delivered (for consistency)
           let deliveryDistance = 0;
-          const restCoords =
+          let restCoords =
+            order.restaurantId?.location?.geoLocation?.coordinates ||
             order.restaurantId?.location?.coordinates ||
             order.restaurantLocation?.coordinates;
+
+          if (!restCoords && order.restaurantId) {
+            try {
+              const rawRid = typeof order.restaurantId === "string" 
+                ? order.restaurantId 
+                : order.restaurantId?._id || order.restaurantId?.restaurantId;
+              if (rawRid) {
+                const restDoc = await Restaurant.findOne({
+                  $or: [
+                    { restaurantId: rawRid },
+                    ...(mongoose.Types.ObjectId.isValid(rawRid) && String(rawRid).length === 24 ? [{ _id: new mongoose.Types.ObjectId(rawRid) }] : []),
+                    { slug: rawRid }
+                  ]
+                }).select("location address").lean();
+                restCoords =
+                  restDoc?.location?.geoLocation?.coordinates?.length
+                    ? restDoc.location.geoLocation.coordinates
+                    : restDoc?.location?.coordinates;
+              }
+            } catch (_) {}
+          }
+
           const custCoords = order.address?.location?.coordinates;
           if (restCoords && custCoords) {
             const [rlng, rlat] = restCoords;
@@ -2620,9 +2665,34 @@ export const completeDelivery = asyncHandler(async (req, res) => {
     let deliveryDistance = 0;
 
     // Priority 1: Calculate distance from restaurant to customer if coordinates available
-    const restCoords =
+    let restCoords =
+      order.restaurantId?.location?.geoLocation?.coordinates ||
       order.restaurantId?.location?.coordinates ||
       order.restaurantLocation?.coordinates;
+
+    if (!restCoords && order.restaurantId) {
+      try {
+        const rawRid = typeof order.restaurantId === "string" 
+          ? order.restaurantId 
+          : order.restaurantId?._id || order.restaurantId?.restaurantId;
+        if (rawRid) {
+          const restDoc = await Restaurant.findOne({
+            $or: [
+              { restaurantId: rawRid },
+              ...(mongoose.Types.ObjectId.isValid(rawRid) && String(rawRid).length === 24 ? [{ _id: new mongoose.Types.ObjectId(rawRid) }] : []),
+              { slug: rawRid }
+            ]
+          }).select("location address").lean();
+          restCoords =
+            restDoc?.location?.geoLocation?.coordinates?.length
+              ? restDoc.location.geoLocation.coordinates
+              : restDoc?.location?.coordinates;
+        }
+      } catch (rErr) {
+        console.warn("⚠️ Failed to resolve restaurant coords in completeDeliveryOrder:", rErr.message);
+      }
+    }
+
     const custCoords = order.address?.location?.coordinates;
 
     if (restCoords && custCoords) {
@@ -2632,7 +2702,7 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       // Safety guard: if coordinates are invalid, empty, or default [0, 0] (Null Island)
       if (
         restaurantLat && restaurantLng && customerLat && customerLng &&
-        Number(restaurantLat) !== 0 && Number(restaurantLng) !== 0 && Number(customerLat) !== 0 && Number(customerLat) !== 0 &&
+        Number(restaurantLat) !== 0 && Number(restaurantLng) !== 0 && Number(customerLat) !== 0 && Number(customerLng) !== 0 &&
         !(Math.abs(Number(restaurantLat)) < 0.0001 && Math.abs(Number(restaurantLng)) < 0.0001) &&
         !(Math.abs(Number(customerLat)) < 0.0001 && Math.abs(Number(customerLng)) < 0.0001)
       ) {

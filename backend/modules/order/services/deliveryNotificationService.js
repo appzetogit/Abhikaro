@@ -262,11 +262,13 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
     if (deliveryPartner.availability?.currentLocation?.coordinates && effectiveRestaurantLocation?.coordinates) {
       const [deliveryLng, deliveryLat] = deliveryPartner.availability.currentLocation.coordinates;
       const [restaurantLng, restaurantLat] = effectiveRestaurantLocation.coordinates;
-      const [customerLng, customerLat] = order.address.location.coordinates;
-
       // Calculate pickup distance (delivery boy to restaurant)
       pickupDistance = calculateDistance(deliveryLat, deliveryLng, restaurantLat, restaurantLng);
-      
+    }
+
+    if (effectiveRestaurantLocation?.coordinates && order.address?.location?.coordinates) {
+      const [restaurantLng, restaurantLat] = effectiveRestaurantLocation.coordinates;
+      const [customerLng, customerLat] = order.address.location.coordinates;
       // Calculate delivery distance (restaurant to customer)
       deliveryDistance = calculateDistance(restaurantLat, restaurantLng, customerLat, customerLng);
     }
