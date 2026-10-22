@@ -42,6 +42,21 @@ const base64ToFile = (base64, mimeType, fileName) => {
   return new File([blob], fileName || `image_${Date.now()}.jpg`, { type: mimeType || 'image/jpeg' })
 }
 
+const PREPARATION_TIME_OPTIONS = [
+  "5 mins",
+  "10 mins",
+  "15 mins",
+  "20 mins",
+  "25 mins",
+  "30 mins",
+  "35 mins",
+  "40 mins",
+  "45 mins",
+  "50 mins",
+  "55 mins",
+  "60 mins"
+]
+
 export default function ItemDetailsPage() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -1734,12 +1749,14 @@ export default function ItemDetailsPage() {
                     }`}
                   >
                     <option value="">Select timing</option>
-                    <option value="10-20 mins">10-20 mins</option>
-                    <option value="20-25 mins">20-25 mins</option>
-                    <option value="25-35 mins">25-35 mins</option>
-                    <option value="35-45 mins">35-45 mins</option>
-                    <option value="45-60 mins">45-60 mins</option>
-                    <option value="60+ mins">60+ mins</option>
+                    {preparationTime && !PREPARATION_TIME_OPTIONS.includes(preparationTime) && (
+                      <option value={preparationTime}>{preparationTime}</option>
+                    )}
+                    {PREPARATION_TIME_OPTIONS.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
                 </div>

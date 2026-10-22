@@ -37,6 +37,14 @@ const orderItemSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    category: {
+      type: String,
+      default: '',
+    },
+    preparationTime: {
+      type: String,
+      default: '',
+    },
   },
   { _id: true },
 );
@@ -379,8 +387,37 @@ const orderSchema = new mongoose.Schema(
     },
     // Preparation time from menu items
     preparationTime: {
-      type: Number, // Maximum preparation time from order items (in minutes)
+      type: Number, // Calculated dynamic food preparation time (in minutes)
       default: 0,
+    },
+    // Detailed dynamic ETA breakdown (food prep + distance delivery)
+    etaDetails: {
+      foodPreparationTime: { type: Number, default: 0 },
+      deliveryTime: { type: Number, default: 0 },
+      totalETA: { type: Number, default: 0 },
+      distanceKm: { type: Number, default: 0 },
+      mainItem: {
+        itemId: String,
+        name: String,
+        baseTime: Number,
+        quantity: Number,
+        adjustedTime: Number,
+      },
+      itemsBreakdown: [
+        {
+          itemId: String,
+          name: String,
+          category: String,
+          baseTime: Number,
+          quantity: Number,
+          slabPercent: Number,
+          adjustedTime: Number,
+          categoryOverhead: Number,
+          quantityOverhead: Number,
+          isMainItem: Boolean,
+        },
+      ],
+      calculatedAt: { type: Date, default: Date.now },
     },
     // Order Type (Direct vs QR)
     orderType: {

@@ -269,6 +269,26 @@ const fetchPayment = async (paymentId) => {
 };
 
 /**
+ * Fetch all payments for a Razorpay order
+ * @param {String} orderId - Razorpay order ID
+ * @returns {Promise<Object>} Collection of payments
+ */
+const fetchOrderPayments = async (orderId) => {
+  const razorpay = await getRazorpayInstance();
+  if (!razorpay) {
+    throw new Error('Razorpay is not initialized');
+  }
+
+  try {
+    const payments = await razorpay.orders.fetchPayments(orderId);
+    return payments;
+  } catch (error) {
+    logger.error(`Error fetching Razorpay order payments: ${error.message}`);
+    throw error;
+  }
+};
+
+/**
  * Capture an authorized Razorpay payment
  * @param {String} paymentId - Razorpay payment ID
  * @param {Number} amount - Amount in paise to capture
@@ -365,6 +385,7 @@ export {
   verifyPayment,
   verifyWebhookSignature,
   fetchPayment,
+  fetchOrderPayments,
   capturePayment,
   createRefund
 };

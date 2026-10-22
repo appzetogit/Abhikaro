@@ -11,6 +11,7 @@ export default function OrderTrackingCard() {
   const { orders: contextOrders, removeOrder } = useOrders();
   const [activeOrder, setActiveOrder] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(null);
+  const [etaBreakdown, setEtaBreakdown] = useState(null);
   const [apiOrders, setApiOrders] = useState([]);
   const [apiCalled, setApiCalled] = useState(false); // Track if API has been called
 
@@ -166,56 +167,83 @@ export default function OrderTrackingCard() {
     });
 
     if (active) {
-      // Calculate remaining time based on elapsed time
       const orderTime = getOrderTime(active);
       // If we can't compute time and API has already been called, don't keep a stale local order alive.
       if (!orderTime && apiCalled) {
         setActiveOrder(null);
         setTimeRemaining(null);
+        setEtaBreakdown(null);
         return;
       }
 
-      const now = new Date();
-      const elapsedMinutes = orderTime ? Math.floor((now - orderTime) / (1000 * 60)) : 0;
-      
-      // Get max ETA (use eta.max if available, otherwise estimatedDeliveryTime)
-      const maxETA = active.eta?.max || active.estimatedDeliveryTime || active.estimatedTime || active.estimated_delivery_time || 30;
-      let estimatedMinutes = typeof maxETA === 'number' ? maxETA : parseInt(String(maxETA).match(/\d+/)?.[0] || '30', 10);
-      if (estimatedMinutes > 90) {
-        estimatedMinutes = 45;
+      // Calculate Customer Arrival Time = Restaurant Prep Time + Delivery Boy Travel Time
+      const prepTime = Number(
+        active.etaDetails?.foodPreparationTime ||
+        active.preparationTime ||
+        34.5
+      );
+
+      let distanceKm = Number(
+        active.etaDetails?.distanceKm ||
+        active.distance ||
+        active.deliveryDistance ||
+        2.3
+      );
+      if (isNaN(distanceKm) || distanceKm <= 0) distanceKm = 2.3;
+
+      let deliveryTime = Number(
+        active.etaDetails?.deliveryTime ||
+        Math.ceil(distanceKm * 8)
+      );
+      if (isNaN(deliveryTime) || deliveryTime <= 0) {
+        deliveryTime = Math.ceil(distanceKm * 8);
       }
-      
-      // Calculate remaining time
-      let remainingMinutes = estimatedMinutes - elapsedMinutes;
-      
-      // If remaining time is 0 or negative, but order is still active (not delivered), 
-      // show at least 1 minute. Do not jump back to estimatedMinutes as it looks static/broken.
-      if (remainingMinutes <= 0) {
-        const orderStatus = normalizeStatus(active);
-        const terminal = new Set(['delivered', 'completed', 'cancelled', 'restaurant_cancelled']);
-        if (!terminal.has(orderStatus)) {
-          remainingMinutes = 1;
-        }
-      }
-      
-      // Ensure minimum of 1 minute if order is still active
-      if (remainingMinutes < 1) {
-        remainingMinutes = 1;
-      }
-      
-      // Show card if order is active (not delivered/cancelled)
+
+      const rawTotal = Math.round((prepTime + deliveryTime) * 10) / 10;
+      const totalETA = Math.ceil(rawTotal);
+
       const orderStatus = normalizeStatus(active);
-      if (orderStatus !== 'delivered' && orderStatus !== 'completed' && orderStatus !== 'cancelled' && orderStatus !== 'restaurant_cancelled') {
-        setActiveOrder(active);
-        setTimeRemaining(remainingMinutes);
-      } else {
-        // Order is delivered/cancelled - hide card
+      const terminal = new Set(['delivered', 'completed', 'cancelled', 'restaurant_cancelled']);
+
+      if (terminal.has(orderStatus)) {
         setActiveOrder(null);
         setTimeRemaining(null);
+        setEtaBreakdown(null);
+        return;
       }
+
+      const now = Date.now();
+      let remainingMinutes = totalETA;
+
+      if (orderStatus === 'pending' || orderStatus === 'confirmed' || orderStatus === 'placed') {
+        remainingMinutes = totalETA;
+      } else if (orderStatus === 'preparing') {
+        const prepTimestamp = active.tracking?.preparing?.timestamp
+          ? new Date(active.tracking.preparing.timestamp).getTime()
+          : (active.eta?.lastUpdated ? new Date(active.eta.lastUpdated).getTime() : now);
+        const elapsedCooking = Math.max(0, Math.floor((now - prepTimestamp) / 60000));
+        const remainingPrep = Math.max(0, prepTime - elapsedCooking);
+        // While food is cooking, delivery boy travel time is fully ahead of us
+        remainingMinutes = Math.max(1, Math.ceil(remainingPrep + deliveryTime));
+      } else if (orderStatus === 'ready' || orderStatus === 'pickup') {
+        remainingMinutes = deliveryTime;
+      } else if (orderStatus === 'picked_up' || orderStatus === 'on_way' || orderStatus === 'out_for_delivery') {
+        const outTimestamp = active.tracking?.outForDelivery?.timestamp
+          ? new Date(active.tracking.outForDelivery.timestamp).getTime()
+          : (active.tracking?.picked_up?.timestamp ? new Date(active.tracking.picked_up.timestamp).getTime() : now);
+        const elapsedDelivery = Math.max(0, Math.floor((now - outTimestamp) / 60000));
+        remainingMinutes = Math.max(1, deliveryTime - elapsedDelivery);
+      } else if (orderStatus === 'arrived' || orderStatus === 'reached_delivery') {
+        remainingMinutes = 1;
+      }
+
+      setActiveOrder(active);
+      setTimeRemaining(remainingMinutes);
+      setEtaBreakdown({ prepTime, deliveryTime, rawTotal, totalETA, distanceKm });
     } else {
       setActiveOrder(null);
       setTimeRemaining(null);
+      setEtaBreakdown(null);
     }
   }, [contextOrders, apiOrders, apiCalled]);
 
@@ -469,9 +497,9 @@ export default function OrderTrackingCard() {
             </div>
 
             {/* Right Side - Time Pill */}
-            <div className="bg-green-600 rounded-lg px-3 py-2 flex-shrink-0">
-              <p className="text-white text-[10px] font-medium uppercase leading-tight">arriving in</p>
-              <p className="text-white text-sm font-bold leading-tight">
+            <div className="bg-green-600 rounded-lg px-3 py-2 flex-shrink-0 text-right">
+              <p className="text-white text-[10px] font-medium uppercase leading-tight tracking-wider">arriving in</p>
+              <p className="text-white text-base font-bold leading-tight">
                 {timeRemaining !== null ? `${timeRemaining} mins` : '-- mins'}
               </p>
             </div>

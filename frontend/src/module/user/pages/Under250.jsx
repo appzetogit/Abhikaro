@@ -362,6 +362,8 @@ export default function Under250() {
       description: item.description || "",
       originalPrice: item.originalPrice || item.price,
       isVeg: isVegItem(item),
+      category: item.category || "",
+      preparationTime: item.preparationTime || item.basePreparationTime || "",
       ...(variantOverride && {
         selectedVariantId: variantOverride.id,
         selectedVariantName: variantOverride.name,

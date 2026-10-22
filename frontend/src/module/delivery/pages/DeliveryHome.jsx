@@ -668,6 +668,7 @@ export default function DeliveryHome() {
   const newOrderAcceptButtonIsSwiping = useRef(false)
   const [newOrderAcceptButtonProgress, setNewOrderAcceptButtonProgress] = useState(0)
   const [newOrderIsAnimatingToComplete, setNewOrderIsAnimatingToComplete] = useState(false)
+  const [isAcceptingNewOrder, setIsAcceptingNewOrder] = useState(false)
   const newOrderPopupRef = useRef(null)
   const newOrderSwipeStartY = useRef(0)
   const newOrderIsSwiping = useRef(false)
@@ -708,18 +709,21 @@ export default function DeliveryHome() {
   const [routePolyline, setRoutePolyline] = useState([])
   const [showRoutePath, setShowRoutePath] = useState(false) // Toggle to show/hide route path - disabled by default
   const [directionsResponse, setDirectionsResponse] = useState(null) // Directions API response for road-based routing
+  const [isConfirmingReachedPickup, setIsConfirmingReachedPickup] = useState(false)
   const [reachedPickupButtonProgress, setreachedPickupButtonProgress] = useState(0)
   const [reachedPickupIsAnimatingToComplete, setreachedPickupIsAnimatingToComplete] = useState(false)
   const reachedPickupButtonRef = useRef(null)
   const reachedPickupSwipeStartX = useRef(0)
   const reachedPickupSwipeStartY = useRef(0)
   const reachedPickupIsSwiping = useRef(false)
+  const [isConfirmingReachedDrop, setIsConfirmingReachedDrop] = useState(false)
   const [reachedDropButtonProgress, setReachedDropButtonProgress] = useState(0)
   const [reachedDropIsAnimatingToComplete, setReachedDropIsAnimatingToComplete] = useState(false)
   const reachedDropButtonRef = useRef(null)
   const reachedDropSwipeStartX = useRef(0)
   const reachedDropSwipeStartY = useRef(0)
   const reachedDropIsSwiping = useRef(false)
+  const [isConfirmingOrderId, setIsConfirmingOrderId] = useState(false)
   const [orderIdConfirmButtonProgress, setOrderIdConfirmButtonProgress] = useState(0)
   const [orderIdConfirmIsAnimatingToComplete, setOrderIdConfirmIsAnimatingToComplete] = useState(false)
   const orderIdConfirmButtonRef = useRef(null)
@@ -3133,42 +3137,33 @@ export default function DeliveryHome() {
     }
   }
 
-  const handleNewOrderAcceptTouchEnd = (e) => {
-    if (!newOrderAcceptButtonIsSwiping.current) {
-      setNewOrderAcceptButtonProgress(0)
-      return
+  // Handle click on Accept Order button (direct click)
+  const handleAcceptNewOrder = async () => {
+    if (isAcceptingNewOrder) return
+    setIsAcceptingNewOrder(true)
+
+    // Stop any notification sounds immediately when user accepts
+    if (alertAudioRef.current) {
+      try {
+        if (alertAudioEndedHandlerRef.current) {
+          alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
+        }
+      } catch (_) { }
+      alertAudioRef.current.pause()
+      alertAudioRef.current.currentTime = 0
+      alertAudioRef.current = null
+      alertAudioEndedHandlerRef.current = null
+    }
+    if (typeof stopNotificationSound === 'function') {
+      stopNotificationSound()
     }
 
-    const deltaX = e.changedTouches[0].clientX - newOrderAcceptButtonSwipeStartX.current
-    const buttonWidth = newOrderAcceptButtonRef.current?.offsetWidth || 300
-    const circleWidth = 56
-    const padding = 16
-    const maxSwipe = buttonWidth - circleWidth - (padding * 2)
-    const threshold = maxSwipe * 0.7 // 70% of max swipe
+    // Animate to completion
+    setNewOrderIsAnimatingToComplete(true)
+    setNewOrderAcceptButtonProgress(1)
 
-    if (deltaX > threshold) {
-      // Stop any notification sounds immediately when user accepts
-      if (alertAudioRef.current) {
-        try {
-          if (alertAudioEndedHandlerRef.current) {
-            alertAudioRef.current.removeEventListener('ended', alertAudioEndedHandlerRef.current)
-          }
-        } catch (_) { }
-        alertAudioRef.current.pause()
-        alertAudioRef.current.currentTime = 0
-        alertAudioRef.current = null
-        alertAudioEndedHandlerRef.current = null
-      }
-      if (typeof stopNotificationSound === 'function') {
-        stopNotificationSound()
-      }
-
-      // Animate to completion
-      setNewOrderIsAnimatingToComplete(true)
-      setNewOrderAcceptButtonProgress(1)
-
-      // Accept order via backend API and get route
-      const acceptOrderAndShowRoute = async () => {
+    // Accept order via backend API and get route
+    const acceptOrderAndShowRoute = async () => {
         // Get order ID from selectedRestaurant or newOrder (define outside try-catch for error handling)
         const orderId = selectedRestaurant?.id || newOrder?.orderMongoId || newOrder?.orderId
 
@@ -3930,6 +3925,7 @@ export default function DeliveryHome() {
           setIsNewOrderPopupMinimized(false) // Reset minimized state
           setNewOrderDragY(0) // Reset drag position
         } finally {
+          setIsAcceptingNewOrder(false)
           // Reset after animation
           setTimeout(() => {
             setNewOrderAcceptButtonProgress(0)
@@ -3939,12 +3935,11 @@ export default function DeliveryHome() {
       }
 
       // Start accepting order
-      acceptOrderAndShowRoute()
-    } else {
-      // Reset smoothly
-      setNewOrderAcceptButtonProgress(0)
-    }
+      await acceptOrderAndShowRoute()
+  }
 
+  const handleNewOrderAcceptTouchEnd = (e) => {
+    handleAcceptNewOrder()
     newOrderAcceptButtonSwipeStartX.current = 0
     newOrderAcceptButtonSwipeStartY.current = 0
     newOrderAcceptButtonIsSwiping.current = false
@@ -4058,7 +4053,188 @@ export default function DeliveryHome() {
     newOrderSwipeStartY.current = 0
   }
 
-  // Handle Reached Pickup button swipe
+  // Handle Reached Pickup button direct click / confirmation
+  const handleConfirmReachedPickup = async () => {
+    if (isConfirmingReachedPickup) return
+    setIsConfirmingReachedPickup(true)
+
+    // Get order ID - prioritize orderId (string) over id (MongoDB _id) for better compatibility
+    // Backend accepts both _id and orderId, but orderId is more reliable
+    const orderId = selectedRestaurant?.orderId || selectedRestaurant?.id || newOrder?.orderId || newOrder?.orderMongoId
+
+    // CRITICAL: Check if order is already delivered/completed - don't call API
+    const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+    const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+    const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+    const isDelivered = orderStatus === 'delivered' ||
+      deliveryPhase === 'completed' ||
+      deliveryPhase === 'delivered' ||
+      deliveryStateStatus === 'delivered'
+
+    if (isDelivered) {
+      toast.error('Order is already delivered. Cannot confirm reached pickup.')
+      setShowreachedPickupPopup(false)
+      setIsConfirmingReachedPickup(false)
+      return
+    }
+
+    // CRITICAL: Check if order is already past pickup phase (order ID confirmed or out for delivery)
+    const isPastPickupPhase = orderStatus === 'out_for_delivery' ||
+      deliveryPhase === 'en_route_to_delivery' ||
+      deliveryPhase === 'picked_up' ||
+      deliveryStateStatus === 'order_confirmed' ||
+      deliveryStateStatus === 'reached_pickup' ||
+      deliveryPhase === 'at_pickup'
+
+    if (isPastPickupPhase) {
+      // If already at pickup or order ID confirmed, just show order ID popup after delay
+      // But only if order is not already picked up
+      if (deliveryPhase === 'at_pickup' || deliveryStateStatus === 'reached_pickup') {
+        // Check if order is already picked up
+        const isAlreadyPickedUp = orderStatus === 'out_for_delivery' ||
+          orderStatus === 'picked_up' ||
+          deliveryPhase === 'en_route_to_delivery' ||
+          deliveryPhase === 'picked_up' ||
+          deliveryPhase === 'en_route_to_drop' ||
+          deliveryStateStatus === 'order_confirmed'
+
+        if (!isAlreadyPickedUp) {
+          // Ensure reached pickup popup is closed first
+          setShowreachedPickupPopup(false)
+          setTimeout(() => {
+            setShowOrderIdConfirmationPopup(true)
+          }, 300) // Delay to ensure reached pickup popup closes first
+          toast.info('Order is already at pickup. Showing order ID confirmation.')
+        } else {
+          toast.info('Order is already picked up.')
+        }
+      } else {
+        toast.info('Order is already out for delivery.')
+      }
+      setIsConfirmingReachedPickup(false)
+      return
+    }
+
+    if (orderId) {
+      try {
+        // Call backend API to confirm reached pickup and save status in database
+        const response = await deliveryAPI.confirmReachedPickup(orderId)
+
+        if (response.data?.success) {
+          toast.success('Reached pickup confirmed!')
+
+          // Update local state to reflect the new status
+          if (selectedRestaurant) {
+            setSelectedRestaurant(prev => ({
+              ...prev,
+              deliveryState: {
+                ...(prev?.deliveryState || {}),
+                currentPhase: 'at_pickup',
+                status: 'reached_pickup'
+              }
+            }))
+          }
+
+          // Ensure reached pickup popup is closed first
+          setShowreachedPickupPopup(false)
+          // Wait for reached pickup popup to close, then show order ID confirmation popup
+          // But only if order is not already picked up
+          setTimeout(() => {
+            // Check if order is already picked up before showing popup
+            const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+            const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+            const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+            const isAlreadyPickedUp = currentOrderStatus === 'out_for_delivery' ||
+              currentOrderStatus === 'picked_up' ||
+              currentDeliveryPhase === 'en_route_to_delivery' ||
+              currentDeliveryPhase === 'picked_up' ||
+              currentDeliveryPhase === 'en_route_to_drop' ||
+              currentDeliveryStateStatus === 'order_confirmed'
+
+            if (!isAlreadyPickedUp) {
+              setShowOrderIdConfirmationPopup(true)
+            }
+          }, 300) // 300ms delay for smooth transition
+        } else {
+          toast.error(response.data?.message || 'Failed to confirm reached pickup. Please try again.')
+          // Ensure reached pickup popup is closed
+          setShowreachedPickupPopup(false)
+          // Still show order ID popup even if API call fails, after delay
+          // But only if order is not already picked up
+          setTimeout(() => {
+            const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+            const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+            const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+            const isAlreadyPickedUp = currentOrderStatus === 'out_for_delivery' ||
+              currentOrderStatus === 'picked_up' ||
+              currentDeliveryPhase === 'en_route_to_delivery' ||
+              currentDeliveryPhase === 'picked_up' ||
+              currentDeliveryPhase === 'en_route_to_drop' ||
+              currentDeliveryStateStatus === 'order_confirmed'
+
+            if (!isAlreadyPickedUp) {
+              setShowOrderIdConfirmationPopup(true)
+            }
+          }, 300)
+        }
+      } catch (error) {
+        // Show specific error message
+        const errorMessage = error.response?.data?.message ||
+          (error.response?.status === 404 ? 'Order not found. Please refresh and try again.' : 'Failed to confirm reached pickup. Please try again.')
+        toast.error(errorMessage)
+
+        // Ensure reached pickup popup is closed
+        setShowreachedPickupPopup(false)
+        // Still show order ID popup even if API call fails, after delay
+        // But only if order is not already picked up
+        setTimeout(() => {
+          const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+          const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+          const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+          const isAlreadyPickedUp = currentOrderStatus === 'out_for_delivery' ||
+            currentOrderStatus === 'picked_up' ||
+            currentDeliveryPhase === 'en_route_to_delivery' ||
+            currentDeliveryPhase === 'picked_up' ||
+            currentDeliveryPhase === 'en_route_to_drop' ||
+            currentDeliveryStateStatus === 'order_confirmed'
+
+          if (!isAlreadyPickedUp) {
+            setShowOrderIdConfirmationPopup(true)
+          }
+        }, 300)
+      } finally {
+        setIsConfirmingReachedPickup(false)
+      }
+    } else {
+      toast.error('Order ID not found. Please refresh and try again.')
+      // Ensure reached pickup popup is closed
+      setShowreachedPickupPopup(false)
+      // Show order ID popup even if no order ID (fallback), after delay
+      // But only if order is not already picked up
+      setTimeout(() => {
+        const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+        const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+        const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+        const isAlreadyPickedUp = currentOrderStatus === 'out_for_delivery' ||
+          currentOrderStatus === 'picked_up' ||
+          currentDeliveryPhase === 'en_route_to_delivery' ||
+          currentDeliveryPhase === 'picked_up' ||
+          deliveryStateStatus === 'order_confirmed'
+
+        if (!isAlreadyPickedUp) {
+          setShowOrderIdConfirmationPopup(true)
+        }
+      }, 300)
+      setIsConfirmingReachedPickup(false)
+    }
+  }
+
+  // Handle Reached Pickup button swipe (fallback compatibility)
   const handlereachedPickupTouchStart = (e) => {
     reachedPickupSwipeStartX.current = e.touches[0].clientX
     reachedPickupSwipeStartY.current = e.touches[0].clientY
@@ -4074,13 +4250,10 @@ export default function DeliveryHome() {
     // Only handle horizontal swipes (swipe right)
     if (Math.abs(deltaX) > 5 && Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 0) {
       reachedPickupIsSwiping.current = true
-      // Don't call preventDefault - CSS touch-action handles scrolling prevention
-      // safePreventDefault(e) // Removed to avoid passive listener error
-
       // Calculate max swipe distance
       const buttonWidth = reachedPickupButtonRef.current?.offsetWidth || 300
-      const circleWidth = 56 // w-14 = 56px
-      const padding = 16 // px-4 = 16px
+      const circleWidth = 56
+      const padding = 16
       const maxSwipe = buttonWidth - circleWidth - (padding * 2)
 
       const progress = Math.min(Math.max(deltaX / maxSwipe, 0), 1)
@@ -4099,218 +4272,19 @@ export default function DeliveryHome() {
     const circleWidth = 56
     const padding = 16
     const maxSwipe = buttonWidth - circleWidth - (padding * 2)
-    const threshold = maxSwipe * 0.7 // 70% of max swipe
+    const threshold = maxSwipe * 0.7
 
     if (deltaX > threshold) {
-      // Animate to completion
       setreachedPickupIsAnimatingToComplete(true)
       setreachedPickupButtonProgress(1)
-
-      // Close popup after animation, confirm reached pickup, then show order ID confirmation popup
-      setTimeout(async () => {
-        setShowreachedPickupPopup(false)
-
-        // Get order ID - prioritize orderId (string) over id (MongoDB _id) for better compatibility
-        // Backend accepts both _id and orderId, but orderId is more reliable
-        const orderId = selectedRestaurant?.orderId || selectedRestaurant?.id || newOrder?.orderId || newOrder?.orderMongoId
-
-        // CRITICAL: Check if order is already delivered/completed - don't call API
-        const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
-        const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
-        const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
-
-        const isDelivered = orderStatus === 'delivered' ||
-          deliveryPhase === 'completed' ||
-          deliveryPhase === 'delivered' ||
-          deliveryStateStatus === 'delivered'
-
-        if (isDelivered) {
-
-          toast.error('Order is already delivered. Cannot confirm reached pickup.')
-          setShowreachedPickupPopup(false)
-          return
-        }
-
-        // CRITICAL: Check if order is already past pickup phase (order ID confirmed or out for delivery)
-        const isPastPickupPhase = orderStatus === 'out_for_delivery' ||
-          deliveryPhase === 'en_route_to_delivery' ||
-          deliveryPhase === 'picked_up' ||
-          deliveryStateStatus === 'order_confirmed' ||
-          deliveryStateStatus === 'reached_pickup' ||
-          deliveryPhase === 'at_pickup'
-
-        if (isPastPickupPhase) {
-
-          // If already at pickup or order ID confirmed, just show order ID popup after delay
-          // But only if order is not already picked up
-          if (deliveryPhase === 'at_pickup' || deliveryStateStatus === 'reached_pickup') {
-            // Check if order is already picked up
-            const isAlreadyPickedUp = orderStatus === 'out_for_delivery' ||
-              orderStatus === 'picked_up' ||
-              deliveryPhase === 'en_route_to_delivery' ||
-              deliveryPhase === 'picked_up' ||
-              deliveryPhase === 'en_route_to_drop' ||
-              deliveryStateStatus === 'order_confirmed'
-
-            if (!isAlreadyPickedUp) {
-              // Ensure reached pickup popup is closed first
-              setShowreachedPickupPopup(false)
-              setTimeout(() => {
-                setShowOrderIdConfirmationPopup(true)
-              }, 300) // Delay to ensure reached pickup popup closes first
-              toast.info('Order is already at pickup. Showing order ID confirmation.')
-            } else {
-              toast.info('Order is already picked up.')
-            }
-          } else {
-            toast.info('Order is already out for delivery.')
-          }
-          return
-        }
-
-        if (orderId) {
-          try {
-            // Call backend API to confirm reached pickup and save status in database
-
-
-            const response = await deliveryAPI.confirmReachedPickup(orderId)
-
-            if (response.data?.success) {
-
-              toast.success('Reached pickup confirmed!')
-
-              // Update local state to reflect the new status
-              if (selectedRestaurant) {
-                setSelectedRestaurant(prev => ({
-                  ...prev,
-                  deliveryState: {
-                    ...(prev?.deliveryState || {}),
-                    currentPhase: 'at_pickup',
-                    status: 'reached_pickup'
-                  }
-                }))
-              }
-
-              // Ensure reached pickup popup is closed first
-              setShowreachedPickupPopup(false)
-              // Wait for reached pickup popup to close, then show order ID confirmation popup
-              // But only if order is not already picked up
-              setTimeout(() => {
-                // Check if order is already picked up before showing popup
-                const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
-                const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
-                const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
-
-                const isAlreadyPickedUp = currentOrderStatus === 'out_for_delivery' ||
-                  currentOrderStatus === 'picked_up' ||
-                  currentDeliveryPhase === 'en_route_to_delivery' ||
-                  currentDeliveryPhase === 'picked_up' ||
-                  currentDeliveryPhase === 'en_route_to_drop' ||
-                  currentDeliveryStateStatus === 'order_confirmed'
-
-                if (!isAlreadyPickedUp) {
-                  setShowOrderIdConfirmationPopup(true)
-
-                } else {
-
-                }
-              }, 300) // 300ms delay for smooth transition
-            } else {
-
-              toast.error(response.data?.message || 'Failed to confirm reached pickup. Please try again.')
-              // Ensure reached pickup popup is closed
-              setShowreachedPickupPopup(false)
-              // Still show order ID popup even if API call fails, after delay
-              // But only if order is not already picked up
-              setTimeout(() => {
-                const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
-                const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
-                const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
-
-                const isAlreadyPickedUp = currentOrderStatus === 'out_for_delivery' ||
-                  currentOrderStatus === 'picked_up' ||
-                  currentDeliveryPhase === 'en_route_to_delivery' ||
-                  currentDeliveryPhase === 'picked_up' ||
-                  currentDeliveryPhase === 'en_route_to_drop' ||
-                  currentDeliveryStateStatus === 'order_confirmed'
-
-                if (!isAlreadyPickedUp) {
-                  setShowOrderIdConfirmationPopup(true)
-
-                } else {
-
-                }
-              }, 300)
-            }
-          } catch (error) {
-
-
-            // Show specific error message
-            const errorMessage = error.response?.data?.message ||
-              (error.response?.status === 404 ? 'Order not found. Please refresh and try again.' : 'Failed to confirm reached pickup. Please try again.')
-            toast.error(errorMessage)
-
-            // Ensure reached pickup popup is closed
-            setShowreachedPickupPopup(false)
-            // Still show order ID popup even if API call fails, after delay
-            // But only if order is not already picked up
-            setTimeout(() => {
-              const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
-              const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
-              const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
-
-              const isAlreadyPickedUp = currentOrderStatus === 'out_for_delivery' ||
-                currentOrderStatus === 'picked_up' ||
-                currentDeliveryPhase === 'en_route_to_delivery' ||
-                currentDeliveryPhase === 'picked_up' ||
-                currentDeliveryPhase === 'en_route_to_drop' ||
-                currentDeliveryStateStatus === 'order_confirmed'
-
-              if (!isAlreadyPickedUp) {
-                setShowOrderIdConfirmationPopup(true)
-
-              } else {
-
-              }
-            }, 300)
-          }
-        } else {
-
-          toast.error('Order ID not found. Please refresh and try again.')
-          // Ensure reached pickup popup is closed
-          setShowreachedPickupPopup(false)
-          // Show order ID popup even if no order ID (fallback), after delay
-          // But only if order is not already picked up
-          setTimeout(() => {
-            const currentOrderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
-            const currentDeliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
-            const currentDeliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
-
-            const isAlreadyPickedUp = currentOrderStatus === 'out_for_delivery' ||
-              currentOrderStatus === 'picked_up' ||
-              currentDeliveryPhase === 'en_route_to_delivery' ||
-              currentDeliveryPhase === 'picked_up' ||
-              currentDeliveryPhase === 'en_route_to_drop' ||
-              currentDeliveryStateStatus === 'order_confirmed'
-
-            if (!isAlreadyPickedUp) {
-              setShowOrderIdConfirmationPopup(true)
-            } else {
-
-            }
-          }, 300)
-        }
-
-        // DO NOT show reached drop here - it will only show after order ID is confirmed
-
-        // Reset after animation
+      setTimeout(() => {
+        handleConfirmReachedPickup()
         setTimeout(() => {
           setreachedPickupButtonProgress(0)
           setreachedPickupIsAnimatingToComplete(false)
         }, 500)
       }, 200)
     } else {
-      // Reset smoothly
       setreachedPickupButtonProgress(0)
     }
 
@@ -4349,6 +4323,58 @@ export default function DeliveryHome() {
     }
   }
 
+  // Handle Reached Drop button direct click
+  const handleConfirmReachedDrop = async () => {
+    if (isConfirmingReachedDrop) return
+    setIsConfirmingReachedDrop(true)
+
+    try {
+      // Close reached drop popup first
+      setShowReachedDropPopup(false)
+
+      // Calculate trip distance and time before showing popup
+      const totalDistance = pickupRouteDistanceRef.current + deliveryRouteDistanceRef.current
+      const totalTime = pickupRouteTimeRef.current + deliveryRouteTimeRef.current
+
+      if (totalDistance > 0) {
+        setTripDistance(totalDistance)
+      }
+      if (totalTime > 0) {
+        setTripTime(totalTime)
+      }
+
+      setShowOrderDeliveredAnimation(true)
+
+      const orderIdForApi = selectedRestaurant?.id ||
+        newOrder?.orderMongoId ||
+        newOrder?._id ||
+        selectedRestaurant?.orderId ||
+        newOrder?.orderId
+
+      if (orderIdForApi) {
+        try {
+          const response = await deliveryAPI.confirmReachedDrop(orderIdForApi)
+          if (!response.data?.success) {
+            toast.error(response.data?.message || 'Failed to confirm reached drop. Please try again.')
+          }
+        } catch (error) {
+          const status = error.response?.status
+          if (status !== 500) {
+            let errorMessage = 'Failed to confirm reached drop. Please try again.'
+            if (status === 404) {
+              errorMessage = 'Order not found. Please refresh and try again.'
+            } else if (error.response?.data?.message) {
+              errorMessage = error.response.data.message
+            }
+            toast.error(errorMessage)
+          }
+        }
+      }
+    } finally {
+      setIsConfirmingReachedDrop(false)
+    }
+  }
+
   const handleReachedDropTouchEnd = (e) => {
     if (!reachedDropIsSwiping.current) {
       setReachedDropButtonProgress(0)
@@ -4360,90 +4386,19 @@ export default function DeliveryHome() {
     const circleWidth = 56
     const padding = 16
     const maxSwipe = buttonWidth - circleWidth - (padding * 2)
-    const threshold = maxSwipe * 0.7 // 70% of max swipe
+    const threshold = maxSwipe * 0.7
 
     if (deltaX > threshold) {
-      // Animate to completion
       setReachedDropIsAnimatingToComplete(true)
       setReachedDropButtonProgress(1)
-
-      // Close popup, confirm reached drop, and show order delivered animation instantly (no delay)
-      // Close reached drop popup first
-      setShowReachedDropPopup(false)
-
-      // Show Order Delivered popup instantly after Reached Drop is confirmed
-
-      // Calculate trip distance and time before showing popup
-      const totalDistance = pickupRouteDistanceRef.current + deliveryRouteDistanceRef.current;
-      const totalTime = pickupRouteTimeRef.current + deliveryRouteTimeRef.current;
-
-      // Only update if we have valid values (greater than 0)
-      if (totalDistance > 0) {
-        setTripDistance(totalDistance);
-
-      }
-      if (totalTime > 0) {
-        setTripTime(totalTime);
-
-      }
-
-      setShowOrderDeliveredAnimation(true)
-
-        // API call in background (async, doesn't block popup)
-        ; (async () => {
-          // Get order ID - prioritize MongoDB _id over orderId string for API call
-          // Backend expects _id (MongoDB ObjectId) in the URL parameter
-          // Use _id (MongoDB ObjectId) if available, otherwise fallback to orderId string
-          const orderIdForApi = selectedRestaurant?.id ||
-            newOrder?.orderMongoId ||
-            newOrder?._id ||
-            selectedRestaurant?.orderId ||
-            newOrder?.orderId
-
-          if (orderIdForApi) {
-            try {
-              // Call backend API to confirm reached drop (in background, don't block popup)
-              // Use MongoDB _id for API call to avoid ObjectId casting errors
-
-              const response = await deliveryAPI.confirmReachedDrop(orderIdForApi)
-
-              if (response.data?.success) {
-
-              } else {
-
-                toast.error(response.data?.message || 'Failed to confirm reached drop. Please try again.')
-              }
-            } catch (error) {
-              const status = error.response?.status
-
-              // Handle 500 errors gracefully (server-side issue, popup already shown)
-              if (status === 500) {
-                // For 500 errors, just log warning - popup is already shown, backend will sync later
-                console.warn('Confirm reached drop: server returned 500, but popup is shown. Backend will sync status automatically.', {
-                  orderIdForApi: orderIdForApi || 'unknown',
-                  message: error.response?.data?.message || error.message
-                })
-                // Don't show error toast or log as error - it's a server issue, not user action
-                return
-              }
-
-              // For other errors, log and show error message
-              console.error('Failed to confirm reached drop:', error)
-
-              // Show specific error message based on status code
-              let errorMessage = 'Failed to confirm reached drop. Please try again.'
-              if (status === 404) {
-                errorMessage = 'Order not found. Please refresh and try again.'
-              } else if (error.response?.data?.message) {
-                errorMessage = error.response.data.message
-              }
-
-              toast.error(errorMessage)
-            }
-          }
-        })()
+      setTimeout(() => {
+        handleConfirmReachedDrop()
+        setTimeout(() => {
+          setReachedDropButtonProgress(0)
+          setReachedDropIsAnimatingToComplete(false)
+        }, 500)
+      }, 200)
     } else {
-      // Reset smoothly
       setReachedDropButtonProgress(0)
     }
 
@@ -4652,6 +4607,251 @@ export default function DeliveryHome() {
     await processBillImageFile(file)
   }
 
+  // Handle Order ID Confirmation / Order Picked Up button click
+  const handleConfirmOrderId = async () => {
+    // Disable if bill image is not uploaded
+    if (!billImageUrl) {
+      toast.error('Please upload bill image first')
+      return
+    }
+
+    if (isConfirmingOrderId) return
+    setIsConfirmingOrderId(true)
+
+    try {
+      setShowOrderIdConfirmationPopup(false)
+
+      // Get order ID from selectedRestaurant
+      const orderId = selectedRestaurant?.id || selectedRestaurant?.orderId
+      const confirmedOrderId = selectedRestaurant?.orderId
+
+      // CRITICAL: Check if order is already delivered/completed - don't call API
+      const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
+      const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
+      const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
+
+      const isDelivered = orderStatus === 'delivered' ||
+        deliveryPhase === 'completed' ||
+        deliveryPhase === 'delivered' ||
+        deliveryStateStatus === 'delivered'
+
+      if (isDelivered) {
+        toast.error('Order is already delivered. Cannot confirm order ID.')
+        setShowOrderIdConfirmationPopup(false)
+        setIsConfirmingOrderId(false)
+        return
+      }
+
+      // CRITICAL: Check if order ID is already confirmed - don't call API again
+      const isOrderIdAlreadyConfirmed = orderStatus === 'out_for_delivery' ||
+        deliveryPhase === 'en_route_to_delivery' ||
+        deliveryPhase === 'picked_up' ||
+        deliveryStateStatus === 'order_confirmed' ||
+        selectedRestaurant?.deliveryState?.orderIdConfirmedAt
+
+      if (isOrderIdAlreadyConfirmed) {
+        // Don't show error, just update the UI state and close popup
+        setSelectedRestaurant(prev => ({
+          ...prev,
+          orderStatus: 'out_for_delivery',
+          status: 'out_for_delivery',
+          deliveryPhase: 'en_route_to_delivery',
+          deliveryState: {
+            ...prev.deliveryState,
+            currentPhase: 'en_route_to_delivery',
+            status: 'order_confirmed'
+          }
+        }))
+        setShowOrderIdConfirmationPopup(false)
+        toast.info('Order ID is already confirmed. Order is out for delivery.')
+        setIsConfirmingOrderId(false)
+        return
+      }
+
+      if (!orderId) {
+        toast.error('Order ID not found. Please try again.')
+        setIsConfirmingOrderId(false)
+        return
+      }
+
+      // Get current LIVE location
+      let currentLocation = riderLocation
+      if (!currentLocation || currentLocation.length !== 2) {
+        currentLocation = lastLocationRef.current
+      }
+
+      if (!currentLocation || currentLocation.length !== 2) {
+        try {
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => resolve([pos.coords.latitude, pos.coords.longitude]),
+              reject,
+              { timeout: 5000, enableHighAccuracy: true }
+            )
+          })
+          currentLocation = position
+        } catch (geoError) {
+          toast.error('Location not available. Please enable location services.')
+          setIsConfirmingOrderId(false)
+          return
+        }
+      }
+
+      try {
+        // Prefer string orderId (ORD-xxx) for URL; backend accepts both _id and orderId
+        const orderIdForApi = selectedRestaurant?.orderId || selectedRestaurant?.id
+        const confirmedOrderIdForApi = selectedRestaurant?.orderId || (orderIdForApi && String(orderIdForApi).startsWith('ORD-') ? orderIdForApi : undefined)
+
+        // Call backend API to confirm order ID with bill image
+        const response = await deliveryAPI.confirmOrderId(orderIdForApi, confirmedOrderIdForApi, {
+          lat: currentLocation[0],
+          lng: currentLocation[1]
+        }, {
+          billImageUrl: billImageUrl
+        })
+
+        if (response.data?.success && response.data.data) {
+          const orderData = response.data.data
+          const order = orderData.order || orderData
+          const routeData = orderData.route || order.deliveryState?.routeToDelivery
+
+          // Update selectedRestaurant with customer address
+          if (order && selectedRestaurant) {
+            const customerCoords = order.address?.location?.coordinates
+            const customerLat = customerCoords?.[1]
+            const customerLng = customerCoords?.[0]
+
+            if (customerLat && customerLng) {
+              const updatedRestaurant = {
+                ...selectedRestaurant,
+                customerName: order.userName || order.userId?.name || selectedRestaurant.customerName,
+                customerPhone: order.userPhone || order.userId?.phone || order.userId?.mobile || selectedRestaurant.customerPhone || null,
+                customerAddress: order.address?.formattedAddress ||
+                  (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
+                  selectedRestaurant.customerAddress,
+                customerAdditionalAddress: order.address?.additionalDetails ||
+                  order.address?.additionalAddress ||
+                  order.additionalAddress ||
+                  selectedRestaurant.customerAdditionalAddress ||
+                  null,
+                customerLat,
+                customerLng
+              }
+              setSelectedRestaurant(updatedRestaurant)
+
+              // Set navigation mode to customer after pickup
+              setNavigationMode('customer')
+
+              // Calculate route from delivery boy's live location to customer using Directions API
+              try {
+                const directionsResult = await calculateRouteWithDirectionsAPI(
+                  currentLocation,
+                  { lat: customerLat, lng: customerLng }
+                )
+
+                if (directionsResult) {
+                  const deliveryDistance = directionsResult.routes[0]?.legs[0]?.distance?.value || 0;
+                  const deliveryDuration = directionsResult.routes[0]?.legs[0]?.duration?.value || 0;
+                  deliveryRouteDistanceRef.current = deliveryDistance;
+                  deliveryRouteTimeRef.current = deliveryDuration;
+
+                  const totalDistance = pickupRouteDistanceRef.current + deliveryDistance;
+                  const totalTime = pickupRouteTimeRef.current + deliveryDuration;
+                  setTripDistance(totalDistance);
+                  setTripTime(totalTime);
+                  setSelectedRestaurant(prev => (prev ? {
+                    ...prev,
+                    tripDistance: formatDistanceMeters(totalDistance),
+                    tripTime: formatDurationSecs(totalTime),
+                  } : prev))
+
+                  setDirectionsResponse(directionsResult)
+                  directionsResponseRef.current = directionsResult
+
+                  updateLiveTrackingPolyline(directionsResult, currentLocation)
+
+                  if (window.deliveryMapInstance && window.google?.maps) {
+                    if (!directionsRendererRef.current) {
+                      directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+                        suppressMarkers: true,
+                        polylineOptions: { strokeColor: '#4285F4', strokeWeight: 0, strokeOpacity: 0, icons: [], zIndex: -1 },
+                        preserveViewport: true
+                      })
+                    }
+                    try {
+                      if (routePolylineRef.current) {
+                        routePolylineRef.current.setMap(null);
+                        routePolylineRef.current = null;
+                      }
+                      if (directionsRendererRef.current) {
+                        directionsRendererRef.current.setMap(null);
+                      }
+                    } catch (e) {}
+
+                    const bounds = directionsResult.routes?.[0]?.bounds
+                    if (bounds) {
+                      const currentZoomBeforeFit = window.deliveryMapInstance.getZoom();
+                      window.deliveryMapInstance.fitBounds(bounds, { padding: 100 });
+                      setTimeout(() => {
+                        const newZoom = window.deliveryMapInstance.getZoom();
+                        if (currentZoomBeforeFit > newZoom && currentZoomBeforeFit >= 18) {
+                          window.deliveryMapInstance.setZoom(currentZoomBeforeFit);
+                        }
+                      }, 100);
+                    }
+                  }
+                  setShowRoutePath(true)
+                } else if (routeData?.coordinates?.length > 0) {
+                  setRoutePolyline(routeData.coordinates)
+                  updateRoutePolyline(routeData.coordinates)
+                  setShowRoutePath(true)
+                }
+              } catch (routeError) {
+                if (routeData?.coordinates?.length > 0) {
+                  setRoutePolyline(routeData.coordinates)
+                  updateRoutePolyline(routeData.coordinates)
+                  setShowRoutePath(true)
+                }
+              }
+            }
+          }
+
+          // Update status to out_for_delivery
+          setSelectedRestaurant(prev => ({
+            ...prev,
+            orderStatus: 'out_for_delivery',
+            status: 'out_for_delivery',
+            deliveryPhase: 'en_route_to_delivery',
+            deliveryState: {
+              ...prev.deliveryState,
+              currentPhase: 'en_route_to_delivery',
+              status: 'order_confirmed'
+            }
+          }))
+
+          setShowreachedPickupPopup(false)
+          setShowOrderIdConfirmationPopup(false)
+
+          toast.success('Order is out for delivery. Route to customer is on the map.', { duration: 4000 })
+
+          setTimeout(() => {
+            setShowReachedDropPopup(true)
+            localStorage.removeItem('shouldShowReachedDropPopup')
+            localStorage.removeItem('reachedDropPopupOrderId')
+          }, 100)
+
+        } else {
+          toast.error(response.data?.message || 'Failed to confirm order ID. Please try again.')
+        }
+      } catch (error) {
+        const msg = error.response?.data?.message || error.message || ''
+        toast.error(msg || 'Failed to confirm order ID. Please try again.')
+      }
+    } finally {
+      setIsConfirmingOrderId(false)
+    }
+  }
+
   const handleOrderIdConfirmTouchEnd = (e) => {
     // Disable swipe if bill image is not uploaded
     if (!billImageUrl) {
@@ -4670,284 +4870,19 @@ export default function DeliveryHome() {
     const circleWidth = 56
     const padding = 16
     const maxSwipe = buttonWidth - circleWidth - (padding * 2)
-    const threshold = maxSwipe * 0.7 // 70% of max swipe
+    const threshold = maxSwipe * 0.7
 
     if (deltaX > threshold) {
-      // Animate to completion
       setOrderIdConfirmIsAnimatingToComplete(true)
       setOrderIdConfirmButtonProgress(1)
-
-      // Close popup after animation, then confirm order ID and show polyline to customer
-      setTimeout(async () => {
-        setShowOrderIdConfirmationPopup(false)
-
-        // Get order ID from selectedRestaurant
-        const orderId = selectedRestaurant?.id || selectedRestaurant?.orderId
-        const confirmedOrderId = selectedRestaurant?.orderId
-
-        // CRITICAL: Check if order is already delivered/completed - don't call API
-        const orderStatus = selectedRestaurant?.orderStatus || selectedRestaurant?.status || ''
-        const deliveryPhase = selectedRestaurant?.deliveryPhase || selectedRestaurant?.deliveryState?.currentPhase || ''
-        const deliveryStateStatus = selectedRestaurant?.deliveryState?.status || ''
-
-        const isDelivered = orderStatus === 'delivered' ||
-          deliveryPhase === 'completed' ||
-          deliveryPhase === 'delivered' ||
-          deliveryStateStatus === 'delivered'
-
-        if (isDelivered) {
-
-          toast.error('Order is already delivered. Cannot confirm order ID.')
-          setShowOrderIdConfirmationPopup(false)
-          return
-        }
-
-        // CRITICAL: Check if order ID is already confirmed - don't call API again
-        const isOrderIdAlreadyConfirmed = orderStatus === 'out_for_delivery' ||
-          deliveryPhase === 'en_route_to_delivery' ||
-          deliveryPhase === 'picked_up' ||
-          deliveryStateStatus === 'order_confirmed' ||
-          selectedRestaurant?.deliveryState?.orderIdConfirmedAt
-
-        if (isOrderIdAlreadyConfirmed) {
-
-          // Don't show error, just update the UI state and close popup
-          setSelectedRestaurant(prev => ({
-            ...prev,
-            orderStatus: 'out_for_delivery',
-            status: 'out_for_delivery',
-            deliveryPhase: 'en_route_to_delivery',
-            deliveryState: {
-              ...prev.deliveryState,
-              currentPhase: 'en_route_to_delivery',
-              status: 'order_confirmed'
-            }
-          }))
-          setShowOrderIdConfirmationPopup(false)
-          toast.info('Order ID is already confirmed. Order is out for delivery.')
-          return
-        }
-
-        if (!orderId) {
-
-          toast.error('Order ID not found. Please try again.')
-          return
-        }
-
-        // Get current LIVE location
-        let currentLocation = riderLocation
-        if (!currentLocation || currentLocation.length !== 2) {
-          currentLocation = lastLocationRef.current
-        }
-
-        if (!currentLocation || currentLocation.length !== 2) {
-          try {
-            const position = await new Promise((resolve, reject) => {
-              navigator.geolocation.getCurrentPosition(
-                (pos) => resolve([pos.coords.latitude, pos.coords.longitude]),
-                reject,
-                { timeout: 5000, enableHighAccuracy: true }
-              )
-            })
-            currentLocation = position
-          } catch (geoError) {
-
-            toast.error('Location not available. Please enable location services.')
-            return
-          }
-        }
-
-        try {
-          // Prefer string orderId (ORD-xxx) for URL; backend accepts both _id and orderId
-          const orderIdForApi = selectedRestaurant?.orderId || selectedRestaurant?.id
-          const confirmedOrderIdForApi = selectedRestaurant?.orderId || (orderIdForApi && String(orderIdForApi).startsWith('ORD-') ? orderIdForApi : undefined)
-
-          // Call backend API to confirm order ID with bill image
-
-          // Update API call to include bill image URL
-          const response = await deliveryAPI.confirmOrderId(orderIdForApi, confirmedOrderIdForApi, {
-            lat: currentLocation[0],
-            lng: currentLocation[1]
-          }, {
-            billImageUrl: billImageUrl
-          })
-
-          if (response.data?.success && response.data.data) {
-            const orderData = response.data.data
-            const order = orderData.order || orderData
-            const routeData = orderData.route || order.deliveryState?.routeToDelivery
-
-            // Update selectedRestaurant with customer address
-            if (order && selectedRestaurant) {
-              const customerCoords = order.address?.location?.coordinates
-              const customerLat = customerCoords?.[1]
-              const customerLng = customerCoords?.[0]
-
-              if (customerLat && customerLng) {
-                const updatedRestaurant = {
-                  ...selectedRestaurant,
-                  customerName: order.userName || order.userId?.name || selectedRestaurant.customerName,
-                  customerPhone: order.userPhone || order.userId?.phone || order.userId?.mobile || selectedRestaurant.customerPhone || null,
-                  customerAddress: order.address?.formattedAddress ||
-                    (order.address?.street ? `${order.address.street}, ${order.address.city || ''}, ${order.address.state || ''}`.trim() : '') ||
-                    selectedRestaurant.customerAddress,
-                  // Additional address / delivery instructions entered by user
-                  customerAdditionalAddress: order.address?.additionalDetails ||
-                    order.address?.additionalAddress ||
-                    order.additionalAddress ||
-                    selectedRestaurant.customerAdditionalAddress ||
-                    null,
-                  customerLat,
-                  customerLng
-                }
-                setSelectedRestaurant(updatedRestaurant)
-
-                // Set navigation mode to customer after pickup
-                setNavigationMode('customer')
-
-                // Calculate route from delivery boy's live location to customer using Directions API
-                try {
-                  const directionsResult = await calculateRouteWithDirectionsAPI(
-                    currentLocation,
-                    { lat: customerLat, lng: customerLng }
-                  )
-
-                  if (directionsResult) {
-
-                    // Store delivery route distance and time
-                    const deliveryDistance = directionsResult.routes[0]?.legs[0]?.distance?.value || 0; // in meters
-                    const deliveryDuration = directionsResult.routes[0]?.legs[0]?.duration?.value || 0; // in seconds
-                    deliveryRouteDistanceRef.current = deliveryDistance;
-                    deliveryRouteTimeRef.current = deliveryDuration;
-
-                    // Calculate total trip distance and time
-                    const totalDistance = pickupRouteDistanceRef.current + deliveryDistance;
-                    const totalTime = pickupRouteTimeRef.current + deliveryDuration;
-                    setTripDistance(totalDistance);
-                    setTripTime(totalTime);
-                    // Persist pretty strings for UI fallback after refresh
-                    setSelectedRestaurant(prev => (prev ? {
-                      ...prev,
-                      tripDistance: formatDistanceMeters(totalDistance),
-                      tripTime: formatDurationSecs(totalTime),
-                    } : prev))
-
-                    setDirectionsResponse(directionsResult)
-                    directionsResponseRef.current = directionsResult
-
-                    // Initialize / update live tracking polyline for customer delivery route
-                    updateLiveTrackingPolyline(directionsResult, currentLocation)
-
-                    // Show route polyline on main Feed map
-                    if (window.deliveryMapInstance && window.google?.maps) {
-                      if (!directionsRendererRef.current) {
-                        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-                          suppressMarkers: true,
-                          polylineOptions: { strokeColor: '#4285F4', strokeWeight: 0, strokeOpacity: 0, icons: [], zIndex: -1 },
-                          preserveViewport: true
-                        })
-                      }
-                      // Don't create main route polyline - only live tracking polyline will be shown
-                      // Remove old custom polyline if exists (cleanup)
-                      try {
-                        if (routePolylineRef.current) {
-                          routePolylineRef.current.setMap(null);
-                          routePolylineRef.current = null;
-                        }
-
-                        // Remove DirectionsRenderer from map
-                        if (directionsRendererRef.current) {
-                          directionsRendererRef.current.setMap(null);
-                        }
-                      } catch (e) {
-
-                      }
-
-                      const bounds = directionsResult.routes?.[0]?.bounds
-                      if (bounds) {
-                        const currentZoomBeforeFit = window.deliveryMapInstance.getZoom();
-                        window.deliveryMapInstance.fitBounds(bounds, { padding: 100 });
-                        // Preserve zoom if user had zoomed in
-                        setTimeout(() => {
-                          const newZoom = window.deliveryMapInstance.getZoom();
-                          if (currentZoomBeforeFit > newZoom && currentZoomBeforeFit >= 18) {
-                            window.deliveryMapInstance.setZoom(currentZoomBeforeFit);
-                          }
-                        }, 100);
-                      }
-                    }
-                    setShowRoutePath(true)
-                  } else if (routeData?.coordinates?.length > 0) {
-                    setRoutePolyline(routeData.coordinates)
-                    updateRoutePolyline(routeData.coordinates)
-                    setShowRoutePath(true)
-                  }
-                } catch (routeError) {
-                  if (routeError.message?.includes('REQUEST_DENIED') || routeError.message?.includes('not available')) {
-
-                  } else {
-
-                  }
-                  if (routeData?.coordinates?.length > 0) {
-                    setRoutePolyline(routeData.coordinates)
-                    updateRoutePolyline(routeData.coordinates)
-                    setShowRoutePath(true)
-                  }
-                }
-              }
-            }
-
-            // Update status to out_for_delivery (merge if customer block didn't run)
-            setSelectedRestaurant(prev => ({
-              ...prev,
-              orderStatus: 'out_for_delivery',
-              status: 'out_for_delivery',
-              deliveryPhase: 'en_route_to_delivery',
-              deliveryState: {
-                ...prev.deliveryState,
-                currentPhase: 'en_route_to_delivery',
-                status: 'order_confirmed'
-              }
-            }))
-
-            // CRITICAL: Close Reached Pickup popup if it's still showing (shouldn't happen, but defensive)
-            setShowreachedPickupPopup(false)
-
-            // Close Order ID confirmation popup
-            setShowOrderIdConfirmationPopup(false)
-
-            toast.success('Order is out for delivery. Route to customer is on the map.', { duration: 4000 })
-
-            // Show Reached Drop popup instantly after Order Picked Up is confirmed
-            // Use setTimeout to ensure state updates are processed and useEffect doesn't block it
-
-            setTimeout(() => {
-              setShowReachedDropPopup(true)
-
-              // Clear any saved popup state since we're showing it now
-              localStorage.removeItem('shouldShowReachedDropPopup')
-              localStorage.removeItem('reachedDropPopupOrderId')
-            }, 100) // Small delay to ensure showOrderIdConfirmationPopup state is updated
-
-          } else {
-
-            toast.error(response.data?.message || 'Failed to confirm order ID. Please try again.')
-          }
-        } catch (error) {
-          const status = error.response?.status
-          const msg = error.response?.data?.message || error.message || ''
-
-          toast.error(msg || 'Failed to confirm order ID. Please try again.')
-        }
-
-        // Reset after animation
+      setTimeout(() => {
+        handleConfirmOrderId()
         setTimeout(() => {
           setOrderIdConfirmButtonProgress(0)
           setOrderIdConfirmIsAnimatingToComplete(false)
         }, 500)
       }, 200)
     } else {
-      // Reset smoothly
       setOrderIdConfirmButtonProgress(0)
     }
 
@@ -5022,6 +4957,21 @@ export default function DeliveryHome() {
   }
 
   // Handle Order Delivered button swipe
+  // Handle Order Delivered direct click
+  const handleConfirmOrderDelivered = () => {
+    // Block until cash is confirmed for Pay at Hotel
+    if (isCurrentOrderPayAtHotel() && !hotelCashConfirmed) {
+      toast.error('Please confirm cash collected at hotel first')
+      return
+    }
+
+    setShowOrderDeliveredAnimation(false)
+    setShowReachedDropPopup(false)
+    setShowreachedPickupPopup(false)
+    setShowOrderIdConfirmationPopup(false)
+    setShowCustomerReviewPopup(true)
+  }
+
   const handleOrderDeliveredTouchStart = (e) => {
     // Block swipe until cash is confirmed for Pay at Hotel
     if (isCurrentOrderPayAtHotel() && !hotelCashConfirmed) {
@@ -11194,66 +11144,23 @@ export default function DeliveryHome() {
                     {/* Restaurant coordinates/map link + drop distance intentionally hidden for delivery popup */}
                   </div>
 
-                  {/* Accept Order Button with Swipe */}
-                  <div className="relative w-full">
-                    <motion.div
-                      ref={newOrderAcceptButtonRef}
-                      className="relative w-full bg-green-600 rounded-full overflow-hidden shadow-xl"
-                      style={{ touchAction: 'pan-x' }} // Prevent vertical scrolling, allow horizontal pan
-                      onTouchStart={handleNewOrderAcceptTouchStart}
-                      onTouchMove={handleNewOrderAcceptTouchMove}
-                      onTouchEnd={handleNewOrderAcceptTouchEnd}
-                      whileTap={{ scale: 0.98 }}
+                  {/* Accept Order Button (Normal Clean Button) */}
+                  <div className="w-full pt-1">
+                    <button
+                      type="button"
+                      onClick={handleAcceptNewOrder}
+                      disabled={isAcceptingNewOrder}
+                      className="w-full py-4 bg-green-600 hover:bg-green-700 active:scale-[0.98] text-white font-bold text-lg rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed select-none"
                     >
-                      {/* Swipe progress background */}
-                      <motion.div
-                        className="absolute inset-0 bg-green-500 rounded-full"
-                        animate={{
-                          width: `${newOrderAcceptButtonProgress * 100}%`
-                        }}
-                        transition={newOrderIsAnimatingToComplete ? {
-                          type: "spring",
-                          stiffness: 200,
-                          damping: 25
-                        } : { duration: 0 }}
-                      />
-
-                      {/* Button content container */}
-                      <div className="relative flex items-center h-[64px] px-1">
-                        {/* Left: Black circle with arrow */}
-                        <motion.div
-                          className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shrink-0 relative z-20 shadow-2xl"
-                          animate={{
-                            x: newOrderAcceptButtonProgress * (newOrderAcceptButtonRef.current ? (newOrderAcceptButtonRef.current.offsetWidth - 56 - 32) : 240)
-                          }}
-                          transition={newOrderIsAnimatingToComplete ? {
-                            type: "spring",
-                            stiffness: 300,
-                            damping: 30
-                          } : { duration: 0 }}
-                        >
-                          <ArrowRight className="w-5 h-5 text-white" />
-                        </motion.div>
-
-                        {/* Text - centered and stays visible */}
-                        <div className="absolute inset-0 flex items-center justify-center left-16 right-4 pointer-events-none">
-                          <motion.span
-                            className="text-white font-semibold flex items-center justify-center text-center text-base select-none"
-                            animate={{
-                              opacity: newOrderAcceptButtonProgress > 0.5 ? Math.max(0.2, 1 - newOrderAcceptButtonProgress * 0.8) : 1,
-                              x: newOrderAcceptButtonProgress > 0.5 ? newOrderAcceptButtonProgress * 15 : 0
-                            }}
-                            transition={newOrderIsAnimatingToComplete ? {
-                              type: "spring",
-                              stiffness: 200,
-                              damping: 25
-                            } : { duration: 0 }}
-                          >
-                            {newOrderAcceptButtonProgress > 0.5 ? 'Release to Accept' : 'Accept order'}
-                          </motion.span>
-                        </div>
-                      </div>
-                    </motion.div>
+                      {isAcceptingNewOrder ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin text-white" />
+                          <span>Accepting order...</span>
+                        </>
+                      ) : (
+                        <span>Accept order</span>
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -11625,66 +11532,23 @@ export default function DeliveryHome() {
             </button>
           </div>
 
-          {/* Reached Pickup Button with Swipe */}
-          <div className="relative w-full">
-            <motion.div
-              ref={reachedPickupButtonRef}
-              className="relative w-full bg-green-600 rounded-full overflow-hidden shadow-xl"
-              style={{ touchAction: 'pan-x' }} // Prevent vertical scrolling, allow horizontal pan
-              onTouchStart={handlereachedPickupTouchStart}
-              onTouchMove={handlereachedPickupTouchMove}
-              onTouchEnd={handlereachedPickupTouchEnd}
-              whileTap={{ scale: 0.98 }}
+          {/* Reached Pickup Button (Direct Click Button) */}
+          <div className="w-full pt-1">
+            <button
+              type="button"
+              onClick={handleConfirmReachedPickup}
+              disabled={isConfirmingReachedPickup}
+              className="w-full py-4 bg-green-600 hover:bg-green-700 active:scale-[0.98] text-white font-bold text-lg rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed select-none"
             >
-              {/* Swipe progress background */}
-              <motion.div
-                className="absolute inset-0 bg-green-500 rounded-full"
-                animate={{
-                  width: `${reachedPickupButtonProgress * 100}%`
-                }}
-                transition={reachedPickupIsAnimatingToComplete ? {
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 25
-                } : { duration: 0 }}
-              />
-
-              {/* Button content container */}
-              <div className="relative flex items-center h-[64px] px-1">
-                {/* Left: Black circle with arrow */}
-                <motion.div
-                  className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shrink-0 relative z-20 shadow-2xl"
-                  animate={{
-                    x: reachedPickupButtonProgress * (reachedPickupButtonRef.current ? (reachedPickupButtonRef.current.offsetWidth - 56 - 32) : 240)
-                  }}
-                  transition={reachedPickupIsAnimatingToComplete ? {
-                    type: "spring",
-                    stiffness: 300,
-                    damping: 30
-                  } : { duration: 0 }}
-                >
-                  <ArrowRight className="w-5 h-5 text-white" />
-                </motion.div>
-
-                {/* Text - centered and stays visible */}
-                <div className="absolute inset-0 flex items-center justify-center left-16 right-4 pointer-events-none">
-                  <motion.span
-                    className="text-white font-semibold flex items-center justify-center text-center text-base select-none"
-                    animate={{
-                      opacity: reachedPickupButtonProgress > 0.5 ? Math.max(0.2, 1 - reachedPickupButtonProgress * 0.8) : 1,
-                      x: reachedPickupButtonProgress > 0.5 ? reachedPickupButtonProgress * 15 : 0
-                    }}
-                    transition={reachedPickupIsAnimatingToComplete ? {
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 25
-                    } : { duration: 0 }}
-                  >
-                    {reachedPickupButtonProgress > 0.5 ? 'Release to Confirm' : 'Reached Pickup'}
-                  </motion.span>
-                </div>
-              </div>
-            </motion.div>
+              {isConfirmingReachedPickup ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <span>Confirming...</span>
+                </>
+              ) : (
+                <span>Reached Pickup</span>
+              )}
+            </button>
           </div>
         </div>
       </BottomPopup>
@@ -11782,74 +11646,29 @@ export default function DeliveryHome() {
               />
             </div>
 
-            {/* Order Picked Up Button with Swipe */}
-            <div className="relative w-full">
-              <motion.div
-                ref={orderIdConfirmButtonRef}
-                className={`relative w-full rounded-full overflow-hidden shadow-xl ${billImageUrl ? 'bg-green-600' : 'bg-gray-400 cursor-not-allowed'
-                  }`}
-                style={{
-                  touchAction: billImageUrl ? 'pan-x' : 'none',
-                  opacity: billImageUrl ? 1 : 0.6
-                }}
-                onTouchStart={billImageUrl ? handleOrderIdConfirmTouchStart : undefined}
-                onTouchMove={billImageUrl ? handleOrderIdConfirmTouchMove : undefined}
-                onTouchEnd={billImageUrl ? handleOrderIdConfirmTouchEnd : undefined}
-                whileTap={billImageUrl ? { scale: 0.98 } : {}}
+            {/* Order Picked Up Button (Direct Click Button) */}
+            <div className="w-full pt-1">
+              <button
+                type="button"
+                onClick={handleConfirmOrderId}
+                disabled={!billImageUrl || isConfirmingOrderId}
+                className={`w-full py-4 text-white font-bold text-lg rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all select-none ${
+                  !billImageUrl
+                    ? 'bg-gray-400 cursor-not-allowed opacity-60'
+                    : 'bg-green-600 hover:bg-green-700 active:scale-[0.98] cursor-pointer'
+                }`}
               >
-                {/* Swipe progress background */}
-                <motion.div
-                  className="absolute inset-0 bg-green-500 rounded-full"
-                  animate={{
-                    width: `${orderIdConfirmButtonProgress * 100}%`
-                  }}
-                  transition={orderIdConfirmIsAnimatingToComplete ? {
-                    type: "spring",
-                    stiffness: 200,
-                    damping: 25
-                  } : { duration: 0 }}
-                />
-
-                {/* Button content container */}
-                <div className="relative flex items-center h-[64px] px-1">
-                  {/* Left: Black circle with arrow */}
-                  <motion.div
-                    className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shrink-0 relative z-20 shadow-2xl"
-                    animate={{
-                      x: orderIdConfirmButtonProgress * (orderIdConfirmButtonRef.current ? (orderIdConfirmButtonRef.current.offsetWidth - 56 - 32) : 240)
-                    }}
-                    transition={orderIdConfirmIsAnimatingToComplete ? {
-                      type: "spring",
-                      stiffness: 300,
-                      damping: 30
-                    } : { duration: 0 }}
-                  >
-                    <ArrowRight className="w-5 h-5 text-white" />
-                  </motion.div>
-
-                  {/* Text - centered and stays visible */}
-                  <div className="absolute inset-0 flex items-center justify-center left-16 right-4 pointer-events-none">
-                    <motion.span
-                      className="text-white font-semibold flex items-center justify-center text-center text-base select-none"
-                      animate={{
-                        opacity: orderIdConfirmButtonProgress > 0.5 ? Math.max(0.2, 1 - orderIdConfirmButtonProgress * 0.8) : 1,
-                        x: orderIdConfirmButtonProgress > 0.5 ? orderIdConfirmButtonProgress * 15 : 0
-                      }}
-                      transition={orderIdConfirmIsAnimatingToComplete ? {
-                        type: "spring",
-                        stiffness: 200,
-                        damping: 25
-                      } : { duration: 0 }}
-                    >
-                      {!billImageUrl
-                        ? 'Upload Bill First'
-                        : orderIdConfirmButtonProgress > 0.5
-                          ? 'Release to Confirm'
-                          : 'Order Picked Up'}
-                    </motion.span>
-                  </div>
-                </div>
-              </motion.div>
+                {isConfirmingOrderId ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin text-white" />
+                    <span>Confirming...</span>
+                  </>
+                ) : !billImageUrl ? (
+                  <span>Upload Bill First</span>
+                ) : (
+                  <span>Order Picked Up</span>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -12101,66 +11920,23 @@ export default function DeliveryHome() {
             </button>
           </div>
 
-          {/* Reached Drop Button with Swipe */}
-          <div className="relative w-full">
-            <motion.div
-              ref={reachedDropButtonRef}
-              className="relative w-full bg-green-600 rounded-full overflow-hidden shadow-xl"
-              style={{ touchAction: 'pan-x' }} // Prevent vertical scrolling, allow horizontal pan
-              onTouchStart={handleReachedDropTouchStart}
-              onTouchMove={handleReachedDropTouchMove}
-              onTouchEnd={handleReachedDropTouchEnd}
-              whileTap={{ scale: 0.98 }}
+          {/* Reached Drop Button (Direct Click Button) */}
+          <div className="w-full pt-1">
+            <button
+              type="button"
+              onClick={handleConfirmReachedDrop}
+              disabled={isConfirmingReachedDrop}
+              className="w-full py-4 bg-green-600 hover:bg-green-700 active:scale-[0.98] text-white font-bold text-lg rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed select-none"
             >
-              {/* Swipe progress background */}
-              <motion.div
-                className="absolute inset-0 bg-green-500 rounded-full"
-                animate={{
-                  width: `${reachedDropButtonProgress * 100}%`
-                }}
-                transition={reachedDropIsAnimatingToComplete ? {
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 25
-                } : { duration: 0 }}
-              />
-
-              {/* Button content container */}
-              <div className="relative flex items-center h-[64px] px-1">
-                {/* Left: Black circle with arrow */}
-                <motion.div
-                  className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shrink-0 relative z-20 shadow-2xl"
-                  animate={{
-                    x: reachedDropButtonProgress * (reachedDropButtonRef.current ? (reachedDropButtonRef.current.offsetWidth - 56 - 32) : 240)
-                  }}
-                  transition={reachedDropIsAnimatingToComplete ? {
-                    type: "spring",
-                    stiffness: 300,
-                    damping: 30
-                  } : { duration: 0 }}
-                >
-                  <ArrowRight className="w-5 h-5 text-white" />
-                </motion.div>
-
-                {/* Text - centered and stays visible */}
-                <div className="absolute inset-0 flex items-center justify-center left-16 right-4 pointer-events-none">
-                  <motion.span
-                    className="text-white font-semibold flex items-center justify-center text-center text-base select-none"
-                    animate={{
-                      opacity: reachedDropButtonProgress > 0.5 ? Math.max(0.2, 1 - reachedDropButtonProgress * 0.8) : 1,
-                      x: reachedDropButtonProgress > 0.5 ? reachedDropButtonProgress * 15 : 0
-                    }}
-                    transition={reachedDropIsAnimatingToComplete ? {
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 25
-                    } : { duration: 0 }}
-                  >
-                    {reachedDropButtonProgress > 0.5 ? 'Release to Confirm' : 'Reached Drop'}
-                  </motion.span>
-                </div>
-              </div>
-            </motion.div>
+              {isConfirmingReachedDrop ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <span>Confirming...</span>
+                </>
+              ) : (
+                <span>Reached Drop</span>
+              )}
+            </button>
           </div>
         </div>
       </BottomPopup>
@@ -12320,75 +12096,29 @@ export default function DeliveryHome() {
             )
           })()}
 
-          {/* Order Delivered Button with Swipe */}
-          <div className="relative w-full">
-            <motion.div
-              ref={orderDeliveredButtonRef}
-              className={`relative w-full rounded-full overflow-hidden shadow-xl ${((() => {
-                  const disabled =
-                    getDeliveryPaymentKind(selectedRestaurant) === "pay_at_hotel" &&
-                    !hotelCashConfirmed
-                  return disabled
-                })())
-                  ? 'bg-gray-300 cursor-not-allowed opacity-70'
-                  : 'bg-green-600'
-                }`}
-              style={{ touchAction: 'pan-x' }} // Prevent vertical scrolling, allow horizontal pan
-              onTouchStart={handleOrderDeliveredTouchStart}
-              onTouchMove={handleOrderDeliveredTouchMove}
-              onTouchEnd={handleOrderDeliveredTouchEnd}
-              whileTap={{ scale: 0.98 }}
-            >
-              {/* Swipe progress background */}
-              <motion.div
-                className="absolute inset-0 bg-green-500 rounded-full"
-                animate={{
-                  width: `${orderDeliveredButtonProgress * 100}%`
-                }}
-                transition={orderDeliveredIsAnimatingToComplete ? {
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 25
-                } : { duration: 0 }}
-              />
+          {/* Order Delivered Button (Direct Click Button) */}
+          {(() => {
+            const isPayAtHotelBlocked =
+              getDeliveryPaymentKind(selectedRestaurant) === "pay_at_hotel" &&
+              !hotelCashConfirmed;
 
-              {/* Button content container */}
-              <div className="relative flex items-center h-[64px] px-1">
-                {/* Left: Black circle with arrow */}
-                <motion.div
-                  className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shrink-0 relative z-20 shadow-2xl"
-                  animate={{
-                    x: orderDeliveredButtonProgress * (orderDeliveredButtonRef.current ? (orderDeliveredButtonRef.current.offsetWidth - 56 - 32) : 240)
-                  }}
-                  transition={orderDeliveredIsAnimatingToComplete ? {
-                    type: "spring",
-                    stiffness: 300,
-                    damping: 30
-                  } : { duration: 0 }}
+            return (
+              <div className="w-full pt-1">
+                <button
+                  type="button"
+                  onClick={handleConfirmOrderDelivered}
+                  disabled={isPayAtHotelBlocked}
+                  className={`w-full py-4 text-white font-bold text-lg rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all select-none ${
+                    isPayAtHotelBlocked
+                      ? 'bg-gray-400 cursor-not-allowed opacity-60'
+                      : 'bg-green-600 hover:bg-green-700 active:scale-[0.98] cursor-pointer'
+                  }`}
                 >
-                  <ArrowRight className="w-5 h-5 text-white" />
-                </motion.div>
-
-                {/* Text - centered and stays visible */}
-                <div className="absolute inset-0 flex items-center justify-center left-16 right-4 pointer-events-none">
-                  <motion.span
-                    className="text-white font-semibold flex items-center justify-center text-center text-base select-none"
-                    animate={{
-                      opacity: orderDeliveredButtonProgress > 0.5 ? Math.max(0.2, 1 - orderDeliveredButtonProgress * 0.8) : 1,
-                      x: orderDeliveredButtonProgress > 0.5 ? orderDeliveredButtonProgress * 15 : 0
-                    }}
-                    transition={orderDeliveredIsAnimatingToComplete ? {
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 25
-                    } : { duration: 0 }}
-                  >
-                    {orderDeliveredButtonProgress > 0.5 ? 'Release to Confirm' : 'Order Delivered'}
-                  </motion.span>
-                </div>
+                  <span>Order Delivered</span>
+                </button>
               </div>
-            </motion.div>
-          </div>
+            );
+          })()}
         </div>
       </BottomPopup>
 

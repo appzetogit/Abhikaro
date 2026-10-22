@@ -39,12 +39,18 @@ export default function MenuAdd() {
 
   // Preparation time options
   const preparationTimeOptions = [
-    "10-20 mins",
-    "20-25 mins",
-    "25-35 mins",
-    "35-45 mins",
-    "45-60 mins",
-    "60+ mins"
+    "5 mins",
+    "10 mins",
+    "15 mins",
+    "20 mins",
+    "25 mins",
+    "30 mins",
+    "35 mins",
+    "40 mins",
+    "45 mins",
+    "50 mins",
+    "55 mins",
+    "60 mins"
   ]
 
   // Form data for new dish
@@ -1193,6 +1199,9 @@ export default function MenuAdd() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select timing</option>
+                  {formData.preparationTime && !preparationTimeOptions.includes(formData.preparationTime) && (
+                    <option value={formData.preparationTime}>{formData.preparationTime}</option>
+                  )}
                   {preparationTimeOptions.map((time) => (
                     <option key={time} value={time}>
                       {time}

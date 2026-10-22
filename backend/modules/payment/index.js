@@ -1,5 +1,5 @@
 import express from 'express';
-import { initializeRazorpay, createOrder as createRazorpayOrder, verifyPayment, verifyWebhookSignature, fetchPayment, capturePayment } from './services/razorpayService.js';
+import { initializeRazorpay, createOrder as createRazorpayOrder, verifyPayment, verifyWebhookSignature, fetchPayment, fetchOrderPayments, capturePayment } from './services/razorpayService.js';
 import PaymentIntent from './models/PaymentIntent.js';
 import { authenticate } from '../auth/middleware/auth.js';
 import winston from 'winston';
@@ -8,6 +8,7 @@ import Order from '../order/models/Order.js';
 import OrderSettlement from '../order/models/OrderSettlement.js';
 import mongoose from 'mongoose';
 import { validateOrderDeliveryAndZone } from '../../shared/utils/orderZoneValidator.js';
+import etaCalculationService from '../order/services/etaCalculationService.js';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -18,6 +19,358 @@ const logger = winston.createLogger({
     })
   ]
 });
+
+async function computeDynamicOrderETA(payload, resolvedAddress, resolvedRestaurantLocation) {
+  try {
+    // 1. Prefer ETA already computed during checkout calculation (instant, avoids redundant external calls)
+    const pEta = payload?.pricing?.eta;
+    if (pEta && (pEta.totalETA || pEta.foodPreparationTime || pEta.minETA)) {
+      const minETA = pEta.minETA || Math.max(1, (pEta.totalETA || 30) - 3);
+      const maxETA = pEta.maxETA || ((pEta.totalETA || 30) + 3);
+      const prepTime = pEta.foodPreparationTime || 15;
+      const estTime = pEta.totalETA || Math.ceil((minETA + maxETA) / 2);
+      return {
+        preparationTime: prepTime,
+        estimatedDeliveryTime: estTime,
+        eta: {
+          min: minETA,
+          max: maxETA,
+          lastUpdated: new Date(),
+          additionalTime: 0,
+        },
+        etaDetails: {
+          foodPreparationTime: pEta.foodPreparationTime || prepTime,
+          deliveryTime: pEta.deliveryTime || 15,
+          totalETA: estTime,
+          distanceKm: pEta.distanceKm || 2.0,
+          mainItem: pEta.mainItem || null,
+          itemsBreakdown: pEta.itemsBreakdown || [],
+          calculatedAt: new Date(),
+        },
+        enrichedItems: pEta.enrichedItems || payload.items
+      };
+    }
+
+    const restaurantLocation = resolvedRestaurantLocation
+      ? {
+          latitude: resolvedRestaurantLocation.latitude || resolvedRestaurantLocation.location?.coordinates?.[1] || resolvedRestaurantLocation.coordinates?.[1],
+          longitude: resolvedRestaurantLocation.longitude || resolvedRestaurantLocation.location?.coordinates?.[0] || resolvedRestaurantLocation.coordinates?.[0],
+        }
+      : null;
+
+    const userLocation = resolvedAddress?.location?.coordinates
+      ? {
+          latitude: resolvedAddress.location.coordinates[1],
+          longitude: resolvedAddress.location.coordinates[0],
+        }
+      : resolvedAddress?.latitude && resolvedAddress?.longitude
+      ? {
+          latitude: resolvedAddress.latitude,
+          longitude: resolvedAddress.longitude,
+        }
+      : null;
+
+    // Run dynamic ETA with a strict 2.5-second timeout to ensure payment verification never hangs
+    const etaPromise = etaCalculationService.calculateDynamicETA({
+      items: payload.items,
+      restaurantId: payload.restaurantId,
+      restaurantLocation,
+      userLocation,
+    });
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2500));
+    const dynamicETA = await Promise.race([etaPromise, timeoutPromise]);
+
+    const calculatedPrepTime = dynamicETA?.foodPreparationTime || 15;
+    const finalMinETA = dynamicETA?.minETA || 25;
+    const finalMaxETA = dynamicETA?.maxETA || 35;
+    const finalEstimatedTime = dynamicETA?.totalETA || Math.ceil((finalMinETA + finalMaxETA) / 2);
+
+    return {
+      preparationTime: calculatedPrepTime,
+      estimatedDeliveryTime: finalEstimatedTime,
+      eta: {
+        min: finalMinETA,
+        max: finalMaxETA,
+        lastUpdated: new Date(),
+        additionalTime: 0,
+      },
+      etaDetails: dynamicETA ? {
+        foodPreparationTime: dynamicETA.foodPreparationTime,
+        deliveryTime: dynamicETA.deliveryTime,
+        totalETA: dynamicETA.totalETA,
+        distanceKm: dynamicETA.distanceKm,
+        mainItem: dynamicETA.mainItem,
+        itemsBreakdown: dynamicETA.itemsBreakdown,
+        calculatedAt: new Date(),
+      } : null,
+      enrichedItems: dynamicETA?.enrichedItems || payload.items
+    };
+  } catch (err) {
+    logger.warn('⚠️ Could not compute dynamic ETA for online order: ' + err.message);
+    return null;
+  }
+}
+
+/**
+ * Idempotently and reliably finalize a paid order from PaymentIntent.
+ * Used by /verify, /reconcile, /webhook, and /status auto-heal.
+ */
+export async function finalizePaidOrder({
+  intentId,
+  razorpayPaymentId = null,
+  razorpaySignature = null,
+  razorpayOrderId = null,
+  reqUser = null,
+  source = 'unknown'
+}) {
+  logger.info(`[finalizePaidOrder] Invoked from source="${source}" for intent=${intentId}`);
+
+  const intent = await PaymentIntent.findById(intentId);
+  if (!intent) {
+    logger.warn(`[finalizePaidOrder] Intent not found: ${intentId}`);
+    return { success: false, message: 'Payment intent not found' };
+  }
+
+  // Idempotency: If order already created, return immediately
+  if (intent.orderId) {
+    const existingOrder = await Order.findById(intent.orderId).select('_id orderId status').lean();
+    logger.info(`[finalizePaidOrder] Order already exists: ${existingOrder?.orderId || intent.orderId}`);
+    return {
+      success: true,
+      orderId: intent.orderId,
+      order: existingOrder,
+      alreadyCreated: true
+    };
+  }
+
+  // Mark processing
+  if (intent.status !== 'processing') {
+    intent.status = 'processing';
+    if (razorpayPaymentId) intent.razorpayPaymentId = razorpayPaymentId;
+    if (razorpaySignature) intent.razorpaySignature = razorpaySignature;
+    await intent.save();
+  }
+
+  const payload = intent.payload || {};
+
+  // 1. Resolve restaurant location/address BEFORE starting database transaction
+  let resolvedRestaurantLocation = null;
+  try {
+    const pLoc = payload.restaurantLocation;
+    if (pLoc && (pLoc.latitude || pLoc.longitude || pLoc?.location?.coordinates?.length)) {
+      const lat =
+        Number(pLoc.latitude) ||
+        Number(pLoc?.location?.coordinates?.[1]) ||
+        null;
+      const lng =
+        Number(pLoc.longitude) ||
+        Number(pLoc?.location?.coordinates?.[0]) ||
+        null;
+      if (lat != null && lng != null) {
+        resolvedRestaurantLocation = {
+          latitude: lat,
+          longitude: lng,
+          location: {
+            type: 'Point',
+            coordinates: [lng, lat],
+          },
+          formattedAddress: pLoc.formattedAddress || pLoc.address || null,
+          address: pLoc.formattedAddress || pLoc.address || null,
+        };
+      }
+    } else if (payload.restaurantId) {
+      const { default: Restaurant } = await import('../restaurant/models/Restaurant.js');
+      let restaurantDoc = null;
+      if (mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
+        restaurantDoc = await Restaurant.findById(payload.restaurantId).select('location address').lean();
+      }
+      if (!restaurantDoc) {
+        restaurantDoc = await Restaurant.findOne({
+          $or: [{ restaurantId: payload.restaurantId }, { _id: payload.restaurantId }],
+        }).select('location address').lean();
+      }
+      const coords =
+        restaurantDoc?.location?.geoLocation?.coordinates?.length
+          ? restaurantDoc.location.geoLocation.coordinates
+          : restaurantDoc?.location?.coordinates;
+      if (coords && coords.length === 2) {
+        const [lng, lat] = coords;
+        resolvedRestaurantLocation = {
+          latitude: Number(lat),
+          longitude: Number(lng),
+          location: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
+          formattedAddress: restaurantDoc.location?.formattedAddress || restaurantDoc.address || null,
+          address: restaurantDoc.location?.address || restaurantDoc.address || null,
+        };
+      }
+    }
+  } catch (e) {
+    logger.warn(`[finalizePaidOrder] Could not resolve restaurant location (${source}):`, e?.message || e);
+  }
+
+  // 2. Resolve delivery address
+  const baseAddress = payload.address || {};
+  const resolvedAddress = {
+    ...baseAddress,
+    additionalDetails:
+      payload.additionalAddress ||
+      baseAddress.additionalDetails ||
+      baseAddress.additionalAddress ||
+      null,
+  };
+
+  // 3. Resolve hotel details for QR/Hotel orders
+  let resolvedHotelName = payload.hotelName || null;
+  let resolvedHotelMongoId = (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null;
+
+  if (payload.hotelReference && (!resolvedHotelName || !resolvedHotelMongoId)) {
+    try {
+      const { default: Hotel } = await import('../hotel/models/Hotel.js');
+      const hotelDoc = mongoose.Types.ObjectId.isValid(payload.hotelReference)
+        ? await Hotel.findById(payload.hotelReference).select('hotelName _id').lean()
+        : await Hotel.findOne({ hotelId: payload.hotelReference }).select('hotelName _id').lean();
+
+      if (hotelDoc) {
+        resolvedHotelName = hotelDoc.hotelName || resolvedHotelName;
+        resolvedHotelMongoId = hotelDoc._id || resolvedHotelMongoId;
+      }
+    } catch (e) {
+      logger.warn(`[finalizePaidOrder] Could not resolve hotel details (${source}):`, e?.message);
+    }
+  }
+
+  // 4. Dynamic ETA (fast path with payload.pricing.eta, or 2.5s strict timeout)
+  const etaInfo = await computeDynamicOrderETA(payload, resolvedAddress, resolvedRestaurantLocation);
+
+  const effectiveRzpOrderId = razorpayOrderId || intent.razorpayOrderId || null;
+  const effectiveRzpPaymentId = razorpayPaymentId || intent.razorpayPaymentId || null;
+  const effectiveRzpSignature = razorpaySignature || intent.razorpaySignature || null;
+
+  const orderDoc = new Order({
+    orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    userId: intent.userId,
+    userName: payload.userName || (typeof reqUser === 'object' && (reqUser?.name || reqUser?.fullName)) || null,
+    userPhone: payload.userPhone || (typeof reqUser === 'object' && reqUser?.phone) || null,
+    restaurantId: payload.restaurantId,
+    restaurantName: payload.restaurantName,
+    items: etaInfo?.enrichedItems || payload.items,
+    preparationTime: etaInfo?.preparationTime || 0,
+    estimatedDeliveryTime: etaInfo?.estimatedDeliveryTime || 30,
+    eta: etaInfo?.eta || { min: 25, max: 30, lastUpdated: new Date(), additionalTime: 0 },
+    etaDetails: etaInfo?.etaDetails || undefined,
+    address: resolvedAddress,
+    restaurantLocation: resolvedRestaurantLocation,
+    pricing: payload.pricing,
+    deliveryFleet: payload.deliveryFleet || 'standard',
+    note: payload.note || '',
+    sendCutlery: payload.sendCutlery !== false,
+    status: 'confirmed',
+    zoneId: payload.zoneId || null,
+    zoneName: payload.zoneName || null,
+    hotelReference: payload.hotelReference || null,
+    hotelId: resolvedHotelMongoId,
+    qrReferenceId: payload.qrReferenceId || null,
+    hotelName: resolvedHotelName,
+    orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
+    roomNumber: payload.roomNumber || null,
+    payment: {
+      method: 'razorpay',
+      status: 'completed',
+      razorpayOrderId: effectiveRzpOrderId,
+      razorpayPaymentId: effectiveRzpPaymentId,
+      razorpaySignature: effectiveRzpSignature,
+      transactionId: effectiveRzpPaymentId,
+      paymentIntentId: intent._id
+    },
+    tracking: {
+      confirmed: { status: true, timestamp: new Date() }
+    }
+  });
+
+  // 5. Atomic persistence: Try MongoDB session transaction first, fallback to direct document save
+  let savedOrder = null;
+  let session = null;
+  try {
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const fresh = await PaymentIntent.findById(intent._id).session(session);
+      if (fresh?.orderId) {
+        savedOrder = await Order.findById(fresh.orderId).session(session);
+        return;
+      }
+      await orderDoc.save({ session });
+      fresh.status = 'succeeded';
+      if (effectiveRzpPaymentId) fresh.razorpayPaymentId = effectiveRzpPaymentId;
+      if (effectiveRzpSignature) fresh.razorpaySignature = effectiveRzpSignature;
+      fresh.orderId = orderDoc._id;
+      await fresh.save({ session });
+      savedOrder = orderDoc;
+    });
+  } catch (txnError) {
+    logger.warn(`[finalizePaidOrder] Transaction failed (${txnError.message}), using safe direct save fallback`);
+    const freshCheck = await PaymentIntent.findById(intent._id);
+    if (freshCheck?.orderId) {
+      savedOrder = await Order.findById(freshCheck.orderId);
+    } else {
+      await orderDoc.save();
+      freshCheck.status = 'succeeded';
+      if (effectiveRzpPaymentId) freshCheck.razorpayPaymentId = effectiveRzpPaymentId;
+      if (effectiveRzpSignature) freshCheck.razorpaySignature = effectiveRzpSignature;
+      freshCheck.orderId = orderDoc._id;
+      await freshCheck.save();
+      savedOrder = orderDoc;
+    }
+  } finally {
+    if (session) {
+      try {
+        session.endSession();
+      } catch (_) {}
+    }
+  }
+
+  const finalOrderId = savedOrder?._id || intent.orderId;
+  logger.info(`[finalizePaidOrder] Order successfully finalized: MongoID=${finalOrderId}, OrderID=${savedOrder?.orderId}`);
+
+  // 6. Post-order side effects (non-blocking outside transaction)
+  if (savedOrder) {
+    // Notify restaurant
+    try {
+      const { notifyRestaurantNewOrder } = await import('../order/services/restaurantNotificationService.js');
+      const restaurantId = savedOrder.restaurantId?.toString() || savedOrder.restaurantId;
+      if (restaurantId) {
+        await notifyRestaurantNewOrder(savedOrder, restaurantId);
+      }
+    } catch (e) {
+      logger.error('[finalizePaidOrder] Failed to notify restaurant:', e?.message || e);
+    }
+
+    // Hotel QR commission
+    try {
+      const isHotelQROrder = (savedOrder.hotelId || savedOrder.hotelReference) && savedOrder.orderType === 'QR';
+      if (isHotelQROrder && !savedOrder.commissionDistributed) {
+        const { distributeCommissions } = await import('../order/services/commissionDistributionService.js');
+        await distributeCommissions(savedOrder._id);
+        logger.info(`[finalizePaidOrder] Hotel QR commission distributed for order ${savedOrder.orderId}`);
+      }
+    } catch (distErr) {
+      logger.error('[finalizePaidOrder] Failed to distribute QR commission (non-blocking):', distErr?.message || distErr);
+    }
+
+    // Push notification to user
+    try {
+      const { notifyUserOrderPlaced } = await import('../fcm/services/pushNotificationService.js');
+      await notifyUserOrderPlaced(savedOrder);
+    } catch (e) {
+      logger.warn('[finalizePaidOrder] User push notify failed (non-blocking):', e?.message || e);
+    }
+  }
+
+  return {
+    success: true,
+    orderId: finalOrderId,
+    order: savedOrder
+  };
+}
 
 // Initialize Razorpay on module load
 initializeRazorpay();
@@ -188,219 +541,24 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
       }
     }
 
-    // Idempotent order creation
-    if (!intent.orderId) {
-      intent.status = 'processing';
-      await intent.save();
+    const result = await finalizePaidOrder({
+      intentId: intent._id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+      razorpayOrderId: razorpay_order_id,
+      reqUser: req.user,
+      source: 'verify'
+    });
 
-      let orderDoc = null;
-      const session = await mongoose.startSession();
-      await session.withTransaction(async () => {
-        // Double-check after acquiring txn
-        const fresh = await PaymentIntent.findById(intent._id).session(session);
-        if (fresh.orderId) return;
-
-        const payload = fresh.payload || {};
-
-        // Resolve restaurant location/address for rider pickup
-        let resolvedRestaurantLocation = null;
-        try {
-          // Prefer location saved in payload (if frontend provided)
-          const pLoc = payload.restaurantLocation;
-          if (pLoc && (pLoc.latitude || pLoc.longitude || pLoc?.location?.coordinates?.length)) {
-            const lat =
-              Number(pLoc.latitude) ||
-              Number(pLoc?.location?.coordinates?.[1]) ||
-              null;
-            const lng =
-              Number(pLoc.longitude) ||
-              Number(pLoc?.location?.coordinates?.[0]) ||
-              null;
-            if (lat != null && lng != null) {
-              resolvedRestaurantLocation = {
-                latitude: lat,
-                longitude: lng,
-                location: {
-                  type: 'Point',
-                  coordinates: [lng, lat],
-                },
-                formattedAddress: pLoc.formattedAddress || pLoc.address || null,
-                address: pLoc.formattedAddress || pLoc.address || null,
-              };
-            }
-          } else if (payload.restaurantId) {
-            // Fallback: fetch Restaurant doc
-            const { default: Restaurant } = await import('../restaurant/models/Restaurant.js');
-            let restaurantDoc = null;
-            if (mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
-              restaurantDoc = await Restaurant.findById(payload.restaurantId).select('location address').lean();
-            }
-            if (!restaurantDoc) {
-              restaurantDoc = await Restaurant.findOne({
-                $or: [{ restaurantId: payload.restaurantId }, { _id: payload.restaurantId }],
-              }).select('location address').lean();
-            }
-            const coords =
-              restaurantDoc?.location?.geoLocation?.coordinates?.length
-                ? restaurantDoc.location.geoLocation.coordinates
-                : restaurantDoc?.location?.coordinates;
-            if (coords && coords.length === 2) {
-              const [lng, lat] = coords;
-              resolvedRestaurantLocation = {
-                latitude: Number(lat),
-                longitude: Number(lng),
-                location: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
-                formattedAddress:
-                  restaurantDoc.location?.formattedAddress || restaurantDoc.address || null,
-                address: restaurantDoc.location?.address || restaurantDoc.address || null,
-              };
-            }
-          }
-        } catch (e) {
-          logger.warn('Could not resolve restaurant location during verify:', e?.message || e);
-        }
-
-        // Merge additionalAddress into address.additionalDetails for consistency
-        const baseAddress = payload.address || {};
-        const resolvedAddress = {
-          ...baseAddress,
-          additionalDetails:
-            payload.additionalAddress ||
-            baseAddress.additionalDetails ||
-            baseAddress.additionalAddress ||
-            null,
-        };
-
-        // Resolve hotel details for QR/Hotel orders if not already resolved
-        let resolvedHotelName = payload.hotelName || null;
-        let resolvedHotelMongoId = (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null;
-
-        if (payload.hotelReference && (!resolvedHotelName || !resolvedHotelMongoId)) {
-          try {
-            const { default: Hotel } = await import('../hotel/models/Hotel.js');
-            const hotelDoc = mongoose.Types.ObjectId.isValid(payload.hotelReference)
-              ? await Hotel.findById(payload.hotelReference).select('hotelName _id').lean()
-              : await Hotel.findOne({ hotelId: payload.hotelReference }).select('hotelName _id').lean();
-
-            if (hotelDoc) {
-              resolvedHotelName = hotelDoc.hotelName || resolvedHotelName;
-              resolvedHotelMongoId = hotelDoc._id || resolvedHotelMongoId;
-            }
-          } catch (e) {
-            logger.warn('Could not resolve hotel details during verify:', e?.message);
-          }
-        }
-
-        // Minimal, safe order creation that matches existing schema, with pickup location
-        orderDoc = new Order({
-          orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          userId: fresh.userId,
-          userName: payload.userName || (typeof req?.user === 'object' && (req.user?.name || req.user?.fullName)) || null,
-          userPhone: payload.userPhone || (typeof req?.user === 'object' && req.user?.phone) || null,
-          restaurantId: payload.restaurantId,
-          restaurantName: payload.restaurantName,
-          items: payload.items,
-          address: resolvedAddress,
-          restaurantLocation: resolvedRestaurantLocation,
-          pricing: payload.pricing,
-          deliveryFleet: payload.deliveryFleet || 'standard',
-          note: payload.note || '',
-          sendCutlery: payload.sendCutlery !== false,
-          status: 'confirmed',
-          zoneId: payload.zoneId || null,
-          zoneName: payload.zoneName || null,
-          // Preserve hotel/QR metadata for orders placed via hotel QR flow
-          hotelReference: payload.hotelReference || null,
-          hotelId: resolvedHotelMongoId,
-          qrReferenceId: payload.qrReferenceId || null,
-          hotelName: resolvedHotelName,
-          orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
-          roomNumber: payload.roomNumber || null,
-          payment: {
-            method: 'razorpay',
-            status: 'completed',
-            razorpayOrderId: razorpay_order_id,
-            razorpayPaymentId: razorpay_payment_id,
-            razorpaySignature: razorpay_signature,
-            transactionId: razorpay_payment_id,
-            paymentIntentId: fresh._id
-          },
-          tracking: {
-            confirmed: { status: true, timestamp: new Date() }
-          }
-        });
-
-        await orderDoc.save({ session });
-
-        fresh.status = 'succeeded';
-        fresh.razorpayPaymentId = razorpay_payment_id;
-        fresh.razorpaySignature = razorpay_signature;
-        fresh.orderId = orderDoc._id;
-        await fresh.save({ session });
-      });
-      session.endSession();
-
-      // Notify restaurant OUTSIDE the transaction block
-      if (orderDoc) {
-        try {
-          const { notifyRestaurantNewOrder } = await import('../order/services/restaurantNotificationService.js');
-          const restaurantId = orderDoc.restaurantId?.toString() || orderDoc.restaurantId;
-          if (restaurantId) {
-            await notifyRestaurantNewOrder(orderDoc, restaurantId);
-          }
-        } catch (e) {
-          logger.error('Failed to notify restaurant about new prepaid order:', e?.message || e);
-        }
-      }
-
-      // Distribute QR commissions to hotel wallet for online Razorpay QR orders
-      // (Cash/PAH orders are handled in hotelOrdersController on collect/deliver)
-      try {
-        const createdIntent = await PaymentIntent.findById(intent._id);
-        if (createdIntent?.orderId) {
-          const createdOrder = await Order.findById(createdIntent.orderId).select('hotelId hotelReference orderType commissionDistributed').lean();
-          const isHotelQROrder = createdOrder && (createdOrder.hotelId || createdOrder.hotelReference) && createdOrder.orderType === 'QR';
-          if (isHotelQROrder && !createdOrder.commissionDistributed) {
-            const { distributeCommissions } = await import('../order/services/commissionDistributionService.js');
-            await distributeCommissions(createdIntent.orderId);
-            logger.info('Hotel QR commission distributed for online Razorpay order (verify)', {
-              orderId: createdIntent.orderId?.toString(),
-            });
-          }
-        }
-      } catch (distErr) {
-        logger.error('Failed to distribute QR commission on verify (non-blocking):', distErr?.message || distErr);
-      }
-    }
-
-    const updated = await PaymentIntent.findById(intent._id);
-
-    // Best-effort push notification to user
-    if (updated?.status === 'succeeded' && updated?.orderId) {
-      try {
-        const { notifyUserOrderPlaced } = await import('../fcm/services/pushNotificationService.js');
-        const placedOrder = await Order.findById(updated.orderId);
-        if (placedOrder) {
-          await notifyUserOrderPlaced(placedOrder);
-          if (process.env.NODE_ENV !== 'production') {
-            logger.info('Order created via verify with restaurantLocation:', {
-              orderId: placedOrder.orderId,
-              hasRestaurantLocation: !!placedOrder.restaurantLocation,
-              coords: placedOrder.restaurantLocation?.coordinates,
-              formattedAddress: placedOrder.restaurantLocation?.formattedAddress
-            });
-          }
-        }
-      } catch (e) {
-        logger.warn('User push notify failed (non-blocking):', e?.message || e);
-      }
+    if (!result.success || !result.orderId) {
+      return res.status(500).json({ success: false, message: result.message || 'Failed to place order' });
     }
 
     return res.json({
       success: true,
       data: {
-        status: updated.status,
-        orderId: updated.orderId?.toString() || null
+        status: 'succeeded',
+        orderId: result.orderId.toString()
       }
     });
   } catch (error) {
@@ -640,194 +798,12 @@ router.post('/razorpay/webhook', async (req, res) => {
       });
       // Idempotent creation if not already succeeded
       if (!intent.orderId) {
-        intent.status = 'processing';
-        await intent.save();
-
-        let orderDoc = null;
-        const session = await mongoose.startSession();
-        await session.withTransaction(async () => {
-          const fresh = await PaymentIntent.findById(intent._id).session(session);
-          if (fresh.orderId) return;
-
-          const payload = fresh.payload || {};
-
-          // Resolve restaurant location/address
-          let resolvedRestaurantLocation = null;
-          try {
-            const pLoc = payload.restaurantLocation;
-            if (pLoc && (pLoc.latitude || pLoc.longitude || pLoc?.location?.coordinates?.length)) {
-              const lat =
-                Number(pLoc.latitude) ||
-                Number(pLoc?.location?.coordinates?.[1]) ||
-                null;
-              const lng =
-                Number(pLoc.longitude) ||
-                Number(pLoc?.location?.coordinates?.[0]) ||
-                null;
-              if (lat != null && lng != null) {
-                resolvedRestaurantLocation = {
-                  latitude: lat,
-                  longitude: lng,
-                  location: { type: 'Point', coordinates: [lng, lat] },
-                  formattedAddress: pLoc.formattedAddress || pLoc.address || null,
-                  address: pLoc.formattedAddress || pLoc.address || null,
-                };
-              }
-            } else if (payload.restaurantId) {
-              const { default: Restaurant } = await import('../restaurant/models/Restaurant.js');
-              let restaurantDoc = null;
-              if (mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
-                restaurantDoc = await Restaurant.findById(payload.restaurantId).select('location address').lean();
-              }
-              if (!restaurantDoc) {
-                restaurantDoc = await Restaurant.findOne({
-                  $or: [{ restaurantId: payload.restaurantId }, { _id: payload.restaurantId }],
-                }).select('location address').lean();
-              }
-              const coords =
-                restaurantDoc?.location?.geoLocation?.coordinates?.length
-                  ? restaurantDoc.location.geoLocation.coordinates
-                  : restaurantDoc?.location?.coordinates;
-              if (coords && coords.length === 2) {
-                const [lng, lat] = coords;
-                resolvedRestaurantLocation = {
-                  latitude: Number(lat),
-                  longitude: Number(lng),
-                  location: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
-                  formattedAddress:
-                    restaurantDoc.location?.formattedAddress || restaurantDoc.address || null,
-                  address: restaurantDoc.location?.address || restaurantDoc.address || null,
-                };
-              }
-            }
-          } catch (e) {
-            logger.warn('Could not resolve restaurant location during webhook:', e?.message || e);
-          }
-
-          // Merge additionalAddress into address.additionalDetails
-          const baseAddress = payload.address || {};
-          const resolvedAddress = {
-            ...baseAddress,
-            additionalDetails:
-              payload.additionalAddress ||
-              baseAddress.additionalDetails ||
-              baseAddress.additionalAddress ||
-              null,
-          };
-
-          // Resolve hotel details for QR/Hotel orders if not already resolved
-          let resolvedHotelName = payload.hotelName || null;
-          let resolvedHotelMongoId = (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null;
-
-          if (payload.hotelReference && (!resolvedHotelName || !resolvedHotelMongoId)) {
-            try {
-              const { default: Hotel } = await import('../hotel/models/Hotel.js');
-              const hotelDoc = mongoose.Types.ObjectId.isValid(payload.hotelReference)
-                ? await Hotel.findById(payload.hotelReference).select('hotelName _id').lean()
-                : await Hotel.findOne({ hotelId: payload.hotelReference }).select('hotelName _id').lean();
-
-              if (hotelDoc) {
-                resolvedHotelName = hotelDoc.hotelName || resolvedHotelName;
-                resolvedHotelMongoId = hotelDoc._id || resolvedHotelMongoId;
-              }
-            } catch (e) {
-              logger.warn('Could not resolve hotel details during webhook:', e?.message);
-            }
-          }
-
-          orderDoc = new Order({
-            orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            userId: fresh.userId,
-            userName: payload.userName || null,
-            userPhone: payload.userPhone || null,
-            restaurantId: payload.restaurantId,
-            restaurantName: payload.restaurantName,
-            items: payload.items,
-            address: resolvedAddress,
-            restaurantLocation: resolvedRestaurantLocation,
-            pricing: payload.pricing,
-            deliveryFleet: payload.deliveryFleet || 'standard',
-            note: payload.note || '',
-            sendCutlery: payload.sendCutlery !== false,
-            status: 'confirmed',
-          // Preserve hotel/QR metadata for webhook-driven creation
-          hotelReference: payload.hotelReference || null,
-          hotelId: resolvedHotelMongoId,
-          qrReferenceId: payload.qrReferenceId || null,
-          hotelName: resolvedHotelName,
-          orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
-          roomNumber: payload.roomNumber || null,
-            payment: {
-              method: 'razorpay',
-              status: 'completed',
-              razorpayOrderId: razorpay_order_id,
-              razorpayPaymentId: razorpay_payment_id || null,
-              razorpaySignature: null,
-              transactionId: razorpay_payment_id || null,
-              paymentIntentId: fresh._id
-            },
-            tracking: {
-              confirmed: { status: true, timestamp: new Date() }
-            }
-          });
-
-          await orderDoc.save({ session });
-
-          fresh.status = 'succeeded';
-          if (razorpay_payment_id) fresh.razorpayPaymentId = razorpay_payment_id;
-          fresh.orderId = orderDoc._id;
-          await fresh.save({ session });
+        await finalizePaidOrder({
+          intentId: intent._id,
+          razorpayPaymentId: razorpay_payment_id,
+          razorpayOrderId: razorpay_order_id,
+          source: 'webhook'
         });
-        session.endSession();
-
-        // Notify restaurant OUTSIDE the transaction block
-        if (orderDoc) {
-          try {
-            const { notifyRestaurantNewOrder } = await import('../order/services/restaurantNotificationService.js');
-            const restaurantId = orderDoc.restaurantId?.toString() || orderDoc.restaurantId;
-            if (restaurantId) {
-              await notifyRestaurantNewOrder(orderDoc, restaurantId);
-            }
-            logger.info('Restaurant notified for new prepaid order', {
-              source: 'razorpay.webhook',
-              orderMongoId: orderDoc._id?.toString?.(),
-              orderId: orderDoc.orderId,
-              restaurantId
-            });
-          } catch (e) {
-            logger.error('Restaurant notify failed on webhook:', e?.message || e);
-          }
-        }
-
-        // Distribute QR commissions to hotel wallet for online Razorpay QR orders
-        try {
-          const webhookIntent = await PaymentIntent.findById(intent._id);
-          if (webhookIntent?.orderId) {
-            const webhookOrder = await Order.findById(webhookIntent.orderId).select('hotelId hotelReference orderType commissionDistributed').lean();
-            const isHotelQROrder = webhookOrder && (webhookOrder.hotelId || webhookOrder.hotelReference) && webhookOrder.orderType === 'QR';
-            if (isHotelQROrder && !webhookOrder.commissionDistributed) {
-              const { distributeCommissions } = await import('../order/services/commissionDistributionService.js');
-              await distributeCommissions(webhookIntent.orderId);
-              logger.info('Hotel QR commission distributed for online Razorpay order (webhook)', {
-                source: 'razorpay.webhook',
-                orderId: webhookIntent.orderId?.toString(),
-              });
-            }
-          }
-        } catch (distErr) {
-          logger.error('Failed to distribute QR commission on webhook (non-blocking):', distErr?.message || distErr);
-        }
-
-        // Best-effort notify user
-        try {
-          const { notifyUserOrderPlaced } = await import('../fcm/services/pushNotificationService.js');
-          const placedOrder = await Order.findById(intent.orderId);
-          if (placedOrder) {
-            await notifyUserOrderPlaced(placedOrder);
-          }
-        } catch (e) {
-          logger.warn('User notify failed (webhook):', e?.message || e);
-        }
       } else {
         logger.info('Webhook is idempotent: order already exists for intent', {
           source: 'razorpay.webhook',
@@ -886,10 +862,57 @@ router.get('/status/:intentId', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
     const { intentId } = req.params;
-    const intent = await PaymentIntent.findOne({ _id: intentId, userId }).lean();
+    const intent = await PaymentIntent.findOne({ _id: intentId, userId });
     if (!intent) {
       return res.status(404).json({ success: false, message: 'Not found' });
     }
+
+    if (intent.status === 'succeeded' && intent.orderId) {
+      return res.json({
+        success: true,
+        data: {
+          status: 'succeeded',
+          orderId: String(intent.orderId)
+        }
+      });
+    }
+
+    // Auto-heal: If intent is stuck in processing or created, check Razorpay directly
+    if (!intent.orderId && (intent.status === 'processing' || intent.status === 'created') && intent.razorpayOrderId) {
+      try {
+        const paymentsList = await fetchOrderPayments(intent.razorpayOrderId);
+        const successful = (paymentsList?.items || []).find(p => p.status === 'captured' || p.status === 'authorized');
+        if (successful) {
+          logger.info(`[status:autoheal] Found successful payment ${successful.id} for stuck intent ${intent._id}`);
+          if (successful.status === 'authorized') {
+            try {
+              await capturePayment(successful.id, intent.amount || successful.amount);
+            } catch (capErr) {
+              logger.warn('[status:autoheal] Capture warning:', capErr.message);
+            }
+          }
+          const healResult = await finalizePaidOrder({
+            intentId: intent._id,
+            razorpayPaymentId: successful.id,
+            razorpayOrderId: intent.razorpayOrderId,
+            reqUser: req.user,
+            source: 'status_autoheal'
+          });
+          if (healResult.success && healResult.orderId) {
+            return res.json({
+              success: true,
+              data: {
+                status: 'succeeded',
+                orderId: String(healResult.orderId)
+              }
+            });
+          }
+        }
+      } catch (healErr) {
+        logger.warn('[status:autoheal] Auto-heal check warning (non-blocking):', healErr?.message);
+      }
+    }
+
     return res.json({
       success: true,
       data: {
@@ -898,6 +921,7 @@ router.get('/status/:intentId', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
+    logger.error('Error fetching payment status:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch status' });
   }
 });
@@ -943,190 +967,24 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
       }
     }
 
-    // Create order idempotently
-    if (!intent.orderId) {
-      intent.status = 'processing';
-      await intent.save();
+    const result = await finalizePaidOrder({
+      intentId: intent._id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpayOrderId: intent.razorpayOrderId,
+      reqUser: req.user,
+      source: 'reconcile'
+    });
 
-      let orderDoc = null;
-      const session = await mongoose.startSession();
-      await session.withTransaction(async () => {
-        const fresh = await PaymentIntent.findById(intent._id).session(session);
-        if (fresh.orderId) return;
-
-        const payload = fresh.payload || {};
-
-        // Resolve restaurant location/address
-        let resolvedRestaurantLocation = null;
-        try {
-          const pLoc = payload.restaurantLocation;
-          if (pLoc && (pLoc.latitude || pLoc.longitude || pLoc?.location?.coordinates?.length)) {
-            const lat =
-              Number(pLoc.latitude) ||
-              Number(pLoc?.location?.coordinates?.[1]) ||
-              null;
-            const lng =
-              Number(pLoc.longitude) ||
-              Number(pLoc?.location?.coordinates?.[0]) ||
-              null;
-            if (lat != null && lng != null) {
-              resolvedRestaurantLocation = {
-                latitude: lat,
-                longitude: lng,
-                location: { type: 'Point', coordinates: [lng, lat] },
-                formattedAddress: pLoc.formattedAddress || pLoc.address || null,
-                address: pLoc.formattedAddress || pLoc.address || null,
-              };
-            }
-          } else if (payload.restaurantId) {
-            const { default: Restaurant } = await import('../restaurant/models/Restaurant.js');
-            let restaurantDoc = null;
-            if (mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
-              restaurantDoc = await Restaurant.findById(payload.restaurantId).select('location address').lean();
-            }
-            if (!restaurantDoc) {
-              restaurantDoc = await Restaurant.findOne({
-                $or: [{ restaurantId: payload.restaurantId }, { _id: payload.restaurantId }],
-              }).select('location address').lean();
-            }
-            const coords =
-              restaurantDoc?.location?.geoLocation?.coordinates?.length
-                ? restaurantDoc.location.geoLocation.coordinates
-                : restaurantDoc?.location?.coordinates;
-            if (coords && coords.length === 2) {
-              const [lng, lat] = coords;
-              resolvedRestaurantLocation = {
-                latitude: Number(lat),
-                longitude: Number(lng),
-                location: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
-                formattedAddress:
-                  restaurantDoc.location?.formattedAddress || restaurantDoc.address || null,
-                address: restaurantDoc.location?.address || restaurantDoc.address || null,
-              };
-            }
-          }
-        } catch (e) {
-          logger.warn('Could not resolve restaurant location during reconcile:', e?.message || e);
-        }
-
-        // Merge additionalAddress into address.additionalDetails
-        const baseAddress = payload.address || {};
-        const resolvedAddress = {
-          ...baseAddress,
-          additionalDetails:
-            payload.additionalAddress ||
-            baseAddress.additionalDetails ||
-            baseAddress.additionalAddress ||
-            null,
-        };
-
-        // Resolve hotel details for QR/Hotel orders if not already resolved
-        let resolvedHotelName = payload.hotelName || null;
-        let resolvedHotelMongoId = (payload.hotelReference && mongoose.Types.ObjectId.isValid(payload.hotelReference)) ? payload.hotelReference : null;
-
-        if (payload.hotelReference && (!resolvedHotelName || !resolvedHotelMongoId)) {
-          try {
-            const { default: Hotel } = await import('../hotel/models/Hotel.js');
-            const hotelDoc = mongoose.Types.ObjectId.isValid(payload.hotelReference)
-              ? await Hotel.findById(payload.hotelReference).select('hotelName _id').lean()
-              : await Hotel.findOne({ hotelId: payload.hotelReference }).select('hotelName _id').lean();
-
-            if (hotelDoc) {
-              resolvedHotelName = hotelDoc.hotelName || resolvedHotelName;
-              resolvedHotelMongoId = hotelDoc._id || resolvedHotelMongoId;
-            }
-          } catch (e) {
-            logger.warn('Could not resolve hotel details during reconcile:', e?.message);
-          }
-        }
-
-        orderDoc = new Order({
-          orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          userId: fresh.userId,
-          restaurantId: payload.restaurantId,
-          restaurantName: payload.restaurantName,
-          items: payload.items,
-          address: resolvedAddress,
-          restaurantLocation: resolvedRestaurantLocation,
-          pricing: payload.pricing,
-          deliveryFleet: payload.deliveryFleet || 'standard',
-          note: payload.note || '',
-          sendCutlery: payload.sendCutlery !== false,
-          status: 'confirmed',
-          // Preserve hotel/QR metadata for reconcile-driven creation
-          hotelReference: payload.hotelReference || null,
-          hotelId: resolvedHotelMongoId,
-          qrReferenceId: payload.qrReferenceId || null,
-          hotelName: resolvedHotelName,
-          orderType: (payload.hotelReference || payload.orderType === 'QR') ? 'QR' : 'DIRECT',
-          roomNumber: payload.roomNumber || null,
-          payment: {
-            method: 'razorpay',
-            status: 'completed',
-            razorpayOrderId: intent.razorpayOrderId || null,
-            razorpayPaymentId: razorpay_payment_id,
-            razorpaySignature: null,
-            transactionId: razorpay_payment_id,
-            paymentIntentId: fresh._id
-          },
-          tracking: {
-            confirmed: { status: true, timestamp: new Date() }
-          }
-        });
-
-        await orderDoc.save({ session });
-
-        fresh.status = 'succeeded';
-        fresh.razorpayPaymentId = razorpay_payment_id;
-        fresh.orderId = orderDoc._id;
-        await fresh.save({ session });
-      });
-      session.endSession();
-
-      // Notify restaurant OUTSIDE the transaction block
-      if (orderDoc) {
-        try {
-          const { notifyRestaurantNewOrder } = await import('../order/services/restaurantNotificationService.js');
-          const restaurantId = orderDoc.restaurantId?.toString() || orderDoc.restaurantId;
-          if (restaurantId) {
-            await notifyRestaurantNewOrder(orderDoc, restaurantId);
-          }
-          if (process.env.NODE_ENV !== 'production') {
-            logger.info('Order created via reconcile with restaurantLocation:', {
-              orderId: orderDoc.orderId,
-              hasRestaurantLocation: !!orderDoc.restaurantLocation,
-              coords: orderDoc.restaurantLocation?.coordinates,
-              formattedAddress: orderDoc.restaurantLocation?.formattedAddress
-            });
-          }
-        } catch (e) {
-          logger.error('Failed to notify restaurant during reconcile:', e?.message || e);
-        }
-      }
-
-      // Distribute QR commissions to hotel wallet for online Razorpay QR orders
-      try {
-        const reconcileIntent = await PaymentIntent.findById(intent._id);
-        if (reconcileIntent?.orderId) {
-          const reconcileOrder = await Order.findById(reconcileIntent.orderId).select('hotelId hotelReference orderType commissionDistributed').lean();
-          const isHotelQROrder = reconcileOrder && (reconcileOrder.hotelId || reconcileOrder.hotelReference) && reconcileOrder.orderType === 'QR';
-          if (isHotelQROrder && !reconcileOrder.commissionDistributed) {
-            const { distributeCommissions } = await import('../order/services/commissionDistributionService.js');
-            await distributeCommissions(reconcileIntent.orderId);
-            logger.info('Hotel QR commission distributed for online Razorpay order (reconcile)', {
-              orderId: reconcileIntent.orderId?.toString(),
-            });
-          }
-        }
-      } catch (distErr) {
-        logger.error('Failed to distribute QR commission on reconcile (non-blocking):', distErr?.message || distErr);
-      }
+    if (!result.success || !result.orderId) {
+      return res.status(500).json({ success: false, message: result.message || 'Failed to reconcile payment' });
     }
 
-    const updated = await PaymentIntent.findById(intent._id);
     return res.json({
       success: true,
-      data: { status: updated.status, orderId: updated.orderId?.toString() || null }
+      data: {
+        status: 'succeeded',
+        orderId: result.orderId.toString()
+      }
     });
   } catch (error) {
     logger.error('Error in reconcile endpoint:', error);

@@ -2230,6 +2230,19 @@ export const adminAPI = {
     });
   },
 
+  // Dynamic ETA & Preparation Time Settings
+  getETASettings: () => {
+    return apiClient.get(API_ENDPOINTS.ADMIN.ETA_SETTINGS);
+  },
+
+  updateETASettings: (data) => {
+    return apiClient.put(API_ENDPOINTS.ADMIN.ETA_SETTINGS, data);
+  },
+
+  simulateETA: (payload) => {
+    return apiClient.post(API_ENDPOINTS.ADMIN.ETA_SETTINGS_SIMULATE, payload);
+  },
+
   // Get analytics
   getAnalytics: (params = {}) => {
     return apiClient.get(API_ENDPOINTS.ADMIN.ANALYTICS, { params });

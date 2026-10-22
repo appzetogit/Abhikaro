@@ -802,6 +802,8 @@ export default function Cart() {
           isVeg: item.isVeg !== false,
           selectedVariantId: item.selectedVariantId || null,
           selectedVariantName: item.selectedVariantName || null,
+          category: item.category || "",
+          preparationTime: item.preparationTime || item.basePreparationTime || "",
         }))
 
         const response = await orderAPI.calculateOrder({
@@ -1198,6 +1200,8 @@ export default function Cart() {
             isVeg: item.isVeg !== false,
             selectedVariantId: item.selectedVariantId || null,
             selectedVariantName: item.selectedVariantName || null,
+            category: item.category || "",
+            preparationTime: item.preparationTime || item.basePreparationTime || "",
           }))
 
           const response = await orderAPI.calculateOrder({
@@ -1293,7 +1297,9 @@ export default function Cart() {
           quantity: item.quantity || 1,
           image: item.image,
           description: item.description,
-          isVeg: item.isVeg !== false
+          isVeg: item.isVeg !== false,
+          category: item.category || "",
+          preparationTime: item.preparationTime || item.basePreparationTime || "",
         }))
 
         const response = await orderAPI.calculateOrder({
@@ -1498,6 +1504,8 @@ export default function Cart() {
         isVeg: item.isVeg !== false,
         selectedVariantId: item.selectedVariantId || null,
         selectedVariantName: item.selectedVariantName || null,
+        category: item.category || "",
+        preparationTime: item.preparationTime || item.basePreparationTime || "",
       }))
 
       // Check API base URL before making request (for debugging)
@@ -2200,10 +2208,9 @@ export default function Cart() {
                 </Button>
               </Link>
               <div className="min-w-0">
-                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">{restaurantName}</p>
-                <p className="text-sm md:text-base font-medium text-gray-800 dark:text-white truncate">
-                  {restaurantData?.estimatedDeliveryTime || "10-15 mins"} to <span className="font-semibold">Location</span>
-                  <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs md:text-sm">{checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || checkoutDeliveryAddress?.formattedAddress || checkoutDeliveryAddress?.address || checkoutDeliveryAddress?.city || "Select address") : "Select address"}</span>
+                <h1 className="text-sm md:text-base font-semibold text-gray-800 dark:text-white truncate">{restaurantName}</h1>
+                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 truncate">
+                  {checkoutDeliveryAddress ? (formatFullAddress(checkoutDeliveryAddress) || checkoutDeliveryAddress?.formattedAddress || checkoutDeliveryAddress?.address || checkoutDeliveryAddress?.city || "Select address") : "Select address"}
                 </p>
               </div>
             </div>
@@ -2478,7 +2485,7 @@ export default function Cart() {
                 <div className="flex items-center gap-3 md:gap-4">
                   <Clock className="h-4 w-4 md:h-5 md:w-5 text-gray-500 dark:text-gray-400" />
                   <div className="flex-1">
-                    <p className="text-sm md:text-base text-gray-800 dark:text-gray-200">Delivery in <span className="font-semibold">{restaurantData?.estimatedDeliveryTime || "10-15 mins"}</span></p>
+                    <p className="text-sm md:text-base text-gray-800 dark:text-gray-200">Delivery in <span className="font-semibold">{pricing?.eta?.minETA && pricing?.eta?.maxETA ? `${pricing.eta.minETA}-${pricing.eta.maxETA} mins` : (restaurantData?.estimatedDeliveryTime || "10-15 mins")}</span></p>
                   </div>
                 </div>
               </div>

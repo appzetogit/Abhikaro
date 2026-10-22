@@ -495,6 +495,8 @@ export const API_ENDPOINTS = {
     FEE_SETTINGS_PUBLIC: "/fee-settings/public",
     FEE_SETTINGS_HISTORY: "/admin/fee-settings/history",
     FEE_SETTINGS_BY_ID: "/admin/fee-settings/:id",
+    ETA_SETTINGS: "/admin/eta-settings",
+    ETA_SETTINGS_SIMULATE: "/admin/eta-settings/simulate",
     DELIVERY_BOY_COMMISSION: "/admin/delivery-boy-commission",
     DELIVERY_BOY_COMMISSION_BY_ID: "/admin/delivery-boy-commission/:id",
     DELIVERY_BOY_COMMISSION_STATUS: "/admin/delivery-boy-commission/:id/status",

@@ -729,94 +729,100 @@ export const createOrder = async (req, res) => {
       commissionDistributed: false,
     });
 
-    // Parse preparation time from order items
-    // Extract maximum preparation time from items (e.g., "20-25 mins" -> 25)
-    let maxPreparationTime = 0;
-    if (items && Array.isArray(items)) {
-      items.forEach((item) => {
-        if (item.preparationTime) {
-          const prepTimeStr = String(item.preparationTime).trim();
-          // Parse formats like "20-25 mins", "20-25", "25 mins", "25"
-          const match = prepTimeStr.match(/(\d+)(?:\s*-\s*(\d+))?/);
-          if (match) {
-            const minTime = parseInt(match[1], 10);
-            const maxTime = match[2] ? parseInt(match[2], 10) : minTime;
-            maxPreparationTime = Math.max(maxPreparationTime, maxTime);
-          }
-        }
-      });
-    }
-    order.preparationTime = maxPreparationTime;
-    logger.info("📋 Preparation time extracted from items:", {
-      maxPreparationTime,
-      itemsCount: items?.length || 0,
-    });
-
-    // Calculate initial ETA
+    // Calculate dynamic ETA and preparation time according to Specification
     try {
-      const restaurantLocation = restaurant.location
+      const restaurantLocation = restaurant?.location
         ? {
-            latitude: restaurant.location.latitude,
-            longitude: restaurant.location.longitude,
+            latitude: restaurant.location.latitude || restaurant.location.coordinates?.[1],
+            longitude: restaurant.location.longitude || restaurant.location.coordinates?.[0],
           }
         : null;
 
-      const userLocation = address.location?.coordinates
+      const userLocation = address?.location?.coordinates
         ? {
             latitude: address.location.coordinates[1],
             longitude: address.location.coordinates[0],
           }
+        : address?.latitude && address?.longitude
+        ? {
+            latitude: address.latitude,
+            longitude: address.longitude,
+          }
         : null;
 
-      if (restaurantLocation && userLocation) {
-        const etaResult = await etaCalculationService.calculateInitialETA({
-          restaurantId: assignedRestaurantId,
-          restaurantLocation,
-          userLocation,
-          maxPreparationTime: maxPreparationTime || null
+      const dynamicETA = await etaCalculationService.calculateDynamicETA({
+        items,
+        restaurantId: assignedRestaurantId,
+        restaurantLocation,
+        userLocation,
+      });
+
+      const calculatedPrepTime = dynamicETA?.foodPreparationTime || 15;
+      const finalMinETA = dynamicETA?.minETA || 25;
+      const finalMaxETA = dynamicETA?.maxETA || 35;
+      const finalEstimatedTime = dynamicETA?.totalETA || Math.ceil((finalMinETA + finalMaxETA) / 2);
+
+      order.preparationTime = calculatedPrepTime;
+      order.estimatedDeliveryTime = finalEstimatedTime;
+      order.eta = {
+        min: finalMinETA,
+        max: finalMaxETA,
+        lastUpdated: new Date(),
+        additionalTime: 0,
+      };
+
+      if (dynamicETA?.enrichedItems && Array.isArray(dynamicETA.enrichedItems) && Array.isArray(order.items)) {
+        order.items.forEach((it, idx) => {
+          const enriched = dynamicETA.enrichedItems[idx];
+          if (enriched?.preparationTime && (!it.preparationTime || it.preparationTime === '')) {
+            it.preparationTime = enriched.preparationTime;
+          }
+          if (enriched?.category && (!it.category || it.category === '')) {
+            it.category = enriched.category;
+          }
         });
-
-        // ETA service now returns total ETA including preparation time
-        const finalMinETA = etaResult.minETA;
-        const finalMaxETA = etaResult.maxETA;
-
-        // Update order with ETA (already includes preparation time)
-        order.eta = {
-          min: finalMinETA,
-          max: finalMaxETA,
-          lastUpdated: new Date(),
-          additionalTime: 0, // Will be updated when restaurant adds time
-        };
-        order.estimatedDeliveryTime = Math.ceil(
-          (finalMinETA + finalMaxETA) / 2,
-        );
-
-        // Create order created event
-        await OrderEvent.create({
-          orderId: order._id,
-          eventType: "ORDER_CREATED",
-          data: {
-            initialETA: {
-              min: finalMinETA,
-              max: finalMaxETA,
-            },
-            preparationTime: maxPreparationTime,
-          },
-          timestamp: new Date(),
-        });
-
-        logger.info("✅ ETA calculated for order:", {
-          orderId: order.orderId,
-          eta: `${finalMinETA}-${finalMaxETA} mins`,
-          preparationTime: maxPreparationTime,
-          baseETA: `${etaResult.minETA}-${etaResult.maxETA} mins`,
-        });
-      } else {
-        logger.warn("⚠️ Could not calculate ETA - missing location data");
       }
+
+      if (dynamicETA) {
+        order.etaDetails = {
+          foodPreparationTime: dynamicETA.foodPreparationTime,
+          deliveryTime: dynamicETA.deliveryTime,
+          totalETA: dynamicETA.totalETA,
+          distanceKm: dynamicETA.distanceKm,
+          mainItem: dynamicETA.mainItem,
+          itemsBreakdown: dynamicETA.itemsBreakdown,
+          calculatedAt: new Date(),
+        };
+      }
+
+      // Create order created event
+      await OrderEvent.create({
+        orderId: order._id,
+        eventType: "ORDER_CREATED",
+        data: {
+          initialETA: {
+            min: finalMinETA,
+            max: finalMaxETA,
+          },
+          preparationTime: calculatedPrepTime,
+          deliveryTime: dynamicETA?.deliveryTime || 0,
+          distanceKm: dynamicETA?.distanceKm || 0,
+          mainItem: dynamicETA?.mainItem?.name || null,
+        },
+        timestamp: new Date(),
+      });
+
+      logger.info("✅ Dynamic ETA calculated for order:", {
+        orderId: order.orderId,
+        eta: `${finalMinETA}-${finalMaxETA} mins`,
+        totalETA: finalEstimatedTime,
+        foodPreparationTime: calculatedPrepTime,
+        deliveryTime: dynamicETA?.deliveryTime,
+        distanceKm: dynamicETA?.distanceKm,
+        mainItem: dynamicETA?.mainItem?.name,
+      });
     } catch (etaError) {
-      logger.error("❌ Error calculating ETA:", etaError);
-      // Continue with order creation even if ETA calculation fails
+      logger.error("❌ Error calculating dynamic ETA for order:", etaError);
     }
 
     await order.save();

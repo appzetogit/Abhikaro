@@ -556,6 +556,13 @@ export const sidebarMenuData = [
         permissionId: "page.business_setup",
       },
       {
+        type: "link",
+        label: "Dynamic ETA Settings",
+        path: "/admin/eta-settings",
+        icon: "Clock",
+        permissionId: "page.business_setup",
+      },
+      {
         type: "expandable",
         label: "Extra Curriculum",
         icon: "Link",

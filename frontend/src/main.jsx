@@ -167,6 +167,15 @@ console.error = (...args) => {
     return
   }
 
+  // Suppress Facebook SDK HTTP restriction warning on non-HTTPS environments (dev / localhost / LAN)
+  if (
+    errorStr.includes('FB.getLoginStatus') ||
+    errorStr.includes('enforce-https-facebook-login') ||
+    errorStr.includes('can no longer be called from http pages')
+  ) {
+    return
+  }
+
   originalError.apply(console, args)
 }
 

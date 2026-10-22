@@ -318,6 +318,11 @@ import {
   getPublicFeeSettings,
 } from "../controllers/feeSettingsController.js";
 import {
+  getETASettings,
+  updateETASettings,
+  simulateETA,
+} from "../controllers/etaSettingsController.js";
+import {
   getDiningCoupons,
   getDiningCouponById,
   createDiningCoupon,
@@ -682,6 +687,11 @@ router.get(
   requirePermissions("settings.fee_manage"),
   getFeeSettingsHistory,
 );
+
+// Dynamic ETA & Preparation Time Settings
+router.get("/eta-settings", getETASettings);
+router.put("/eta-settings", updateETASettings);
+router.post("/eta-settings/simulate", simulateETA);
 
 // Delivery Partner Management
 router.get("/delivery-partners/requests", getJoinRequests);

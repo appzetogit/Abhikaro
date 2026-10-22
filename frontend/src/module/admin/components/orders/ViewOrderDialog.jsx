@@ -537,7 +537,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order: orderProp
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    Estimated Delivery Time
+                    Estimated restaurant preparation Time
                   </p>
                   <p className="text-sm font-medium text-slate-900">
                     {order.estimatedDeliveryTime > 90 ? 45 : order.estimatedDeliveryTime} minutes

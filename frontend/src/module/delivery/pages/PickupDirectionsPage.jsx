@@ -13,7 +13,8 @@ import {
   X,
   RefreshCw,
   ArrowRight,
-  CheckCircle2
+  CheckCircle2,
+  Loader2
 } from "lucide-react"
 
 // Fix Leaflet default icon issue
@@ -266,6 +267,18 @@ export default function PickupDirectionsPage() {
       const progress = Math.min(Math.max(deltaX / maxSwipe, 0), 1)
       setReachedButtonProgress(progress)
     }
+  }
+
+  const handleConfirmReachedClick = () => {
+    if (isAnimatingToComplete) return
+    setIsAnimatingToComplete(true)
+    setShowSuccessAnimation(true)
+    setTimeout(() => {
+      setShowSuccessAnimation(false)
+      setIsAnimatingToComplete(false)
+      goOffline()
+      navigate("/delivery", { replace: true })
+    }, 2500)
   }
 
   const handleReachedButtonTouchEnd = (e) => {
@@ -570,68 +583,21 @@ export default function PickupDirectionsPage() {
 
       {/* Reached Pickup Button - Sticky at bottom, above navigation */}
       <div className="fixed bottom-20 left-0 right-0 z-50 px-4 pb-4 bg-gray-900/95 backdrop-blur-sm md:bottom-4">
-        <motion.div
-          ref={reachedButtonRef}
-          className="relative w-full bg-green-600 rounded-full overflow-hidden shadow-xl"
-          onTouchStart={handleReachedButtonTouchStart}
-          onTouchMove={handleReachedButtonTouchMove}
-          onTouchEnd={handleReachedButtonTouchEnd}
-          whileTap={{ scale: 0.98 }}
-          initial={{ y: 100, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.3, type: "spring", stiffness: 300, damping: 30 }}
+        <button
+          type="button"
+          onClick={handleConfirmReachedClick}
+          disabled={isAnimatingToComplete}
+          className="w-full py-4 bg-green-600 hover:bg-green-700 active:scale-[0.98] text-white font-bold text-lg rounded-2xl shadow-xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed select-none"
         >
-          {/* Swipe progress background */}
-          <motion.div
-            className="absolute inset-0 bg-green-500 rounded-full"
-            animate={{
-              width: `${reachedButtonProgress * 100}%`
-            }}
-            transition={isAnimatingToComplete ? {
-              type: "spring",
-              stiffness: 200,
-              damping: 25
-            } : { duration: 0 }}
-          />
-          
-          {/* Button content container */}
-          <div className="relative flex items-center h-[64px] px-1">
-            {/* Left: Black circle with arrow */}
-            <motion.div
-              className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shrink-0 relative z-20 shadow-2xl"
-              animate={{
-                x: reachedButtonProgress * (reachedButtonRef.current ? (reachedButtonRef.current.offsetWidth - 56 - 32) : 240)
-              }}
-              transition={isAnimatingToComplete ? {
-                type: "spring",
-                stiffness: 300,
-                damping: 30
-              } : { duration: 0 }}
-            >
-              <div className="flex items-center justify-center gap-1.5">
-                <ArrowRight className="w-5 h-5 text-white" />
-              </div>
-            </motion.div>
-            
-            {/* Text - centered and stays visible */}
-            <div className="absolute inset-0 flex items-center justify-center left-16 right-4 pointer-events-none">
-              <motion.span 
-                className="text-gray-900 font-semibold flex items-center justify-center text-center text-base select-none"
-                animate={{
-                  opacity: reachedButtonProgress > 0.5 ? Math.max(0.2, 1 - reachedButtonProgress * 0.8) : 1,
-                  x: reachedButtonProgress > 0.5 ? reachedButtonProgress * 15 : 0
-                }}
-                transition={isAnimatingToComplete ? {
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 25
-                } : { duration: 0 }}
-              >
-                {reachedButtonProgress > 0.5 ? 'Release to Confirm' : 'Reached pickup'}
-              </motion.span>
-            </div>
-          </div>
-        </motion.div>
+          {isAnimatingToComplete ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin text-white" />
+              <span>Confirming...</span>
+            </>
+          ) : (
+            <span>Reached pickup</span>
+          )}
+        </button>
       </div>
 
       {/* Full Screen Success Animation */}

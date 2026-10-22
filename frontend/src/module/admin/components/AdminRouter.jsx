@@ -94,6 +94,7 @@ const FeedbackExperienceReport = lazy(() => import("../pages/reports/FeedbackExp
 const RestaurantWithdraws = lazy(() => import("../pages/transactions/RestaurantWithdraws"));
 // Business Settings
 const BusinessSetup = lazy(() => import("../pages/settings/BusinessSetup"));
+const ETASettings = lazy(() => import("../pages/settings/ETASettings"));
 const TermsAndCondition = lazy(() => import("../pages/settings/TermsAndCondition"));
 const PrivacyPolicy = lazy(() => import("../pages/settings/PrivacyPolicy"));
 const AboutUs = lazy(() => import("../pages/settings/AboutUs"));
@@ -241,6 +242,7 @@ export default function AdminRouter() {
 
           {/* BUSINESS SETTINGS */}
           <Route path="business-setup" element={<ProtectedRoute requiredPermission="page.business_setup"><BusinessSetup /></ProtectedRoute>} />
+          <Route path="eta-settings" element={<ProtectedRoute requiredPermission="page.business_setup"><ETASettings /></ProtectedRoute>} />
           <Route path="pages-social-media/terms" element={<ProtectedRoute requiredPermission="page.pages_social_media"><TermsAndCondition /></ProtectedRoute>} />
           <Route path="pages-social-media/privacy" element={<ProtectedRoute requiredPermission="page.pages_social_media"><PrivacyPolicy /></ProtectedRoute>} />
           <Route path="pages-social-media/about" element={<ProtectedRoute requiredPermission="page.pages_social_media"><AboutUs /></ProtectedRoute>} />

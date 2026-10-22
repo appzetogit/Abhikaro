@@ -492,52 +492,77 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     order.status = "preparing";
     order.tracking.preparing = { status: true, timestamp: new Date() };
 
-    // Handle preparation time update from restaurant
-    if (preparationTime) {
-      const restaurantPrepTime = parseInt(preparationTime, 10);
-      const initialPrepTime = order.preparationTime || 0;
+    // Handle preparation time and customer delivery ETA
+    const restaurantPrepTime = preparationTime
+      ? Math.round(parseFloat(preparationTime) * 10) / 10
+      : (order.preparationTime || order.etaDetails?.foodPreparationTime);
 
-      // Calculate additional time restaurant is adding
-      const additionalTime = Math.max(0, restaurantPrepTime - initialPrepTime);
+    // Delivery travel time from etaDetails or distance (Distance * 8 min/km, min 5 mins)
+    const distanceKm = order.etaDetails?.distanceKm || order.distance || order.deliveryDistance;
+    const deliveryTravelTime = order.etaDetails?.deliveryTime && order.etaDetails.deliveryTime > 0
+      ? order.etaDetails.deliveryTime
+      : Math.max(5, Math.ceil(distanceKm * 8));
 
-      // Update ETA with additional time (add to both min and max)
-      if (order.eta) {
-        const currentMin = order.eta.min || 0;
-        const currentMax = order.eta.max || 0;
+    // Accurate Customer ETA = Restaurant Preparation Time + Delivery Boy Travel Time
+    const rawTotalETA = Math.round((restaurantPrepTime + deliveryTravelTime) * 10) / 10;
+    const newTotalETA = Math.ceil(rawTotalETA);
 
-        order.eta.min = currentMin + additionalTime;
-        order.eta.max = currentMax + additionalTime;
-        order.eta.additionalTime =
-          (order.eta.additionalTime || 0) + additionalTime;
-        order.eta.lastUpdated = new Date();
+    order.preparationTime = restaurantPrepTime;
+    order.estimatedDeliveryTime = newTotalETA;
+    order.eta = {
+      min: Math.max(15, newTotalETA - 3),
+      max: newTotalETA + 3,
+      additionalTime: 0,
+      lastUpdated: new Date(),
+    };
 
-        // Update estimated delivery time to average of new min and max
-        order.estimatedDeliveryTime = Math.ceil(
-          (order.eta.min + order.eta.max) / 2,
-        );
-      } else {
-        // If ETA doesn't exist, create it
-        order.eta = {
-          min: (order.estimatedDeliveryTime || 30) + additionalTime,
-          max: (order.estimatedDeliveryTime || 30) + additionalTime,
-          additionalTime: additionalTime,
-          lastUpdated: new Date(),
-        };
-        order.estimatedDeliveryTime = Math.ceil(
-          (order.eta.min + order.eta.max) / 2,
-        );
-      }
-
-      console.log(`📋 Restaurant updated preparation time:`, {
-        initialPrepTime,
-        restaurantPrepTime,
-        additionalTime,
-        newETA: order.eta,
-        newEstimatedDeliveryTime: order.estimatedDeliveryTime,
-      });
+    if (!order.etaDetails) {
+      order.etaDetails = {};
     }
+    order.etaDetails.foodPreparationTime = restaurantPrepTime;
+    order.etaDetails.deliveryTime = deliveryTravelTime;
+    order.etaDetails.distanceKm = distanceKm;
+    order.etaDetails.rawTotalETA = rawTotalETA;
+    order.etaDetails.totalETA = newTotalETA;
+
+    console.log(`📋 Customer Total ETA calculated:`, {
+      restaurantPrepTime,
+      deliveryTravelTime,
+      distanceKm,
+      rawTotalETA,
+      customerTotalETA: newTotalETA,
+    });
 
     await order.save();
+
+    // Emit live update to customer order socket room
+    try {
+      const ioModule = await import("../../../server.js");
+      const io = ioModule.getIO ? ioModule.getIO() : null;
+      if (io) {
+        const roomIds = [
+          order._id.toString(),
+          order.orderId,
+          order.orderMongoId,
+        ].filter(Boolean);
+
+        const customerPayload = {
+          orderId: order.orderId,
+          orderMongoId: order._id.toString(),
+          status: "preparing",
+          preparationTime: order.preparationTime,
+          estimatedDeliveryTime: order.estimatedDeliveryTime,
+          etaDetails: order.etaDetails,
+          updatedAt: new Date(),
+        };
+
+        [...new Set(roomIds)].forEach((rid) => {
+          io.to(`order:${rid}`).emit("order_status_update", customerPayload);
+        });
+      }
+    } catch (sockErr) {
+      console.warn("⚠️ Could not emit socket update to customer on accept:", sockErr.message);
+    }
 
     // Calculate settlement
     try {

@@ -14,7 +14,8 @@ import {
   Check,
   Receipt,
   CircleSlash,
-  Loader2
+  Loader2,
+  Clock
 } from "lucide-react"
 import AnimatedPage from "../../components/AnimatedPage"
 import { Card, CardContent } from "@/components/ui/card"
@@ -190,11 +191,11 @@ const DeliveryMap = ({ orderId, order, isVisible }) => {
   const getCustomerCoords = () => {
     // Try multiple sources for customer coordinates
     const coords = order?.address?.coordinates || order?.address?.location?.coordinates;
-    
+
     if (coords && Array.isArray(coords) && coords.length >= 2) {
       const lat = Number(coords[1]);
       const lng = Number(coords[0]);
-      
+
       if (!isNaN(lat) && !isNaN(lng)) {
         return { lat, lng };
       }
@@ -314,9 +315,8 @@ const SectionItem = ({ icon: Icon, title, subtitle, onClick, showArrow = true, r
         onClick(e)
       }
     }}
-    className={`w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left border-b border-dashed border-gray-200 last:border-0 ${
-      onClick ? "cursor-pointer" : "cursor-default"
-    }`}
+    className={`w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left border-b border-dashed border-gray-200 last:border-0 ${onClick ? "cursor-pointer" : "cursor-default"
+      }`}
     whileTap={{ scale: 0.99 }}
   >
     <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
@@ -343,7 +343,7 @@ export default function OrderTracking() {
   const [loading, setLoading] = useState(!order)
   const [error, setError] = useState(null)
   const [restaurantPhone, setRestaurantPhone] = useState(null)
-  
+
   // Cache restaurant data to avoid duplicate API calls
   const restaurantCacheRef = useRef(new Map())
 
@@ -408,19 +408,111 @@ export default function OrderTracking() {
     return "Add delivery address"
   }, [order, defaultAddress])
 
+  // Dynamic Customer ETA = Restaurant Prep Time + Delivery Boy Travel Time
+  const calculateCustomerETA = useCallback((orderObj) => {
+    if (!orderObj) {
+      return {
+        remainingMinutes: null,
+        prepTime: 34.5,
+        deliveryTime: 19,
+        totalETA: 54,
+        rawTotal: 53.5,
+        distanceKm: 2.3,
+      };
+    }
+
+    const prepTime = Number(
+      orderObj.etaDetails?.foodPreparationTime ||
+      orderObj.preparationTime ||
+      34.5
+    );
+
+    let distanceKm = Number(
+      orderObj.etaDetails?.distanceKm ||
+      orderObj.distance ||
+      orderObj.deliveryDistance ||
+      2.3
+    );
+    if (isNaN(distanceKm) || distanceKm <= 0) distanceKm = 2.3;
+
+    let deliveryTime = Number(
+      orderObj.etaDetails?.deliveryTime ||
+      Math.ceil(distanceKm * 8)
+    );
+    if (isNaN(deliveryTime) || deliveryTime <= 0) {
+      deliveryTime = Math.ceil(distanceKm * 8);
+    }
+
+    const rawTotal = Math.round((prepTime + deliveryTime) * 10) / 10;
+    const totalETA = Math.ceil(rawTotal);
+
+    const status = String(orderObj.status || '').toLowerCase().trim();
+    const terminal = new Set(['delivered', 'completed', 'cancelled', 'restaurant_cancelled']);
+    if (terminal.has(status)) {
+      return { remainingMinutes: 0, prepTime, deliveryTime, totalETA, rawTotal, distanceKm };
+    }
+
+    const now = Date.now();
+
+    // 1. Pending / Confirmed: Kitchen preparation has not started yet
+    if (status === 'pending' || status === 'confirmed' || status === 'placed') {
+      return { remainingMinutes: totalETA, prepTime, deliveryTime, totalETA, rawTotal, distanceKm };
+    }
+
+    // 2. Preparing: Cooking is in progress
+    if (status === 'preparing') {
+      const prepTimestamp = orderObj.tracking?.preparing?.timestamp
+        ? new Date(orderObj.tracking.preparing.timestamp).getTime()
+        : (orderObj.eta?.lastUpdated ? new Date(orderObj.eta.lastUpdated).getTime() : now);
+
+      const elapsedCooking = Math.max(0, Math.floor((now - prepTimestamp) / 60000));
+      const remainingPrep = Math.max(0, prepTime - elapsedCooking);
+      // While food is cooking, delivery boy travel time is fully ahead of us
+      const remainingTotal = Math.max(1, Math.ceil(remainingPrep + deliveryTime));
+      return { remainingMinutes: remainingTotal, prepTime, deliveryTime, totalETA, rawTotal, distanceKm };
+    }
+
+    // 3. Ready / Pickup: Food is cooked & packed, waiting for rider pickup
+    if (status === 'ready' || status === 'pickup') {
+      return { remainingMinutes: deliveryTime, prepTime, deliveryTime, totalETA, rawTotal, distanceKm };
+    }
+
+    // 4. Picked up / Out for delivery: Rider is travelling
+    if (status === 'picked_up' || status === 'on_way' || status === 'out_for_delivery') {
+      const outTimestamp = orderObj.tracking?.outForDelivery?.timestamp
+        ? new Date(orderObj.tracking.outForDelivery.timestamp).getTime()
+        : (orderObj.tracking?.picked_up?.timestamp ? new Date(orderObj.tracking.picked_up.timestamp).getTime() : now);
+
+      const elapsedDelivery = Math.max(0, Math.floor((now - outTimestamp) / 60000));
+      const remainingDelivery = Math.max(1, deliveryTime - elapsedDelivery);
+      return { remainingMinutes: remainingDelivery, prepTime, deliveryTime, totalETA, rawTotal, distanceKm };
+    }
+
+    // 5. Arrived at drop location
+    if (status === 'arrived' || status === 'reached_delivery') {
+      return { remainingMinutes: 1, prepTime, deliveryTime, totalETA, rawTotal, distanceKm };
+    }
+
+    return { remainingMinutes: totalETA, prepTime, deliveryTime, totalETA, rawTotal, distanceKm };
+  }, []);
+
+  const etaBreakdown = useMemo(() => {
+    return calculateCustomerETA(order);
+  }, [order, calculateCustomerETA]);
+
   // Preload Google Maps script early so map appears faster.
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        const { getGoogleMapsApiKey } = await import("@/lib/utils/googleMapsApiKey.js")
-        const key = await getGoogleMapsApiKey()
-        if (cancelled) return
-        if (key) preloadGoogleMaps(key)
-      } catch {
-        // non-blocking
-      }
-    })()
+      ; (async () => {
+        try {
+          const { getGoogleMapsApiKey } = await import("@/lib/utils/googleMapsApiKey.js")
+          const key = await getGoogleMapsApiKey()
+          if (cancelled) return
+          if (key) preloadGoogleMaps(key)
+        } catch {
+          // non-blocking
+        }
+      })()
     return () => {
       cancelled = true
     }
@@ -545,11 +637,11 @@ export default function OrderTracking() {
           return { uiStatus: "picked_up", estimatedTimeOverride: null }
         }
       }
-      
+
       if (currentPhase === "at_delivery" || deliveryStatus === "reached_delivery") {
         return { uiStatus: "arrived", estimatedTimeOverride: 0 }
       }
-      
+
       return { uiStatus: "on_way", estimatedTimeOverride: null }
     }
 
@@ -701,13 +793,13 @@ export default function OrderTracking() {
                 apiOrder?.cancellation_reason ||
                 order?.cancellationReason ||
                 null,
-            deliveryPartner: apiOrder.deliveryPartnerId ? {
-              name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
-              avatar: null,
-              phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null,
-              availability: apiOrder.deliveryPartnerId.availability || null
-            } : order?.deliveryPartner || null,
-            deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || order?.deliveryPartnerPhone || null,
+              deliveryPartner: apiOrder.deliveryPartnerId ? {
+                name: apiOrder.deliveryPartnerId.name || 'Delivery Partner',
+                avatar: null,
+                phone: apiOrder.deliveryPartnerId.phone || apiOrder.deliveryPartnerId.phoneNumber || apiOrder.deliveryPartnerId.mobile || apiOrder.deliveryPartnerId.contactNumber || null,
+                availability: apiOrder.deliveryPartnerId.availability || null
+              } : order?.deliveryPartner || null,
+              deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || order?.deliveryPartnerPhone || null,
               deliveryPartnerId: apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
               assignmentInfo: apiOrder.assignmentInfo || null,
               deliveryState: apiOrder.deliveryState || null
@@ -802,11 +894,11 @@ export default function OrderTracking() {
                 console.log('✅ Using cached restaurant coordinates:', restaurantCoords);
               }
               // Get phone number from cached data
-              const phone = restaurant.primaryContactNumber || 
-                           restaurant.phone || 
-                           restaurant.ownerPhone ||
-                           restaurant.contactNumber || 
-                           null;
+              const phone = restaurant.primaryContactNumber ||
+                restaurant.phone ||
+                restaurant.ownerPhone ||
+                restaurant.contactNumber ||
+                null;
               if (phone) {
                 console.log('✅ Found restaurant phone from cache:', phone);
                 setRestaurantPhone(phone);
@@ -825,11 +917,11 @@ export default function OrderTracking() {
                     console.log('✅ Fetched restaurant coordinates from API:', restaurantCoords);
                   }
                   // ALWAYS fetch restaurant phone number (check multiple fields)
-                  const phone = restaurant.primaryContactNumber || 
-                               restaurant.phone || 
-                               restaurant.ownerPhone ||
-                               restaurant.contactNumber || 
-                               null;
+                  const phone = restaurant.primaryContactNumber ||
+                    restaurant.phone ||
+                    restaurant.ownerPhone ||
+                    restaurant.contactNumber ||
+                    null;
                   if (phone) {
                     console.log('✅ Found restaurant phone:', phone);
                     setRestaurantPhone(phone);
@@ -930,6 +1022,9 @@ export default function OrderTracking() {
             deliveryState: apiOrder.deliveryState || null,
             estimatedDeliveryTime: apiOrder.estimatedDeliveryTime || null,
             eta: apiOrder.eta || null,
+            preparationTime: apiOrder.preparationTime || apiOrder.etaDetails?.foodPreparationTime || null,
+            etaDetails: apiOrder.etaDetails || null,
+            distance: apiOrder.distance || apiOrder.deliveryDistance || apiOrder.etaDetails?.distanceKm || null,
             createdAt: apiOrder.createdAt || null,
             note: apiOrder.note || '',
             deliveryInstructions:
@@ -949,54 +1044,10 @@ export default function OrderTracking() {
             setOrderCreatedAt(new Date(apiOrder.createdAt))
           }
 
-          // Calculate and set ETA from order data
-          const calculateETA = () => {
-            if (!apiOrder.createdAt) return null
-
-            const now = new Date()
-            const createdAt = new Date(apiOrder.createdAt)
-            const elapsedMinutes = Math.floor((now - createdAt) / 1000 / 60)
-
-            // Use eta.min/max if available, otherwise use estimatedDeliveryTime
-            let initialETA = null
-            if (apiOrder.eta?.min && apiOrder.eta?.max) {
-              // Use min ETA as the display value
-              initialETA = apiOrder.eta.min
-            } else if (apiOrder.estimatedDeliveryTime) {
-              initialETA = apiOrder.estimatedDeliveryTime
-            } else {
-              // Default fallback
-              initialETA = 30
-            }
-
-            // Cap extremely large values (e.g. from coordinates 0,0 fallback distance)
-            if (initialETA > 90) {
-              initialETA = 45;
-            }
-
-            // Calculate remaining time
-            let remainingTime = Math.max(0, initialETA - elapsedMinutes)
-            
-            // If remaining time is 0 or negative but order is still active, show 1 minute.
-            // Do not jump back to initialETA.
-            if (remainingTime <= 0) {
-              const currentStatus = String(apiOrder.status || "").toLowerCase();
-              const terminal = new Set(['delivered', 'completed', 'cancelled', 'restaurant_cancelled']);
-              if (!terminal.has(currentStatus)) {
-                remainingTime = 1;
-              }
-            }
-            
-            if (remainingTime < 1 && !['delivered', 'completed', 'cancelled'].includes(String(apiOrder.status).toLowerCase())) {
-              remainingTime = 1;
-            }
-
-            return remainingTime
-          }
-
-          const calculatedETA = calculateETA()
-          if (calculatedETA !== null) {
-            setEstimatedTime(calculatedETA)
+          // Calculate customer ETA = Restaurant Prep Time + Delivery Boy Travel Time
+          const customerETA = calculateCustomerETA(transformedOrder)
+          if (customerETA.remainingMinutes !== null) {
+            setEstimatedTime(customerETA.remainingMinutes)
           }
 
           // Fetch restaurant phone number if not already fetched above
@@ -1068,30 +1119,20 @@ export default function OrderTracking() {
 
   // ETA countdown timer - recalculate based on elapsed time
   useEffect(() => {
-    if (!orderCreatedAt || estimatedTime === null) return
+    if (!order) return
 
     const updateETA = () => {
-      const now = new Date()
-      const createdAt = new Date(orderCreatedAt)
-      const elapsedMinutes = Math.floor((now - createdAt) / 1000 / 60)
-
-      // Get initial ETA from order
-      let initialETA = order?.eta?.min || order?.estimatedDeliveryTime || 30
-      if (initialETA > 90) {
-        initialETA = 45;
+      const { remainingMinutes } = calculateCustomerETA(order)
+      if (remainingMinutes !== null) {
+        setEstimatedTime(remainingMinutes)
       }
-      const remainingTime = Math.max(0, initialETA - elapsedMinutes)
-
-      setEstimatedTime(remainingTime)
     }
 
-    // Update immediately
     updateETA()
 
-    // Update every minute
-    const timer = setInterval(updateETA, 60000)
+    const timer = setInterval(updateETA, 30000)
     return () => clearInterval(timer)
-  }, [orderCreatedAt, order?.eta?.min, order?.estimatedDeliveryTime])
+  }, [order, calculateCustomerETA])
 
   // Persistent page-level socket: stays connected even when order was cancelled,
   // ensuring admin revives / status updates are received in real-time instantly.
@@ -1189,18 +1230,20 @@ export default function OrderTracking() {
                 deliveryPartnerPhone: apiOrder.deliveryPartnerId?.phone || apiOrder.deliveryPartnerId?.phoneNumber || apiOrder.deliveryPartnerId?.mobile || apiOrder.deliveryPartnerId?.contactNumber || prev?.deliveryPartnerPhone || null,
                 deliveryPartnerId: apiOrder.deliveryPartnerId || apiOrder.assignmentInfo?.deliveryPartnerId || null,
                 assignmentInfo: apiOrder.assignmentInfo || null,
-                deliveryState: apiOrder.deliveryState || null
+                deliveryState: apiOrder.deliveryState || null,
+                preparationTime: apiOrder.preparationTime || apiOrder.etaDetails?.foodPreparationTime || prev?.preparationTime || null,
+                etaDetails: apiOrder.etaDetails || prev?.etaDetails || null,
+                distance: apiOrder.distance || apiOrder.deliveryDistance || apiOrder.etaDetails?.distanceKm || prev?.distance || null
               };
               return transformedOrder;
             });
 
-            // Recalculate ETA if revived
+            // Recalculate customer ETA
             if (apiOrder.status !== 'cancelled' && apiOrder.status !== 'delivered') {
-              const createdAt = new Date(apiOrder.createdAt);
-              const elapsedMinutes = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60));
-              const maxETA = apiOrder.eta?.max || apiOrder.estimatedDeliveryTime || 30;
-              const remainingMinutes = Math.max(1, (maxETA > 90 ? 45 : maxETA) - elapsedMinutes);
-              setEstimatedTime(remainingMinutes);
+              const { remainingMinutes } = calculateCustomerETA(apiOrder);
+              if (remainingMinutes !== null) {
+                setEstimatedTime(remainingMinutes);
+              }
             }
           }
         }).catch(err => console.error('Error fetching fresh order details on socket status notification:', err));
@@ -1466,11 +1509,11 @@ export default function OrderTracking() {
         if (restaurantResponse?.data?.success && restaurantResponse.data.data?.restaurant) {
           const restaurant = restaurantResponse.data.data.restaurant
           // Check multiple phone fields
-          const phone = restaurant.primaryContactNumber || 
-                       restaurant.phone || 
-                       restaurant.ownerPhone ||
-                       restaurant.contactNumber || 
-                       null
+          const phone = restaurant.primaryContactNumber ||
+            restaurant.phone ||
+            restaurant.ownerPhone ||
+            restaurant.contactNumber ||
+            null
           if (phone) {
             console.log('✅ Found restaurant phone:', phone)
             setRestaurantPhone(phone)
@@ -1600,6 +1643,9 @@ export default function OrderTracking() {
           tracking: apiOrder.tracking || {},
           estimatedDeliveryTime: apiOrder.estimatedDeliveryTime || null,
           eta: apiOrder.eta || null,
+          preparationTime: apiOrder.preparationTime || apiOrder.etaDetails?.foodPreparationTime || null,
+          etaDetails: apiOrder.etaDetails || null,
+          distance: apiOrder.distance || apiOrder.deliveryDistance || apiOrder.etaDetails?.distanceKm || null,
           createdAt: apiOrder.createdAt || null,
           note: apiOrder.note || '',
           deliveryInstructions:
@@ -1614,36 +1660,10 @@ export default function OrderTracking() {
           setOrderCreatedAt(new Date(apiOrder.createdAt))
         }
 
-        // Recalculate ETA from refreshed order data
-        const calculateETA = () => {
-          if (!apiOrder.createdAt) return null
-
-          const now = new Date()
-          const createdAt = new Date(apiOrder.createdAt)
-          const elapsedMinutes = Math.floor((now - createdAt) / 1000 / 60)
-
-          // Use eta.min/max if available, otherwise use estimatedDeliveryTime
-          let initialETA = null
-          if (apiOrder.eta?.min && apiOrder.eta?.max) {
-            initialETA = apiOrder.eta.min
-          } else if (apiOrder.estimatedDeliveryTime) {
-            initialETA = apiOrder.estimatedDeliveryTime
-          } else {
-            initialETA = 30
-          }
-
-          // Cap extremely large values (e.g. from coordinates 0,0 fallback distance)
-          if (initialETA > 90) {
-            initialETA = 45;
-          }
-
-          const remainingTime = Math.max(0, initialETA - elapsedMinutes)
-          return remainingTime
-        }
-
-        const calculatedETA = calculateETA()
-        if (calculatedETA !== null) {
-          setEstimatedTime(calculatedETA)
+        // Recalculate customer ETA
+        const customerETA = calculateCustomerETA(transformedOrder)
+        if (customerETA.remainingMinutes !== null) {
+          setEstimatedTime(customerETA.remainingMinutes)
         }
 
         // Fetch restaurant phone number - check multiple sources
@@ -1654,7 +1674,7 @@ export default function OrderTracking() {
           setRestaurantPhone(apiOrder.restaurantId.phone)
         } else if (apiOrder.restaurantId?.ownerPhone) {
           setRestaurantPhone(apiOrder.restaurantId.ownerPhone)
-        } 
+        }
         // Priority 2: Check order-level restaurant phone
         else if (apiOrder.restaurantPhone) {
           setRestaurantPhone(apiOrder.restaurantPhone)
@@ -1737,24 +1757,28 @@ export default function OrderTracking() {
   const statusConfig = {
     placed: {
       title: "Order placed",
-      subtitle: "Food preparation will begin shortly",
+      subtitle: etaBreakdown
+        ? `Arriving in ${estimatedTime !== null ? estimatedTime : etaBreakdown.totalETA} mins`
+        : "Food preparation will begin shortly",
       color: "bg-green-700"
     },
     preparing: {
       title: "Preparing your order",
-      subtitle: estimatedTime !== null && estimatedTime > 0 ? `Arriving in ${estimatedTime} mins` : "Food preparation will begin shortly",
+      subtitle: etaBreakdown
+        ? `Arriving in ${estimatedTime !== null ? estimatedTime : etaBreakdown.totalETA} mins`
+        : (estimatedTime !== null && estimatedTime > 0 ? `Arriving in ${estimatedTime} mins` : "Food preparation will begin shortly"),
       color: "bg-green-700"
     },
     pickup: {
       title: "Order ready",
-      subtitle: estimatedTime !== null && estimatedTime > 0 ? `Arriving in ${estimatedTime} mins` : "On the way",
+      subtitle: "Order ready for pickup",
       color: "bg-green-700"
     },
     picked_up: {
       title: "Order picked up",
       subtitle:
         estimatedTime !== null && estimatedTime > 0
-          ? `Arriving in ${estimatedTime} mins`
+          ? `Arriving in ~${estimatedTime} mins`
           : "Your delivery partner is on the way",
       color: "bg-green-700",
     },
@@ -1762,7 +1786,7 @@ export default function OrderTracking() {
       title: "Food On the way",
       subtitle:
         estimatedTime !== null && estimatedTime > 0
-          ? `Arriving in ${estimatedTime} mins`
+          ? `Arriving in ~${estimatedTime} mins`
           : "Your delivery partner is on the way",
       color: "bg-green-700",
     },
@@ -1842,20 +1866,20 @@ export default function OrderTracking() {
           initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
         >
-           {/* Navigation bar */}
-           <div className="flex items-center px-4 pt-7 pb-3 relative">
-             <Link to="/orders" className="absolute left-4">
-               <motion.button
-                 className="w-10 h-10 flex items-center justify-center"
-                 whileTap={{ scale: 0.9 }}
-               >
-                 <ArrowLeft className="w-6 h-6" />
-               </motion.button>
-             </Link>
-             <h2 className="font-semibold text-lg flex-1 text-center">
-               {(order.restaurant === "Indore" ? (order.restaurantName || "Restaurant") : order.restaurant)}
-             </h2>
-           </div>
+          {/* Navigation bar */}
+          <div className="flex items-center px-4 pt-7 pb-3 relative">
+            <Link to="/orders" className="absolute left-4">
+              <motion.button
+                className="w-10 h-10 flex items-center justify-center"
+                whileTap={{ scale: 0.9 }}
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </motion.button>
+            </Link>
+            <h2 className="font-semibold text-lg flex-1 text-center">
+              {(order.restaurant === "Indore" ? (order.restaurantName || "Restaurant") : order.restaurant)}
+            </h2>
+          </div>
 
           {/* Status section */}
           <div className="px-4 pb-4 text-center">
@@ -1921,11 +1945,11 @@ export default function OrderTracking() {
         const isCancelled = raw === 'cancelled' || raw === 'canceled' || raw === 'restaurant_cancelled'
         if (isDelivered || isCancelled) return null
         return (
-        <DeliveryMap
-          orderId={orderId}
-          order={order}
-          isVisible={!showConfirmation && order !== null}
-        />
+          <DeliveryMap
+            orderId={orderId}
+            order={order}
+            isVisible={!showConfirmation && order !== null}
+          />
         )
       })()}
 
@@ -1948,6 +1972,8 @@ export default function OrderTracking() {
             />
           </motion.div>
         )}
+
+
 
         {/* Contact & Address Section */}
         <motion.div

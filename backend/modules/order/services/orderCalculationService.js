@@ -3,6 +3,7 @@ import Offer from '../../restaurant/models/Offer.js';
 import FeeSettings from '../../admin/models/FeeSettings.js';
 import AdminPromoCode from '../../admin/models/AdminPromoCode.js';
 import mongoose from 'mongoose';
+import etaCalculationService from './etaCalculationService.js';
 import { getCache, setCache, generateCacheKey, CACHE_TTL } from '../../../shared/utils/cache.js';
 
 /**
@@ -466,6 +467,26 @@ export const calculateOrderPricing = async ({
     
     // Calculate savings
     const savings = discount + adminOfferDiscount + (deliveryFee > finalDeliveryFee ? deliveryFee - finalDeliveryFee : 0);
+
+    // Calculate dynamic ETA (Food preparation time + Distance delivery time)
+    let dynamicETA = null;
+    try {
+      dynamicETA = await etaCalculationService.calculateDynamicETA({
+        items,
+        restaurantId: restaurant?._id || restaurantId,
+        distanceKm: distanceInKm,
+        restaurantLocation: restaurant?.location ? {
+          latitude: restaurant.location.latitude || restaurant.location.coordinates?.[1],
+          longitude: restaurant.location.longitude || restaurant.location.coordinates?.[0]
+        } : null,
+        userLocation: effectiveDeliveryAddress ? {
+          latitude: effectiveDeliveryAddress.latitude || effectiveDeliveryAddress.location?.coordinates?.[1],
+          longitude: effectiveDeliveryAddress.longitude || effectiveDeliveryAddress.location?.coordinates?.[0]
+        } : null
+      });
+    } catch (etaErr) {
+      console.warn("⚠️ Failed to calculate dynamic ETA in orderCalculationService:", etaErr.message);
+    }
     
     return {
       subtotal: Math.round(subtotal),
@@ -478,6 +499,7 @@ export const calculateOrderPricing = async ({
       tax: gst,
       total: Math.round(total),
       savings: Math.round(savings),
+      eta: dynamicETA,
       appliedCoupon: appliedCoupon ? {
         code: appliedCoupon.code,
         discount: appliedCoupon.discount,

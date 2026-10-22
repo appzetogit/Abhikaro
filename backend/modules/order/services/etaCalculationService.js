@@ -4,6 +4,7 @@ import Restaurant from '../../restaurant/models/Restaurant.js';
 import Delivery from '../../delivery/models/Delivery.js';
 import OrderEvent from '../models/OrderEvent.js';
 import ETALog from '../models/ETALog.js';
+import ETASettings from '../../admin/models/ETASettings.js';
 
 /**
  * ETA Calculation Service
@@ -594,6 +595,331 @@ class ETACalculationService {
       elapsedMinutes,
       status: order.status,
       formatted: `${remainingMin}-${remainingMax} mins`
+    };
+  }
+
+  /**
+   * Helper: Parse base preparation time from value (e.g. "25 mins", "25", 25)
+   */
+  parseBasePrepTime(val) {
+    if (typeof val === 'number' && !isNaN(val) && val > 0) {
+      return val;
+    }
+    if (typeof val === 'string' && val.trim()) {
+      const match = val.match(/(\d+)/);
+      if (match) {
+        return parseInt(match[1], 10);
+      }
+    }
+    return 15; // default fallback 15 mins
+  }
+
+  /**
+   * Helper: Group identical menu items and combine their quantities
+   * Section 9: "Ensure identical menu item IDs are grouped and their quantities combined before calculation."
+   */
+  groupOrderItems(items) {
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return [];
+    }
+    const grouped = new Map();
+    for (const item of items) {
+      const id = String(item.itemId || item._id || item.id || item.name || 'item').trim();
+      const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+      if (grouped.has(id)) {
+        const existing = grouped.get(id);
+        existing.quantity += qty;
+      } else {
+        grouped.set(id, {
+          itemId: id,
+          name: item.name || 'Item',
+          category: item.category || 'General',
+          preparationTime: item.preparationTime || item.basePreparationTime || item.baseTime || '',
+          quantity: qty,
+        });
+      }
+    }
+    return Array.from(grouped.values());
+  }
+
+  /**
+   * Calculate Food Preparation Time according to Specification (Section 3, 4, 5)
+   */
+  async calculateFoodPreparationTime(rawItems, customSettings = null) {
+    const settings = customSettings || (await ETASettings.getSettings());
+    const groupedItems = this.groupOrderItems(rawItems);
+
+    if (groupedItems.length === 0) {
+      return {
+        foodPreparationTime: 15,
+        mainItem: null,
+        itemsBreakdown: [],
+        totalOverhead: 0,
+      };
+    }
+
+    const slabs = settings.quantitySlabs || [];
+    const above100Percent = settings.above100IncreasePercent ?? 600;
+
+    // Helper: Find slab percentage
+    const getSlabPercent = (quantity) => {
+      for (const slab of slabs) {
+        if (quantity >= slab.min && quantity <= slab.max) {
+          return slab.increasePercent;
+        }
+      }
+      if (quantity > 100) {
+        return above100Percent;
+      }
+      return 0;
+    };
+
+    // Step 1: Calculate adjusted preparation time for every item
+    const processedItems = groupedItems.map((item) => {
+      const baseTime = this.parseBasePrepTime(item.preparationTime);
+      const slabPercent = getSlabPercent(item.quantity);
+      // Adjusted Item Time = Base Preparation Time * (1 + Quantity Increase %)
+      const adjustedTime = Math.round(baseTime * (1 + slabPercent / 100) * 10) / 10;
+
+      return {
+        itemId: item.itemId,
+        name: item.name,
+        category: item.category || 'General',
+        baseTime,
+        quantity: item.quantity,
+        slabPercent,
+        adjustedTime,
+        categoryOverhead: 0,
+        quantityOverhead: 0,
+        isMainItem: false,
+      };
+    });
+
+    // Step 2: Select item with highest adjusted preparation time as Main Item
+    processedItems.sort((a, b) => b.adjustedTime - a.adjustedTime);
+    const mainItem = processedItems[0];
+    mainItem.isMainItem = true;
+
+    // Step 3 & 4: Category and Quantity Overheads for non-main items
+    const catPercent = settings.categoryOverheadPercent ?? 10;
+    const qtyPercent = settings.additionalQuantityOverheadPercent ?? 5;
+
+    let totalOverhead = 0;
+    for (let i = 1; i < processedItems.length; i++) {
+      const item = processedItems[i];
+      // Category Overhead = 10% * Item Base Time
+      const catOverhead = Math.round((catPercent / 100) * item.baseTime * 10) / 10;
+      // Additional Quantity Overhead = (Quantity - 1) * 5% * Item Base Time
+      const qtyOverhead =
+        item.quantity > 1
+          ? Math.round((item.quantity - 1) * (qtyPercent / 100) * item.baseTime * 10) / 10
+          : 0;
+
+      item.categoryOverhead = catOverhead;
+      item.quantityOverhead = qtyOverhead;
+      totalOverhead += catOverhead + qtyOverhead;
+    }
+
+    totalOverhead = Math.round(totalOverhead * 10) / 10;
+
+    // Final Preparation Time = Main Item Adjusted Time + Category Overheads + Additional Quantity Overheads
+    const rawTotal = mainItem.adjustedTime + totalOverhead;
+    const foodPreparationTime = Math.round(rawTotal * 10) / 10;
+
+    return {
+      foodPreparationTime,
+      mainItem: {
+        itemId: mainItem.itemId,
+        name: mainItem.name,
+        baseTime: mainItem.baseTime,
+        quantity: mainItem.quantity,
+        adjustedTime: mainItem.adjustedTime,
+      },
+      itemsBreakdown: processedItems,
+      totalOverhead,
+    };
+  }
+
+  /**
+   * Calculate Distance-Based Delivery Time (Section 6)
+   * Delivery Time (minutes) = Delivery Distance (km) * 8
+   * Round up to the next whole minute.
+   */
+  calculateDeliveryTime(distanceKm, customSettings = null) {
+    const deliveryTimePerKm = customSettings?.deliveryTimePerKm ?? 8;
+    const safeDistance = Math.max(0.1, parseFloat(distanceKm) || 0);
+    return Math.ceil(safeDistance * deliveryTimePerKm);
+  }
+
+  /**
+  /**
+   * Enrich items with menu base preparation times and category if missing
+   */
+  async enrichItemsWithMenuData(items, restaurantId = null) {
+    if (!Array.isArray(items) || items.length === 0) return items;
+
+    const needsEnrichment = items.some(
+      (it) => !it.preparationTime || String(it.preparationTime).trim() === '' || it.preparationTime === 0
+    );
+
+    if (!needsEnrichment && items.every((it) => it.category && it.category !== 'General')) {
+      return items;
+    }
+
+    try {
+      const mongoose = (await import('mongoose')).default;
+      let restaurantDoc = null;
+      let menuDoc = null;
+
+      if (restaurantId) {
+        const Restaurant = (await import('../../restaurant/models/Restaurant.js')).default;
+        const Menu = (await import('../../restaurant/models/Menu.js')).default;
+
+        if (mongoose.Types.ObjectId.isValid(restaurantId) && String(restaurantId).length === 24) {
+          restaurantDoc = await Restaurant.findById(restaurantId).lean();
+        }
+        if (!restaurantDoc) {
+          restaurantDoc = await Restaurant.findOne({
+            $or: [{ restaurantId: restaurantId }, { slug: restaurantId }, { name: restaurantId }]
+          }).lean();
+        }
+
+        const restMongoId = restaurantDoc?._id || (mongoose.Types.ObjectId.isValid(restaurantId) ? restaurantId : null);
+        if (restMongoId) {
+          menuDoc = await Menu.findOne({
+            $or: [{ restaurant: restMongoId }, { restaurantId: restMongoId }]
+          }).lean();
+        }
+      }
+
+      // Collect flat menu items
+      const flatMenuItems = [];
+      if (menuDoc?.sections) {
+        for (const s of menuDoc.sections) {
+          if (Array.isArray(s.items)) flatMenuItems.push(...s.items);
+          if (Array.isArray(s.subsections)) {
+            for (const sub of s.subsections) {
+              if (Array.isArray(sub.items)) flatMenuItems.push(...sub.items);
+            }
+          }
+        }
+      }
+      if (restaurantDoc?.menu && Array.isArray(restaurantDoc.menu)) {
+        flatMenuItems.push(...restaurantDoc.menu);
+      }
+
+      if (flatMenuItems.length === 0) {
+        return items;
+      }
+
+      const cleanStr = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      return items.map((item) => {
+        const existingPrep = item.preparationTime || item.basePreparationTime || item.baseTime;
+        const existingCat = item.category;
+
+        if (existingPrep && existingCat && existingCat !== 'General') {
+          return item;
+        }
+
+        const itemId = String(item.itemId || item._id || item.id || '');
+        const itemName = cleanStr(item.name || item.productName || '');
+
+        const match = flatMenuItems.find((m) => {
+          if (itemId && (String(m.id || m._id || '') === itemId)) return true;
+          if (itemName && cleanStr(m.name) === itemName) return true;
+          return false;
+        }) || flatMenuItems.find((m) => {
+          if (!itemName) return false;
+          const mClean = cleanStr(m.name);
+          return mClean.includes(itemName) || itemName.includes(mClean);
+        });
+
+        if (match) {
+          return {
+            ...item,
+            preparationTime: existingPrep || match.preparationTime || '',
+            category: (!existingCat || existingCat === 'General') ? (match.category || 'General') : existingCat,
+          };
+        }
+
+        return item;
+      });
+    } catch (err) {
+      console.warn('⚠️ Could not enrich items from menu:', err.message);
+      return items;
+    }
+  }
+
+  /**
+   * Calculate Final Customer ETA (Section 7)
+   * Dynamic ETA combines Food Prep Time + Distance Delivery Time
+   */
+  async calculateDynamicETA({
+    items,
+    restaurantId = null,
+    restaurantLocation = null,
+    userLocation = null,
+    distanceKm = null,
+    customSettings = null,
+  }) {
+    const settings = customSettings || (await ETASettings.getSettings());
+
+    // 0. Auto-enrich items if missing prep times and restaurantId is provided
+    let effectiveItems = items;
+    if (restaurantId) {
+      effectiveItems = await this.enrichItemsWithMenuData(items, restaurantId);
+    }
+
+    // 1. Food preparation time
+    const prepResult = await this.calculateFoodPreparationTime(effectiveItems, settings);
+
+    // 2. Distance determination
+    let finalDistance = distanceKm;
+    if (finalDistance === null || finalDistance === undefined) {
+      if (restaurantLocation && userLocation) {
+        try {
+          const travel = await googleMapsService.getTravelTime(restaurantLocation, userLocation);
+          finalDistance = travel?.distance || 2.0;
+        } catch (e) {
+          finalDistance = 2.0;
+        }
+      } else {
+        finalDistance = 2.0; // fallback standard 2 km
+      }
+    }
+    finalDistance = Math.round(Math.max(0.1, parseFloat(finalDistance) || 0) * 100) / 100;
+
+    // 3. Delivery time
+    const deliveryTime = this.calculateDeliveryTime(finalDistance, settings);
+
+    // 4. Total ETA
+    const rawTotalETA = prepResult.foodPreparationTime + deliveryTime;
+    let totalETA = Math.ceil(rawTotalETA); // Round up to next whole minute
+
+    // 5. Apply limits
+    if (settings.minETALimit && totalETA < settings.minETALimit) {
+      totalETA = settings.minETALimit;
+    }
+    if (settings.maxETALimit && totalETA > settings.maxETALimit) {
+      totalETA = settings.maxETALimit;
+    }
+
+    const minETA = Math.max(1, totalETA - ETACalculationService.ETA_RANGE);
+    const maxETA = totalETA + ETACalculationService.ETA_RANGE;
+
+    return {
+      foodPreparationTime: prepResult.foodPreparationTime,
+      deliveryTime,
+      totalETA,
+      rawTotalETA,
+      distanceKm: finalDistance,
+      minETA,
+      maxETA,
+      mainItem: prepResult.mainItem,
+      itemsBreakdown: prepResult.itemsBreakdown,
+      totalOverhead: prepResult.totalOverhead,
+      enrichedItems: effectiveItems,
     };
   }
 }

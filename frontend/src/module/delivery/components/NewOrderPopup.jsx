@@ -450,66 +450,15 @@ export default function NewOrderPopup({
                   </div>
                 </div>
 
-                {/* Accept Order Button with Swipe */}
-                <div className="relative w-full">
-                  <motion.div
-                    ref={acceptButtonRef}
-                    className="relative w-full bg-green-600 rounded-full overflow-hidden shadow-xl"
-                    style={{ touchAction: 'pan-x' }}
-                    onTouchStart={handleAcceptTouchStart}
-                    onTouchMove={handleAcceptTouchMove}
-                    onTouchEnd={handleAcceptTouchEnd}
-                    whileTap={{ scale: 0.98 }}
+                {/* Accept Order Button (Normal Clean Button) */}
+                <div className="w-full pt-1">
+                  <button
+                    type="button"
+                    onClick={onAccept}
+                    className="w-full py-4 bg-green-600 hover:bg-green-700 active:scale-[0.98] text-white font-bold text-lg rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer select-none"
                   >
-                    {/* Swipe progress background */}
-                    <motion.div
-                      className="absolute inset-0 bg-green-500 rounded-full"
-                      animate={{
-                        width: `${acceptButtonProgress * 100}%`
-                      }}
-                      transition={isAnimatingToComplete ? {
-                        type: "spring",
-                        stiffness: 200,
-                        damping: 25
-                      } : { duration: 0 }}
-                    />
-
-                    {/* Button content container */}
-                    <div className="relative flex items-center h-[64px] px-1">
-                      {/* Left: Black circle with arrow */}
-                      <motion.div
-                        className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center shrink-0 relative z-20 shadow-2xl"
-                        animate={{
-                          x: acceptButtonProgress * (acceptButtonRef.current ? (acceptButtonRef.current.offsetWidth - 56 - 32) : 240)
-                        }}
-                        transition={isAnimatingToComplete ? {
-                          type: "spring",
-                          stiffness: 300,
-                          damping: 30
-                        } : { duration: 0 }}
-                      >
-                        <ArrowRight className="w-5 h-5 text-white" />
-                      </motion.div>
-
-                      {/* Text - centered and stays visible */}
-                      <div className="absolute inset-0 flex items-center justify-center left-16 right-4 pointer-events-none">
-                        <motion.span
-                          className="text-white font-semibold flex items-center justify-center text-center text-base select-none"
-                          animate={{
-                            opacity: acceptButtonProgress > 0.5 ? Math.max(0.2, 1 - acceptButtonProgress * 0.8) : 1,
-                            x: acceptButtonProgress > 0.5 ? acceptButtonProgress * 15 : 0
-                          }}
-                          transition={isAnimatingToComplete ? {
-                            type: "spring",
-                            stiffness: 200,
-                            damping: 25
-                          } : { duration: 0 }}
-                        >
-                          {acceptButtonProgress > 0.5 ? 'Release to Accept' : 'Accept order'}
-                        </motion.span>
-                      </div>
-                    </div>
-                  </motion.div>
+                    <span>Accept order</span>
+                  </button>
                 </div>
               </div>
             </div>

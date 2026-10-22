@@ -599,6 +599,8 @@ export default function RestaurantDetails() {
       description: item.description,
       originalPrice: item.originalPrice,
       isVeg: item.isVeg !== false,
+      category: item.category || "",
+      preparationTime: item.preparationTime || item.basePreparationTime || "",
       ...(variantOverride && {
         selectedVariantId: variantOverride.id,
         selectedVariantName: variantOverride.name,

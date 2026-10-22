@@ -99,6 +99,8 @@ export async function notifyRestaurantNewOrder(order, restaurantId, paymentMetho
       },
       status: order.status,
       createdAt: createdAtForPopup,
+      preparationTime: order.preparationTime,
+      etaDetails: order.etaDetails,
       estimatedDeliveryTime: order.estimatedDeliveryTime || 30,
       note: order.note || '',
       sendCutlery: order.sendCutlery,

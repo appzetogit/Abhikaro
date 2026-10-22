@@ -22,15 +22,15 @@ class ETAEventService {
         throw new Error('Order not found');
       }
 
-      // Check if restaurant accepted late
-      const orderCreatedAt = order.createdAt;
-      const delayMinutes = Math.floor((acceptedAt - orderCreatedAt) / 1000 / 60);
-      const expectedAcceptTime = 2; // Expected 2 minutes to accept
+      // Check if restaurant accepted late (measure from when order reached restaurant, not checkout initiation)
+      const notifyTime = order.tracking?.confirmed?.timestamp || order.assignmentInfo?.assignedAt || order.createdAt;
+      const delayMinutes = Math.floor((acceptedAt - new Date(notifyTime).getTime()) / 1000 / 60);
+      const expectedAcceptTime = 4; // 4 minutes accept window
 
       let eventType = 'RESTAURANT_ACCEPTED';
       let eventData = {};
 
-      if (delayMinutes > expectedAcceptTime) {
+      if (delayMinutes > expectedAcceptTime && !order.preparationTime) {
         eventType = 'RESTAURANT_ACCEPTED_LATE';
         eventData = {
           delayMinutes: delayMinutes - expectedAcceptTime

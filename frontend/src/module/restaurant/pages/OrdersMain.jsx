@@ -579,7 +579,7 @@ export default function OrdersMain() {
   const [showNewOrderPopup, setShowNewOrderPopup] = useState(false)
   const [popupOrder, setPopupOrder] = useState(null) // Store order for popup (from Socket.IO or API)
   const [isAccepting, setIsAccepting] = useState(false)
-  const [prepTime, setPrepTime] = useState(11)
+  const [prepTime, setPrepTime] = useState(34.5)
   // Must match backend auto-reject window (`backend/modules/order/services/autoRejectService.js`)
   const ACCEPT_WINDOW_SECONDS = 240 // 4 minutes
   const acceptDeadlineMsRef = useRef(null)
@@ -597,6 +597,7 @@ export default function OrdersMain() {
   // IMPORTANT: Admin "reassign to restaurant" reuses the same orderId; backend sets `createdAt`
   // to `assignmentInfo.assignedAt` for the popup timer, so dedupe must include createdAt.
   const shownOrdersRef = useRef(new Set())
+
   
   // Persistence for shown orders to avoid duplicate popups across refreshes
   useEffect(() => {
@@ -677,6 +678,26 @@ export default function OrdersMain() {
   // Restaurant notifications hook for real-time orders
   const { newOrder, clearNewOrder, isConnected, stopNotificationSound, isSoundUnlocked, unlockSound, startRingingForOrder } =
     useRestaurantNotifications()
+
+  // Synchronize prepTime with order's calculated dynamic preparation time
+  useEffect(() => {
+    const o = popupOrder || newOrder
+    const rawPrep = o?.preparationTime ?? o?.etaDetails?.foodPreparationTime
+    if (rawPrep != null && !isNaN(Number(rawPrep)) && Number(rawPrep) > 0) {
+      const p = Math.round(Number(rawPrep) * 10) / 10
+      setPrepTime(p)
+    } else if (Array.isArray(o?.items) && o.items.length > 0) {
+      // Fallback: estimate from item preparation times if available
+      const maxItemTime = o.items.reduce((max, it) => {
+        const raw = it.preparationTime || it.basePreparationTime
+        const n = typeof raw === 'number' ? raw : parseFloat(String(raw || '').replace(/[^\d.]/g, '')) || 0
+        return Math.max(max, n)
+      }, 0)
+      if (maxItemTime > 0) {
+        setPrepTime(Math.round(maxItemTime * 10) / 10)
+      }
+    }
+  }, [popupOrder, newOrder])
 
   const rejectReasons = [
     "Restaurant is too busy",
@@ -1109,6 +1130,8 @@ export default function OrdersMain() {
               status: latestConfirmedOrder.status,
               createdAt: latestConfirmedOrder.createdAt,
               estimatedDeliveryTime: latestConfirmedOrder.estimatedDeliveryTime || 30,
+              preparationTime: latestConfirmedOrder.preparationTime,
+              etaDetails: latestConfirmedOrder.etaDetails,
               note: latestConfirmedOrder.note || '',
               sendCutlery: latestConfirmedOrder.sendCutlery,
               paymentMethod: latestConfirmedOrder.paymentMethod ?? latestConfirmedOrder.payment?.method,
@@ -2238,7 +2261,7 @@ export default function OrdersMain() {
               exit={{ opacity: 0 }}
             >
               <motion.div
-                className="w-[95%] max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+                className="w-[96%] max-w-lg md:max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
@@ -2275,7 +2298,7 @@ export default function OrdersMain() {
                 </div>
 
                 {/* Content */}
-                <div className="px-4 py-4 max-h-[60vh] overflow-y-auto">
+                <div className="px-5 py-4 max-h-[75vh] md:max-h-[80vh] overflow-y-auto">
                   {/* Order meta (time + payment on the same row) */}
                   {(() => {
                     const po = (popupOrder || newOrder) || {}
@@ -2320,9 +2343,14 @@ export default function OrdersMain() {
                           ? 'text-green-700'
                           : 'text-green-600'
 
+                    const prepDisplay = (prepTime > 0 ? prepTime : null) || Number(po?.preparationTime || po?.etaDetails?.foodPreparationTime || 34.5)
+
                     return (
-                      <div className="mb-4 flex items-center justify-between gap-3">
+                      <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
                         <p className="text-xs text-gray-500">{createdAtLabel}</p>
+                        <p className="text-xs font-semibold text-gray-800">
+                          Order time: <span className="font-bold text-gray-900">{prepDisplay} min</span>
+                        </p>
                         <p className="text-xs text-gray-500">
                           Payment:{' '}
                           <span className={`font-semibold ${paymentColor}`}>{computedLabel}</span>
@@ -2469,22 +2497,31 @@ export default function OrdersMain() {
 
                   {/* Preparation time */}
                   {!(popupOrder?.isViewOnly) && (
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-sm font-medium text-gray-700">Preparation time</span>
+                    <div className="mb-4 bg-gray-50/80 rounded-xl p-3 border border-gray-200/80">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-sm font-semibold text-gray-900 block">Preparation time</span>
+                          <span className="text-[11px] text-gray-500">Target to cook & pack before rider pickup</span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setPrepTime(Math.max(1, prepTime - 1))}
-                            className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                            type="button"
+                            onClick={() => setPrepTime(Math.max(1, Math.round((prepTime - 1) * 10) / 10))}
+                            className="p-2 bg-white hover:bg-gray-100 border border-gray-200 rounded-full transition-colors active:scale-95 shadow-2xs"
+                            title="Decrease prep time"
+                            aria-label="Decrease preparation time"
                           >
                             <Minus className="w-4 h-4 text-gray-700" />
                           </button>
-                          <span className="text-base font-semibold text-gray-900 min-w-[60px] text-center">
+                          <span className="text-base font-bold text-gray-900 min-w-[65px] text-center">
                             {prepTime} mins
                           </span>
                           <button
-                            onClick={() => setPrepTime(prepTime + 1)}
-                            className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                            type="button"
+                            onClick={() => setPrepTime(Math.round((prepTime + 1) * 10) / 10)}
+                            className="p-2 bg-white hover:bg-gray-100 border border-gray-200 rounded-full transition-colors active:scale-95 shadow-2xs"
+                            title="Increase prep time"
+                            aria-label="Increase preparation time"
                           >
                             <Plus className="w-4 h-4 text-gray-700" />
                           </button>
@@ -3179,7 +3216,8 @@ function PreparingOrders({ onSelectOrder, onCancel, onShowPopup, fetchAllOrders,
       order => order.status === 'preparing' || order.status === 'confirmed'
     )
     return preparingOrders.map(order => {
-      const initialETA = order.estimatedDeliveryTime || 30
+      const rawPrep = Number(order.preparationTime || order.etaDetails?.foodPreparationTime || 0)
+      const initialETA = rawPrep > 0 ? rawPrep : (order.estimatedDeliveryTime || 30)
       const preparingTimestamp = order.tracking?.preparing?.timestamp
         ? new Date(order.tracking.preparing.timestamp)
         : new Date(order.createdAt)
@@ -3406,9 +3444,9 @@ function PreparingOrders({ onSelectOrder, onCancel, onShowPopup, fetchAllOrders,
         }
 
         // Calculate remaining ETA
-        const elapsedMs = currentTime - order.preparingTimestamp
+        const elapsedMs = Math.max(0, currentTime - order.preparingTimestamp)
         const elapsedMinutes = Math.floor(elapsedMs / 60000)
-        const remainingMinutes = Math.max(0, order.initialETA - elapsedMinutes)
+        const remainingMinutes = Math.max(0, Math.round((order.initialETA - (elapsedMs / 60000)) * 10) / 10)
 
         // If ETA has reached 0 (or slightly past), mark as ready
         if (remainingMinutes <= 0 && order.status === 'preparing') {
@@ -3488,9 +3526,9 @@ function PreparingOrders({ onSelectOrder, onCancel, onShowPopup, fetchAllOrders,
         <div>
           {orders.map((order) => {
             // Calculate remaining ETA (countdown)
-            const elapsedMs = currentTime - order.preparingTimestamp
+            const elapsedMs = Math.max(0, currentTime - order.preparingTimestamp)
             const elapsedMinutes = Math.floor(elapsedMs / 60000)
-            const remainingMinutes = Math.max(0, order.initialETA - elapsedMinutes)
+            const remainingMinutes = Math.max(0, Math.round((order.initialETA - (elapsedMs / 60000)) * 10) / 10)
 
             // Format ETA display
             let etaDisplay = ''
