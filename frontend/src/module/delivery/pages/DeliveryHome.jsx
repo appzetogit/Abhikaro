@@ -3633,11 +3633,10 @@ export default function DeliveryHome() {
               // ignore storage errors
             }
             // CRITICAL: Clear newOrder notification immediately to prevent duplicate notifications
-            const acceptedOrderId = restaurantInfo.id || restaurantInfo.orderId || newOrder?.orderMongoId || newOrder?.orderId;
-            if (acceptedOrderId) {
-              acceptedOrderIdsRef.current.add(acceptedOrderId);
-
-            }
+            // Store every id form (mongo + business) — later socket/FCM/poll payloads may carry either one.
+            [restaurantInfo.id, restaurantInfo.orderId, newOrder?.orderMongoId, newOrder?.orderId]
+              .filter(Boolean)
+              .forEach(id => acceptedOrderIdsRef.current.add(String(id)));
             clearNewOrder();
 
             // IMPORTANT:
@@ -5249,10 +5248,8 @@ export default function DeliveryHome() {
       console.log("🔔 [DeliveryHome] newOrder useEffect triggered.", { newOrder, isOnline });
       if (!newOrder) return
 
-      const orderId = newOrder.orderMongoId || newOrder.orderId;
-
       // Check if this order has already been accepted
-      if (acceptedOrderIdsRef.current.has(orderId)) {
+      if ([newOrder.orderMongoId, newOrder.orderId, newOrder._id].some(id => id && acceptedOrderIdsRef.current.has(String(id)))) {
         clearNewOrder();
         return;
       }
@@ -5501,6 +5498,7 @@ export default function DeliveryHome() {
 
       const orderId = data.orderId || data.id || data.orderMongoId
       if (!orderId) return
+      if (acceptedOrderIdsRef.current.has(String(orderId))) return
 
       // SHOW A MINIMAL POPUP IMMEDIATELY if we have basic data in push
       const pushRestName = data.restaurantName || data.title || "New Order"

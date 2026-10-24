@@ -1199,7 +1199,8 @@ export default function OrdersMain() {
 
   // Control audio playback based on showNewOrderPopup (ensure sound plays continuously as long as actionable popup is visible)
   useEffect(() => {
-    if (showNewOrderPopup && !(popupOrder?.isViewOnly)) {
+    // Don't restart ringing while the accept API is in flight (popup is still open until it returns)
+    if (showNewOrderPopup && !(popupOrder?.isViewOnly) && !isAccepting) {
       const current = popupOrder || newOrder
       if (current && typeof startRingingForOrder === 'function') {
         console.log('🎵 Starting looping notification sound for order popup:', current.orderId)
@@ -1210,7 +1211,7 @@ export default function OrdersMain() {
         stopNotificationSound()
       }
     }
-  }, [showNewOrderPopup, popupOrder, newOrder, startRingingForOrder, stopNotificationSound])
+  }, [showNewOrderPopup, popupOrder, newOrder, isAccepting, startRingingForOrder, stopNotificationSound])
 
   // Close popup immediately if the user cancels the order (realtime via Socket.IO -> window event)
   useEffect(() => {

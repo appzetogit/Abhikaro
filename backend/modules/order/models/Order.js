@@ -476,6 +476,7 @@ const orderSchema = new mongoose.Schema(
     assignmentInfo: {
       restaurantId: String,
       distance: Number, // Distance in km
+      distanceMethod: String, // 'osrm' = road distance (trusted); else recomputed
       // Monotonically increases whenever restaurant/admin triggers a manual resend
       // Used by clients to treat the notification as "fresh" even if previously denied.
       resendVersion: {

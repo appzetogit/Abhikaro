@@ -461,6 +461,10 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
+      if (orderId) {
+        (socketRef.__seenOrderIds || (socketRef.__seenOrderIds = new Set())).add(orderId);
+      }
+
       // Play sound immediately when new_order socket event is received
       try {
         playNotificationSound(orderId);
@@ -533,6 +537,13 @@ export const useDeliveryNotifications = () => {
       if (orderId && rejectedOrderIdsRef.current.has(orderId)) {
         return;
       }
+
+      // Server auto-resend ticks (every 30s) only refresh availability — don't re-pop/re-ring an order already seen.
+      const seen = socketRef.__seenOrderIds || (socketRef.__seenOrderIds = new Set());
+      if (orderData?.phase === 'auto_resend' && orderId && seen.has(orderId)) {
+        return;
+      }
+      if (orderId) seen.add(orderId);
 
       // Play sound immediately when new_order_available socket event is received
       try {

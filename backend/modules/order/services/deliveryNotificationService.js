@@ -1,7 +1,7 @@
 import Order from '../models/Order.js';
 import Delivery from '../../delivery/models/Delivery.js';
 import Restaurant from '../../restaurant/models/Restaurant.js';
-import { calculateHaversineDistance, calculateEstimatedEarnings as sharedCalculateEstimatedEarnings } from '../../delivery/utils/earningsCalculator.js';
+import { calculateHaversineDistance, calculateEstimatedEarnings as sharedCalculateEstimatedEarnings, resolveDeliveryDistanceKm } from '../../delivery/utils/earningsCalculator.js';
 import mongoose from 'mongoose';
 import winston from 'winston';
 
@@ -267,10 +267,8 @@ export async function notifyDeliveryBoyNewOrder(order, deliveryPartnerId) {
     }
 
     if (effectiveRestaurantLocation?.coordinates && order.address?.location?.coordinates) {
-      const [restaurantLng, restaurantLat] = effectiveRestaurantLocation.coordinates;
-      const [customerLng, customerLat] = order.address.location.coordinates;
-      // Calculate delivery distance (restaurant to customer)
-      deliveryDistance = calculateDistance(restaurantLat, restaurantLng, customerLat, customerLng);
+      // Delivery distance (restaurant to customer) by road — same value the payout uses
+      deliveryDistance = (await resolveDeliveryDistanceKm(order, effectiveRestaurantLocation.coordinates)).distance;
     }
 
     // Calculate estimated earnings (delivery partner payout).
@@ -642,26 +640,10 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
     });
     
     if (restaurantLocation?.coordinates && orderWithUser.address?.location?.coordinates) {
-      const [restaurantLng, restaurantLat] = restaurantLocation.coordinates;
-      const [customerLng, customerLat] = orderWithUser.address.location.coordinates;
-      
-      // Validate coordinates
-      if (restaurantLat && restaurantLng && customerLat && customerLng &&
-          !isNaN(restaurantLat) && !isNaN(restaurantLng) && 
-          !isNaN(customerLat) && !isNaN(customerLng)) {
-        // Calculate distance using Haversine formula
-        const R = 6371; // Earth radius in km
-        const dLat = (customerLat - restaurantLat) * Math.PI / 180;
-        const dLng = (customerLng - restaurantLng) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(restaurantLat * Math.PI / 180) * Math.cos(customerLat * Math.PI / 180) *
-                  Math.sin(dLng/2) * Math.sin(dLng/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        deliveryDistance = R * c;
-        console.log(`✅ Calculated delivery distance: ${deliveryDistance.toFixed(2)} km`);
-      } else {
-        console.warn('⚠️ Invalid coordinates for distance calculation');
-      }
+      // Road distance (restaurant to customer) — same value the payout uses
+      const resolved = await resolveDeliveryDistanceKm(orderWithUser, restaurantLocation.coordinates);
+      deliveryDistance = resolved.distance;
+      console.log(`✅ Calculated delivery distance: ${deliveryDistance.toFixed(2)} km (${resolved.method})`);
     } else {
       console.warn('⚠️ Missing coordinates for distance calculation');
     }
@@ -774,6 +756,14 @@ export async function notifyMultipleDeliveryBoys(order, deliveryPartnerIds, phas
       hasRestaurantLocation: !!orderNotification.restaurantLocation,
       hasCustomerLocation: !!orderNotification.customerLocation
     });
+
+    // Re-check right before emitting: callers pass a stale snapshot and the work above (road distance etc.)
+    // takes seconds, so a rider may have accepted meanwhile — don't re-ring everyone (incl. the accepter).
+    const latest = await Order.findById(order._id).select('deliveryPartnerId status').lean();
+    if (!latest || latest.deliveryPartnerId || ['cancelled', 'delivered'].includes(latest.status)) {
+      console.log(`🚫 Order ${order.orderId} assigned/closed before emit; skipping notifications.`);
+      return { success: false, notified: 0, reason: 'Already assigned' };
+    }
 
     // Notify each delivery partner
     for (const deliveryPartnerId of filteredIds) {

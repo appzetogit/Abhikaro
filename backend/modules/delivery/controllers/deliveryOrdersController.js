@@ -14,7 +14,7 @@ import RestaurantWallet from "../../restaurant/models/RestaurantWallet.js";
 import RestaurantCommission from "../../admin/models/RestaurantCommission.js";
 import AdminCommission from "../../admin/models/AdminCommission.js";
 import { calculateRoute } from "../../order/services/routeCalculationService.js";
-import { calculateHaversineDistance, calculateEstimatedEarnings } from "../utils/earningsCalculator.js";
+import { calculateHaversineDistance, calculateEstimatedEarnings, resolveDeliveryDistanceKm } from "../utils/earningsCalculator.js";
 import mongoose from "mongoose";
 import winston from "winston";
 
@@ -189,7 +189,10 @@ export const getAvailableOrders = asyncHandler(async (req, res) => {
         // Calculate estimated earnings if missing
         let estimatedEarnings = order.estimatedEarnings;
         if (!estimatedEarnings && restLat && restLng && deliveryLat && deliveryLng) {
-          const distance = calculateHaversineDistance(restLat, restLng, deliveryLat, deliveryLng);
+          // List view: reuse stored road distance, no per-order network call
+          const distance = order.assignmentInfo?.distanceMethod === "osrm" && order.assignmentInfo.distance > 0
+            ? Number(order.assignmentInfo.distance)
+            : calculateHaversineDistance(restLat, restLng, deliveryLat, deliveryLng);
           estimatedEarnings = await calculateEstimatedEarnings(distance);
         }
 
@@ -398,10 +401,7 @@ export const getOrderDetails = asyncHandler(async (req, res) => {
     // Calculate estimated earnings if missing (e.g. for unassigned orders being viewed in notification popup)
     let estimatedEarnings = order.estimatedEarnings;
     if (!estimatedEarnings && effectiveRestaurantCoords && deliveryCoords) {
-      const distance = calculateHaversineDistance(
-        effectiveRestaurantCoords[1], effectiveRestaurantCoords[0],
-        deliveryCoords[1], deliveryCoords[0]
-      );
+      const { distance } = await resolveDeliveryDistanceKm(order, effectiveRestaurantCoords);
       estimatedEarnings = await calculateEstimatedEarnings(distance);
     }
 
@@ -1380,12 +1380,8 @@ export const acceptOrder = asyncHandler(async (req, res) => {
       }
     }
 
-    const custCoords = updatedOrder.address?.location?.coordinates;
-    if (restCoords && custCoords && restCoords.length === 2 && custCoords.length === 2) {
-      const [restaurantLng, restaurantLat] = restCoords;
-      const [customerLng, customerLat] = custCoords;
-      deliveryDistance = calculateHaversineDistance(restaurantLat, restaurantLng, customerLat, customerLng);
-    }
+    const resolvedDistance = await resolveDeliveryDistanceKm(updatedOrder, restCoords);
+    deliveryDistance = resolvedDistance.distance;
 
     // Calculate estimated earnings based on delivery distance
     let estimatedEarningsData = null;
@@ -1401,6 +1397,7 @@ export const acceptOrder = asyncHandler(async (req, res) => {
         await Order.findByIdAndUpdate(updatedOrder._id, {
           $set: {
             "assignmentInfo.distance": deliveryDistance,
+            "assignmentInfo.distanceMethod": resolvedDistance.method,
             estimatedEarnings: estimatedEarningsData
           }
         });
@@ -2499,15 +2496,7 @@ export const completeDelivery = asyncHandler(async (req, res) => {
             } catch (_) {}
           }
 
-          const custCoords = order.address?.location?.coordinates;
-          if (restCoords && custCoords) {
-            const [rlng, rlat] = restCoords;
-            const [clng, clat] = custCoords;
-            deliveryDistance = calculateHaversineDistance(rlat, rlng, clat, clng);
-          }
-          if (deliveryDistance <= 0 && order.assignmentInfo?.distance) {
-            deliveryDistance = Number(order.assignmentInfo.distance) || 0;
-          }
+          deliveryDistance = (await resolveDeliveryDistanceKm(order, restCoords)).distance;
           if (deliveryDistance <= 0 && order.deliveryState?.routeToDelivery?.distance) {
             deliveryDistance = Number(order.deliveryState.routeToDelivery.distance) || 0;
           }
@@ -2693,40 +2682,10 @@ export const completeDelivery = asyncHandler(async (req, res) => {
       }
     }
 
-    const custCoords = order.address?.location?.coordinates;
+    // Road distance (same value the settlement stored and paid on)
+    deliveryDistance = (await resolveDeliveryDistanceKm(order, restCoords)).distance;
 
-    if (restCoords && custCoords) {
-      const [restaurantLng, restaurantLat] = restCoords;
-      const [customerLng, customerLat] = custCoords;
-
-      // Safety guard: if coordinates are invalid, empty, or default [0, 0] (Null Island)
-      if (
-        restaurantLat && restaurantLng && customerLat && customerLng &&
-        Number(restaurantLat) !== 0 && Number(restaurantLng) !== 0 && Number(customerLat) !== 0 && Number(customerLng) !== 0 &&
-        !(Math.abs(Number(restaurantLat)) < 0.0001 && Math.abs(Number(restaurantLng)) < 0.0001) &&
-        !(Math.abs(Number(customerLat)) < 0.0001 && Math.abs(Number(customerLng)) < 0.0001)
-      ) {
-        // Calculate distance using Haversine formula
-        const R = 6371; // Earth radius in km
-        const dLat = ((customerLat - restaurantLat) * Math.PI) / 180;
-        const dLng = ((customerLng - restaurantLng) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((restaurantLat * Math.PI) / 180) *
-            Math.cos((customerLat * Math.PI) / 180) *
-            Math.sin(dLng / 2) *
-            Math.sin(dLng / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        deliveryDistance = R * c;
-      }
-    }
-
-    // Priority 2: Get distance from assignmentInfo if coordinate calculation yielded 0
-    if (deliveryDistance <= 0 && order.assignmentInfo?.distance) {
-      deliveryDistance = Number(order.assignmentInfo.distance) || 0;
-    }
-
-    // Priority 3: Fallback to routeToDelivery distance only if no other distance available
+    // Fallback to routeToDelivery distance only if no other distance available
     if (deliveryDistance <= 0 && order.deliveryState?.routeToDelivery?.distance) {
       deliveryDistance = Number(order.deliveryState.routeToDelivery.distance) || 0;
     }
