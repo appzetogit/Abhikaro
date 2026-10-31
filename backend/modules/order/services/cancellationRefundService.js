@@ -38,59 +38,79 @@ export const calculateCancellationRefund = async (orderId, cancellationReason) =
       throw new Error('Order is not cancelled');
     }
 
-    const settlement = await OrderSettlement.findOne({ orderId });
+    let settlement = await OrderSettlement.findOne({ orderId });
     if (!settlement) {
-      throw new Error('Settlement not found');
+      try {
+        const { calculateOrderSettlement } = await import('./orderSettlementService.js');
+        settlement = await calculateOrderSettlement(orderId);
+      } catch (e) {
+        console.warn(`Could not calculate settlement for order ${orderId}:`, e.message);
+      }
+    }
+
+    if (!settlement) {
+      console.warn(`⚠️ Settlement could not be found or generated for order ${orderId}`);
+      return {
+        refundAmount: 0,
+        restaurantCompensation: 0,
+        refundStatus: 'not_applicable'
+      };
     }
 
     const cancellationStage = getCancellationStage(order);
-    const userPayment = settlement.userPayment;
+    const userPayment = settlement.userPayment || {};
+
+    // Check if user has actually paid money that needs refunding.
+    // For pay_at_hotel, cod, cash where cash was not collected, refund to user is 0!
+    const paymentMethod = String(order.payment?.method || '').toLowerCase();
+    const isOffline = paymentMethod === 'pay_at_hotel' || paymentMethod === 'cash' || paymentMethod === 'cod';
+    const hasUserPaid = !isOffline || order.cashCollected === true || order.payment?.status === 'completed';
 
     let refundAmount = 0;
     let restaurantCompensation = 0;
 
-    // Calculate refund based on cancellation stage
-    switch (cancellationStage) {
-      case 'pre_accept':
-        // Full refund to user
-        refundAmount = userPayment.total;
-        restaurantCompensation = 0;
-        break;
+    if (!hasUserPaid) {
+      // User has not paid, so refund to user is 0
+      refundAmount = 0;
+      if (cancellationStage === 'post_cook' || cancellationStage === 'post_pickup') {
+        restaurantCompensation = settlement.restaurantEarning?.netEarning || 0;
+      }
+    } else {
+      switch (cancellationStage) {
+        case 'pre_accept':
+          refundAmount = userPayment.total || 0;
+          restaurantCompensation = 0;
+          break;
 
-      case 'post_accept_pre_cook':
-        // Partial refund (refund everything except platform fee and GST on platform fee)
-        // User gets: subtotal + delivery fee (if not used)
-        refundAmount = userPayment.subtotal - userPayment.discount + userPayment.deliveryFee;
-        restaurantCompensation = 0;
-        break;
+        case 'post_accept_pre_cook':
+          refundAmount = (userPayment.subtotal || 0) - (userPayment.discount || 0) + (userPayment.deliveryFee || 0);
+          restaurantCompensation = 0;
+          break;
 
-      case 'post_cook':
-        // Restaurant compensated, partial refund to user
-        // Restaurant gets: food cost - commission
-        restaurantCompensation = settlement.restaurantEarning.netEarning;
-        // User gets: delivery fee + platform fee back (or partial)
-        refundAmount = userPayment.deliveryFee + (userPayment.platformFee * 0.5); // 50% platform fee refund
-        break;
+        case 'post_cook':
+          restaurantCompensation = settlement.restaurantEarning?.netEarning || 0;
+          refundAmount = (userPayment.deliveryFee || 0) + ((userPayment.platformFee || 0) * 0.5);
+          break;
 
-      case 'post_pickup':
-        // No refund to user, restaurant compensated
-        refundAmount = 0;
-        restaurantCompensation = settlement.restaurantEarning.netEarning;
-        break;
+        case 'post_pickup':
+          refundAmount = 0;
+          restaurantCompensation = settlement.restaurantEarning?.netEarning || 0;
+          break;
 
-      default:
-        refundAmount = 0;
-        restaurantCompensation = 0;
+        default:
+          refundAmount = 0;
+          restaurantCompensation = 0;
+      }
     }
 
-    // Update settlement with cancellation details (refund status: 'pending' - awaiting admin approval)
+    // Update settlement with cancellation details
     settlement.cancellationDetails = {
       cancelled: true,
       cancelledAt: new Date(),
       cancellationStage: cancellationStage,
       refundAmount: refundAmount,
       restaurantCompensation: restaurantCompensation,
-      refundStatus: 'pending' // Will be updated to 'initiated' when admin processes refund
+      refundStatus: refundAmount > 0 ? 'pending' : 'not_applicable'
     };
 
     settlement.escrowStatus = 'refunded';
@@ -146,49 +166,69 @@ export const processCancellationRefund = async (orderId, cancellationReason) => 
       throw new Error('Order is not cancelled');
     }
 
-    const settlement = await OrderSettlement.findOne({ orderId });
+    let settlement = await OrderSettlement.findOne({ orderId });
     if (!settlement) {
-      throw new Error('Settlement not found');
+      try {
+        const { calculateOrderSettlement } = await import('./orderSettlementService.js');
+        settlement = await calculateOrderSettlement(orderId);
+      } catch (e) {
+        console.warn(`Could not calculate settlement for order ${orderId}:`, e.message);
+      }
+    }
+
+    if (!settlement) {
+      console.warn(`⚠️ Settlement could not be found or generated for order ${orderId}`);
+      return {
+        refundAmount: 0,
+        restaurantCompensation: 0,
+        refundStatus: 'not_applicable'
+      };
     }
 
     const cancellationStage = getCancellationStage(order);
-    const userPayment = settlement.userPayment;
+    const userPayment = settlement.userPayment || {};
+
+    // Check if user has actually paid money that needs refunding.
+    // For pay_at_hotel, cod, cash where cash was not collected, refund to user is 0!
+    const paymentMethod = String(order.payment?.method || '').toLowerCase();
+    const isOffline = paymentMethod === 'pay_at_hotel' || paymentMethod === 'cash' || paymentMethod === 'cod';
+    const hasUserPaid = !isOffline || order.cashCollected === true || order.payment?.status === 'completed';
 
     let refundAmount = 0;
     let restaurantCompensation = 0;
 
-    // Calculate refund based on cancellation stage
-    switch (cancellationStage) {
-      case 'pre_accept':
-        // Full refund to user
-        refundAmount = userPayment.total;
-        restaurantCompensation = 0;
-        break;
+    if (!hasUserPaid) {
+      // User has not paid, so refund to user is 0
+      refundAmount = 0;
+      if (cancellationStage === 'post_cook' || cancellationStage === 'post_pickup') {
+        restaurantCompensation = settlement.restaurantEarning?.netEarning || 0;
+      }
+    } else {
+      switch (cancellationStage) {
+        case 'pre_accept':
+          refundAmount = userPayment.total || 0;
+          restaurantCompensation = 0;
+          break;
 
-      case 'post_accept_pre_cook':
-        // Partial refund (refund everything except platform fee and GST on platform fee)
-        // User gets: subtotal + delivery fee (if not used)
-        refundAmount = userPayment.subtotal - userPayment.discount + userPayment.deliveryFee;
-        restaurantCompensation = 0;
-        break;
+        case 'post_accept_pre_cook':
+          refundAmount = (userPayment.subtotal || 0) - (userPayment.discount || 0) + (userPayment.deliveryFee || 0);
+          restaurantCompensation = 0;
+          break;
 
-      case 'post_cook':
-        // Restaurant compensated, partial refund to user
-        // Restaurant gets: food cost - commission
-        restaurantCompensation = settlement.restaurantEarning.netEarning;
-        // User gets: delivery fee + platform fee back (or partial)
-        refundAmount = userPayment.deliveryFee + (userPayment.platformFee * 0.5); // 50% platform fee refund
-        break;
+        case 'post_cook':
+          restaurantCompensation = settlement.restaurantEarning?.netEarning || 0;
+          refundAmount = (userPayment.deliveryFee || 0) + ((userPayment.platformFee || 0) * 0.5);
+          break;
 
-      case 'post_pickup':
-        // No refund to user, restaurant compensated
-        refundAmount = 0;
-        restaurantCompensation = settlement.restaurantEarning.netEarning;
-        break;
+        case 'post_pickup':
+          refundAmount = 0;
+          restaurantCompensation = settlement.restaurantEarning?.netEarning || 0;
+          break;
 
-      default:
-        refundAmount = 0;
-        restaurantCompensation = 0;
+        default:
+          refundAmount = 0;
+          restaurantCompensation = 0;
+      }
     }
 
     // Update settlement with cancellation details
@@ -198,7 +238,7 @@ export const processCancellationRefund = async (orderId, cancellationReason) => 
       cancellationStage: cancellationStage,
       refundAmount: refundAmount,
       restaurantCompensation: restaurantCompensation,
-      refundStatus: 'pending'
+      refundStatus: refundAmount > 0 ? 'pending' : 'not_applicable'
     };
 
     settlement.escrowStatus = 'refunded';
@@ -210,9 +250,12 @@ export const processCancellationRefund = async (orderId, cancellationReason) => 
     await settlement.save();
 
     // Process refund to user
-    if (refundAmount > 0) {
+    // Process refund to user only if user actually paid
+    if (refundAmount > 0 && hasUserPaid) {
       await refundToUser(order.userId, orderId, refundAmount, settlement.orderNumber, cancellationReason);
       settlement.cancellationDetails.refundStatus = 'processed';
+    } else if (refundAmount === 0) {
+      settlement.cancellationDetails.refundStatus = 'not_applicable';
     }
 
     // Compensate restaurant if applicable

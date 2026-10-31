@@ -15,9 +15,9 @@ export async function processAutoRejectOrders() {
 
     // Find all orders with status 'pending' or 'confirmed' that haven't been accepted yet
     // Skip orders that have been accepted by Admin
+    // NOTE: All payment methods (including pay_at_hotel and cash) must be auto-rejected if unaccepted!
     const validPendingOrders = await Order.find({
       status: { $in: ["pending", "confirmed"] },
-      "payment.method": { $ne: "pay_at_hotel" },
       acceptedByAdmin: { $ne: true },
       adminAccepted: { $ne: true },
     }).lean();
@@ -89,7 +89,7 @@ export async function processAutoRejectOrders() {
             // Don't fail order cancellation if refund calculation fails
           }
 
-          // Notify about status update
+          // Notify restaurant about status update
           try {
             await notifyRestaurantOrderUpdate(
               currentOrder._id.toString(),
@@ -100,6 +100,51 @@ export async function processAutoRejectOrders() {
               `❌ Error sending notification for order ${currentOrder.orderId}:`,
               notifError,
             );
+          }
+
+          // Notify customer via Socket.IO
+          try {
+            const serverModule = await import("../../../server.js");
+            const io = serverModule.getIO ? serverModule.getIO() : null;
+            if (io) {
+              const payload = {
+                orderId: currentOrder.orderId,
+                orderMongoId: currentOrder._id.toString(),
+                status: "cancelled",
+                cancellationReason: currentOrder.cancellationReason,
+                updatedAt: now,
+              };
+              io.to(`order:${currentOrder._id.toString()}`).emit("order_status_update", payload);
+              io.to(`order:${currentOrder.orderId}`).emit("order_status_update", payload);
+              if (currentOrder.userId) {
+                io.to(`user:${currentOrder.userId.toString()}`).emit("order_status_update", payload);
+              }
+            }
+          } catch (sockErr) {
+            console.warn(`⚠️ Error emitting socket update for auto-rejected order ${currentOrder.orderId}:`, sockErr.message);
+          }
+
+          // Push notification to customer
+          try {
+            const { sendToUser } = await import("../../fcm/services/fcmService.js");
+            if (currentOrder.userId) {
+              await sendToUser(
+                currentOrder.userId.toString(),
+                "user",
+                {
+                  title: "Order Cancelled",
+                  body: `Your order #${currentOrder.orderId} was cancelled because the restaurant did not respond in time.`,
+                },
+                {
+                  type: "order_status_update",
+                  orderId: currentOrder.orderId,
+                  orderMongoId: currentOrder._id.toString(),
+                  status: "cancelled",
+                }
+              );
+            }
+          } catch (fcmErr) {
+            console.warn(`⚠️ Push notification error on auto-reject:`, fcmErr.message);
           }
         } catch (updateError) {
           console.error(

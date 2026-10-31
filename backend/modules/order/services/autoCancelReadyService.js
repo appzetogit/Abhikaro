@@ -9,8 +9,8 @@ import { calculateCancellationRefund } from "./cancellationRefundService.js";
  * - If order.status === 'ready'
  * - AND tracking.ready.timestamp exists
  * - AND deliveryState.reachedPickupAt is not set (pickup not completed)
- * - AND ready time is older than READY_PICKUP_TIME_LIMIT_MINUTES
- * => cancel the order
+ * - AND ready time is older than READY_PICKUP_TIME_LIMIT_MINUTES (90 minutes)
+ * => cancel the order (applies to ALL payment methods including pay_at_hotel and cash)
  */
 export async function processAutoCancelReadyOrders() {
   try {
@@ -21,12 +21,11 @@ export async function processAutoCancelReadyOrders() {
     const cutoff = new Date(now.getTime() - READY_PICKUP_TIME_LIMIT_MS);
 
     // Find candidate orders: ready for too long and not picked up.
-    // Exclude pay_at_hotel because refund + settlement flow differs.
+    // NOTE: Includes pay_at_hotel and cash orders so they do not stay active forever.
     const candidates = await Order.find({
       status: "ready",
       "tracking.ready.timestamp": { $exists: true, $lte: cutoff },
       "deliveryState.reachedPickupAt": { $in: [null, undefined] },
-      "payment.method": { $ne: "pay_at_hotel" },
     }).lean();
 
     if (candidates.length === 0) {
@@ -91,6 +90,58 @@ export async function processAutoCancelReadyOrders() {
             notifError
           );
         }
+
+        // Notify customer and delivery partner via Socket.io
+        try {
+          const serverModule = await import("../../../server.js");
+          const io = serverModule.getIO ? serverModule.getIO() : null;
+          if (io) {
+            const payload = {
+              orderId: currentOrder.orderId,
+              orderMongoId: currentOrder._id.toString(),
+              status: "cancelled",
+              cancellationReason: currentOrder.cancellationReason,
+              updatedAt: now,
+            };
+
+            io.to(`order:${currentOrder._id.toString()}`).emit("order_status_update", payload);
+            io.to(`order:${currentOrder.orderId}`).emit("order_status_update", payload);
+            if (currentOrder.userId) {
+              io.to(`user:${currentOrder.userId.toString()}`).emit("order_status_update", payload);
+            }
+
+            if (currentOrder.deliveryPartnerId) {
+              const deliveryRoom = `delivery:${currentOrder.deliveryPartnerId.toString()}`;
+              io.of("/delivery").to(deliveryRoom).emit("order_status_update", payload);
+            }
+          }
+        } catch (sockErr) {
+          console.warn(`⚠️ Error emitting socket update for auto-cancelled ready order ${currentOrder.orderId}:`, sockErr.message);
+        }
+
+        // Send push notification to user
+        try {
+          const { sendToUser } = await import("../../fcm/services/fcmService.js");
+          if (currentOrder.userId) {
+            await sendToUser(
+              currentOrder.userId.toString(),
+              "user",
+              {
+                title: "Order Cancelled",
+                body: `Your order #${currentOrder.orderId} was cancelled because it could not be picked up within 1.5 hours.`,
+              },
+              {
+                type: "order_status_update",
+                orderId: currentOrder.orderId,
+                orderMongoId: currentOrder._id.toString(),
+                status: "cancelled",
+              }
+            );
+          }
+        } catch (fcmErr) {
+          console.warn("⚠️ FCM notification error on auto-cancel ready:", fcmErr.message);
+        }
+
       } catch (e) {
         console.error(
           `❌ Error auto-cancelling ready order ${order?.orderId || order?._id}:`,
@@ -111,4 +162,3 @@ export async function processAutoCancelReadyOrders() {
     return { processed: 0, message: `Error: ${error.message}` };
   }
 }
-

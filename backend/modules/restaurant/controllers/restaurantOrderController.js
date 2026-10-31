@@ -447,10 +447,9 @@ export const acceptOrder = asyncHandler(async (req, res) => {
     // If the UI shows a countdown, it must be derived from the same window.
     const ACCEPT_TIME_LIMIT_SECONDS = 240; // 4 minutes
     const ACCEPT_TIME_LIMIT_MS = ACCEPT_TIME_LIMIT_SECONDS * 1000;
-    const isHotelPay =
-      String(order?.payment?.method || "").toLowerCase() === "pay_at_hotel";
-    // Admin-accepted orders are exempt from auto-reject, so the restaurant can start them any time
-    if (!isHotelPay && !order.acceptedByAdmin && !order.adminAccepted) {
+    // Admin-accepted orders are exempt from auto-reject, so the restaurant can start them any time.
+    // For all regular orders (including pay_at_hotel), enforce the accept window.
+    if (!order.acceptedByAdmin && !order.adminAccepted) {
       // Measure window from when the order was confirmed/verified (payment completed) rather than createdAt
       // This handles online payment checkout/entering OTP/UPI lag without eating into restaurant accept window.
       const referenceTime = order?.tracking?.confirmed?.timestamp || order?.createdAt;
@@ -1183,6 +1182,22 @@ export const markOrderPreparing = asyncHandler(async (req, res) => {
     // If already preparing, we're just retrying delivery assignment
     const wasAlreadyPreparing = order.status === "preparing";
     if (!wasAlreadyPreparing) {
+      // Enforce accept window before restaurant can mark preparing
+      if (!order.acceptedByAdmin && !order.adminAccepted) {
+        const ACCEPT_TIME_LIMIT_SECONDS = 240;
+        const ACCEPT_TIME_LIMIT_MS = ACCEPT_TIME_LIMIT_SECONDS * 1000;
+        const referenceTime = order?.tracking?.confirmed?.timestamp || order?.createdAt;
+        if (referenceTime) {
+          const elapsedMs = Date.now() - new Date(referenceTime).getTime();
+          if (Number.isFinite(elapsedMs) && elapsedMs >= ACCEPT_TIME_LIMIT_MS) {
+            return errorResponse(
+              res,
+              400,
+              `Order cannot be marked as preparing. Accept window expired (${ACCEPT_TIME_LIMIT_SECONDS}s). Current status: ${order.status}`,
+            );
+          }
+        }
+      }
       order.status = "preparing";
       order.tracking.preparing = { status: true, timestamp: new Date() };
       await order.save();

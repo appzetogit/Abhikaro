@@ -10,7 +10,7 @@ import { calculateCancellationRefund } from "./cancellationRefundService.js";
  * - deliveryState.acceptedAt exists
  * - status is NOT 'delivered' or 'cancelled'
  * - Current time is more than 2 hours after acceptedAt
- * => cancel the order
+ * => cancel the order (applies to ALL payment methods including pay_at_hotel)
  */
 export async function processAutoCancelAcceptedOrders() {
   try {
@@ -25,7 +25,6 @@ export async function processAutoCancelAcceptedOrders() {
       status: { $nin: ["delivered", "cancelled"] },
       "deliveryState.acceptedAt": { $exists: true, $lte: cutoff },
       "deliveryState.status": { $ne: "delivered" },
-      "payment.method": { $ne: "pay_at_hotel" },
     }).lean();
 
     if (candidates.length === 0) {
@@ -36,7 +35,7 @@ export async function processAutoCancelAcceptedOrders() {
 
     // We need IO for customer notifications
     const serverModule = await import('../../../server.js');
-    const io = serverModule.getIO();
+    const io = serverModule.getIO ? serverModule.getIO() : null;
 
     for (const order of candidates) {
       try {
@@ -104,6 +103,9 @@ export async function processAutoCancelAcceptedOrders() {
           
           io.to(orderRoom).emit("order_status_update", payload);
           io.to(orderIdRoom).emit("order_status_update", payload);
+          if (currentOrder.userId) {
+            io.to(`user:${currentOrder.userId.toString()}`).emit("order_status_update", payload);
+          }
           
           // Notify delivery partner room
           if (currentOrder.deliveryPartnerId) {
@@ -111,6 +113,29 @@ export async function processAutoCancelAcceptedOrders() {
             io.of('/delivery').to(deliveryRoom).emit("order_status_update", payload);
             console.log(`📢 Notified delivery partner ${currentOrder.deliveryPartnerId} about auto-cancellation`);
           }
+        }
+
+        // 4. Send push notification to user
+        try {
+          const { sendToUser } = await import("../../fcm/services/fcmService.js");
+          if (currentOrder.userId) {
+            await sendToUser(
+              currentOrder.userId.toString(),
+              "user",
+              {
+                title: "Order Cancelled",
+                body: `Your order #${currentOrder.orderId} was cancelled because it could not be delivered within 2 hours.`,
+              },
+              {
+                type: "order_status_update",
+                orderId: currentOrder.orderId,
+                orderMongoId: currentOrder._id.toString(),
+                status: "cancelled",
+              }
+            );
+          }
+        } catch (fcmErr) {
+          console.warn("⚠️ FCM notification error on auto-cancel accepted:", fcmErr.message);
         }
 
       } catch (err) {
