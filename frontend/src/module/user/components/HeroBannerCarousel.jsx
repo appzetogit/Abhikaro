@@ -47,7 +47,7 @@ export default function HeroBannerCarousel({ banners, loading }) {
       if (!isSwiping.current) {
         setCurrentIndex((prev) => (prev + 1) % bannerImages.length)
       }
-    }, 10000) // Change every 10 seconds
+    }, 5000) // Change every 5 seconds
 
     return () => {
       if (autoSlideIntervalRef.current) {
@@ -66,7 +66,7 @@ export default function HeroBannerCarousel({ banners, loading }) {
         if (!isSwiping.current) {
           setCurrentIndex((prev) => (prev + 1) % bannerImages.length)
         }
-      }, 10000)
+      }, 5000)
     }
   }, [bannerImages.length])
 

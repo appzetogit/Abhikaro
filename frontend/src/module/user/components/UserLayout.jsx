@@ -12,9 +12,10 @@ import ReplaceCartDialog from "./ReplaceCartDialog"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 import { useSharedLocation } from "@/lib/context/LocationContext"
 import io from "socket.io-client"
+import { ChefHat, Clock } from "lucide-react"
 import { BACKEND_ORIGIN } from "@/lib/api/config"
 import { toast } from "sonner"
-import { loadBusinessSettings } from "@/lib/utils/businessSettings"
+import { loadBusinessSettings, clearCache } from "@/lib/utils/businessSettings"
 import MaintenanceScreen from "./MaintenanceScreen"
 
 // Create SearchOverlay context with default value
@@ -128,6 +129,18 @@ export default function UserLayout() {
   const [settings, setSettings] = useState(null)
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false)
   const [checkingMaintenance, setCheckingMaintenance] = useState(true)
+  const [offlineExpired, setOfflineExpired] = useState(false)
+
+  // Offline popup blocks the app; lift it automatically when resume time arrives
+  useEffect(() => {
+    setOfflineExpired(false)
+    const resumeAt = settings?.offlineMode?.resumeAt ? new Date(settings.offlineMode.resumeAt).getTime() : NaN
+    if (!settings?.offlineMode?.isEnabled || !Number.isFinite(resumeAt)) return
+    const delay = resumeAt - Date.now()
+    if (delay > 2147483647) return // beyond setTimeout range; reload will re-check
+    const t = setTimeout(() => setOfflineExpired(true), Math.max(0, delay))
+    return () => clearTimeout(t)
+  }, [settings])
 
   useEffect(() => {
     let active = true
@@ -164,9 +177,31 @@ export default function UserLayout() {
     }
     window.addEventListener("businessSettingsUpdated", handleSettingsUpdate)
 
+    // Realtime: admin saves business settings -> backend emits -> refetch (works for guests too).
+    // Refetch on every (re)connect as well, so a change missed while disconnected still applies.
+    const refetchFresh = () => {
+      clearCache()
+      handleSettingsUpdate()
+    }
+    const settingsSocket = io(BACKEND_ORIGIN, {
+      path: "/socket.io/",
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+    })
+    settingsSocket.on("business_settings_updated", refetchFresh)
+    settingsSocket.io.on("reconnect", refetchFresh)
+
     return () => {
       active = false
       window.removeEventListener("businessSettingsUpdated", handleSettingsUpdate)
+      try {
+        settingsSocket.disconnect()
+      } catch {
+        // ignore
+      }
     }
   }, [])
 
@@ -316,9 +351,12 @@ export default function UserLayout() {
         try {
           refreshZone?.()
           // If user manually selected a location, do NOT auto-refresh GPS and overwrite it.
+          // useLocation's setManualLocation (saved address / search pick) writes sessionStorage "manualLocationOverride";
+          // HotelMenuLanding writes the localStorage key. Honor both, otherwise GPS overwrites the picked address.
           const isManualOverride = (() => {
             try {
-              return localStorage.getItem(MANUAL_OVERRIDE_STORAGE_KEY) === "true"
+              return localStorage.getItem(MANUAL_OVERRIDE_STORAGE_KEY) === "true" ||
+                sessionStorage.getItem("manualLocationOverride") === "true"
             } catch {
               return false
             }
@@ -381,6 +419,48 @@ export default function UserLayout() {
 
   if (maintenanceEnabled) {
     return <MaintenanceScreen settings={settings} />;
+  }
+
+  const offlineResumeAt = settings?.offlineMode?.resumeAt ? new Date(settings.offlineMode.resumeAt) : null
+  const showOfflinePopup = !offlineExpired && !!settings?.offlineMode?.isEnabled &&
+    (!offlineResumeAt || offlineResumeAt.getTime() > Date.now())
+
+  // Blocking: app pages are not rendered at all while offline
+  if (showOfflinePopup) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-orange-100 dark:from-[#1a0f05] dark:via-[#0a0a0a] dark:to-[#1a0f05] px-4" role="dialog" aria-modal="true" aria-labelledby="offline-title">
+        <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white dark:bg-[#1a1a1a] shadow-2xl shadow-orange-500/20 ring-1 ring-orange-100 dark:ring-orange-900/40">
+          <div className="relative bg-gradient-to-br from-orange-400 via-orange-500 to-amber-500 px-6 pt-8 pb-10 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/20 ring-4 ring-white/30">
+              <ChefHat className="h-8 w-8 text-white" strokeWidth={2} />
+            </div>
+            
+          </div>
+          <div className="-mt-5 rounded-t-3xl bg-white dark:bg-[#1a1a1a] px-6 pt-6 pb-7 text-center">
+            <h2 id="offline-title" className="text-xl font-bold text-gray-900 dark:text-white">
+              We&apos;re taking a short break
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+              Abhikaro Food is currently offline and not accepting orders. We&apos;ll be back soon with your favourite meals!
+            </p>
+            {offlineResumeAt && (
+              <div className="mt-5 flex items-center gap-3 rounded-2xl border border-orange-200 dark:border-orange-900/50 bg-orange-50 dark:bg-orange-950/30 px-4 py-3 text-left">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">
+                  <Clock className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-orange-600 dark:text-orange-400">Back online on</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">
+                    {offlineResumeAt.toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </p>
+                </div>
+              </div>
+            )}
+            <p className="mt-5 text-xs text-gray-400">Thank you for your patience 🧡</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

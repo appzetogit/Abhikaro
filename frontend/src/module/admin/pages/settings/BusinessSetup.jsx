@@ -21,6 +21,9 @@ export default function BusinessSetup() {
   });
 
   const [maintenanceModeEnabled, setMaintenanceModeEnabled] = useState(false);
+  const [offlineModeEnabled, setOfflineModeEnabled] = useState(false);
+  // "YYYY-MM-DDTHH:mm" in admin's local time (datetime-local input value)
+  const [offlineResumeAt, setOfflineResumeAt] = useState("");
 
   const [formData, setFormData] = useState({
     companyName: "",
@@ -92,6 +95,14 @@ export default function BusinessSetup() {
         } else {
           setMaintenanceModeEnabled(false);
         }
+
+        setOfflineModeEnabled(!!settings.offlineMode?.isEnabled);
+        const resume = settings.offlineMode?.resumeAt ? new Date(settings.offlineMode.resumeAt) : null;
+        setOfflineResumeAt(
+          resume && !Number.isNaN(resume.getTime())
+            ? new Date(resume.getTime() - resume.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+            : ""
+        );
       }
     } catch (error) {
       console.error("Error fetching business settings:", error);
@@ -124,6 +135,11 @@ export default function BusinessSetup() {
         return;
       }
 
+      if (offlineModeEnabled && !offlineResumeAt) {
+        toast.error("Please set the date & time when the app will be back online");
+        return;
+      }
+
       setSaving(true);
 
       // Prepare form data
@@ -143,6 +159,8 @@ export default function BusinessSetup() {
         payAtHotelMaxTotal: Number(formData.payAtHotelMaxTotal),
         minOrderAmount: Number(formData.minOrderAmount),
         maintenanceModeEnabled: maintenanceModeEnabled,
+        offlineModeEnabled: offlineModeEnabled,
+        offlineModeResumeAt: offlineResumeAt ? new Date(offlineResumeAt).toISOString() : "",
       };
 
       // Prepare files
@@ -829,6 +847,45 @@ export default function BusinessSetup() {
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Offline Mode settings */}
+          <div className="px-4 py-4 border-t border-slate-100">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-1">Offline</h3>
+                  <p className="text-xs text-slate-500">
+                    Shows an &quot;Abhikaro Food is currently offline&quot; popup on the user app with the time it will be back online.
+                  </p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Back online at</label>
+                    <input
+                      type="datetime-local"
+                      value={offlineResumeAt}
+                      onChange={(e) => setOfflineResumeAt(e.target.value)}
+                      className="px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Toggle offline mode"
+                    onClick={() => setOfflineModeEnabled((prev) => !prev)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
+                      offlineModeEnabled ? "bg-red-600" : "bg-slate-200"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        offlineModeEnabled ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

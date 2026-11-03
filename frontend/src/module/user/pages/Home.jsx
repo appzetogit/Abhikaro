@@ -2,7 +2,7 @@ import { useSearchParams, Link, useNavigate } from "react-router-dom"
 import React, { useRef, useEffect, useState, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom"
 import Lenis from "lenis"
-import { Star, Clock, MapPin, Heart, Search, Tag, Flame, ShoppingBag, ShoppingCart, SlidersHorizontal, CheckCircle2, Bookmark, BadgePercent, X, ArrowDownUp, Timer, CalendarClock, ShieldCheck, IndianRupee, UtensilsCrossed, Leaf, AlertCircle, Loader2, Plus, Check, Share2, Pin } from "lucide-react"
+import { Star, Clock, MapPin, Heart, Search, Tag, Flame, ShoppingBag, ShoppingCart, SlidersHorizontal, CheckCircle2, Bookmark, BadgePercent, X, ArrowDownUp, Timer, CalendarClock, ShieldCheck, IndianRupee, UtensilsCrossed, Leaf, AlertCircle, Loader2, Plus, Check, Share2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import Footer from "../components/Footer"
@@ -809,7 +809,7 @@ export default function Home() {
       if (!isSwiping.current) {
         setCurrentBannerIndex((prev) => (prev + 1) % heroBannerImages.length)
       }
-    }, 10000) // Change every 10 seconds
+    }, 5000) // Change every 5 seconds
 
     return () => {
       if (autoSlideIntervalRef.current) {
@@ -851,7 +851,7 @@ export default function Home() {
         if (!isSwiping.current) {
           setCurrentBannerIndex((prev) => (prev + 1) % heroBannerImages.length)
         }
-      }, 10000)
+      }, 5000)
     }
   }, [heroBannerImages.length])
 
@@ -2403,8 +2403,8 @@ export default function Home() {
                             {/* Badges - Top Left */}
                             <div className="absolute top-3 left-3 md:top-4 md:left-4 flex items-center gap-1.5 z-10 transform transition-transform duration-300 group-hover:scale-105 group-hover:-translate-y-0.5">
                               {restaurant.isPinned && (
-                                <div className="h-6 w-6 md:h-7 md:w-7 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-md ring-1 ring-white/30" title="Pinned">
-                                  <Pin className="w-3.5 h-3.5 fill-white" />
+                                <div className="h-6 md:h-7 px-2 md:px-2.5 rounded-md bg-gradient-to-tr from-amber-500 to-amber-600 text-white text-[11px] md:text-xs font-semibold whitespace-nowrap flex items-center justify-center shadow-md ring-1 ring-white/30">
+                                  Abhikaro Choice
                                 </div>
                               )}
                               <div className="bg-gray-800/90 backdrop-blur-sm text-white px-2 py-1 md:px-4 md:py-1.5 rounded-md text-xs font-medium flex items-center shadow-lg">
@@ -2494,8 +2494,8 @@ export default function Home() {
                               {/* Badges - Top Left */}
                               <div className="absolute top-3 left-3 md:top-4 md:left-4 flex items-center gap-1.5 z-10 transform transition-transform duration-300 group-hover:scale-105 group-hover:-translate-y-0.5">
                                 {restaurant.isPinned && (
-                                  <div className="h-6 w-6 md:h-7 md:w-7 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-md ring-1 ring-white/30" title="Pinned">
-                                    <Pin className="w-3.5 h-3.5 fill-white" />
+                                  <div className="h-6 md:h-7 px-2 md:px-2.5 rounded-md bg-gradient-to-tr from-amber-500 to-amber-600 text-white text-[11px] md:text-xs font-semibold whitespace-nowrap flex items-center justify-center shadow-md ring-1 ring-white/30">
+                                    Abhikaro Choice
                                   </div>
                                 )}
                                 <div className="bg-gray-800/90 backdrop-blur-sm text-white px-2 py-1 md:px-4 md:py-1.5 rounded-md text-xs font-medium flex items-center shadow-lg">

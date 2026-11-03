@@ -28,6 +28,7 @@ export const getBusinessSettingsPublic = asyncHandler(async (req, res) => {
         payAtHotelMaxTotal: settings?.payAtHotelMaxTotal ?? 699,
         minOrderAmount: settings?.minOrderAmount ?? 0,
         maintenanceMode: settings?.maintenanceMode || { isEnabled: false },
+        offlineMode: settings?.offlineMode || { isEnabled: false, resumeAt: null },
         email: settings?.email || "",
         phone: settings?.phone || { countryCode: "+91", number: "" },
       },
@@ -93,6 +94,8 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       withdrawScheduleStartTime,
       maintenanceMode,
       maintenanceModeEnabled,
+      offlineModeEnabled,
+      offlineModeResumeAt,
       homeCategoriesLimit,
       payAtHotelMaxTotal,
       minOrderAmount,
@@ -228,6 +231,23 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
       }
       if (maintenanceObj.endDate) {
         settings.maintenanceMode.endDate = new Date(maintenanceObj.endDate);
+      }
+    }
+    if (offlineModeEnabled !== undefined || offlineModeResumeAt !== undefined) {
+      if (!settings.offlineMode) {
+        settings.offlineMode = { isEnabled: false, resumeAt: null };
+      }
+      if (offlineModeEnabled !== undefined) {
+        const raw = String(offlineModeEnabled).toLowerCase();
+        settings.offlineMode.isEnabled =
+          raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+      }
+      if (offlineModeResumeAt !== undefined) {
+        const resumeAt = offlineModeResumeAt ? new Date(offlineModeResumeAt) : null;
+        if (resumeAt && Number.isNaN(resumeAt.getTime())) {
+          return errorResponse(res, 400, "Offline resume date/time is invalid");
+        }
+        settings.offlineMode.resumeAt = resumeAt;
       }
     }
     // Force automatic assignment mode.
@@ -395,6 +415,16 @@ export const updateBusinessSettings = asyncHandler(async (req, res) => {
     }
 
     await settings.save();
+
+    // Realtime: user apps refetch settings (offline/maintenance popup) immediately
+    try {
+      req.app.get("io")?.emit("business_settings_updated", {
+        offlineMode: settings.offlineMode,
+        maintenanceMode: settings.maintenanceMode,
+      });
+    } catch (emitError) {
+      console.warn("Failed to emit business_settings_updated:", emitError);
+    }
 
     // Invalidate categories cache when home categories limit changes
     if (homeCategoriesLimit !== undefined) {

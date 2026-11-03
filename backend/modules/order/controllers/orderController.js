@@ -8,6 +8,7 @@ import {
 import Restaurant from "../../restaurant/models/Restaurant.js";
 import Menu from "../../restaurant/models/Menu.js";
 import Zone from "../../admin/models/Zone.js";
+import BusinessSettings from "../../admin/models/BusinessSettings.js";
 import mongoose from "mongoose";
 import winston from "winston";
 import { calculateOrderPricing } from "../services/orderCalculationService.js";
@@ -43,6 +44,18 @@ const isDev = (process.env.NODE_ENV || "development") !== "production";
  */
 export const createOrder = async (req, res) => {
   try {
+    // Admin "Offline" mode: reject new orders until resumeAt
+    const { offlineMode } = (await BusinessSettings.findOne().select("offlineMode").lean()) || {};
+    if (offlineMode?.isEnabled && (!offlineMode.resumeAt || new Date(offlineMode.resumeAt) > new Date())) {
+      return res.status(403).json({
+        success: false,
+        message: offlineMode.resumeAt
+          ? `Abhikaro Food is currently offline. We'll be back on ${new Date(offlineMode.resumeAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}`
+          : "Abhikaro Food is currently offline.",
+        offlineMode,
+      });
+    }
+
     const userId = req.user.id;
     const {
       items,

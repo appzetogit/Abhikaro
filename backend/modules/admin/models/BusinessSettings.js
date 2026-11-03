@@ -83,6 +83,11 @@ const businessSettingsSchema = new mongoose.Schema(
         default: null,
       },
     },
+    // Offline mode: user app shows "currently offline" popup until resumeAt
+    offlineMode: {
+      isEnabled: { type: Boolean, default: false },
+      resumeAt: { type: Date, default: null },
+    },
     // Global Delivery Partner cash limit (applies to all delivery partners)
     // Used for "Available cash limit" in delivery Pocket/Wallet UI.
     deliveryCashLimit: {
