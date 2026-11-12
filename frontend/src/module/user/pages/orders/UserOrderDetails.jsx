@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useOfflineMode } from "../../components/UserLayout"
 import { useNavigate, useParams } from "react-router-dom"
 import {
   ArrowLeft,
@@ -23,6 +24,7 @@ import io from "socket.io-client"
 
 export default function UserOrderDetails() {
   const navigate = useNavigate()
+  const isAppOffline = useOfflineMode()
   const { orderId } = useParams()
   const [order, setOrder] = useState(null)
   const [restaurant, setRestaurant] = useState(null)
@@ -863,7 +865,8 @@ export default function UserOrderDetails() {
             // User router uses `/restaurants/:slug`
             navigate(`/restaurants/${encodeURIComponent(restaurantKeyForNav)}`)
           }}
-          className="flex-1 bg-[#86002B] text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#700024] transition-colors"
+          disabled={isAppOffline}
+          className="flex-1 bg-[#86002B] text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#700024] transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           <RotateCcw className="w-4 h-4" />
           Reorder

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useOfflineMode } from "../../components/UserLayout"
 import { Link, useNavigate } from "react-router-dom"
 import { ArrowLeft, Search, MoreVertical, ChevronRight, Star, RotateCcw, AlertCircle, Loader2, Clock, Receipt } from "lucide-react"
 import { orderAPI, api, API_ENDPOINTS } from "@/lib/api"
@@ -45,6 +46,7 @@ const resolveMediaUrl = (url) => {
 
 export default function Orders() {
   const navigate = useNavigate()
+  const isAppOffline = useOfflineMode()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -1104,7 +1106,8 @@ Order again from this restaurant in the ${companyName} app.`
                   {isDelivered && !paymentFailed && (
                     <button 
                       onClick={() => handleReorder(order)}
-                      className="bg-[#86002B] hover:bg-[#700024] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm transition-colors"
+                      disabled={isAppOffline}
+                      className="bg-[#86002B] hover:bg-[#700024] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       Reorder

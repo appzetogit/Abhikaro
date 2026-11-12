@@ -858,7 +858,7 @@ export default function BusinessSetup() {
                 <div className="flex-1">
                   <h3 className="text-sm font-semibold text-slate-900 mb-1">Offline</h3>
                   <p className="text-xs text-slate-500">
-                    Shows an &quot;Abhikaro Food is currently offline&quot; popup on the user app with the time it will be back online.
+                    Turns the user app home &amp; Under 250 pages black &amp; white and disables cards until the back-online time.
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
