@@ -12,7 +12,6 @@ import ReplaceCartDialog from "./ReplaceCartDialog"
 import { useForegroundNotifications } from "@/lib/hooks/useForegroundNotifications"
 import { useSharedLocation } from "@/lib/context/LocationContext"
 import io from "socket.io-client"
-import { ChefHat, Clock } from "lucide-react"
 import { BACKEND_ORIGIN } from "@/lib/api/config"
 import { toast } from "sonner"
 import { loadBusinessSettings, clearCache } from "@/lib/utils/businessSettings"
@@ -26,6 +25,12 @@ const SearchOverlayContext = createContext({
   openSearch: () => {},
   closeSearch: () => { }
 })
+
+// True while admin "Offline" toggle is active (until resume time)
+const OfflineModeContext = createContext(false)
+export function useOfflineMode() {
+  return useContext(OfflineModeContext)
+}
 
 export function useSearchOverlay() {
   const context = useContext(SearchOverlayContext)
@@ -409,6 +414,20 @@ export default function UserLayout() {
     [location.pathname]
   )
 
+  // Offline mode: home + under-250 go black & white and cards are not clickable (no popup)
+  const offlineResumeAt = settings?.offlineMode?.resumeAt ? new Date(settings.offlineMode.resumeAt) : null
+  const isOfflineNow = !offlineExpired && !!settings?.offlineMode?.isEnabled &&
+    (!offlineResumeAt || offlineResumeAt.getTime() > Date.now())
+  const offlineGray = isOfflineNow && ["/", "/user", "/under-250", "/user/under-250"].includes(location.pathname)
+
+  // Filter on <html> (not a wrapper) so fixed headers/nav keep their positioning
+  useEffect(() => {
+    if (!offlineGray) return
+    const root = document.documentElement
+    root.style.filter = "grayscale(100%)"
+    return () => { root.style.filter = "" }
+  }, [offlineGray])
+
   if (checkingMaintenance) {
     return (
       <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] flex items-center justify-center">
@@ -421,50 +440,9 @@ export default function UserLayout() {
     return <MaintenanceScreen settings={settings} />;
   }
 
-  const offlineResumeAt = settings?.offlineMode?.resumeAt ? new Date(settings.offlineMode.resumeAt) : null
-  const showOfflinePopup = !offlineExpired && !!settings?.offlineMode?.isEnabled &&
-    (!offlineResumeAt || offlineResumeAt.getTime() > Date.now())
-
-  // Blocking: app pages are not rendered at all while offline
-  if (showOfflinePopup) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-orange-100 dark:from-[#1a0f05] dark:via-[#0a0a0a] dark:to-[#1a0f05] px-4" role="dialog" aria-modal="true" aria-labelledby="offline-title">
-        <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white dark:bg-[#1a1a1a] shadow-2xl shadow-orange-500/20 ring-1 ring-orange-100 dark:ring-orange-900/40">
-          <div className="relative bg-gradient-to-br from-orange-400 via-orange-500 to-amber-500 px-6 pt-8 pb-10 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/20 ring-4 ring-white/30">
-              <ChefHat className="h-8 w-8 text-white" strokeWidth={2} />
-            </div>
-            
-          </div>
-          <div className="-mt-5 rounded-t-3xl bg-white dark:bg-[#1a1a1a] px-6 pt-6 pb-7 text-center">
-            <h2 id="offline-title" className="text-xl font-bold text-gray-900 dark:text-white">
-              We&apos;re taking a short break
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-              Abhikaro Food is currently offline and not accepting orders. We&apos;ll be back soon with your favourite meals!
-            </p>
-            {offlineResumeAt && (
-              <div className="mt-5 flex items-center gap-3 rounded-2xl border border-orange-200 dark:border-orange-900/50 bg-orange-50 dark:bg-orange-950/30 px-4 py-3 text-left">
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">
-                  <Clock className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-orange-600 dark:text-orange-400">Back online on</p>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">
-                    {offlineResumeAt.toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}
-                  </p>
-                </div>
-              </div>
-            )}
-            <p className="mt-5 text-xs text-gray-400">Thank you for your patience 🧡</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#0a0a0a] transition-colors duration-200">
+      <OfflineModeContext.Provider value={isOfflineNow}>
       <CartProvider>
         <ProfileProvider>
           <OrdersProvider>
@@ -473,7 +451,13 @@ export default function UserLayout() {
                 {/* Desktop navbar (hidden on pages where showBottomNav is false) */}
                 {showBottomNav && <DesktopNavbar />}
                 <ReplaceCartDialog />
-                <main>
+                {offlineGray && offlineResumeAt && (
+                  <div className="sticky top-0 z-[60] bg-gray-800 text-white text-center text-xs sm:text-sm py-1.5 px-3">
+                    Abhikaro Food is offline · back on{" "}
+                    {offlineResumeAt.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                  </div>
+                )}
+                <main className={offlineGray ? "pointer-events-none select-none" : undefined}>
                   <Outlet />
                 </main>
                 {showBottomNav && <BottomNavigation />}
@@ -482,6 +466,7 @@ export default function UserLayout() {
           </OrdersProvider>
         </ProfileProvider>
       </CartProvider>
+      </OfflineModeContext.Provider>
     </div>
   )
 }
