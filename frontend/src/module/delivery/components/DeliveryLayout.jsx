@@ -10,6 +10,7 @@ import io from "socket.io-client"
 import { BACKEND_ORIGIN } from "@/lib/api/config"
 import { toast } from "sonner"
 import { preloadGoogleMaps } from "@/lib/utils/googleMapsLoader"
+import { deliveryAPI } from "@/lib/api"
 
 export default function DeliveryLayout({
   children,
@@ -30,6 +31,30 @@ export default function DeliveryLayout({
       console.warn('Failed to preload Google Maps in Layout:', err);
     });
   }, []);
+
+  // Keep backend isOnline in sync with what the rider sees on the toggle.
+  // Without this, a lost/timed-out toggle request (or GPS updates stopping) left the app
+  // showing "Online" while the DB said offline, so no order requests reached the rider.
+  useEffect(() => {
+    const syncOnlineStatus = () => {
+      if (!isModuleAuthenticated("delivery") || document.visibilityState === "hidden") return
+      let isOnline = false
+      try {
+        isOnline = JSON.parse(localStorage.getItem("app:isOnline")) === true
+      } catch {
+        // treat unreadable value as offline
+      }
+      deliveryAPI.updateOnlineStatus(isOnline).catch(() => {})
+    }
+
+    syncOnlineStatus()
+    const intervalId = setInterval(syncOnlineStatus, 60000)
+    document.addEventListener("visibilitychange", syncOnlineStatus)
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", syncOnlineStatus)
+    }
+  }, [])
 
   // Background chat notifications (user <-> delivery)
   useEffect(() => {

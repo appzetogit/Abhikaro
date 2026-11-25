@@ -91,8 +91,19 @@ export default function FeedNavbar({ className = "" }) {
         setIsOnline((prev) => (prev === next ? prev : next));
       }
     };
+    // Same-tab writes (e.g. DeliveryHome forcing offline for unverified accounts)
+    const onLocalChange = () => {
+      try {
+        const next = JSON.parse(localStorage.getItem(LS_KEY)) === true;
+        setIsOnline((prev) => (prev === next ? prev : next));
+      } catch {}
+    };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener("onlineStatusChanged", onLocalChange);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("onlineStatusChanged", onLocalChange);
+    };
   }, []);
 
   // prevent duplicate toasts using a global toast ID
