@@ -8,6 +8,7 @@ import Order from '../order/models/Order.js';
 import OrderSettlement from '../order/models/OrderSettlement.js';
 import mongoose from 'mongoose';
 import { validateOrderDeliveryAndZone } from '../../shared/utils/orderZoneValidator.js';
+import { verifyOrderPricing } from '../order/services/orderPricingGuard.js';
 import etaCalculationService from '../order/services/etaCalculationService.js';
 
 const logger = winston.createLogger({
@@ -441,6 +442,21 @@ router.post('/razorpay/order', authenticate, async (req, res) => {
       };
     }
 
+    // SECURITY: Razorpay amount must come from the server-computed bill, never from client pricing
+    const priced = await verifyOrderPricing({
+      items: payload.items,
+      clientPricing: payload.pricing,
+      restaurant: zoneCheck.restaurant,
+      address: payload.address,
+      deliveryFleet: payload.deliveryFleet,
+      userId,
+      logger,
+    });
+    if (!priced.ok) {
+      return res.status(priced.status).json({ success: false, message: priced.message, code: priced.code, data: priced.data });
+    }
+    payload.pricing = priced.pricing;
+
     const amountPaise = Math.round(Number(payload.pricing.total) * 100);
 
     // Create Razorpay order
@@ -514,6 +530,12 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
       return res.json({ success: true, data: { status: 'succeeded', orderId: intent.orderId.toString() } });
     }
 
+    // SECURITY: signature of some other (cheaper) Razorpay order must not confirm this intent
+    if (razorpay_order_id !== intent.razorpayOrderId) {
+      logger.warn('🚫 verify: razorpay_order_id does not match intent', { intentId, userId, razorpay_order_id });
+      return res.status(400).json({ success: false, message: 'Payment does not belong to this order' });
+    }
+
     // Verify signature
     const valid = await verifyPayment(razorpay_order_id, razorpay_payment_id, razorpay_signature);
     if (!valid) {
@@ -530,6 +552,17 @@ router.post('/razorpay/verify', authenticate, async (req, res) => {
         const payment = await fetchPayment(razorpay_payment_id);
         if (!payment || (payment.status !== 'captured' && payment.status !== 'authorized')) {
           return res.status(400).json({ success: false, message: 'Payment not captured yet' });
+        }
+        // SECURITY: payment must be for THIS intent's Razorpay order and full amount
+        if (payment.order_id !== intent.razorpayOrderId || Number(payment.amount) < Number(intent.amount)) {
+          logger.warn('🚫 Payment/intent mismatch', {
+            intentId: intent._id.toString(),
+            paymentOrderId: payment.order_id,
+            intentOrderId: intent.razorpayOrderId,
+            paidPaise: payment.amount,
+            intentPaise: intent.amount,
+          });
+          return res.status(400).json({ success: false, message: 'Payment does not belong to this order' });
         }
         if (payment.status === 'authorized') {
           const captureAmount = intent?.amount || payment?.amount;
@@ -956,6 +989,17 @@ router.post('/razorpay/reconcile', authenticate, async (req, res) => {
         const payment = await fetchPayment(razorpay_payment_id);
         if (!payment || (payment.status !== 'captured' && payment.status !== 'authorized')) {
           return res.status(400).json({ success: false, message: 'Payment not captured yet' });
+        }
+        // SECURITY: payment must be for THIS intent's Razorpay order and full amount
+        if (payment.order_id !== intent.razorpayOrderId || Number(payment.amount) < Number(intent.amount)) {
+          logger.warn('🚫 Payment/intent mismatch', {
+            intentId: intent._id.toString(),
+            paymentOrderId: payment.order_id,
+            intentOrderId: intent.razorpayOrderId,
+            paidPaise: payment.amount,
+            intentPaise: intent.amount,
+          });
+          return res.status(400).json({ success: false, message: 'Payment does not belong to this order' });
         }
         if (payment.status === 'authorized') {
           const captureAmount = intent?.amount || payment?.amount;

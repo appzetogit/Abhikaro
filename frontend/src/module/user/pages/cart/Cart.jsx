@@ -1489,6 +1489,10 @@ export default function Cart() {
           orderPricing.adminOfferCategoryId = bestCategoryOffer.id;
         }
       }
+      // Backend recomputes every discount; tell it about a category offer even when stacked with a promo
+      if (isCategoryOfferApplied && bestCategoryOffer?.id && categoryOfferDiscount > 0) {
+        orderPricing.categoryOfferId = bestCategoryOffer.id;
+      }
 
       // Include all cart items (main items + addons)
       // Note: Addons are added as separate cart items when user clicks the + button

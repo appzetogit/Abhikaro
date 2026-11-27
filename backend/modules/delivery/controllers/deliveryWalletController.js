@@ -8,7 +8,7 @@ import { validate } from '../../../shared/middleware/validate.js';
 import Joi from 'joi';
 import winston from 'winston';
 import { createOrder as createRazorpayOrder } from '../../payment/services/razorpayService.js';
-import { verifyPayment } from '../../payment/services/razorpayService.js';
+import { verifyPayment, getRazorpayInstance, fetchPayment, capturePayment } from '../../payment/services/razorpayService.js';
 import { getRazorpayCredentials } from '../../../shared/utils/envService.js';
 
 const logger = winston.createLogger({
@@ -810,7 +810,7 @@ const verifyDepositSchema = Joi.object({
   razorpay_order_id: Joi.string().required(),
   razorpay_payment_id: Joi.string().required(),
   razorpay_signature: Joi.string().required(),
-  amount: Joi.number().positive().required()
+  amount: Joi.number().positive().optional() // ignored: deposit amount comes from Razorpay
 });
 
 /**
@@ -826,12 +826,40 @@ export const verifyDepositPayment = asyncHandler(async (req, res) => {
   if (ve) {
     return errorResponse(res, 400, ve.details[0].message || 'Invalid payload');
   }
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = req.body;
-  const amt = Number(amount);
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
   const isValid = await verifyPayment(razorpay_order_id, razorpay_payment_id, razorpay_signature);
   if (!isValid) {
     return errorResponse(res, 400, 'Invalid payment signature');
+  }
+
+  // SECURITY: deposit amount and ownership come from Razorpay, never from the request body.
+  // Before this, a partner could pay Rs 1 and clear all cash in hand.
+  let amt;
+  try {
+    const razorpay = await getRazorpayInstance();
+    const [rzpOrder, payment] = await Promise.all([
+      razorpay.orders.fetch(razorpay_order_id),
+      fetchPayment(razorpay_payment_id)
+    ]);
+    const owns =
+      rzpOrder?.notes?.type === 'cash_limit_deposit' &&
+      String(rzpOrder?.notes?.deliveryId) === String(delivery._id) &&
+      payment?.order_id === razorpay_order_id;
+    if (!owns) {
+      return errorResponse(res, 400, 'Payment does not belong to this deposit');
+    }
+    if (payment.status === 'authorized') {
+      await capturePayment(razorpay_payment_id, payment.amount);
+    } else if (payment.status !== 'captured') {
+      return errorResponse(res, 400, 'Payment not captured yet');
+    }
+    amt = Math.round(Number(payment.amount)) / 100;
+  } catch (rzpErr) {
+    return errorResponse(res, 400, 'Unable to confirm payment. Please try again.');
+  }
+  if (!(amt > 0)) {
+    return errorResponse(res, 400, 'Invalid payment amount');
   }
 
   const wallet = await DeliveryWallet.findOrCreateByDeliveryId(delivery._id);

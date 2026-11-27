@@ -3,8 +3,6 @@ import {
   getWallet,
   getTransactions,
   createWithdrawalRequest,
-  addEarning,
-  collectPayment,
   claimJoiningBonus,
   getWalletStats,
   createDepositOrder,
@@ -19,8 +17,8 @@ router.get('/', authenticate, getWallet); // GET /api/delivery/wallet
 router.get('/transactions', authenticate, getTransactions); // GET /api/delivery/wallet/transactions
 router.get('/stats', authenticate, getWalletStats); // GET /api/delivery/wallet/stats
 router.post('/withdraw', authenticate, createWithdrawalRequest); // POST /api/delivery/wallet/withdraw
-router.post('/earnings', authenticate, addEarning); // POST /api/delivery/wallet/earnings
-router.post('/collect-payment', authenticate, collectPayment); // POST /api/delivery/wallet/collect-payment
+// SECURITY: /earnings and /collect-payment removed: the partner sent the amount himself.
+// Earnings are credited by the server on delivery; cash is tracked by the order flow.
 router.post('/claim-joining-bonus', authenticate, claimJoiningBonus); // POST /api/delivery/wallet/claim-joining-bonus
 router.post('/deposit/create-order', authenticate, createDepositOrder); // POST /api/delivery/wallet/deposit/create-order
 router.post('/deposit/verify', authenticate, verifyDepositPayment); // POST /api/delivery/wallet/deposit/verify

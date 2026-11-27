@@ -3,10 +3,7 @@ import {
   getWallet,
   getTransactions,
   createTopupOrder,
-  verifyTopupPayment,
-  addMoney,
-  deductMoney,
-  addRefund
+  verifyTopupPayment
 } from '../controllers/userWalletController.js';
 import { authenticate } from '../../auth/middleware/auth.js';
 
@@ -20,9 +17,8 @@ router.get('/', getWallet); // GET /api/user/wallet
 router.get('/transactions', getTransactions); // GET /api/user/wallet/transactions
 router.post('/create-topup-order', createTopupOrder); // POST /api/user/wallet/create-topup-order
 router.post('/verify-topup-payment', verifyTopupPayment); // POST /api/user/wallet/verify-topup-payment
-router.post('/add-money', addMoney); // POST /api/user/wallet/add-money (internal)
-router.post('/deduct', deductMoney); // POST /api/user/wallet/deduct (internal)
-router.post('/refund', addRefund); // POST /api/user/wallet/refund (internal)
+// SECURITY: add-money / deduct / refund were removed from HTTP — any logged-in user could
+// credit their own wallet. Wallet credits must only come from verified payments or admin.
 
 export default router;
 

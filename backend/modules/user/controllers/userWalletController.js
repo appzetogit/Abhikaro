@@ -6,7 +6,7 @@ import Order from '../../order/models/Order.js';
 import { validate } from '../../../shared/middleware/validate.js';
 import Joi from 'joi';
 import winston from 'winston';
-import { createOrder as createRazorpayOrder, verifyPayment } from '../../payment/services/razorpayService.js';
+import { createOrder as createRazorpayOrder, verifyPayment, getRazorpayInstance, fetchPayment, capturePayment } from '../../payment/services/razorpayService.js';
 import { getRazorpayCredentials } from '../../../shared/utils/envService.js';
 
 const logger = winston.createLogger({
@@ -387,7 +387,7 @@ const verifyTopupPaymentSchema = Joi.object({
   razorpayOrderId: Joi.string().required(),
   razorpayPaymentId: Joi.string().required(),
   razorpaySignature: Joi.string().required(),
-  amount: Joi.number().positive().required()
+  amount: Joi.number().positive().optional() // ignored: credited amount comes from Razorpay
 });
 
 export const verifyTopupPayment = asyncHandler(async (req, res) => {
@@ -412,30 +412,70 @@ export const verifyTopupPayment = asyncHandler(async (req, res) => {
       return errorResponse(res, 400, 'Invalid payment signature');
     }
 
-    // Find or create wallet
-    let wallet = await UserWallet.findOrCreateByUserId(user._id);
-
-    // Check if transaction already exists for this payment
-    const existingTransaction = wallet.transactions.find(
-      t => t.paymentId && t.paymentId === razorpayPaymentId
-    );
-
-    if (existingTransaction) {
-      return errorResponse(res, 400, 'Payment already processed');
+    // SECURITY: amount and ownership come from Razorpay, never from the request body.
+    // Before this, a user could pay Rs 1 and send amount: 100000.
+    let creditAmount;
+    try {
+      const razorpay = await getRazorpayInstance();
+      const [rzpOrder, payment] = await Promise.all([
+        razorpay.orders.fetch(razorpayOrderId),
+        fetchPayment(razorpayPaymentId)
+      ]);
+      const ownsOrder =
+        rzpOrder?.notes?.type === "wallet_topup" &&
+        String(rzpOrder?.notes?.userId) === String(user._id) &&
+        payment?.order_id === razorpayOrderId;
+      if (!ownsOrder) {
+        logger.warn(`Wallet top-up rejected: payment/order mismatch for user ${user._id}`, { razorpayOrderId, razorpayPaymentId });
+        return errorResponse(res, 400, "Payment does not belong to this wallet top-up");
+      }
+      if (payment.status === "authorized") {
+        await capturePayment(razorpayPaymentId, payment.amount);
+      } else if (payment.status !== "captured") {
+        return errorResponse(res, 400, "Payment not captured yet");
+      }
+      creditAmount = Math.round(Number(payment.amount)) / 100;
+    } catch (rzpErr) {
+      logger.error("Wallet top-up: unable to confirm payment with Razorpay", { error: rzpErr.message, razorpayPaymentId });
+      return errorResponse(res, 400, "Unable to confirm payment. Please try again.");
+    }
+    if (!(creditAmount > 0)) {
+      return errorResponse(res, 400, "Invalid payment amount");
     }
 
-    // Add money transaction
-    const transaction = wallet.addTransaction({
-      amount: amount,
-      type: 'addition',
-      status: 'Completed',
-      description: `Added money via Razorpay`,
-      paymentMethod: 'card', // Default, actual method will be in Razorpay
-      paymentGateway: 'razorpay',
-      paymentId: razorpayPaymentId
-    });
+    // A payment id can be credited only once, across ALL wallets
+    if (await UserWallet.exists({ "transactions.paymentId": razorpayPaymentId })) {
+      return errorResponse(res, 400, "Payment already processed");
+    }
 
-    await wallet.save();
+    const baseWallet = await UserWallet.findOrCreateByUserId(user._id);
+    const now = new Date();
+    // Atomic credit: parallel verify calls for the same payment can not both credit
+    const wallet = await UserWallet.findOneAndUpdate(
+      { _id: baseWallet._id, "transactions.paymentId": { $ne: razorpayPaymentId } },
+      {
+        $inc: { balance: creditAmount, totalAdded: creditAmount },
+        $push: {
+          transactions: {
+            amount: creditAmount,
+            type: "addition",
+            status: "Completed",
+            description: "Added money via Razorpay",
+            paymentMethod: "card", // Default, actual method will be in Razorpay
+            paymentGateway: "razorpay",
+            paymentId: razorpayPaymentId,
+            createdAt: now,
+            updatedAt: now
+          }
+        },
+        $set: { lastTransactionAt: now }
+      },
+      { new: true }
+    );
+    if (!wallet) {
+      return errorResponse(res, 400, "Payment already processed");
+    }
+    const transaction = wallet.transactions[wallet.transactions.length - 1];
 
     // Update user's wallet balance in User model (for backward compatibility)
     await User.findByIdAndUpdate(user._id, {
@@ -445,7 +485,8 @@ export const verifyTopupPayment = asyncHandler(async (req, res) => {
 
     logger.info(`Money added to wallet after payment verification: ${user._id}`, {
       userId: user._id,
-      amount,
+      amount: creditAmount,
+      requestedAmount: amount,
       razorpayPaymentId,
       transactionId: transaction._id,
       newBalance: wallet.balance

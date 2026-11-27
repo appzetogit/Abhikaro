@@ -12,6 +12,7 @@ import BusinessSettings from "../../admin/models/BusinessSettings.js";
 import mongoose from "mongoose";
 import winston from "winston";
 import { calculateOrderPricing } from "../services/orderCalculationService.js";
+import { verifyOrderPricing } from "../services/orderPricingGuard.js";
 import { getRazorpayCredentials } from "../../../shared/utils/envService.js";
 import { notifyRestaurantNewOrder } from "../services/restaurantNotificationService.js";
 import { calculateOrderSettlement } from "../services/orderSettlementService.js";
@@ -62,7 +63,7 @@ export const createOrder = async (req, res) => {
       address,
       restaurantId,
       restaurantName,
-      pricing,
+      pricing: clientPricing,
       deliveryFleet,
       note,
       sendCutlery,
@@ -169,93 +170,11 @@ export const createOrder = async (req, res) => {
     }
 
 
-    if (!pricing || !pricing.total) {
+    if (!clientPricing || !clientPricing.total) {
       return res.status(400).json({
         success: false,
         message: "Order total is required",
       });
-    }
-
-    // Enforce: Admin-funded category offer usage limit per user per day
-    if (pricing.adminOfferDiscount && pricing.adminOfferDiscount > 0) {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date();
-      endOfDay.setHours(23, 59, 59, 999);
-
-      // If we know which category offer was applied, enforce limit per category
-      if (pricing.adminOfferCategoryId) {
-        const AdminCategoryManagement = (
-          await import("../../admin/models/AdminCategoryManagement.js")
-        ).default;
-
-        const categoryDoc = await AdminCategoryManagement.findById(
-          pricing.adminOfferCategoryId,
-        )
-          .select("name offerUsageLimitPerDay")
-          .lean();
-
-        const usageLimit =
-          typeof categoryDoc?.offerUsageLimitPerDay === "number"
-            ? categoryDoc.offerUsageLimitPerDay
-            : 1;
-
-        // 0 means unlimited usage
-        if (usageLimit > 0) {
-          const existingOfferOrderCount = await Order.countDocuments({
-            userId,
-            "pricing.adminOfferCategoryId": pricing.adminOfferCategoryId,
-            createdAt: { $gte: startOfDay, $lte: endOfDay },
-          });
-
-          if (existingOfferOrderCount >= usageLimit) {
-            return res.status(400).json({
-              success: false,
-              message: `You have already used the "${
-                categoryDoc?.name || "category"
-              }" offer the maximum of ${usageLimit} time(s) today.`,
-            });
-          }
-        }
-      } else if (pricing.adminOfferName) {
-        // Admin Promo Code validation
-        const AdminPromoCode = (
-          await import("../../admin/models/AdminPromoCode.js")
-        ).default;
-        const promoDoc = await AdminPromoCode.findOne({
-          code: String(pricing.adminOfferName).trim().toUpperCase(),
-        });
-
-        if (promoDoc) {
-          const evalResult = promoDoc.evaluateValidity({
-            orderAmount: pricing.subtotal || 0,
-            currentDate: new Date(),
-            restaurantId,
-          });
-
-          if (!evalResult.isValid) {
-            return res.status(400).json({
-              success: false,
-              message: `Promo code error: ${evalResult.reason}`,
-            });
-          }
-
-          if (promoDoc.usageLimitPerUser > 0) {
-            const userPromoCount = await Order.countDocuments({
-              userId,
-              "pricing.adminOfferName": promoDoc.code,
-              status: { $ne: "cancelled" },
-            });
-
-            if (userPromoCount >= promoDoc.usageLimitPerUser) {
-              return res.status(400).json({
-                success: false,
-                message: `You have already used promo code '${promoDoc.code}' the maximum of ${promoDoc.usageLimitPerUser} time(s).`,
-              });
-            }
-          }
-        }
-      }
     }
 
     // Validate room number for pay_at_hotel payment method
@@ -469,6 +388,21 @@ export const createOrder = async (req, res) => {
     const random = Math.floor(Math.random() * 1000);
     const generatedOrderId = `ORD-${timestamp}-${random}`;
 
+    // SECURITY: never trust client prices/discounts/total — rebuild the bill on the server
+    const priced = await verifyOrderPricing({
+      items,
+      clientPricing,
+      restaurant,
+      address,
+      deliveryFleet,
+      userId,
+      menu,
+      logger,
+    });
+    if (!priced.ok) {
+      return res.status(priced.status).json({ success: false, message: priced.message, code: priced.code, data: priced.data });
+    }
+    const pricing = priced.pricing;
     // Ensure couponCode is included in pricing
     if (!pricing.couponCode && pricing.appliedCoupon?.code) {
       pricing.couponCode = pricing.appliedCoupon.code;
@@ -917,16 +851,41 @@ export const createOrder = async (req, res) => {
             transactionId: existingTransaction._id,
           });
         } else {
-          // Deduct money from wallet
-          const transaction = wallet.addTransaction({
-            amount: pricing.total,
-            type: "deduction",
-            status: "Completed",
-            description: `Order payment - Order #${order.orderId}`,
-            orderId: order._id,
-          });
-
-          await wallet.save();
+          // Atomic deduction: balance check + debit in ONE query, so two parallel orders
+          // can't both spend the same balance (load-check-save would lose an update).
+          const now = new Date();
+          const updatedWallet = await UserWallet.findOneAndUpdate(
+            {
+              _id: wallet._id,
+              balance: { $gte: pricing.total },
+              transactions: { $not: { $elemMatch: { orderId: order._id, type: "deduction" } } },
+            },
+            {
+              $inc: { balance: -pricing.total, totalSpent: pricing.total },
+              $push: {
+                transactions: {
+                  amount: pricing.total,
+                  type: "deduction",
+                  status: "Completed",
+                  description: `Order payment - Order #${order.orderId}`,
+                  orderId: order._id,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              },
+              $set: { lastTransactionAt: now },
+            },
+            { new: true },
+          );
+          if (!updatedWallet) {
+            order.payment.status = "failed";
+            order.status = "cancelled";
+            order.cancellationReason = "Wallet payment failed: insufficient balance";
+            await order.save();
+            return res.status(400).json({ success: false, message: "Insufficient wallet balance" });
+          }
+          wallet.balance = updatedWallet.balance;
+          const transaction = updatedWallet.transactions[updatedWallet.transactions.length - 1];
 
           // Update user's wallet balance in User model (for backward compatibility)
           const User = (await import("../../auth/models/User.js")).default;
@@ -1379,6 +1338,24 @@ export const verifyOrderPayment = async (req, res) => {
       });
     }
 
+    // Idempotent: never confirm / credit wallets twice for the same order
+    if (order.payment?.status === "completed") {
+      return res.json({
+        success: true,
+        data: { order: { id: order._id.toString(), orderId: order.orderId, status: order.status } },
+      });
+    }
+
+    // SECURITY: signature of some other (cheaper) Razorpay order must not confirm this order
+    if (!order.payment?.razorpayOrderId || order.payment.razorpayOrderId !== razorpayOrderId) {
+      logger.warn("🚫 verify-payment: razorpayOrderId does not match order", {
+        orderId: order.orderId,
+        userId,
+        razorpayOrderId,
+      });
+      return res.status(400).json({ success: false, message: "Payment does not belong to this order" });
+    }
+
     // Verify payment signature
     const isValid = await verifyPayment(
       razorpayOrderId,
@@ -1394,6 +1371,18 @@ export const verifyOrderPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid payment signature",
+      });
+    }
+
+    // Atomic claim: two parallel verify calls must not both run escrow / wallet credits
+    const claim = await Order.updateOne(
+      { _id: order._id, "payment.status": { $ne: "completed" } },
+      { $set: { "payment.status": "completed" } },
+    );
+    if (!claim.modifiedCount) {
+      return res.json({
+        success: true,
+        data: { order: { id: order._id.toString(), orderId: order.orderId, status: order.status } },
       });
     }
 
@@ -2021,11 +2010,23 @@ export const cancelOrder = async (req, res) => {
     // Only restrict if order is already cancelled or delivered (checked above)
 
     // Update order status
-    order.status = "cancelled";
-    order.cancellationReason = reason.trim();
-    order.cancelledBy = "user";
-    order.cancelledAt = new Date();
-    await order.save();
+    // Atomic: parallel cancel calls must not both run the refund calculation
+    const cancelled = await Order.findOneAndUpdate(
+      { _id: order._id, status: { $nin: ["cancelled", "delivered"] } },
+      {
+        $set: {
+          status: "cancelled",
+          cancellationReason: reason.trim(),
+          cancelledBy: "user",
+          cancelledAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+    if (!cancelled) {
+      return res.status(400).json({ success: false, message: "Order is already cancelled or delivered" });
+    }
+    order = cancelled;
 
     // Realtime notify restaurant so restaurant UI can dismiss popup/stop sound immediately
     try {
@@ -2044,8 +2045,10 @@ export const cancelOrder = async (req, res) => {
     // COD orders don't need refund since payment hasn't been made
     let refundMessage = "";
     if (
-      actualPaymentMethod === "razorpay" ||
-      actualPaymentMethod === "wallet"
+      (actualPaymentMethod === "razorpay" ||
+        actualPaymentMethod === "wallet") &&
+      // only money that was actually received can be refunded
+      order.payment?.status === "completed"
     ) {
       try {
         const { calculateCancellationRefund } =
